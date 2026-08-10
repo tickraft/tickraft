@@ -31,9 +31,31 @@ closes #
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(scheduler): add retry backoff`)
 - [ ] No secrets, credentials, or PII committed
 
-## CLA confirmation
+## Contributor License Agreement
 
-- [ ] I have signed the Tickraft CLA
+> **⚠ Before this PR can be merged, every contributor must sign the CLA.**
+> The check runs automatically — signing is done by posting a comment below, **not** by ticking a checkbox here.
+
+**How to sign** — reply to this pull request with:
+
+```
+I agree to the terms of the Tickraft Contributor License Agreement.
+```
+
+<details>
+<summary>中文签署方式（点击展开）</summary>
+
+在本 Pull Request 下方评论：
+
+```
+我已阅读并同意《Tickraft 贡献者许可协议》的条款。
+```
+
+</details>
+
+- 📄 Full text: [CLA.md](https://github.com/tickraft/tickraft/blob/main/CLA.md) · [CLA.zh-CN.md](https://github.com/tickraft/tickraft/blob/main/CLA.zh-CN.md)
+- ✅ One signature covers all your future contributions — no need to re-sign for each PR.
+- 🔒 The `CLA Gate` check blocks CI until every contributor has signed. Once you sign, CI re-runs automatically.
 
 ## Open-source red line confirmation
 

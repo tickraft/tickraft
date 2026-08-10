@@ -1,0 +1,130 @@
+# Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Dual-licensed — see LICENSE for details.
+
+name: Check CLA
+description: |
+  Verifies that a pull request's author and every commit author have signed
+  the Tickraft Contributor License Agreement. Reads the signer registry
+  (.github/CLA/signers.json) from the dedicated cla-signatures branch and
+  matches PR author + commit author identities — both GitHub logins and git
+  commit emails — against it. Shared by the CI cla-gate job and the CLA
+  workflow so the verification logic lives in exactly one place.
+inputs:
+  token:
+    description: GitHub token used to read the signer registry and list PR commits.
+    default: ${{ github.token }}
+outputs:
+  signed:
+    description: '"true" when every required identity has signed the CLA.'
+    value: ${{ steps.verify.outputs.signed }}
+  unsigned:
+    description: Comma-separated list of unsigned identities (empty when all signed).
+    value: ${{ steps.verify.outputs.unsigned }}
+runs:
+  using: composite
+  steps:
+    - name: Verify CLA signatures
+      id: verify
+      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const { owner, repo } = context.repo
+          const pr = context.payload.pull_request
+
+          // On push events (no pull request payload) there is nothing to
+          // gate, so the check passes and downstream jobs proceed.
+          if (!pr) {
+            core.setOutput('signed', 'true')
+            core.setOutput('unsigned', '')
+            return
+          }
+          const prNumber = pr.number
+
+          // 1. Load the signer registry from the cla-signatures branch.
+          //    A missing registry (branch not initialized yet) means no one
+          //    has signed, which is the correct starting state. The registry
+          //    stores GitHub logins (users) and git commit author emails
+          //    (emails). Storing emails matters because a commit whose
+          //    author email is not linked to a GitHub account is identified
+          //    only by that email; recording the signer's own commit emails
+          //    when they sign lets those mail-keyed identities be satisfied
+          //    automatically.
+          const signedUsers = new Set()
+          const signedEmails = new Set()
+          try {
+            const res = await github.rest.repos.getContent({
+              owner, repo,
+              path: '.github/CLA/signers.json',
+              ref: 'cla-signatures',
+            })
+            const reg = JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf8'))
+            for (const u of reg.users || []) signedUsers.add(String(u).toLowerCase())
+            for (const e of reg.emails || []) signedEmails.add(String(e).toLowerCase())
+          } catch (err) {
+            console.log('warning: no signer registry on cla-signatures branch; ' + err.message)
+          }
+
+          // 2. Collect every identity that must sign. Each contributor yields
+          //    a user:<login> identity when GitHub links the commit to an
+          //    account, and a mail:<email> identity for the git commit author
+          //    email. Requiring both ensures the commit email is explicitly
+          //    covered by the signature, not just the GitHub account. The git
+          //    commit author email (c.commit.author.email) is used rather
+          //    than the GitHub user's public email (c.author.email), which is
+          //    null for commits whose email is not linked to any account.
+          //
+          //    Bot accounts (login ends with [bot]) are exempt from the CLA
+          //    requirement — they are automated tools (Dependabot, Renovate,
+          //    etc.) that cannot sign legal agreements. Whitelisting them
+          //    prevents dependabot dependency-update PRs from being blocked
+          //    forever by the CLA gate.
+          const isBot = (login) => !login || String(login).endsWith('[bot]') || String(login).endsWith('-bot')
+
+          const required = new Map() // normalized key -> display name
+          const addIdentity = (login, email) => {
+            if (login && !isBot(login)) {
+              const key = `user:${String(login).toLowerCase()}`
+              if (!required.has(key)) required.set(key, login)
+            }
+            if (email) {
+              const key = `mail:${String(email).toLowerCase()}`
+              if (!required.has(key)) required.set(key, email)
+            }
+          }
+          if (!isBot(pr.user.login)) {
+            addIdentity(pr.user.login, pr.user.email)
+          }
+
+          let commits = []
+          try {
+            commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner, repo, pull_number: prNumber, per_page: 100,
+            })
+          } catch (err) {
+            console.log('warning: could not list PR commits; ' + err.message)
+          }
+          for (const c of commits) {
+            const cLogin = c.author && c.author.login
+            if (!isBot(cLogin)) {
+              addIdentity(cLogin, c.commit && c.commit.author && c.commit.author.email)
+            }
+          }
+
+          // 3. Determine who is unsigned. A user:<login> identity is signed
+          //    if the login is in the registry; a mail:<email> identity is
+          //    signed if the email is in the registry.
+          const unsigned = []
+          for (const [key, display] of required) {
+            const signed = key.startsWith('user:')
+              ? signedUsers.has(key.slice(5))
+              : signedEmails.has(key.slice(5))
+            if (!signed) unsigned.push(display)
+          }
+          const allSigned = unsigned.length === 0
+          console.log(`required signers: ${[...required.values()].join(', ')}`)
+          console.log(`all signed: ${allSigned}`)
+
+          core.setOutput('signed', String(allSigned))
+          core.setOutput('unsigned', unsigned.join(','))

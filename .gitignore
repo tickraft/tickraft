@@ -22,6 +22,7 @@ Thumbs.db
 # Config
 config.yaml
 *.local
+!.github/ISSUE_TEMPLATE/config.yaml
 
 # Go
 vendor/

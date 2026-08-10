@@ -113,13 +113,15 @@ All contributors must sign the CLA before their first Pull Request is merged. Th
 - **Dual-license distribution authorization**: the copyright holder is authorized to distribute the contribution under AGPLv3 or the Commercial License, at its discretion, without additional payment.
 - **Reserved rights**: except for the copyright assigned and the patent rights granted above, the contributor retains all other rights in the contribution.
 
-**How to sign**: add the following line to your first Pull Request description:
+**How to sign**: reply to any of your pull requests with the following phrase (a bot records your signature automatically — no maintainer action needed):
 
 ```
-I have signed the Tickraft CLA
+I agree to the terms of the Tickraft Contributor License Agreement.
 ```
 
-This signature covers all subsequent contributions; you do not need to re-sign for each PR.
+> 中文签署方式：在你的任一 Pull Request 下评论：`我已阅读并同意《Tickraft 贡献者许可协议》的条款。`
+
+This signature covers all subsequent contributions; you do not need to re-sign for each PR. Once recorded, the `CLA` workflow verifies your signature on every pull request and applies the `cla-signed` label. Pull requests with unsigned contributors are blocked by the required `CLA Gate` job until every contributor signs.
 
 ## Documentation Translation & Sync
 

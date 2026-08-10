@@ -7,6 +7,10 @@ name: Release
 # Triggered when a semantic version tag (v*) is pushed.
 # Builds cross-platform binaries via GoReleaser, creates a GitHub Release
 # with archives and checksums, and publishes a Docker image to GHCR.
+#
+# The release jobs depend on the CI workflow passing for the tagged commit,
+# so a tag on code that fails lint/tests/license checks will not produce
+# release artifacts.
 
 on:
   push:
@@ -16,35 +20,78 @@ on:
 permissions:
   contents: write  # GoReleaser needs this to create the GitHub Release
   packages: write  # needed to push the Docker image to GHCR
+  actions: read    # needed to check CI workflow status via workflow_run
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
+
+  # ─────────────────────────────────────────────────────────────
+  # Gate: verify CI passed for the tagged commit before releasing.
+  # ─────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      ci_passed: ${{ steps.check.outputs.passed }}
+    steps:
+      - name: Verify CI passed for this tag
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          echo "Checking CI status for commit $SHA..."
+          # The CI workflow runs on push to main/devel; a tag push does not
+          # trigger it directly, so we inspect the most recent CI run for the
+          # tagged commit and require it to be completed successfully.
+          STATUS=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yaml/runs?head_sha=$SHA&per_page=10" --jq '.workflow_runs[0].status // empty')
+          CONCLUSION=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yaml/runs?head_sha=$SHA&per_page=10" --jq '.workflow_runs[0].conclusion // empty')
+          echo "CI status: ${STATUS:-none}; conclusion: ${CONCLUSION:-none}"
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::CI is still in progress for commit $SHA. Release aborted."
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          if [ "$CONCLUSION" = "success" ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::CI has not passed for commit $SHA (conclusion: ${CONCLUSION:-none}). Release aborted."
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
 
   # ─────────────────────────────────────────────────────────────
   # Job 1: Build cross-platform binaries + create GitHub Release
   # ─────────────────────────────────────────────────────────────
   release-binaries:
     name: Release Binaries
+    needs: ci-gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0  # GoReleaser needs full history for changelog
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a
+        with:
+          version: 9
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 8
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Build frontend assets
         run: |
@@ -61,7 +108,7 @@ jobs:
           touch internal/web/dist/.gitkeep
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a
         with:
           version: latest
           args: release --clean
@@ -70,35 +117,39 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────
   # Job 2: Build and push Docker image to GHCR
+  # Depends on release-binaries so the Go binary is already built and
+  # verified (the Dockerfile embeds it via multi-stage build).
   # ─────────────────────────────────────────────────────────────
   release-docker:
     name: Release Docker Image
+    needs: release-binaries
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/tickraft/tickraft-ce:latest
-            ghcr.io/tickraft/tickraft-ce:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository_owner }}/tickraft-ce:latest
+            ghcr.io/${{ github.repository_owner }}/tickraft-ce:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

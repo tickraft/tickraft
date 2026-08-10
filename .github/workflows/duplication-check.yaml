@@ -5,16 +5,46 @@
 name: Duplication Check
 
 on:
+  push:
+    branches: [main, devel]
   pull_request:
-    branches: [main]
+    branches: [main, devel]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duplication-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Gate: block the scan job until CLA is signed.
+  cla-gate:
+    name: CLA Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+      - uses: ./.github/actions/check-cla
+        id: cla
+      - name: Fail if CLA is not signed
+        if: steps.cla.outputs.signed != 'true'
+        run: |
+          echo "::error::Contributor License Agreement not signed by: ${{ steps.cla.outputs.unsigned }}"
+          echo "Sign the CLA by replying to the pull request with:"
+          echo "  I agree to the terms of the Tickraft Contributor License Agreement."
+          exit 1
+
   duplication-check:
     name: Code Duplication Detection
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
       - name: Install jscpd
@@ -67,7 +97,7 @@ jobs:
 
       - name: Upload duplication report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0b9a81f7
         with:
           name: jscpd-report
           path: ./jscpd-report/

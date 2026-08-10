@@ -1,0 +1,306 @@
+# Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Dual-licensed — see LICENSE for details.
+
+name: CLA Sign
+
+# Automatically records a Contributor License Agreement signature when a
+# contributor replies to a pull request with the agreement phrase:
+#
+#   I agree to the terms of the Tickraft Contributor License Agreement.
+#
+# Flow:
+#   1. A PR comment arrives from a contributor (PR author or commit author)
+#      containing the agreement phrase (English or Chinese).
+#   2. This workflow records the contributor's GitHub login and the git
+#      commit-author emails GitHub attributes to them in the signer registry
+#      on the dedicated cla-signatures branch (`.github/CLA/signers.json`).
+#   3. It posts a confirmation comment and toggles a label to re-trigger the
+#      cla-check job, which then sees the contributor as signed.
+#
+# Security notes:
+#   - The comment body is only parsed in JavaScript; it is never executed.
+#   - Only the commenter's own GitHub login and the commit-author emails
+#     GitHub attributes to them are recorded (identity is GitHub-verified),
+#     and only if they are a contributor of this PR.
+#   - Pushes to the cla-signatures branch use a dedicated GitHub App
+#     installation token (secrets.CLA_APP_ID / CLA_APP_PRIVATE_KEY), NOT
+#     GITHUB_TOKEN. The branch is protected by a ruleset ("require a pull
+#     request", restrict force pushes/deletions) and the ruleset bypass
+#     list contains the GitHub App by name, so only the app can push
+#     signature records directly; other users must go through a reviewed
+#     pull request.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+# Serialize signature recording: the push-retry loop below can lose data when
+# two jobs modify signers.json concurrently (git rebase conflict on a JSON
+# file is not auto-resolvable). A concurrency group with cancel-in-progress:
+# false queues overlapping runs so they execute one at a time, eliminating the
+# race without dropping any signature.
+concurrency:
+  group: cla-signatures
+  cancel-in-progress: false
+
+jobs:
+  record-signature:
+    name: Record CLA Signature
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Mint an installation token for the dedicated CLA GitHub App. The
+      # app token (not GITHUB_TOKEN) performs the push to the protected
+      # cla-signatures branch: the ruleset bypass list contains the app by
+      # name, while GITHUB_TOKEN cannot push to a "require a pull request"
+      # protected branch.
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@7bfa3a4717ef143a604ee0a99d859b8886a96d00
+        with:
+          app-id: ${{ secrets.CLA_APP_ID }}
+          private-key: ${{ secrets.CLA_APP_PRIVATE_KEY }}
+
+      # Check out with the app token so the git fetch/pull/push commands in
+      # the record step authenticate as the GitHub App (in the bypass list)
+      # instead of as GITHUB_TOKEN.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Validate signing comment
+        id: verify
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const issue = context.payload.issue
+            const comment = context.payload.comment
+            const prNumber = issue.number
+            const login = comment.user.login
+            const body = (comment.body || '').trim()
+
+            core.setOutput('pr', String(prNumber))
+            core.setOutput('login', login)
+
+            // Never treat bot comments as signatures (the cla-check job
+            // itself quotes the agreement phrase in its guidance comment).
+            if (login.endsWith('[bot]')) {
+              console.log(`skipping bot comment from ${login}`)
+              core.setOutput('applicable', 'false')
+              return
+            }
+
+            // 1. The comment must contain the agreement phrase (EN or zh-CN).
+            const en = body.toLowerCase().includes('i agree to the terms of the tickraft contributor license agreement')
+            const zh = body.includes('贡献者许可协议') && body.includes('同意')
+            if (!en && !zh) {
+              console.log('comment does not match the CLA agreement phrase; skipping')
+              core.setOutput('applicable', 'false')
+              return
+            }
+
+            // 2. The commenter must be a contributor of this PR (author or
+            //    commit author). A random visitor cannot sign on their behalf.
+            //    While listing commits, also collect the git author emails of
+            //    commits that GitHub attributes to this signer, so that
+            //    mail-keyed identities (commits whose email is not linked to a
+            //    GitHub account) are covered by the signature as well. Without
+            //    this, the CLA check would block forever on the signer's own
+            //    commit emails.
+            let pr
+            try {
+              pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber })
+            } catch (err) {
+              console.log('could not fetch PR: ' + err.message)
+              core.setOutput('applicable', 'false')
+              return
+            }
+            const contributors = new Set([pr.data.user && pr.data.user.login])
+            const emails = new Set()
+            try {
+              const commits = await github.paginate(github.rest.pulls.listCommits, {
+                owner, repo, pull_number: prNumber, per_page: 100,
+              })
+              for (const c of commits) {
+                if (c.author && c.author.login) contributors.add(c.author.login)
+                if (c.author && c.author.login === login) {
+                  const e = c.commit && c.commit.author && c.commit.author.email
+                  if (e) emails.add(String(e).toLowerCase())
+                }
+              }
+            } catch (err) {
+              console.log('warning: could not list PR commits; ' + err.message)
+            }
+            if (!contributors.has(login)) {
+              console.log(`${login} is not a contributor of PR #${prNumber}; ignoring`)
+              core.setOutput('applicable', 'false')
+              return
+            }
+
+            // Also record the PR author's public email when the signer is the
+            // PR author, covering the mail-keyed identity derived from it.
+            if (pr.data.user && pr.data.user.login === login && pr.data.user.email) {
+              emails.add(String(pr.data.user.email).toLowerCase())
+            }
+
+            console.log(`valid signature request from ${login} on PR #${prNumber}`)
+            console.log(`associated emails: ${[...emails].join(', ') || '(none)'}`)
+            core.setOutput('applicable', 'true')
+            core.setOutput('emails', [...emails].join(','))
+
+      - name: Record signature in registry
+        if: steps.verify.outputs.applicable == 'true'
+        env:
+          SIGNER: ${{ steps.verify.outputs.login }}
+          EMAILS: ${{ steps.verify.outputs.emails }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Create the cla-signatures branch on first use; otherwise sync it.
+          if git ls-remote --exit-code --heads origin cla-signatures >/dev/null 2>&1; then
+            git fetch --quiet origin cla-signatures
+            git checkout --quiet cla-signatures
+            git reset --hard --quiet origin/cla-signatures
+          else
+            git checkout --quiet --orphan cla-signatures
+            git rm -rf --quiet . || true
+          fi
+
+          mkdir -p .github/CLA
+          if [ ! -f .github/CLA/signers.json ]; then
+            printf '{\n  "users": [],\n  "emails": []\n}\n' > .github/CLA/signers.json
+          fi
+
+          # Merge the signer into the registry using the shared script so the
+          # logic is not duplicated between the first attempt and the conflict
+          # retry below. The script writes CHANGED=true|false to GITHUB_ENV.
+          python3 .github/scripts/merge-signer.py
+
+          # Commit and push; retry on concurrent-update conflicts. The
+          # concurrency group above serializes runs, but we keep a retry as a
+          # safety net for edge cases (manual pushes, ruleset bypass races).
+          # On rebase conflict we abort, re-read the remote file, and re-apply
+          # our changes on top of the latest version instead of blindly
+          # retrying with stale state.
+          PUSHED=0
+          for i in $(seq 1 5); do
+            git add .github/CLA/signers.json
+            git commit --quiet -m "cla: record signature for $SIGNER" || true
+            if git push --quiet origin cla-signatures; then
+              echo "pushed signature record"
+              PUSHED=1
+              break
+            fi
+            echo "push conflict, retrying ($i)..."
+
+            # Abort any in-progress rebase from a previous failed attempt so
+            # we start clean. --abort is safe even when no rebase is active.
+            git rebase --abort 2>/dev/null || true
+
+            # Fetch latest and try to rebase. If rebase fails due to a JSON
+            # conflict (two signers added in the same file region), abort the
+            # rebase, re-read the remote version, and merge our signer into it
+            # before retrying.
+            if ! git pull --quiet --rebase origin cla-signatures; then
+              echo "rebase conflict on signers.json; re-applying changes on latest remote"
+              git rebase --abort 2>/dev/null || true
+              git checkout --quiet origin/cla-signatures -- .github/CLA/signers.json
+              # Re-run the shared merge script against the freshly fetched version.
+              python3 .github/scripts/merge-signer.py
+              git add .github/CLA/signers.json
+              git commit --quiet -m "cla: record signature for $SIGNER" || true
+              if git push --quiet origin cla-signatures; then
+                echo "pushed signature record (after conflict resolution)"
+                PUSHED=1
+                break
+              fi
+            fi
+          done
+
+          # Propagate push success/failure to subsequent steps via GITHUB_ENV
+          # so the confirm-comment step does not post a false success when the
+          # signature was never recorded.
+          echo "PUSHED=${PUSHED}" >> "$GITHUB_ENV"
+
+      # Post a success confirmation only when the signature newly recorded
+      # (not a duplicate) and actually persisted to the cla-signatures branch.
+      - name: Confirm signature
+        if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
+        env:
+          PR_NUMBER: ${{ steps.verify.outputs.pr }}
+          SIGNER_LOGIN: ${{ steps.verify.outputs.login }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const prNumber = Number(process.env.PR_NUMBER)
+            const login = process.env.SIGNER_LOGIN
+            const body =
+              `✅ **CLA signed** — @${login} has agreed to the terms of the ` +
+              `Tickraft Contributor License Agreement. Thank you!`
+            await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body })
+
+      # If the signature could not be persisted after 5 retries (extremely rare
+      # due to the concurrency group), post an error so the contributor and
+      # maintainers know the signature did not take effect and can retry.
+      - name: Report signature recording failure
+        if: steps.verify.outputs.applicable == 'true' && env.PUSHED != '1'
+        env:
+          PR_NUMBER: ${{ steps.verify.outputs.pr }}
+          SIGNER_LOGIN: ${{ steps.verify.outputs.login }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const prNumber = Number(process.env.PR_NUMBER)
+            const login = process.env.SIGNER_LOGIN
+            const body =
+              `⚠️ **CLA signature recording failed** — @${login}'s agreement was ` +
+              `validated but could not be persisted to the signer registry after ` +
+              `multiple retries. Please re-post the agreement phrase, or contact ` +
+              `a maintainer if the issue persists.`
+            await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body })
+
+      # Re-run the CLA check by toggling a label: the add and the remove
+      # each fire the pull_request_target "labeled"/"unlabeled" triggers.
+      - name: Re-trigger CLA check
+        if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.verify.outputs.pr }}
+        run: |
+          gh api --silent -X POST "repos/${{ github.repository }}/issues/$PR_NUMBER/labels" --input - <<'EOF'
+          {"labels": ["cla-recheck"]}
+          EOF
+          gh api --silent -X DELETE "repos/${{ github.repository }}/issues/$PR_NUMBER/labels/cla-recheck"
+
+      # Re-run the CI workflow so the backend/frontend jobs (which were
+      # skipped by the CLA gate while the PR was unsigned) re-execute with
+      # the signature now recorded. Label changes do not trigger the
+      # pull_request event, so this explicit rerun is what makes the rest of
+      # CI execute automatically after signing.
+      - name: Re-run CI checks after signing
+        if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.verify.outputs.pr }}
+        run: |
+          HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq .head.sha)
+          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yaml/runs?head_sha=$HEAD_SHA&per_page=1" --jq '.workflow_runs[0].id // empty')
+          if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+            gh api -X POST "repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun" \
+              --jq 'empty' \
+              && echo "re-ran CI run $RUN_ID" \
+              || echo "warning: could not re-run CI run $RUN_ID (it may still be in progress; a new push or manual re-run will pick it up)"
+          else
+            echo "no CI run found for head $HEAD_SHA"
+          fi

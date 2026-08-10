@@ -3,15 +3,16 @@
 # The last matching pattern takes precedence.
 
 # Default: all maintainers
+# Keep these team names aligned with the GitHub organization teams so review requests resolve correctly.
 * @tickraft/maintainers
 
 # Backend core
-/cmd/ @tickraft/backend
-/internal/ @tickraft/backend
-/pkg/ @tickraft/backend
+/cmd/ @tickraft/maintainers
+/internal/ @tickraft/maintainers
+/pkg/ @tickraft/maintainers
 
 # Frontend
-/web/ @tickraft/frontend
+/web/ @tickraft/maintainers
 
 # CI / build / tooling
 /.github/ @tickraft/maintainers
@@ -20,16 +21,19 @@
 /scripts/ @tickraft/maintainers
 
 # Configuration
-/configs/ @tickraft/backend
+/configs/ @tickraft/maintainers
 
 # Legal / license
 /LICENSE @tickraft/maintainers
 /CLA.md @tickraft/maintainers
+/CLA.zh-CN.md @tickraft/maintainers
 /LICENSES/ @tickraft/maintainers
 
 # Documentation
 /docs/ @tickraft/maintainers
 /README.md @tickraft/maintainers
+/README.zh-CN.md @tickraft/maintainers
 /CONTRIBUTING.md @tickraft/maintainers
+/CONTRIBUTING.zh-CN.md @tickraft/maintainers
 /SECURITY.md @tickraft/maintainers
 /CODE_OF_CONDUCT.md @tickraft/maintainers

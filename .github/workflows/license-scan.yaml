@@ -13,14 +13,38 @@ name: License Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, devel]
   pull_request:
-    branches: [main]
+    branches: [main, devel]
 
 permissions:
   contents: read
 
+concurrency:
+  group: license-scan-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Gate: block all scan jobs until CLA is signed so unsigned PRs do not
+  # consume runner minutes.
+  cla-gate:
+    name: CLA Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+      - uses: ./.github/actions/check-cla
+        id: cla
+      - name: Fail if CLA is not signed
+        if: steps.cla.outputs.signed != 'true'
+        run: |
+          echo "::error::Contributor License Agreement not signed by: ${{ steps.cla.outputs.unsigned }}"
+          echo "Sign the CLA by replying to the pull request with:"
+          echo "  I agree to the terms of the Tickraft Contributor License Agreement."
+          exit 1
+
   # Job 1: Open-source repository purity scan
   # Scans pkg/ .go files and build files for restricted keywords:
   #   license | commercial | saas | billing | subscription (word-boundary match)
@@ -28,10 +52,12 @@ jobs:
   # standard technical terms, avoiding false positives
   opensource-purity-scan:
     name: Open Source Purity Scan
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Scan pkg/ and build files for restricted keywords
         run: |
@@ -99,13 +125,15 @@ jobs:
   # Uses go-licenses to generate a dependency license report and detect forbidden licenses
   dependency-license-scan:
     name: Dependency License Scan
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26'
 
@@ -115,7 +143,7 @@ jobs:
 
           echo "=== Open-source dependency license scan: detecting GPL/AGPL/SSPL copyleft dependencies ==="
 
-          go install github.com/google/go-licenses@latest
+          go install github.com/google/go-licenses@v1.6.0
           go mod download
 
           REPORT="$(mktemp)"

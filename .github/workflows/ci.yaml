@@ -10,20 +10,52 @@ on:
   pull_request:
     branches: [main, devel]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # CLA gate: runs before every other job so unsigned pull requests do not
+  # consume backend/frontend runner minutes. On push events (no pull request
+  # payload) the check passes and downstream jobs proceed. The composite
+  # action is checked out from the pull request's BASE ref so a fork PR
+  # cannot tamper with the verification logic to bypass the gate.
+  cla-gate:
+    name: CLA Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+      - uses: ./.github/actions/check-cla
+        id: cla
+      - name: Fail if CLA is not signed
+        if: steps.cla.outputs.signed != 'true'
+        run: |
+          echo "::error::Contributor License Agreement not signed by: ${{ steps.cla.outputs.unsigned }}"
+          echo "Sign the CLA by replying to the pull request with:"
+          echo "  I agree to the terms of the Tickraft Contributor License Agreement."
+          exit 1
+
   # Go lint and test
   backend:
     name: Backend Lint & Test
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26'
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893
         with:
-          version: latest
+          version: v2.4.0
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
       - name: Check coverage
@@ -35,7 +67,8 @@ jobs:
       - name: Build
         run: go build ./...
 
-  # Open-source red line scan: ensure professional edition keywords leak into open-source.
+  # Open-source red line scan: ensure professional edition keywords do NOT
+  # leak into the open-source codebase.
   # Only git-tracked files are scanned (git grep). This automatically excludes
   # node_modules/, dist/, .git/ and any other ignored build artifacts, which
   # previously flooded the scan with third-party package content. The
@@ -44,9 +77,11 @@ jobs:
   # (e.g. prettier -> "tier") that legitimately contain scanned substrings.
   red-line-scan:
     name: Open Source Red Line Scan
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Scan for restricted keywords
         run: |
           echo "Scanning for restricted keywords in open-source codebase..."
@@ -97,20 +132,13 @@ jobs:
           # schema docs in docs/ cannot escape the red-line scan. The
           # docs/audit/ directory is excluded because it documents violations
           # and must reference restricted keywords by design.
-          for keyword in "stripe" "alipay" "wechat_pay" "mqtt_broker" "auto_recovery" "ssh_client" "saas" "commercial" "enterprise" "personal" "oidc" "saml"; do
+          # Note: "oidc" and "saml" are omitted from the scan list because
+          # they are also in the whitelist (as standard authentication
+          # protocols), so scanning for them can never produce a violation.
+          # Similarly, "sso" and "tenant" word-boundary scans are omitted
+          # because SSO/Tenant appear in the whitelist as SPI identifiers.
+          for keyword in "stripe" "alipay" "wechat_pay" "mqtt_broker" "auto_recovery" "ssh_client" "saas" "commercial" "enterprise" "personal"; do
             if git grep -i -n -e "$keyword" -- '*.go' '*.ts' '*.vue' '*.yaml' '*.yml' '*.md' ':(exclude).github/**' ':(exclude)docs/audit/**' ':(exclude)web/pnpm-lock.yaml' ':(exclude)web/app/components.d.ts' | grep -viE "$WHITELIST_PATTERN"; then
-              echo "ERROR: Found restricted keyword '$keyword' in open-source codebase"
-              FOUND=1
-            fi
-          done
-
-          # Word-boundary sensitive keywords: these collide with legitimate
-          # open-source identifiers and must use \b boundaries to avoid false
-          # positives:
-          #   "sso"    must not match "Processor" (proce-SSO-r).
-          #   "tenant" must not match "tenantID", "TenantResolver", "tenant_id".
-          for keyword in "sso" "tenant"; do
-            if git grep -i -E -n -e "\b${keyword}\b" -- '*.go' '*.ts' '*.vue' '*.yaml' '*.yml' '*.md' ':(exclude).github/**' ':(exclude)docs/audit/**' ':(exclude)web/pnpm-lock.yaml' ':(exclude)web/app/components.d.ts' | grep -viE "$WHITELIST_PATTERN"; then
               echo "ERROR: Found restricted keyword '$keyword' in open-source codebase"
               FOUND=1
             fi
@@ -126,24 +154,28 @@ jobs:
   # the standardized 3-line AGPLv3 + Commercial dual-license header.
   license-headers:
     name: License Header Check
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Verify license headers
         run: make license-header
 
   # Frontend lint and build
   frontend:
     name: Frontend Lint & Build
+    needs: cla-gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       # The web/ directory is a pnpm workspace (pnpm-workspace.yaml +
       # pnpm-lock.yaml), so pnpm must be installed and used instead of npm.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
           cache: pnpm

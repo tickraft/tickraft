@@ -117,13 +117,15 @@ Dual-licensed — see LICENSE for details.
 - **双协议分发授权**：版权持有人有权以 AGPLv3 或商业授权任一协议分发贡献者的贡献，无需另行支付费用。
 - **保留权利**：除明示转让的版权与授予的专利权外，贡献者保留其对贡献的其他全部权利。
 
-**签署方式**：在首次 Pull Request 描述中添加以下注释，即视为签署：
+**签署方式**：在你的任一 Pull Request 下评论以下短语（机器人会自动记录签名，无需维护者介入）：
 
 ```
-I have signed the Tickraft CLA
+I agree to the terms of the Tickraft Contributor License Agreement.
 ```
 
-该签署对后续全部贡献有效，无需就每次 PR 重复签署。
+> 也可使用中文签署：`我已阅读并同意《Tickraft 贡献者许可协议》的条款。`
+
+该签署对后续全部贡献有效，无需就每次 PR 重复签署。签名记录后，`CLA` 工作流会在每个 Pull Request 上自动校验并添加 `cla-signed` 标签；未签署贡献者的 Pull Request 将被 `CLA Gate` 必选检查拦截，直至全部贡献者完成签署。
 
 ## 文档翻译与同步
 
