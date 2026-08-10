@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@tickraft/core": ["../core/src"],
       "@tickraft/core/*": ["../core/src/*"]
