@@ -16,7 +16,7 @@ jobs:
     name: Backend Lint & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
@@ -40,7 +40,7 @@ jobs:
     name: Open Source Red Line Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Scan for restricted keywords
         run: |
           echo "Scanning for restricted keywords in open-source codebase..."
@@ -133,7 +133,7 @@ jobs:
     name: License Header Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify license headers
         run: make license-header
 
@@ -142,7 +142,7 @@ jobs:
     name: Frontend Lint & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
