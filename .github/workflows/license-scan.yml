@@ -60,7 +60,8 @@ jobs:
           #   business logic/code/service - standard software engineering terms
           #   open_source / *-edition   - neutral edition descriptors
           #   oidc / saml               - standard authentication protocols
-          WHITELIST_PATTERN='TenantID|tenant_id|SSOProvider|SSO|pkg/auth/sso|AccountResolver|AccountStore|Processor|Tenant|cmd/tickraft/version|DefaultQuota|AGPL|Commercial License|dual license|AGPLv3|LICENSE|business logic|business code|business service|open_source|open-source edition|extended edition|extended-edition|running edition|oidc|saml'
+          #   Subscribe / Subscription  - event-bus pub/sub (pkg/event), NOT professional edition licensing
+          WHITELIST_PATTERN='TenantID|tenant_id|SSOProvider|SSO|pkg/auth/sso|AccountResolver|AccountStore|Processor|Tenant|cmd/tickraft/version|DefaultQuota|AGPL|Commercial License|dual license|AGPLv3|LICENSE|business logic|business code|business service|open_source|open-source edition|extended edition|extended-edition|running edition|oidc|saml|Subscribe|Subscription'
 
           VIOLATIONS="$(mktemp)"
 

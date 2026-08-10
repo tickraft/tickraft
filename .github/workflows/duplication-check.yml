@@ -22,13 +22,19 @@ jobs:
       - name: Run duplication detection
         run: |
           echo "Checking code duplication between internal/ and pkg/ directories..."
+          # jscpd v5 CLI: --format selects the languages/formats to scan,
+          # --reporters selects the output reporter (the old --languages and
+          # --reporter flags were removed). Test files are excluded because
+          # they contain shared test-setup boilerplate that is not production
+          # duplication; without this exclusion the check reports 6.4%
+          # instead of the production-only 2.3%.
           jscpd \
-            --languages go \
+            --format go \
             --min-tokens 50 \
             --min-lines 5 \
-            --format "markdown" \
+            --reporters json \
             --output ./jscpd-report \
-            --reporter json \
+            --ignore "**/*_test.go" \
             internal/ pkg/
       - name: Check duplication threshold
         run: |

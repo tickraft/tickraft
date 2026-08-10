@@ -165,15 +165,23 @@ func ExampleRejectionPolicy() {
 	}()
 
 	release := make(chan struct{})
-	// Block the single worker.
+	// Block the single worker and wait until it is actually running the
+	// blocking job. Without this barrier the worker may or may not have
+	// dequeued the blocking job yet, so whether a later submit is
+	// enqueued or runs caller-runs becomes a goroutine-scheduling race
+	// and the example output would be non-deterministic.
+	started := make(chan struct{})
 	if err := p.Submit(context.Background(), pool.Lambda(func(ctx context.Context) error {
+		close(started)
 		<-release
 		return nil
 	})); err != nil {
 		fmt.Println("submit lambda job:", err)
 		return
 	}
-	// Fill the queue.
+	<-started
+	// Fill the queue. The worker is now blocked inside the job above, so
+	// this job stays queued and the queue remains full below.
 	if err := p.Submit(context.Background(), pool.Lambda(func(ctx context.Context) error {
 		return nil
 	})); err != nil {

@@ -174,7 +174,7 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 	}
 }
 
-// finish publishes the completion event and saves the execution record.
+// finish saves the execution record and publishes the completion event.
 // retryCount is the number of retries attempted (0 when the task succeeded
 // on the first attempt or when no retry config was applied).
 func (r *runner) finish(_ context.Context, req ExecutionRequest, result *Result, execErr error, retryCount int, start time.Time) {
@@ -183,29 +183,11 @@ func (r *runner) finish(_ context.Context, req ExecutionRequest, result *Result,
 
 	status, errorMsg := inferStatus(result, execErr)
 
-	// Publish completion event.
-	if r.bus != nil {
-		payload := event.ExecutionPayload{
-			ExecutionID: strconv.FormatInt(req.ID, 10),
-			TenantID:    strconv.FormatInt(req.TenantID, 10),
-			AssetID:     strconv.FormatInt(req.AssetID, 10),
-			Status:      string(status),
-			Error:       errorMsg,
-		}
-		if result != nil {
-			payload.StatusCode = result.StatusCode
-			payload.Output = result.Body
-			payload.Duration = int64(result.Duration)
-		}
-		if err := event.Publish(context.Background(), r.bus, event.TypeExecutionCompleted, payload, event.WithMetadata(req.Metadata)); err != nil {
-			r.logger.Warn("failed to publish execution completed event",
-				zap.Int64("task_id", req.ID),
-				zap.Error(err),
-			)
-		}
-	}
-
-	// Save execution record.
+	// Save execution record before publishing the completion event so that
+	// by the time any subscriber observes the completion, the record is
+	// already durable. The event bus dispatches asynchronously, so
+	// publishing first could let a consumer (or a test waiting on the
+	// event) read the store before the record exists.
 	record := ExecutionRecord{
 		TaskID:       req.ID,
 		TenantID:     req.TenantID,
@@ -230,6 +212,28 @@ func (r *runner) finish(_ context.Context, req ExecutionRequest, result *Result,
 			zap.Int64("task_id", req.ID),
 			zap.Error(saveErr),
 		)
+	}
+
+	// Publish completion event.
+	if r.bus != nil {
+		payload := event.ExecutionPayload{
+			ExecutionID: strconv.FormatInt(req.ID, 10),
+			TenantID:    strconv.FormatInt(req.TenantID, 10),
+			AssetID:     strconv.FormatInt(req.AssetID, 10),
+			Status:      string(status),
+			Error:       errorMsg,
+		}
+		if result != nil {
+			payload.StatusCode = result.StatusCode
+			payload.Output = result.Body
+			payload.Duration = int64(result.Duration)
+		}
+		if err := event.Publish(context.Background(), r.bus, event.TypeExecutionCompleted, payload, event.WithMetadata(req.Metadata)); err != nil {
+			r.logger.Warn("failed to publish execution completed event",
+				zap.Int64("task_id", req.ID),
+				zap.Error(err),
+			)
+		}
 	}
 
 	r.logger.Info("task executed",
