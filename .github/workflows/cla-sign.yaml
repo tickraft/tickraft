@@ -285,25 +285,14 @@ jobs:
               `a maintainer if the issue persists.`
             await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body })
 
-      # Re-run the CLA check by toggling a label: the add and the remove
-      # each fire the pull_request_target "labeled"/"unlabeled" triggers.
-      - name: Re-trigger CLA check
-        if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.verify.outputs.pr }}
-        run: |
-          gh api --silent -X POST "repos/${{ github.repository }}/issues/$PR_NUMBER/labels" --input - <<'EOF'
-          {"labels": ["cla-recheck"]}
-          EOF
-          gh api --silent -X DELETE "repos/${{ github.repository }}/issues/$PR_NUMBER/labels/cla-recheck"
-
       # Re-run every CLA-gated workflow so their jobs (which were skipped
       # while the PR was unsigned) re-execute with the signature now recorded.
       # Gated workflows are: ci.yaml, license-scan.yaml, duplication-check.yaml.
-      # Label toggles do not fire push/pull_request events, and the CLA gate
-      # in each of these workflows failed while the PR was unsigned, so an
-      # explicit rerun is required for each one to recover.
+      # cla.yaml is also re-run here: its check job failed while the PR was
+      # unsigned, and re-running it via the API is more reliable than toggling
+      # a label (the pull_request_target labeled/unlabeled events fired by a
+      # fast add+remove can be coalesced or cancelled by the per-PR concurrency
+      # group, so the check may never re-execute).
       - name: Re-run gated workflows after signing
         if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
         env:
@@ -312,7 +301,7 @@ jobs:
         run: |
           HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq .head.sha)
           echo "Head SHA: $HEAD_SHA"
-          for WF in ci.yaml license-scan.yaml duplication-check.yaml; do
+          for WF in ci.yaml license-scan.yaml duplication-check.yaml cla.yaml; do
             echo "--- Re-running gated workflow: $WF ---"
             # Rerun runs that ended in a rerunnable failure state: the CLA
             # gate failed while the PR was unsigned (failure), the run was
