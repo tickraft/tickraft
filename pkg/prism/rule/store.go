@@ -6,6 +6,7 @@ package rule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -87,7 +88,7 @@ func (s *Store) Get(ctx context.Context, id, tenantID int64) (*Record, error) {
 		Where("id = ? AND tenant_id = ?", id, tenantID).
 		First(&m).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRuleNotFound
 		}
 		return nil, fmt.Errorf("get rule: %w", err)
@@ -154,7 +155,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	var m Record
 	err := s.dbc.WithContext(ctx).First(&m, id).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRuleNotFound
 		}
 		return nil, fmt.Errorf("get rule: %w", err)

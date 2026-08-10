@@ -86,7 +86,7 @@ func (pq priorityQueue) Swap(i, j int) {
 
 // Push adds an element to the queue.
 func (pq *priorityQueue) Push(x any) {
-	*pq = append(*pq, x.(*queueItem))
+	*pq = append(*pq, x.(*queueItem)) //nolint:errcheck // heap.Push is only called with *queueItem
 }
 
 // Pop removes and returns the last element from the queue.
@@ -108,7 +108,7 @@ var envelopePool = sync.Pool{
 
 // acquireEnvelope fetches an Envelope object from the sync.Pool.
 func acquireEnvelope() *Envelope {
-	return envelopePool.Get().(*Envelope)
+	return envelopePool.Get().(*Envelope) //nolint:errcheck // pool always yields *Envelope
 }
 
 // releaseEnvelope returns the Envelope object to the sync.Pool.
@@ -345,7 +345,7 @@ func (b *channelBus) drainQueue(tq *typeQueue, eventType Type) {
 			tq.mu.Unlock()
 			return
 		}
-		item := heap.Pop(&tq.pq).(*queueItem)
+		item := heap.Pop(&tq.pq).(*queueItem) //nolint:errcheck // queue only stores *queueItem
 		tq.mu.Unlock()
 
 		env := item.envelope

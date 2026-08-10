@@ -5,7 +5,6 @@
 package handler
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -281,8 +280,3 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 
 	return nil
 }
-
-// errMissingRequiredServices is a sentinel error for missing required service
-// injections. It allows callers to distinguish missing-service errors from
-// other registration failures.
-var errMissingRequiredServices = errors.New("required services not injected")

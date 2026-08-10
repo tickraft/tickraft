@@ -1,3 +1,7 @@
+// Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Dual-licensed — see LICENSE for details.
+
 /**
  * Case conversion utility for transparent snake_case ↔ camelCase transformation.
  *

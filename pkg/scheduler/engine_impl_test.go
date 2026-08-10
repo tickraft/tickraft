@@ -101,10 +101,7 @@ func TestEnginePanicRecovery(t *testing.T) {
 	// Wait for at least 2 firings to verify the engine survived the first
 	// panic and continued rescheduling.
 	deadline := time.After(5 * time.Second)
-	for {
-		if fireCount.Load() >= 2 {
-			break
-		}
+	for fireCount.Load() < 2 {
 		select {
 		case <-deadline:
 			t.Fatalf("fireCount = %d, want >= 2 (panic should not stop rescheduling)", fireCount.Load())

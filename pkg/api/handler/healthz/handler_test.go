@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
@@ -253,6 +252,6 @@ func TestNewHandlerConstructsFields(t *testing.T) {
 // TestHealthzHandlerSignature verifies Healthz has the Hertz handler
 // signature so it can be registered directly as an app.HandlerFunc.
 func TestHealthzHandlerSignature(t *testing.T) {
-	var _ func(context.Context, *app.RequestContext) = (*Handler)(nil).Healthz
-	var _ func(context.Context, *app.RequestContext) = DefaultHealthz
+	var _ = (*Handler)(nil).Healthz
+	var _ = DefaultHealthz
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.etcd.io/bbolt"
+	berrors "go.etcd.io/bbolt/errors"
 	"go.uber.org/zap"
 )
 
@@ -260,7 +261,7 @@ func (c *BboltCache) Clear(ctx context.Context) {
 		return
 	}
 	err := c.db.Update(func(tx *bbolt.Tx) error {
-		if err := tx.DeleteBucket(bboltBucket); err != nil && !errors.Is(err, bbolt.ErrBucketNotFound) {
+		if err := tx.DeleteBucket(bboltBucket); err != nil && !errors.Is(err, berrors.ErrBucketNotFound) {
 			return err
 		}
 		_, err := tx.CreateBucketIfNotExists(bboltBucket)

@@ -54,7 +54,11 @@ func (s *Service) SetLoginFail(username string, e LoginFailsEntry) {
 }
 
 // HasLoginFail reports whether a loginFailRecord entry exists for username.
+// It locks internally so it is safe to call while the cleanup goroutine is
+// running (e.g. from the poll loop in TestCleanupGoroutine).
 func (s *Service) HasLoginFail(username string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, ok := s.loginFails[username]
 	return ok
 }

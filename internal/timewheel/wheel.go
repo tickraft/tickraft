@@ -48,7 +48,7 @@ var entryPool = sync.Pool{
 // acquireEntry returns an [Entry] drawn from the pool, zeroed and ready
 // for the caller to populate.
 func acquireEntry() *Entry {
-	return entryPool.Get().(*Entry)
+	return entryPool.Get().(*Entry) //nolint:errcheck // pool always yields *Entry
 }
 
 // releaseEntry clears all fields of e and returns it to the pool. It is

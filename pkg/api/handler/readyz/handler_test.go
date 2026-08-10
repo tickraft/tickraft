@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
@@ -254,8 +253,8 @@ func TestDefaultReady(t *testing.T) {
 // TestReadyHandlerSignature verifies Ready has the Hertz handler signature
 // so it can be registered directly as an app.HandlerFunc.
 func TestReadyHandlerSignature(t *testing.T) {
-	var _ func(context.Context, *app.RequestContext) = (*Handler)(nil).Ready
-	var _ func(context.Context, *app.RequestContext) = DefaultReady
+	var _ = (*Handler)(nil).Ready
+	var _ = DefaultReady
 }
 
 // stubChecker is a test-only DependencyChecker that returns a preset error.

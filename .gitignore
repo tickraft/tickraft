@@ -33,3 +33,4 @@ reports/*
 # slash would exclude the directory itself and skip the negation.
 internal/web/dist/*
 !internal/web/dist/.gitkeep
+web/app/.vite

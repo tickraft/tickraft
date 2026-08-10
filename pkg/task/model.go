@@ -40,8 +40,10 @@ type ScheduleTask struct {
 	Metadata       string `gorm:"column:metadata;type:text" json:"metadata,omitempty"`
 	Group          string `gorm:"column:group;type:varchar(64);index" json:"group,omitempty"`
 	Tags           string `gorm:"column:tags;type:varchar(255)" json:"tags,omitempty"`
-	// RunID is the unique identifier for idempotency control.
-	RunID string `json:"run_id" gorm:"column:run_id;type:varchar(64);uniqueIndex"`
+	// RunID is an optional idempotency key. It is not unique: tasks are
+	// created without a run ID by the handler layer, so a unique index
+	// would reject every task after the first.
+	RunID string `json:"run_id" gorm:"column:run_id;type:varchar(64)"`
 	// RetryPolicy is the retry strategy: "fixed" or "exponential".
 	RetryPolicy string `json:"retry_policy" gorm:"column:retry_policy;type:varchar(16);default:fixed"`
 	// Concurrency controls per-task concurrent execution (0=unlimited, 1=no concurrent).
@@ -121,10 +123,6 @@ type ScheduleLog struct {
 	// Metrics stores execution metrics as JSON.
 	Metrics   string    `json:"metrics" gorm:"column:metrics;type:text"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	// Task is the associated schedule task, eager-loaded via
-	// Preload("Task"). Excluded from JSON to preserve the existing API
-	// shape; callers access the struct field directly.
-	Task *ScheduleTask `gorm:"foreignKey:TaskID;references:ID" json:"-"`
 }
 
 // TableName returns the database table name.

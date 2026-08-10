@@ -143,10 +143,12 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Resolve the target address to an IP address.
+	// Resolve the target address to an IP address. The resolver is bound
+	// to ctx so that the prober timeout also applies to DNS lookups, which
+	// would otherwise be able to block beyond the deadline.
 	ip := net.ParseIP(target.Address)
 	if ip == nil {
-		addrs, err := net.LookupIP(target.Address)
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, target.Address)
 		if err != nil {
 			r := executor.AcquireResult()
 			r.Status = types.AssetStatusAbnormal
@@ -159,7 +161,7 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 			r.ErrorMsg = fmt.Sprintf("no addresses resolved for %q", target.Address)
 			return r, nil
 		}
-		ip = addrs[0]
+		ip = addrs[0].IP
 	}
 
 	// Listen for ICMP replies. The "udp4" network uses unprivileged ICMP

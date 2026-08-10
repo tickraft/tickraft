@@ -14,7 +14,7 @@ import (
 )
 
 func TestBusInterface(t *testing.T) {
-	var bus Bus = NewBus()
+	var bus = NewBus()
 	defer bus.Close()
 
 	if bus == nil {

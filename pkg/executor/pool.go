@@ -23,7 +23,7 @@ var resultPool = sync.Pool{
 // Callers must populate the returned result's fields before returning it
 // from Executor.Execute.
 func AcquireResult() *Result {
-	r := resultPool.Get().(*Result)
+	r := resultPool.Get().(*Result) //nolint:errcheck // pool always yields *Result
 	r.reset()
 	return r
 }

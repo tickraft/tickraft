@@ -118,7 +118,7 @@ func TestSignToken(t *testing.T) {
 	if claims.JTI() == "" {
 		t.Error("JTI() is empty, want non-empty")
 	}
-	if claims.RegisteredClaims.ID == "" {
+	if claims.ID == "" {
 		t.Error("RegisteredClaims.ID is empty, want non-empty")
 	}
 }

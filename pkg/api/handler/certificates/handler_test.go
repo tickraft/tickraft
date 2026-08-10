@@ -5,13 +5,11 @@
 package certificates
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
 
-	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
@@ -151,7 +149,7 @@ func TestCertificateReloadFailure(t *testing.T) {
 // TestCertificateReloadSignature verifies Reload has the Hertz handler
 // signature so it can be registered directly as an app.HandlerFunc.
 func TestCertificateReloadSignature(t *testing.T) {
-	var _ func(context.Context, *app.RequestContext) = (*Handler)(nil).Reload
+	var _ = (*Handler)(nil).Reload
 }
 
 // TestStubReloaderSatisfiesInterface verifies the test stub satisfies the

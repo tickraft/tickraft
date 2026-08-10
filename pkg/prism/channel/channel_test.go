@@ -84,21 +84,21 @@ func TestSendErrorUnwrap(t *testing.T) {
 // SendError: errors.Is / errors.As compatibility
 // ---------------------------------------------------------------------------
 
-// sentinelErr is a sentinel error used to verify errors.Is traversal.
-var sentinelErr = errors.New("sentinel failure")
+// errSentinel is a sentinel error used to verify errors.Is traversal.
+var errSentinel = errors.New("sentinel failure")
 
 // TestSendErrorErrorsIs verifies that errors.Is traverses into SendError.
 func TestSendErrorErrorsIs(t *testing.T) {
-	se := NewSendError("webhook", true, sentinelErr)
-	if !errors.Is(se, sentinelErr) {
-		t.Errorf("errors.Is(se, sentinelErr): got false, want true")
+	se := NewSendError("webhook", true, errSentinel)
+	if !errors.Is(se, errSentinel) {
+		t.Errorf("errors.Is(se, errSentinel): got false, want true")
 	}
 }
 
 // TestSendErrorErrorsIsWithUnrelated verifies that errors.Is returns false
 // for an unrelated error.
 func TestSendErrorErrorsIsWithUnrelated(t *testing.T) {
-	se := NewSendError("webhook", true, sentinelErr)
+	se := NewSendError("webhook", true, errSentinel)
 	other := errors.New("other")
 	if errors.Is(se, other) {
 		t.Errorf("errors.Is(se, other): got true, want false")

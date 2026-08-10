@@ -32,8 +32,7 @@ func TestSpecScheduleNextTimezone(t *testing.T) {
 }
 
 func TestSpecScheduleMemoryLayout(t *testing.T) {
-	s := specSchedule{}
-	size := unsafe.Sizeof(s)
+	size := unsafe.Sizeof(specSchedule{})
 	if size > 48 {
 		t.Fatalf("SpecSchedule size %d is too large, expected < 48 bytes", size)
 	}

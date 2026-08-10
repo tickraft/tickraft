@@ -88,7 +88,9 @@ func NewBuiltinLibrary(logger *zap.Logger) Library {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	l := NewLibrary(logger).(*library)
+
+	//nolint:errcheck
+	l := NewLibrary(logger).(*library) // factory always returns *library
 	for _, t := range loadBuiltinTemplates(logger) {
 		if err := Validate(t); err != nil {
 			l.logger.Warn("template library: skipping invalid built-in template",
