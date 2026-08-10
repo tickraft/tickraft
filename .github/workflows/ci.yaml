@@ -55,7 +55,8 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893
         with:
-          version: v2.5.0
+          # Go 1.26 support starts at v2.9.0; v2.12.2 is pinned for reproducibility.
+          version: v2.12.2
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
       - name: Check coverage
