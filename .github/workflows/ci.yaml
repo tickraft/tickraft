@@ -51,11 +51,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26'
+          go-version: '1.26.4'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893
         with:
-          version: v2.4.0
+          version: v2.5.0
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
       - name: Check coverage
@@ -172,10 +172,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       # The web/ directory is a pnpm workspace (pnpm-workspace.yaml +
       # pnpm-lock.yaml), so pnpm must be installed and used instead of npm.
-      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a
+      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3
         with:
           version: 9
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '20'
           cache: pnpm
