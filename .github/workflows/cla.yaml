@@ -43,6 +43,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 # Serialize CLA checks per PR: label toggles (add + remove) fire two events,
 # and synchronize/ready_for_review can overlap. Runs are idempotent so

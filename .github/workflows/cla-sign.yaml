@@ -38,6 +38,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
   actions: write
 
 # Serialize signature recording: the push-retry loop below can lose data when
@@ -165,6 +166,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # The rest of this step runs against the cla-signatures branch,
+          # which only contains .github/CLA/signers.json (it is an orphan
+          # branch created with `git rm -rf .`). The shared merge script lives
+          # on the default branch, so fetch it from the remote into a temp
+          # path before switching branches. Reading it via `git show` works
+          # regardless of the local working tree state.
+          mkdir -p /tmp/cla-tools
+          git fetch --quiet origin
+          DEFAULT_BRANCH="$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null | sed 's@^origin/@@')"
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH="main"
+          fi
+          git show "origin/${DEFAULT_BRANCH}:.github/scripts/merge-signer.py" > /tmp/cla-tools/merge-signer.py
+
           # Create the cla-signatures branch on first use; otherwise sync it.
           if git ls-remote --exit-code --heads origin cla-signatures >/dev/null 2>&1; then
             git fetch --quiet origin cla-signatures
@@ -183,7 +198,7 @@ jobs:
           # Merge the signer into the registry using the shared script so the
           # logic is not duplicated between the first attempt and the conflict
           # retry below. The script writes CHANGED=true|false to GITHUB_ENV.
-          python3 .github/scripts/merge-signer.py
+          python3 /tmp/cla-tools/merge-signer.py
 
           # Commit and push; retry on concurrent-update conflicts. The
           # concurrency group above serializes runs, but we keep a retry as a
@@ -215,7 +230,7 @@ jobs:
               git rebase --abort 2>/dev/null || true
               git checkout --quiet origin/cla-signatures -- .github/CLA/signers.json
               # Re-run the shared merge script against the freshly fetched version.
-              python3 .github/scripts/merge-signer.py
+              python3 /tmp/cla-tools/merge-signer.py
               git add .github/CLA/signers.json
               git commit --quiet -m "cla: record signature for $SIGNER" || true
               if git push --quiet origin cla-signatures; then
@@ -283,24 +298,40 @@ jobs:
           EOF
           gh api --silent -X DELETE "repos/${{ github.repository }}/issues/$PR_NUMBER/labels/cla-recheck"
 
-      # Re-run the CI workflow so the backend/frontend jobs (which were
-      # skipped by the CLA gate while the PR was unsigned) re-execute with
-      # the signature now recorded. Label changes do not trigger the
-      # pull_request event, so this explicit rerun is what makes the rest of
-      # CI execute automatically after signing.
-      - name: Re-run CI checks after signing
+      # Re-run every CLA-gated workflow so their jobs (which were skipped
+      # while the PR was unsigned) re-execute with the signature now recorded.
+      # Gated workflows are: ci.yaml, license-scan.yaml, duplication-check.yaml.
+      # Label toggles do not fire push/pull_request events, and the CLA gate
+      # in each of these workflows failed while the PR was unsigned, so an
+      # explicit rerun is required for each one to recover.
+      - name: Re-run gated workflows after signing
         if: steps.verify.outputs.applicable == 'true' && env.PUSHED == '1' && env.CHANGED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.verify.outputs.pr }}
         run: |
           HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq .head.sha)
-          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yaml/runs?head_sha=$HEAD_SHA&per_page=1" --jq '.workflow_runs[0].id // empty')
-          if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-            gh api -X POST "repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun" \
-              --jq 'empty' \
-              && echo "re-ran CI run $RUN_ID" \
-              || echo "warning: could not re-run CI run $RUN_ID (it may still be in progress; a new push or manual re-run will pick it up)"
-          else
-            echo "no CI run found for head $HEAD_SHA"
-          fi
+          echo "Head SHA: $HEAD_SHA"
+          for WF in ci.yaml license-scan.yaml duplication-check.yaml; do
+            echo "--- Re-running gated workflow: $WF ---"
+            # Rerun runs that ended in a rerunnable failure state: the CLA
+            # gate failed while the PR was unsigned (failure), the run was
+            # manually cancelled (cancelled), or it timed out (timed_out).
+            # Runs still in progress (empty conclusion) are skipped: they will
+            # read the registry at the time they reach the gate and may
+            # already see the new signature. Queries are pinned to HEAD_SHA so
+            # older runs cancelled by concurrency for earlier commits are not
+            # matched and not re-run.
+            RUN_IDS=$(gh api "repos/${{ github.repository }}/actions/workflows/$WF/runs?head_sha=$HEAD_SHA&per_page=10" \
+              --jq '.workflow_runs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | .id')
+            if [ -z "$RUN_IDS" ]; then
+              echo "  no rerunnable run found for $WF (head $HEAD_SHA)"
+              continue
+            fi
+            for RUN_ID in $RUN_IDS; do
+              gh api -X POST "repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun" \
+                --jq 'empty' \
+                && echo "  re-ran $WF run $RUN_ID" \
+                || echo "  warning: could not re-run $WF run $RUN_ID (it may still be in progress; a new push or manual re-run will pick it up)"
+            done
+          done
