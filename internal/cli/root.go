@@ -50,7 +50,7 @@ All components run in a single process.`,
 	}
 
 	root.PersistentFlags().StringP("config", "c", "", "configure file path")
-	root.PersistentFlags().String("log.mode", "debug", "logging mode: debug or release")
+	root.PersistentFlags().String("log-mode", "debug", "logging mode: debug or release")
 	root.Flags().BoolP("version", "v", false, "show version information and exit")
 
 	root.AddCommand(newStartCmd())

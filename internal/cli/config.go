@@ -13,12 +13,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/config"
 )
 
-// CLI commands use fmt.Println/fmt.Fprintf for user-facing interactive output
-// (success messages, validation results). This is exempt from the zap-only
-// logging rule (§二.5) because CLI output is the primary product of the
-// command, not internal diagnostic logging. Diagnostic/audit logs within
-// business logic still use zap exclusively.
-
 // newConfigCmd creates the "config" parent subcommand for configuration management.
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{

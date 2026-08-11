@@ -21,7 +21,7 @@ import (
 // from the DSN scheme (sqlite://, sqlite3://, or a bare path) or from the
 // database.driver field when using the direct-fields config path.
 func newMigrateCmd() *cobra.Command {
-	var dbDSN string
+	var dsn string
 
 	cmd := &cobra.Command{
 		Use:   "migrate",
@@ -38,11 +38,11 @@ The database connection can be configured in two ways:
 
 At least one of --dsn or --config must be provided.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMigrate(cmd, dbDSN)
+			return runMigrate(cmd, dsn)
 		},
 	}
 
-	cmd.Flags().StringVar(&dbDSN, "dsn", "", "database data source name (sqlite://, sqlite3://, or bare path); overrides the config file database section when set")
+	cmd.Flags().StringVar(&dsn, "dsn", "", "database data source name (sqlite://, sqlite3://, or bare path); overrides the config file database section when set")
 
 	return cmd
 }
@@ -50,7 +50,7 @@ At least one of --dsn or --config must be provided.`,
 // runMigrate resolves the database configuration via flags and delegates to
 // the service layer. The --dsn flag takes precedence over --config; when
 // neither is provided, an error is returned.
-func runMigrate(cmd *cobra.Command, flagDSN string) error {
+func runMigrate(cmd *cobra.Command, dsn string) error {
 	ctx := context.Background()
 
 	configPath, err := cmd.Flags().GetString("config")
@@ -60,7 +60,7 @@ func runMigrate(cmd *cobra.Command, flagDSN string) error {
 
 	// When --dsn is explicitly set, it takes precedence over the config file.
 	if cmd.Flags().Changed("dsn") {
-		return service.RunMigrateFromDSN(ctx, flagDSN)
+		return service.RunMigrateFromDSN(ctx, dsn)
 	}
 
 	// --dsn not set; fall back to the config file.

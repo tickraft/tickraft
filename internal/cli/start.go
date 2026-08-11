@@ -31,34 +31,27 @@ func newStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start tickraft service",
-		Long: `Start tickraft service in the chosen deployment mode.
+		Long: `Start the tickraft service.
 
-The standalone runtime only supports "standalone" mode where the API server,
-scheduler, executor, telemetry, and prism all run within a single process on
-a single port. Distributed multi-process startup is an optional feature.`,
-		RunE: runStandalone,
+All components (API server, worker, collector, and prism) run in a single process
+on a single HTTP port, so no extra services or deployment modes are required.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			cfg, err := loadConfig(cmd)
+			if err != nil {
+				return err
+			}
+
+			return service.Start(ctx, cfg)
+		},
 	}
 
 	cmd.Flags().String("addr", "", "override listen address")
 	cmd.Flags().String("dsn", "", "override database DSN")
 
 	return cmd
-}
-
-// runStandalone loads the configuration from cobra flags and delegates the
-// service orchestration to service.Start. All component wiring
-// (runtime, worker engines, prism, API server, maintenance loop) lives in
-// the service package so it can be reused without a cobra dependency.
-func runStandalone(cmd *cobra.Command, _ []string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cfg, err := loadConfig(cmd)
-	if err != nil {
-		return err
-	}
-
-	return service.Start(ctx, cfg)
 }
 
 // loadConfig resolves the configuration from the global --config flag, with
@@ -72,43 +65,37 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 
 	var cfg *config.Config
 	if configPath != "" {
-		cfg, err = config.Load(configPath)
-		if err != nil {
+		if cfg, err = config.Load(configPath); err != nil {
 			return nil, fmt.Errorf("load config: %w", err)
 		}
-		if vErr := cfg.Validate(); vErr != nil {
-			return nil, fmt.Errorf("validate config: %w", vErr)
+
+		if err = cfg.Validate(); err != nil {
+			return nil, fmt.Errorf("validate config: %w", err)
 		}
 	} else {
 		cfg = defaultConfig()
 	}
 
 	// The --log-mode persistent flag overrides the config file value.
-	if cmd.Flags().Changed("log.mode") {
-		logMode, err := cmd.Flags().GetString("log.mode")
-		if err != nil {
+	if cmd.Flags().Changed("log-mode") {
+		if cfg.Logger.Mode, err = cmd.Flags().GetString("log-mode"); err != nil {
 			return nil, fmt.Errorf("get logging mode flag: %w", err)
 		}
-		cfg.Logger.Mode = logMode
 	}
 
 	// The --addr flag overrides the config file's server.addr.
 	if cmd.Flags().Changed("addr") {
-		addr, err := cmd.Flags().GetString("addr")
-		if err != nil {
+		if cfg.Server.Addr, err = cmd.Flags().GetString("addr"); err != nil {
 			return nil, fmt.Errorf("get addr flag: %w", err)
 		}
-		cfg.Server.Addr = addr
 	}
 
 	// The --dsn flag overrides the config file's
 	// database.dsn.
 	if cmd.Flags().Changed("dsn") {
-		dsn, err := cmd.Flags().GetString("dsn")
-		if err != nil {
+		if cfg.Database.DSN, err = cmd.Flags().GetString("dsn"); err != nil {
 			return nil, fmt.Errorf("get database DSN flag: %w", err)
 		}
-		cfg.Database.DSN = dsn
 	}
 
 	return cfg, nil
