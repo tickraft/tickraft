@@ -120,6 +120,7 @@ const heightStyle = computed(() => {
 @media (prefers-reduced-motion: reduce) {
   .tk-trend-chart__loading :deep(.el-skeleton) {
     --el-skeleton-to-color: var(--tk-bg-active);
+
     animation: none;
   }
 }

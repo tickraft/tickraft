@@ -101,29 +101,29 @@ function handleCancel(): void {
 .tk-task-form {
   &__header {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-5);
+    align-items: center;
     margin-bottom: var(--tk-spacing-8);
   }
 
   &__back {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 36px;
     height: 36px;
-    border-radius: var(--tk-radius-md);
     color: var(--tk-text-secondary);
+    cursor: pointer;
     background: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color-base);
-    cursor: pointer;
+    border-radius: var(--tk-radius-md);
     transition: all var(--tk-duration-fast) var(--tk-ease-out);
-    flex-shrink: 0;
 
     &:hover {
       color: var(--tk-primary-color);
-      border-color: var(--tk-primary-color-border);
       background: var(--tk-primary-color-bg);
+      border-color: var(--tk-primary-color-border);
     }
   }
 
@@ -132,22 +132,22 @@ function handleCancel(): void {
   }
 
   &__breadcrumb {
+    margin-bottom: 2px;
     font-family: var(--tk-font-mono);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: var(--tk-letter-widest);
     text-transform: uppercase;
-    margin-bottom: 2px;
+    letter-spacing: var(--tk-letter-widest);
   }
 
   &__title {
+    margin: 0;
     font-family: var(--tk-font-display);
     font-size: var(--tk-font-size-2xl);
     font-weight: var(--tk-font-weight-bold);
+    line-height: 1.1;
     color: var(--tk-text-primary);
     letter-spacing: var(--tk-letter-tight);
-    line-height: 1.1;
-    margin: 0;
   }
 }
 </style>

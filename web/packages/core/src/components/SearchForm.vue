@@ -19,7 +19,7 @@ export type { SearchFormField, SearchFormProps } from './search-form-types'
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'
-import type { SearchFormField, SearchFormProps, FieldType, SelectOption } from './search-form-types'
+import type { SearchFormProps, FieldType, SelectOption } from './search-form-types'
 
 interface SearchFormEmits {
   /** Triggered when the search button is clicked */
@@ -57,11 +57,6 @@ interface NormalizedField {
   dependencies?: string[]
 }
 
-/** Normalize the type, accepting the legacy date-range alias as daterange */
-function normalizeType(type: SearchFormField['type']): FieldType {
-  return type === 'date-range' ? 'daterange' : type
-}
-
 /** Clamp span to the 1-24 range */
 function clampSpan(span: number): number {
   if (span < 1) return 1
@@ -79,9 +74,9 @@ function emptyValueByType(type: FieldType): unknown {
 const normalizedFields = computed<NormalizedField[]>(() =>
   props.fields
     .map((field) => ({
-      name: field.prop ?? field.key ?? '',
+      name: field.prop,
       label: field.label,
-      type: normalizeType(field.type),
+      type: field.type,
       options: field.options,
       placeholder: field.placeholder,
       defaultValue: field.defaultValue,
@@ -346,11 +341,11 @@ async function handleReset() {
 
 <style scoped lang="scss">
 .tk-search-form {
-  background-color: var(--tk-bg-surface);
-  border-radius: var(--tk-radius-lg);
   padding: var(--tk-spacing-md);
   margin-bottom: var(--tk-spacing-md);
+  background-color: var(--tk-bg-surface);
   border: var(--tk-border-default);
+  border-radius: var(--tk-radius-lg);
 
   &__col {
     margin-bottom: var(--tk-spacing-sm);
@@ -362,9 +357,9 @@ async function handleReset() {
 
   &__actions {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: flex-end;
-    gap: var(--tk-spacing-sm);
     width: 100%;
   }
 
@@ -382,10 +377,10 @@ async function handleReset() {
   }
 
   :deep(.el-form-item__label) {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-regular);
     padding-bottom: var(--tk-spacing-xs);
+    font-size: var(--tk-font-size-sm);
     line-height: 1.5;
+    color: var(--tk-text-regular);
   }
 }
 </style>

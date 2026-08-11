@@ -24,6 +24,11 @@ const runtimeInfo = ref<RuntimeInfo | null>(null)
 const recentAlerts = ref<AlertRecord[]>([])
 
 const { trendChartRef, donutChartRef, barChartRef, trendLegend, setChartData } = useDashboardCharts()
+// Chart container refs are bound via string refs (`ref="trendChartRef"`) in the
+// template; vue-tsc does not count string refs as usage, so mark them as read.
+void trendChartRef
+void donutChartRef
+void barChartRef
 
 /** Active time range for the segmented control */
 const activeRange = ref<'today' | '7d' | '30d'>('today')
@@ -260,7 +265,7 @@ const systemHealthItems = computed(() => {
 })
 
 /** Health item value state class */
-function healthStateClass(state: 'ok' | 'warn' | ''): string {
+function healthStateClass(state: string): string {
   return state ? `tk-dash-health__value--${state}` : ''
 }
 
@@ -593,10 +598,10 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-lg);
     align-items: flex-end;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg);
-    flex-wrap: wrap;
   }
 
   &__heading {
@@ -608,47 +613,47 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__eyebrow {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.04em;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
 
     &::before {
-      content: '';
       width: 6px;
       height: 6px;
-      border-radius: var(--tk-border-radius-circle);
+      content: '';
       background-color: var(--tk-success-color);
+      border-radius: var(--tk-border-radius-circle);
       box-shadow: 0 0 0 3px var(--tk-success-color-bg);
       animation: tk-dash-pulse 2s var(--tk-ease-in-out) infinite;
     }
   }
 
   &__title {
+    margin: 0;
     font-family: var(--tk-font-family);
     font-size: var(--tk-font-size-2xl);
     font-weight: var(--tk-font-weight-bold);
+    line-height: 1.1;
     color: var(--tk-text-primary);
     letter-spacing: -0.02em;
-    line-height: 1.1;
-    margin: 0;
   }
 
   &__subtitle {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
-    line-height: var(--tk-line-height-normal);
     margin: 0;
+    font-size: var(--tk-font-size-sm);
+    line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
   }
 
   &__toolbar {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   &__range {
@@ -665,17 +670,17 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-medium);
     color: var(--tk-text-secondary);
+    cursor: pointer;
     background: transparent;
     border: none;
     border-radius: var(--tk-radius-sm);
-    cursor: pointer;
     transition: background-color var(--tk-transition-fast), color var(--tk-transition-fast);
 
     &:hover { color: var(--tk-text-primary); }
 
     &.is-active {
-      background-color: var(--tk-bg-surface);
       color: var(--tk-primary-color);
+      background-color: var(--tk-bg-surface);
     }
 
     &:focus-visible {
@@ -702,12 +707,12 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   position: relative;
   display: flex;
   flex-direction: column;
+  padding: var(--tk-spacing-lg);
+  overflow: hidden;
   background-color: var(--tk-bg-surface);
   border: 1px solid var(--tk-border-color);
   border-radius: var(--tk-border-radius-lg);
-  padding: var(--tk-spacing-lg);
   transition: border-color var(--tk-transition-fast), transform var(--tk-transition-fast);
-  overflow: hidden;
 
   &--hover:hover {
     border-color: var(--tk-border-strong);
@@ -716,49 +721,49 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__head {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-sm);
     margin-bottom: var(--tk-spacing-md);
   }
 
   &__label {
     display: flex;
-    align-items: baseline;
     gap: var(--tk-spacing-sm);
+    align-items: baseline;
     min-width: 0;
   }
 
   &__index {
+    flex-shrink: 0;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-placeholder);
     letter-spacing: 0.04em;
-    flex-shrink: 0;
   }
 
   &__title {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--tk-font-family);
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
     letter-spacing: -0.02em;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
-    margin: 0;
   }
 
   &__link {
+    display: inline-flex;
+    gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-medium);
     color: var(--tk-primary-color);
     text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tk-spacing-xs);
 
     &:hover { text-decoration: underline; text-underline-offset: 3px; }
     &:focus-visible { outline: 2px solid var(--tk-primary-color); outline-offset: 2px; }
@@ -789,46 +794,46 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__top {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-sm);
   }
 
   &__icon {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 36px;
     height: 36px;
     border-radius: var(--tk-radius-md);
-    flex-shrink: 0;
 
     i { font-size: 18px; }
 
-    &--primary { background-color: var(--tk-primary-color-bg); color: var(--tk-primary-color); }
-    &--success { background-color: var(--tk-success-color-bg); color: var(--tk-success-color); }
-    &--warning { background-color: var(--tk-warning-color-bg); color: var(--tk-warning-color); }
-    &--danger { background-color: var(--tk-danger-color-bg); color: var(--tk-danger-color); }
+    &--primary { color: var(--tk-primary-color); background-color: var(--tk-primary-color-bg); }
+    &--success { color: var(--tk-success-color); background-color: var(--tk-success-color-bg); }
+    &--warning { color: var(--tk-warning-color); background-color: var(--tk-warning-color-bg); }
+    &--danger { color: var(--tk-danger-color); background-color: var(--tk-danger-color-bg); }
   }
 
   &__label {
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.04em;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   &__value {
     display: flex;
-    align-items: baseline;
     gap: var(--tk-spacing-xs);
+    align-items: baseline;
     font-family: var(--tk-font-family);
     font-size: var(--tk-font-size-3xl);
     font-weight: var(--tk-font-weight-bold);
+    line-height: 1;
     color: var(--tk-text-primary);
     letter-spacing: -0.02em;
-    line-height: 1;
   }
 
   &__unit {
@@ -839,8 +844,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__delta {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
@@ -851,8 +856,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   }
 
   &__delta-label {
-    color: var(--tk-text-placeholder);
     font-weight: var(--tk-font-weight-medium);
+    color: var(--tk-text-placeholder);
   }
 }
 
@@ -865,24 +870,24 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
     display: flex;
     flex-wrap: wrap;
     gap: var(--tk-spacing-md);
-    margin-top: var(--tk-spacing-sm);
     padding-top: var(--tk-spacing-sm);
+    margin-top: var(--tk-spacing-sm);
     border-top: 1px solid var(--tk-border-color-lighter);
   }
 
   &__legend-item {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
   }
 
   &__legend-dot {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: 2px;
-    flex-shrink: 0;
   }
 }
 
@@ -894,8 +899,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__item {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     padding: var(--tk-spacing-md);
     background-color: var(--tk-neutral-50);
     border: 1px solid var(--tk-border-color-lighter);
@@ -907,15 +912,15 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__icon {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 32px;
     height: 32px;
-    border-radius: var(--tk-radius-sm);
+    color: var(--tk-text-secondary);
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color-lighter);
-    color: var(--tk-text-secondary);
-    flex-shrink: 0;
+    border-radius: var(--tk-radius-sm);
 
     i { font-size: 16px; }
   }
@@ -928,11 +933,11 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   }
 
   &__value {
+    margin-top: 2px;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin-top: 2px;
 
     &--ok { color: var(--tk-success-color); }
     &--warn { color: var(--tk-warning-color); }
@@ -950,9 +955,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   }
 
   :deep(.el-table th) {
+    font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-secondary);
-    font-size: var(--tk-font-size-xs);
   }
 
   :deep(.el-table td) {
@@ -966,19 +971,19 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
 .tk-dash-severity {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   font-family: var(--tk-font-family-mono);
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-semibold);
-  letter-spacing: 0.04em;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 
   &__dot {
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
     border-radius: var(--tk-border-radius-circle);
-    flex-shrink: 0;
   }
 
   &--critical { color: var(--tk-danger-color); }
@@ -991,19 +996,19 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
 .tk-dash-asset {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-sm);
+  align-items: center;
 
   &__icon {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: var(--tk-radius-sm);
-    background-color: var(--tk-fill-color-light);
     color: var(--tk-text-secondary);
-    flex-shrink: 0;
+    background-color: var(--tk-fill-color-light);
+    border-radius: var(--tk-radius-sm);
 
     i { font-size: 13px; }
   }
@@ -1015,8 +1020,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 }
 
 .tk-dash-message {
-  color: var(--tk-text-regular);
   font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-regular);
 }
 
 .tk-dash-time {
@@ -1035,20 +1040,20 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 .tk-dash-action {
   position: relative;
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-md);
+  align-items: center;
   padding: var(--tk-spacing-lg);
+  overflow: hidden;
+  color: var(--tk-text-primary);
+  text-decoration: none;
   background-color: var(--tk-bg-surface);
   border: 1px solid var(--tk-border-color);
   border-radius: var(--tk-border-radius-lg);
-  text-decoration: none;
-  color: var(--tk-text-primary);
   transition: border-color var(--tk-transition-fast), background-color var(--tk-transition-fast), transform var(--tk-transition-fast);
-  overflow: hidden;
 
   &:hover {
-    border-color: var(--tk-border-strong);
     background-color: var(--tk-bg-hover);
+    border-color: var(--tk-border-strong);
     transform: translateY(-1px);
   }
 
@@ -1059,19 +1064,19 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &__icon {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
     border-radius: var(--tk-radius-md);
-    flex-shrink: 0;
 
     i { font-size: 20px; }
 
-    &--primary { background-color: var(--tk-primary-color-bg); color: var(--tk-primary-color); }
-    &--success { background-color: var(--tk-success-color-bg); color: var(--tk-success-color); }
-    &--warning { background-color: var(--tk-warning-color-bg); color: var(--tk-warning-color); }
-    &--danger { background-color: var(--tk-danger-color-bg); color: var(--tk-danger-color); }
+    &--primary { color: var(--tk-primary-color); background-color: var(--tk-primary-color-bg); }
+    &--success { color: var(--tk-success-color); background-color: var(--tk-success-color-bg); }
+    &--warning { color: var(--tk-warning-color); background-color: var(--tk-warning-color-bg); }
+    &--danger { color: var(--tk-danger-color); background-color: var(--tk-danger-color-bg); }
   }
 
   &__body {
@@ -1109,9 +1114,10 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   .tk-dash__header {
     align-items: flex-start;
   }
+
   .tk-dash__toolbar {
-    width: 100%;
     justify-content: flex-start;
+    width: 100%;
   }
 }
 
@@ -1120,6 +1126,7 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   .tk-dash-actions { grid-template-columns: 1fr; }
   .tk-dash-health { grid-template-columns: 1fr; }
   .tk-dash-chart { height: 260px; }
+
   .tk-dash__header {
     flex-direction: column;
     align-items: stretch;

@@ -285,18 +285,18 @@ onMounted(() => {
   margin-bottom: var(--tk-spacing-md);
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-semibold);
-    color: var(--tk-text-primary);
     line-height: 1.1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__subtitle {
     margin-top: 6px;
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: 1.5;
+    color: var(--tk-text-secondary);
   }
 }
 
@@ -327,9 +327,9 @@ onMounted(() => {
     align-items: center;
     width: 100%;
     padding: 6px 8px;
+    background-color: var(--tk-bg-color);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-border-radius-base);
-    background-color: var(--tk-bg-color);
   }
 
   &__label {
@@ -341,15 +341,15 @@ onMounted(() => {
     min-width: 140px;
 
     :deep(.el-input__wrapper) {
-      box-shadow: none !important;
       background-color: transparent;
+      box-shadow: none !important;
     }
   }
 
   &__actions {
     display: flex;
-    justify-content: flex-end;
     gap: var(--tk-spacing-sm);
+    justify-content: flex-end;
     margin-top: var(--tk-spacing-md);
   }
 }

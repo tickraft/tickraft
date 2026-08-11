@@ -568,10 +568,10 @@ onMounted(() => {
 .tk-prism-remediation-rule-edit {
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
-    flex-wrap: wrap;
     padding-bottom: var(--tk-spacing-lg);
     margin-bottom: var(--tk-spacing-lg);
     border-bottom: 1px solid var(--tk-border-color);
@@ -579,23 +579,23 @@ onMounted(() => {
 
   &__header-left {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-md);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
+    align-items: center;
   }
 
   &__mode-badge {
+    padding: var(--tk-spacing-xs) var(--tk-spacing-md);
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
+    color: var(--tk-primary-color);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--tk-primary-color);
-    padding: var(--tk-spacing-xs) var(--tk-spacing-md);
-    border: 1px solid var(--tk-primary-color);
-    background-color: var(--tk-primary-color-bg);
-    border-radius: var(--tk-radius-sm);
     white-space: nowrap;
+    background-color: var(--tk-primary-color-bg);
+    border: 1px solid var(--tk-primary-color);
+    border-radius: var(--tk-radius-sm);
   }
 
   &__heading {
@@ -603,25 +603,25 @@ onMounted(() => {
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-3xl);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     line-height: 1.1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__subtitle {
     margin: var(--tk-spacing-xs) 0 0;
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
   }
 
   &__form-card {
+    overflow: hidden;
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-lg);
-    overflow: hidden;
   }
 
   &__section {
@@ -635,12 +635,12 @@ onMounted(() => {
 
   &__section-title {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
+    margin: 0 0 var(--tk-spacing-md);
     font-size: var(--tk-font-size-md);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin: 0 0 var(--tk-spacing-md);
   }
 
   &__section-index {
@@ -675,10 +675,10 @@ onMounted(() => {
   }
 
   &__help {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
-    line-height: 1.5;
     margin-top: 4px;
+    font-size: var(--tk-font-size-sm);
+    line-height: 1.5;
+    color: var(--tk-text-secondary);
   }
 
   &__headers {
@@ -687,8 +687,8 @@ onMounted(() => {
 
   &__header-row {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     margin-bottom: var(--tk-spacing-sm);
   }
 
@@ -702,8 +702,8 @@ onMounted(() => {
 
   &__footer {
     display: flex;
-    justify-content: flex-end;
     gap: var(--tk-spacing-sm);
+    justify-content: flex-end;
     padding: var(--tk-spacing-lg);
     border-top: 1px solid var(--tk-border-color-light);
   }

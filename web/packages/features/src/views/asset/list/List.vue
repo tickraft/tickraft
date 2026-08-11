@@ -93,20 +93,20 @@ const searchValues = reactive<SearchValues>({
 
 const searchFields = computed(() => [
   {
-    key: 'keyword',
+    prop: 'keyword',
     label: t('asset.list.searchKeyword'),
     type: 'input' as const,
     placeholder: t('asset.list.searchKeywordPlaceholder'),
   },
   {
-    key: 'type',
+    prop: 'type',
     label: t('asset.list.type'),
     type: 'select' as const,
     placeholder: t('asset.list.typePlaceholder'),
     options: ASSET_TYPES.map((value) => ({ label: t(`asset.type.${value}`), value })),
   },
   {
-    key: 'status',
+    prop: 'status',
     label: t('asset.list.status'),
     type: 'select' as const,
     placeholder: t('asset.list.statusPlaceholder'),
@@ -174,11 +174,6 @@ async function fetchData(): Promise<void> {
   }
 }
 
-/** Summary cards are now populated inside fetchData; this is a no-op retained for compatibility. */
-async function fetchSummary(): Promise<void> {
-  // intentionally empty — counts are computed alongside fetchData
-}
-
 function handleSearch(values: Record<string, unknown>): void {
   searchValues.keyword = (values.keyword as string) ?? ''
   searchValues.type = (values.type as string) ?? ''
@@ -214,7 +209,6 @@ function handleCreate(): void {
 
 function handleRefresh(): void {
   void fetchData()
-  void fetchSummary()
 }
 
 function handleDetail(row: Asset): void {
@@ -238,7 +232,7 @@ async function confirmDelete(): Promise<void> {
     ElMessage.success(t('asset.list.deleteSuccess'))
     deleteVisible.value = false
     deleteTarget.value = null
-    await Promise.all([fetchData(), fetchSummary()])
+    await fetchData()
   } catch {
     // Errors are handled centrally by the interceptor
   } finally {
@@ -268,7 +262,6 @@ function formatTime(iso: string): string {
 
 onMounted(() => {
   void fetchData()
-  void fetchSummary()
 })
 </script>
 
@@ -450,10 +443,10 @@ onMounted(() => {
 <style scoped lang="scss">
 .tk-asset-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--tk-spacing-md);
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: var(--tk-spacing-md);
 
   &__left {
@@ -462,16 +455,16 @@ onMounted(() => {
 
   &__title-row {
     display: flex;
-    align-items: baseline;
     gap: var(--tk-spacing-sm);
+    align-items: baseline;
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-semibold);
-    color: var(--tk-text-primary);
     line-height: 1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__count {
@@ -481,18 +474,18 @@ onMounted(() => {
   }
 
   &__subtitle {
+    max-width: 640px;
     margin-top: 6px;
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: 1.5;
-    max-width: 640px;
+    color: var(--tk-text-secondary);
   }
 
   &__actions {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-sm);
     flex-shrink: 0;
+    gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 }
 
@@ -508,14 +501,14 @@ onMounted(() => {
     flex-direction: column;
     gap: var(--tk-spacing-xs);
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
+    overflow: hidden;
+    text-align: left;
+    cursor: pointer;
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color-base);
     border-radius: var(--tk-border-radius-base);
-    cursor: pointer;
-    overflow: hidden;
     transition: border-color var(--tk-duration-fast) var(--tk-ease-out),
       transform var(--tk-duration-fast) var(--tk-ease-out);
-    text-align: left;
 
     &:hover {
       border-color: var(--tk-border-color-dark);
@@ -523,12 +516,12 @@ onMounted(() => {
     }
 
     &::before {
-      content: '';
       position: absolute;
       top: 0;
       left: 0;
       width: 3px;
       height: 100%;
+      content: '';
       background-color: var(--tk-text-secondary);
     }
 
@@ -549,30 +542,30 @@ onMounted(() => {
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-medium);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.04em;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   &__value {
     font-family: var(--tk-font-display, var(--tk-font-mono, monospace));
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
     line-height: 1;
+    color: var(--tk-text-primary);
   }
 }
 
 .tk-asset-mono {
   font-family: var(--tk-font-mono, monospace);
   font-size: var(--tk-font-size-xs);
-  color: var(--tk-text-regular);
   font-variant-numeric: tabular-nums;
+  color: var(--tk-text-regular);
 }
 
 .tk-asset-name-link {
-  font-weight: var(--tk-font-weight-medium);
   padding: 0;
+  font-weight: var(--tk-font-weight-medium);
 }
 
 .tk-asset-labels {
@@ -587,8 +580,8 @@ onMounted(() => {
 }
 
 .tk-asset-labels-empty {
-  color: var(--tk-text-placeholder);
   font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-placeholder);
 }
 
 @media (max-width: 1023px) {

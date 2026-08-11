@@ -245,18 +245,20 @@ const cssVars = computed(() => {
 <style scoped lang="scss">
 .tk-status-tag {
   display: inline-flex;
-  align-items: center;
   gap: 4px;
-  line-height: 1;
+  align-items: center;
   font-weight: var(--tk-font-weight-medium);
-  border: 1px solid transparent;
-  border-radius: var(--tk-border-radius-sm);
-  white-space: nowrap;
+  line-height: 1;
   vertical-align: middle;
-  user-select: none;
+
   /* Semantic colors are injected via inline CSS custom properties; effect only changes how they are consumed */
+
   /* Default text color uses the dark variant (light/plain effects meet WCAG AA on light backgrounds) */
   color: var(--tk-status-color-text);
+  white-space: nowrap;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: var(--tk-border-radius-sm);
 
   /* —— Three sizes —— */
   &--sm {
@@ -284,8 +286,8 @@ const cssVars = computed(() => {
   }
 
   &--dark {
-    background-color: var(--tk-status-color);
     color: var(--tk-text-on-primary);
+    background-color: var(--tk-status-color);
     border-color: var(--tk-status-color);
   }
 
@@ -299,12 +301,14 @@ const cssVars = computed(() => {
     width: 8px;
     height: 8px;
     padding: 0;
-    border: none;
-    border-radius: 50%;
-    background-color: var(--tk-status-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--tk-status-color) 22%, transparent);
     font-size: 0;
     line-height: 0;
+    background-color: var(--tk-status-color);
+    border: none;
+    border-radius: 50%;
+    // Fallback for browsers without color-mix support: solid ring in the status color
+    box-shadow: 0 0 0 2px var(--tk-status-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--tk-status-color) 22%, transparent);
 
     &.tk-status-tag--sm {
       width: 6px;
@@ -320,16 +324,16 @@ const cssVars = computed(() => {
   /* —— Leading icon: span wraps the svg, pierces scoped to control size —— */
   &__icon {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     width: 1em;
     height: 1em;
 
     :deep(svg) {
       width: 100%;
       height: 100%;
-      fill: currentColor;
+      fill: currentcolor;
     }
 
     &--spin {
@@ -356,10 +360,14 @@ const cssVars = computed(() => {
 @keyframes tk-status-tag-pulse {
   0%,
   100% {
+    // Fallback for browsers without color-mix support: solid pulse ring in the status color
+    box-shadow: 0 0 0 0 var(--tk-status-color);
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--tk-status-color) 45%, transparent);
   }
 
   50% {
+    // Fallback for browsers without color-mix support: solid pulse ring in the status color
+    box-shadow: 0 0 0 6px var(--tk-status-color);
     box-shadow: 0 0 0 6px color-mix(in srgb, var(--tk-status-color) 45%, transparent);
   }
 }

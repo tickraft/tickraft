@@ -5,7 +5,7 @@
 import { createApp, type Component } from 'vue'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
-import ElementPlus from 'element-plus'
+import { vLoading } from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import 'element-plus/dist/index.css'
 import 'virtual:uno.css'
@@ -17,6 +17,38 @@ import '@tickraft/core/styles'
 
 import { App, createRouter, createI18n, vFeature, BASE_MENUS_KEY } from '@tickraft/core'
 import { baseRoutes, baseMessages, baseMenus } from '@tickraft/features'
+
+// Legacy browsers (IE11 / Trident compatibility mode) do not support CSS
+// custom properties. css-vars-ponyfill is loaded on demand and resolves
+// var() references BEFORE the app mounts, so the first paint never shows
+// unstyled markup (FOUC). Modern browsers short-circuit via the feature
+// check below and pay zero download or execution cost.
+function supportsCssVars(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.CSS?.supports === 'function' &&
+    window.CSS.supports('--a', '0')
+  )
+}
+
+// Kick off the lazy load early so its download overlaps with app setup.
+// onFinally resolves once the stylesheet analysis finishes; watch keeps
+// var() values in sync on theme switches (dark/light). Failures resolve
+// anyway so the app still mounts (unstyled) instead of blank-screening.
+const cssVarsReady: Promise<void> = supportsCssVars()
+  ? Promise.resolve()
+  : new Promise((resolve) => {
+      import('css-vars-ponyfill')
+        .then(({ default: cssVars }) => {
+          cssVars({
+            onlyLegacy: true,
+            watch: true,
+            silent: true,
+            onFinally: () => resolve(),
+          })
+        })
+        .catch(() => resolve())
+    })
 
 // Open-source standalone entry: builds router and i18n from kernel base data.
 // Extension app (tickraft-x/web/src/main.ts) merges extension data before
@@ -37,8 +69,10 @@ app.use(i18n)
 // Router
 app.use(router)
 
-// Element Plus
-app.use(ElementPlus)
+// Element Plus: components are tree-shaken per-template via
+// unplugin-vue-components (ElementPlusResolver in vite.config.ts), so there is
+// no full app.use(ElementPlus). The v-loading directive is registered here.
+app.directive('loading', vLoading)
 
 // Globally register Element Plus icon components.
 // Menu icons resolve via <component :is="iconName"> using these registrations.
@@ -60,4 +94,11 @@ app.config.errorHandler = (err, _instance, info) => {
   console.error('[Web Error]', err, info)
 }
 
-app.mount('#app')
+// Mount only after legacy CSS variables are resolved (a no-op on modern
+// browsers), preventing an unstyled first paint in compatibility mode.
+async function mountApp(): Promise<void> {
+  await cssVarsReady
+  app.mount('#app')
+}
+
+void mountApp()

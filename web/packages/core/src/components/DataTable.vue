@@ -590,13 +590,14 @@ defineExpose({ clearSelection, doLayout, clearSort })
 .tk-data-table {
   position: relative;
   width: 100%;
-  border-radius: var(--tk-border-radius-base);
-  background: var(--tk-bg-surface);
+
   // Clip the table corners (rounded border-radius). This must be on the
   // OUTER wrapper, NOT on .el-table itself — putting overflow:hidden on
   // .el-table interferes with its internal scroll-container hierarchy and
   // breaks header/body scroll synchronization.
   overflow: hidden;
+  background: var(--tk-bg-surface);
+  border-radius: var(--tk-border-radius-base);
 
   --tk-data-table-row-height: 48px;
 
@@ -620,9 +621,10 @@ defineExpose({ clearSelection, doLayout, clearSort })
     :deep(.el-table .el-table__cell) {
       padding: 4px 8px;
     }
+
     :deep(.el-table__header-wrapper th.el-table__cell) {
-      padding: 4px 8px;
       height: 32px;
+      padding: 4px 8px;
     }
   }
 
@@ -630,6 +632,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
     :deep(.el-table .el-table__cell) {
       padding: 8px 12px;
     }
+
     :deep(.el-table__header-wrapper th.el-table__cell) {
       height: 48px;
     }
@@ -639,38 +642,39 @@ defineExpose({ clearSelection, doLayout, clearSort })
     :deep(.el-table .el-table__cell) {
       padding: 12px 16px;
     }
+
     :deep(.el-table__header-wrapper th.el-table__cell) {
       height: 64px;
     }
   }
 
   :deep(.el-table__header-wrapper th.el-table__cell) {
-    background-color: var(--tk-gray-2);
-    color: var(--tk-text-tertiary);
-    font-weight: var(--tk-font-weight-semibold);
     font-size: var(--tk-font-size-xs);
+    font-weight: var(--tk-font-weight-semibold);
+    color: var(--tk-text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
+    background-color: var(--tk-gray-2);
 
     // All headers center-aligned for visual consistency (common pattern
     // in Ant Design, Element Plus admin panels). Body cells follow their
     // own :align prop for content alignment.
     .cell {
-      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       text-align: center;
+      white-space: nowrap;
     }
   }
 
   // Header alignment follows el-table-column's :align prop (no global override).
 
   :deep(.el-table__body-wrapper td.el-table__cell) {
-    color: var(--tk-text-secondary);
-    border-bottom: 1px solid var(--tk-border-subtle);
     line-height: var(--tk-text-sm--line-height);
     vertical-align: middle;
+    color: var(--tk-text-secondary);
+    border-bottom: 1px solid var(--tk-border-subtle);
   }
 
   // Slot columns (tags, switches, buttons): use flexbox for proper vertical
@@ -680,18 +684,19 @@ defineExpose({ clearSelection, doLayout, clearSort })
   // flex-wrap: nowrap ensures action buttons never wrap to a second line.
   :deep(.el-table__body-wrapper td.tk-table-col--slot .cell) {
     display: flex;
-    align-items: center;
     flex-wrap: nowrap;
     gap: var(--tk-spacing-2);
-    white-space: nowrap;
+    align-items: center;
     overflow: hidden;
     text-overflow: clip;
+    white-space: nowrap;
   }
 
   // Map Element Plus align classes to flexbox justify-content for slot columns
   :deep(.el-table__body-wrapper td.tk-table-col--slot.is-center .cell) {
     justify-content: center;
   }
+
   :deep(.el-table__body-wrapper td.tk-table-col--slot.is-right .cell) {
     justify-content: flex-end;
   }
@@ -711,12 +716,15 @@ defineExpose({ clearSelection, doLayout, clearSort })
     --el-table-row-hover-bg-color: var(--tk-bg-hover);
     --el-table-text-color: var(--tk-text-secondary);
     --el-table-header-text-color: var(--tk-text-tertiary);
+
     // Element Plus fixed columns inherit --el-bg-color for their background;
     // expose the surface token so the fixed action column and its bottom
     // patch area stay fully opaque (no see-through over body rows).
     --el-bg-color: var(--tk-bg-surface);
+
     font-size: var(--tk-font-size-sm);
     background-color: var(--tk-bg-surface);
+
     // Do NOT set overflow:hidden here — it breaks el-table's internal
     // scroll-container hierarchy and causes header/body scroll desync.
     // Rounded corners are clipped by the outer .tk-data-table wrapper.
@@ -779,25 +787,24 @@ defineExpose({ clearSelection, doLayout, clearSort })
     position: absolute;
     inset: 0;
     z-index: 10;
-    background: var(--tk-glass-bg);
-    backdrop-filter: var(--tk-glass-blur);
     padding: var(--tk-spacing-md);
     overflow: hidden;
+    background: var(--tk-glass-bg);
     border-radius: var(--tk-border-radius-base);
+    backdrop-filter: var(--tk-glass-blur);
   }
 
   &__skeleton-row {
     display: flex;
     gap: var(--tk-spacing-md);
-    height: var(--tk-data-table-row-height);
     align-items: center;
+    height: var(--tk-data-table-row-height);
     padding: 0 var(--tk-spacing-sm);
   }
 
   &__skeleton-block {
     flex: 1;
     height: 14px;
-    border-radius: var(--tk-border-radius-sm);
     background: linear-gradient(
       90deg,
       var(--tk-bg-hover) 25%,
@@ -805,6 +812,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
       var(--tk-bg-hover) 75%
     );
     background-size: 200% 100%;
+    border-radius: var(--tk-border-radius-sm);
     animation: tk-data-table-skeleton 1.4s ease infinite;
   }
 
@@ -815,10 +823,10 @@ defineExpose({ clearSelection, doLayout, clearSort })
   &__error {
     display: flex;
     flex-direction: column;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: center;
     padding: var(--tk-spacing-2xl) var(--tk-spacing-md);
-    gap: var(--tk-spacing-md);
     text-align: center;
   }
 
@@ -828,19 +836,19 @@ defineExpose({ clearSelection, doLayout, clearSort })
   }
 
   &__error-text {
+    max-width: 360px;
     margin: 0;
     font-size: var(--tk-font-size-base);
-    color: var(--tk-text-secondary);
     line-height: var(--tk-line-height-relaxed);
-    max-width: 360px;
+    color: var(--tk-text-secondary);
     word-break: break-all;
   }
 
   &__pagination {
     display: flex;
     justify-content: flex-end;
-    margin-top: var(--tk-spacing-xl);
     padding-bottom: var(--tk-spacing-md);
+    margin-top: var(--tk-spacing-xl);
   }
 }
 
@@ -848,6 +856,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
   0% {
     background-position: 100% 50%;
   }
+
   100% {
     background-position: 0 50%;
   }

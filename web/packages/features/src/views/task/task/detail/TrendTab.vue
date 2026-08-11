@@ -128,29 +128,29 @@ const isEmpty = computed(() => recentLogs.value.length === 0)
   }
 
   &__tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     padding: var(--tk-spacing-5) var(--tk-spacing-6);
     background: var(--tk-bg-fill-light);
     border: 1px solid var(--tk-border-color-light);
     border-radius: var(--tk-radius-md);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
   }
 
   &__tile-label {
     font-family: var(--tk-font-mono);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: var(--tk-letter-wide);
     text-transform: uppercase;
+    letter-spacing: var(--tk-letter-wide);
   }
 
   &__tile-value {
     font-family: var(--tk-font-display);
     font-size: var(--tk-font-size-lg);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-primary);
 
     &--ok { color: var(--tk-success-color); }
     &--fail { color: var(--tk-danger-color); }
@@ -158,31 +158,31 @@ const isEmpty = computed(() => recentLogs.value.length === 0)
 
   &__toolbar {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-4);
-    margin-bottom: var(--tk-spacing-5);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-4);
+    align-items: center;
+    margin-bottom: var(--tk-spacing-5);
   }
 
   &__toolbar-label {
     font-family: var(--tk-font-mono);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: var(--tk-letter-wide);
     text-transform: uppercase;
+    letter-spacing: var(--tk-letter-wide);
   }
 
   &__legend {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-4);
+    align-items: center;
     margin-left: auto;
   }
 
   &__legend-item {
     display: inline-flex;
-    align-items: center;
     gap: 4px;
+    align-items: center;
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
   }

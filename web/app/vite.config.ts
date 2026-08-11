@@ -9,8 +9,9 @@ import UnoCSS from 'unocss/vite'
 import Icons from 'unplugin-icons/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
-import { mockServerPlugin } from './vite-plugins/mock-server'
+import { mockServerPlugin } from './vite-plugins/mock-server.js'
 import path from 'path'
 
 export default defineConfig({
@@ -19,15 +20,21 @@ export default defineConfig({
     UnoCSS(),
     Icons({ compiler: 'vue3', autoInstall: true }),
     Components({
-      resolvers: [IconsResolver({ enabledCollections: ['ep'] })],
+      resolvers: [
+        // Tree-shake element-plus: only components used in templates are
+        // imported. The full CSS is kept (importStyle: false) to avoid
+        // duplicated per-component styles.
+        ElementPlusResolver({ importStyle: false }),
+        IconsResolver({ enabledCollections: ['ep'] }),
+      ],
     }),
     VueI18nPlugin({
       // 同时纳入内核（common 命名空间）与开源业务（auth/scheduler/collector/alert/system）的语言包
       // Note: paths intentionally use runtime JSON import fallback; pre-compilation is
       // disabled because some locale messages contain intentional HTML (e.g. <code>).
       include: [
-        path.resolve(__dirname, '../../packages/core/src/i18n/locales/**'),
-        path.resolve(__dirname, '../../packages/features/src/i18n/locales/**'),
+        path.resolve(import.meta.dirname, '../../packages/core/src/i18n/locales/**'),
+        path.resolve(import.meta.dirname, '../../packages/features/src/i18n/locales/**'),
       ],
     }),
     mockServerPlugin({
@@ -49,17 +56,18 @@ export default defineConfig({
   resolve: {
     // @tickraft/core 与 @tickraft/features 通过 pnpm workspace 符号链接自动解析，无需额外 alias
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
+    // Force framework libs with module-level singletons (pinia's
+    // activePinia/piniaSymbol, vue-router, vue-i18n) to resolve to a single
+    // file. pnpm can install multiple physical instances of the same version
+    // (different peer combos, e.g. a stale typescript@7 peer), which otherwise
+    // splits the singleton across copies and crashes production builds.
+    dedupe: ['pinia', 'vue', 'vue-router', 'vue-i18n', '@vue/devtools-api'],
   },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        // Use the Sass modern JS API to remove the Dart Sass legacy-js-api deprecation warning.
-        api: 'modern',
-      },
-    },
-  },
+  // css.preprocessorOptions.scss no longer needs the `api: 'modern'` override:
+  // Vite 8 (Rolldown) uses the modern Sass API by default and removed the
+  // `api` option from SassPreprocessorOptions.
   server: {
     port: 5173,
     proxy: {
@@ -75,21 +83,31 @@ export default defineConfig({
     },
   },
   build: {
-    // ECharts is a lazy chunk (loaded on first chart render) and Element Plus
-    // is a large vendor chunk; the legacy plugin further inflates Element Plus
-    // for older browsers. Raise the limit so these expected third-party sizes
-    // do not raise noise while app code stays under scrutiny.
-    chunkSizeWarningLimit: 1700,
-    rollupOptions: {
+    // Element Plus is tree-shaken via ElementPlusResolver, keeping the modern
+    // chunk at ~700 kB and the legacy chunk at ~1.2 MB. The limit is set to
+    // 1300 kB as a regression guard: exceeding it warns about new bloat
+    // instead of silently growing.
+    chunkSizeWarningLimit: 1300,
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          // Group Element Plus into a vendor chunk. ECharts is left to Rollup's
-          // automatic chunking: it is reached only via a dynamic import
-          // (`import('./echarts')` in `useChart.ts`), so Rollup emits it as a
-          // single lazy, tree-shaken chunk without an explicit entry here.
-          if (id.includes('/node_modules/element-plus/')) {
-            return 'element-plus'
-          }
+        // Vite 8 / Rolldown chunk splitting API. A manualChunks function that
+        // only splits element-plus pulls framework runtimes into other chunks
+        // (Vue's runtime, pinia's createPinia/useStore), duplicating module
+        // singletons and breaking render/injection at runtime (blank page in
+        // production builds: "_s" / activePinia errors). codeSplitting groups
+        // keep every module-singleton framework lib in one shared chunk so the
+        // app, element-plus and lazy route chunks all import the same instance.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vue',
+              test: /node_modules[\\/](?:vue|@vue|pinia|vue-router|vue-i18n|vue-demi|@intlify)[\\/]/,
+            },
+            {
+              name: 'element-plus',
+              test: /node_modules[\\/]element-plus[\\/]/,
+            },
+          ],
         },
       },
     },

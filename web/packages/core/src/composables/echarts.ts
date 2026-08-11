@@ -15,6 +15,7 @@ import * as echarts from 'echarts/core'
 import { BarChart, GaugeChart, LineChart, PieChart } from 'echarts/charts'
 import {
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
@@ -29,6 +30,7 @@ echarts.use([
   LineChart,
   PieChart,
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,

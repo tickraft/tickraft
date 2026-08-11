@@ -392,24 +392,24 @@ export default { name: 'TaskList' }
 .tk-task-list {
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-lg);
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg);
-    flex-wrap: wrap;
     margin-bottom: var(--tk-spacing-md);
   }
 
   &__title-row {
     display: flex;
-    align-items: baseline;
     gap: var(--tk-spacing-sm);
+    align-items: baseline;
   }
 
   &__title {
     font-size: var(--tk-font-size-2xl);
     font-weight: var(--tk-font-weight-semibold);
-    color: var(--tk-text-primary);
     line-height: 1.1;
+    color: var(--tk-text-primary);
   }
 
   &__count {
@@ -420,30 +420,30 @@ export default { name: 'TaskList' }
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-primary-color);
+    letter-spacing: 0.05em;
     background-color: var(--tk-primary-color-light-9);
     border: 1px solid var(--tk-primary-color-light-7);
     border-radius: var(--tk-border-radius-round);
-    letter-spacing: 0.05em;
   }
 
   &__subtitle {
+    max-width: 540px;
     margin-top: var(--tk-spacing-xs);
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: 1.5;
-    max-width: 540px;
+    color: var(--tk-text-secondary);
   }
 
   &__actions {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   &__summary {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-lg);
+    align-items: center;
     padding: var(--tk-spacing-sm) var(--tk-spacing-md);
     margin-bottom: var(--tk-spacing-md);
     background-color: var(--tk-bg-color);
@@ -453,15 +453,15 @@ export default { name: 'TaskList' }
 
   &__summary-item {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
 
     strong {
-      color: var(--tk-text-primary);
       font-weight: var(--tk-font-weight-semibold);
+      color: var(--tk-text-primary);
     }
   }
 
@@ -478,15 +478,15 @@ export default { name: 'TaskList' }
   &__task-id {
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
-    color: var(--tk-text-secondary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-secondary);
   }
 
   &__row-actions {
     display: flex;
-    align-items: center;
-    gap: 2px;
     flex-wrap: nowrap;
+    gap: 2px;
+    align-items: center;
   }
 
   &__more-btn {
@@ -499,8 +499,8 @@ export default { name: 'TaskList' }
   }
 
   &__dep-graph {
-    margin-top: var(--tk-spacing-md);
     padding: var(--tk-spacing-sm) var(--tk-spacing-md);
+    margin-top: var(--tk-spacing-md);
 
     &-text {
       font-size: var(--tk-font-size-sm);
@@ -511,49 +511,49 @@ export default { name: 'TaskList' }
 
 .tk-executor-badge {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   padding: 2px var(--tk-spacing-sm);
   font-family: var(--tk-font-family-mono, monospace);
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-semibold);
-  letter-spacing: 0.05em;
   text-transform: uppercase;
-  border-radius: var(--tk-border-radius-sm);
-  border: 1px solid transparent;
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: var(--tk-border-radius-sm);
 
   &__dot {
+    flex-shrink: 0;
     width: 5px;
     height: 5px;
+    background-color: currentcolor;
     border-radius: 50%;
-    background-color: currentColor;
-    flex-shrink: 0;
   }
 
-  &--http { color: #2563eb; background-color: rgba(37, 99, 235, 0.10); border-color: rgba(37, 99, 235, 0.25); }
-  &--tcp { color: #0891b2; background-color: rgba(8, 145, 178, 0.10); border-color: rgba(8, 145, 178, 0.25); }
-  &--icmp { color: #7c3aed; background-color: rgba(124, 58, 237, 0.10); border-color: rgba(124, 58, 237, 0.25); }
-  &--local { color: #475569; background-color: rgba(71, 85, 105, 0.10); border-color: rgba(71, 85, 105, 0.25); }
-  &--ssh { color: #b45309; background-color: rgba(180, 83, 9, 0.10); border-color: rgba(180, 83, 9, 0.25); }
-  &--mysql { color: #15803d; background-color: rgba(21, 128, 61, 0.10); border-color: rgba(21, 128, 61, 0.25); }
-  &--redis { color: #dc2626; background-color: rgba(220, 38, 38, 0.10); border-color: rgba(220, 38, 38, 0.25); }
-  &--webhook { color: #be185d; background-color: rgba(190, 24, 93, 0.10); border-color: rgba(190, 24, 93, 0.25); }
+  &--http { color: #2563eb; background-color: rgb(37 99 235 / 10%); border-color: rgb(37 99 235 / 25%); }
+  &--tcp { color: #0891b2; background-color: rgb(8 145 178 / 10%); border-color: rgb(8 145 178 / 25%); }
+  &--icmp { color: #7c3aed; background-color: rgb(124 58 237 / 10%); border-color: rgb(124 58 237 / 25%); }
+  &--local { color: #475569; background-color: rgb(71 85 105 / 10%); border-color: rgb(71 85 105 / 25%); }
+  &--ssh { color: #b45309; background-color: rgb(180 83 9 / 10%); border-color: rgb(180 83 9 / 25%); }
+  &--mysql { color: #15803d; background-color: rgb(21 128 61 / 10%); border-color: rgb(21 128 61 / 25%); }
+  &--redis { color: #dc2626; background-color: rgb(220 38 38 / 10%); border-color: rgb(220 38 38 / 25%); }
+  &--webhook { color: #be185d; background-color: rgb(190 24 93 / 10%); border-color: rgb(190 24 93 / 25%); }
 }
 
 .tk-schedule-cell {
   &__expr {
+    display: inline-block;
+    max-width: 180px;
+    padding: 1px var(--tk-spacing-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-primary);
-    background-color: var(--tk-fill-color-light);
-    padding: 1px var(--tk-spacing-xs);
-    border-radius: var(--tk-border-radius-sm);
-    display: inline-block;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+    background-color: var(--tk-fill-color-light);
+    border-radius: var(--tk-border-radius-sm);
   }
 }
 

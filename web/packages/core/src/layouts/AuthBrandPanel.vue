@@ -235,45 +235,48 @@ const features = computed<Required<BrandFeature>[]>(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+
+  // Fallback for browsers without clamp() support: use the minimum values
+  padding: 36px 40px;
   // Fluid padding scales across viewports without abrupt breakpoints; vertical
   // (top/bottom) uses a smaller range than horizontal to keep content dense.
   padding: clamp(36px, 4vw, 48px) clamp(40px, 5vw, 64px);
+  overflow: hidden;
   color: #e2e8f0;
   background-color: #080b14;
   background-image:
-    radial-gradient(circle at 22% 24%, rgba(66, 99, 235, 0.22) 0%, transparent 46%),
-    radial-gradient(circle at 78% 82%, rgba(245, 158, 11, 0.06) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.10) 0%, transparent 60%),
+    radial-gradient(circle at 22% 24%, rgb(66 99 235 / 22%) 0%, transparent 46%),
+    radial-gradient(circle at 78% 82%, rgb(245 158 11 / 6%) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgb(139 92 246 / 10%) 0%, transparent 60%),
     linear-gradient(180deg, #080b14 0%, #0c1018 100%);
-  overflow: hidden;
 
   // Background layer 1: subtle grid overlay
   &::before {
-    content: '';
     position: absolute;
     inset: 0;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-    background-size: 48px 48px;
     pointer-events: none;
+    content: '';
+    background-image:
+      linear-gradient(rgb(255 255 255 / 2.5%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 2.5%) 1px, transparent 1px);
+    background-size: 48px 48px;
   }
 
   // Background layer 2: center glow pulse
   &::after {
-    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, rgba(66, 99, 235, 0.32) 0%, transparent 70%);
+    pointer-events: none;
+    content: '';
+    background: radial-gradient(circle, rgb(66 99 235 / 32%) 0%, transparent 70%);
+    opacity: 0.55;
     filter: blur(10px);
     transform: translate(-50%, -50%) scale(1);
-    opacity: 0.55;
-    will-change: transform, opacity;
     animation: tk-brand-pulse 4.5s var(--tk-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) infinite;
-    pointer-events: none;
+    will-change: transform, opacity;
   }
 }
 
@@ -283,74 +286,74 @@ const features = computed<Required<BrandFeature>[]>(() => {
   left: 50%;
   width: 760px;
   height: 760px;
-  transform: translate(-50%, -50%);
-  opacity: 0.55;
   pointer-events: none;
+  opacity: 0.55;
+  transform: translate(-50%, -50%);
 
   circle {
     fill: none;
-    stroke: rgba(66, 99, 235, 0.22);
+    stroke: rgb(66 99 235 / 22%);
     stroke-width: 1;
   }
 
   line {
-    stroke: rgba(255, 255, 255, 0.05);
+    stroke: rgb(255 255 255 / 5%);
     stroke-width: 1;
   }
 }
 
 .tk-blank-layout__brand-radar-ring {
-  stroke: rgba(129, 140, 248, 0.55);
+  stroke: rgb(129 140 248 / 55%);
   stroke-width: 1.4;
   stroke-dasharray: 4 6;
-  transform-box: view-box;
   transform-origin: 380px 380px;
-  will-change: transform;
+  transform-box: view-box;
   animation: tk-brand-rotate 60s linear infinite;
+  will-change: transform;
 }
 
 .tk-blank-layout__brand-top {
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
 }
 
 .tk-blank-layout__brand-logo {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 38px;
   height: 38px;
-  border-radius: var(--tk-radius-md, 8px);
-  background: var(--tk-gradient-brand-accent, linear-gradient(135deg, #4263eb 0%, #8b5cf6 100%));
-  color: #fff;
   font-family: var(--tk-font-display, 'Sora', sans-serif);
-  font-weight: 800;
   font-size: 19px;
-  box-shadow: 0 0 18px rgba(66, 99, 235, 0.45);
-  flex-shrink: 0;
+  font-weight: 800;
+  color: #fff;
+  background: var(--tk-gradient-brand-accent, linear-gradient(135deg, #4263eb 0%, #8b5cf6 100%));
+  border-radius: var(--tk-radius-md, 8px);
+  box-shadow: 0 0 18px rgb(66 99 235 / 45%);
 }
 
 .tk-blank-layout__brand-wordmark {
   font-family: var(--tk-font-display, 'Sora', sans-serif);
   font-size: 20px;
   font-weight: 700;
-  letter-spacing: -0.02em;
   color: #fff;
+  letter-spacing: -0.02em;
 }
 
 .tk-blank-layout__brand-edition {
-  margin-left: 8px;
   padding: 2px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: var(--tk-radius-round, 999px);
+  margin-left: 8px;
   font-family: var(--tk-font-mono, 'JetBrains Mono', monospace);
   font-size: 10px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
   color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: var(--tk-radius-round, 999px);
 }
 
 // Center block is top-anchored with a controlled top margin instead of relying
@@ -361,45 +364,53 @@ const features = computed<Required<BrandFeature>[]>(() => {
 .tk-blank-layout__brand-center {
   position: relative;
   z-index: 1;
+  // Fallback for browsers without min() support: 480px cap (equivalent when the
+  // container is narrower than 480px, width then follows the parent)
+  max-width: 480px;
   max-width: min(480px, 100%);
+  // Fallback for browsers without clamp() support: use the minimum value
+  margin-top: 56px;
   margin-top: clamp(56px, 9vh, 104px);
 }
 
 .tk-blank-layout__brand-eyebrow {
   display: inline-flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   padding: 4px 12px;
-  border: 1px solid rgba(66, 99, 235, 0.40);
-  border-radius: var(--tk-radius-round, 999px);
-  background: rgba(66, 99, 235, 0.14);
+  margin-bottom: 28px;
   font-family: var(--tk-font-mono, 'JetBrains Mono', monospace);
   font-size: 11px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
   color: #a5b4fc;
-  margin-bottom: 28px;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  background: rgb(66 99 235 / 14%);
+  border: 1px solid rgb(66 99 235 / 40%);
+  border-radius: var(--tk-radius-round, 999px);
 
   &::before {
-    content: '';
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    content: '';
     background: #818cf8;
+    border-radius: 50%;
     box-shadow: 0 0 8px #818cf8;
   }
 }
 
 .tk-blank-layout__brand-headline {
+  margin: 0 0 18px;
   font-family: var(--tk-font-display, 'Sora', sans-serif);
+
+  // Fallback for browsers without clamp() support: mid-range fixed size
+  font-size: 38px;
   // Fluid font-size scales between 30px and 46px with viewport width, avoiding
   // the previous 46px→34px jump at 980px.
   font-size: clamp(30px, 3.4vw, 46px);
   font-weight: 800;
   line-height: 1.08;
-  letter-spacing: -0.025em;
   color: #fff;
-  margin: 0 0 18px;
+  letter-spacing: -0.025em;
   text-wrap: balance;
 }
 
@@ -408,47 +419,46 @@ const features = computed<Required<BrandFeature>[]>(() => {
   // when the headline wraps.
   display: block;
   font-style: normal;
+  color: transparent;
   background: linear-gradient(135deg, #7c95f5 0%, #fbbf24 100%);
-  -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  color: transparent;
 }
 
 .tk-blank-layout__brand-tagline {
+  margin: 0 0 36px;
   font-family: var(--tk-font-mono, 'JetBrains Mono', monospace);
   font-size: 13px;
-  letter-spacing: 0.02em;
   color: #94a3b8;
-  margin: 0 0 36px;
+  letter-spacing: 0.02em;
 }
 
 .tk-blank-layout__brand-features {
-  list-style: none;
-  padding: 0;
-  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
 }
 
 .tk-blank-layout__brand-feature {
   display: flex;
-  align-items: flex-start;
   gap: 12px;
+  align-items: flex-start;
 }
 
 .tk-blank-layout__brand-feature-icon {
-  flex-shrink: 0;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--tk-radius-md, 8px);
-  background: rgba(66, 99, 235, 0.14);
-  border: 1px solid rgba(66, 99, 235, 0.30);
   color: #a5b4fc;
+  background: rgb(66 99 235 / 14%);
+  border: 1px solid rgb(66 99 235 / 30%);
+  border-radius: var(--tk-radius-md, 8px);
 
   svg { width: 18px; height: 18px; }
 }
@@ -462,16 +472,16 @@ const features = computed<Required<BrandFeature>[]>(() => {
   display: block;
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
   line-height: 1.3;
+  color: #e2e8f0;
 }
 
 .tk-blank-layout__brand-feature-desc {
   display: block;
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.55;
   margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #94a3b8;
 }
 
 // Foot is anchored to the bottom via `margin-top: auto`; holds only the minimal

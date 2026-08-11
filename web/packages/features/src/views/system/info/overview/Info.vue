@@ -243,10 +243,10 @@ onMounted(() => {
 .tk-sysinfo {
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-lg);
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg);
-    flex-wrap: wrap;
     margin-bottom: var(--tk-spacing-xl);
   }
 
@@ -260,35 +260,35 @@ onMounted(() => {
     margin: 0;
     font-size: var(--tk-font-size-2xl);
     font-weight: var(--tk-font-weight-bold);
+    line-height: 1.1;
     color: var(--tk-text-primary);
     letter-spacing: -0.02em;
-    line-height: 1.1;
   }
 
   &__subtitle {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
-    line-height: var(--tk-line-height-normal);
     max-width: 560px;
+    font-size: var(--tk-font-size-sm);
+    line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
   }
 
   &__header-actions {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   &__edition {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     color: var(--tk-primary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     background-color: var(--tk-primary-color-bg);
     border: 1px solid var(--tk-primary-color-border);
     border-radius: var(--tk-border-radius-sm);
@@ -297,8 +297,8 @@ onMounted(() => {
   &__edition-dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--tk-border-radius-circle);
     background-color: var(--tk-primary-color);
+    border-radius: var(--tk-border-radius-circle);
   }
 
   &__body {
@@ -328,21 +328,21 @@ onMounted(() => {
 .tk-stat-card {
   position: relative;
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-md);
+  align-items: center;
   padding: var(--tk-spacing-lg) var(--tk-spacing-xl);
+  overflow: hidden;
   background-color: var(--tk-bg-surface);
   border: var(--tk-border-default);
   border-radius: var(--tk-border-radius-lg);
-  overflow: hidden;
 
   &::before {
-    content: "";
     position: absolute;
-    left: 0;
     top: 0;
     bottom: 0;
+    left: 0;
     width: 3px;
+    content: "";
   }
 
   &--primary::before {
@@ -372,24 +372,24 @@ onMounted(() => {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     color: var(--tk-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   &__value {
-    font-size: var(--tk-font-size-xl);
-    font-family: var(--tk-font-family-mono);
-    font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
-    min-width: 0;
+    font-family: var(--tk-font-family-mono);
+    font-size: var(--tk-font-size-xl);
+    font-weight: var(--tk-font-weight-bold);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    color: var(--tk-text-primary);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
   }
 
   &__sub {
@@ -403,25 +403,25 @@ onMounted(() => {
 
 // ---- Meta card ----
 .tk-meta-card {
+  overflow: hidden;
   background-color: var(--tk-bg-surface);
   border: var(--tk-border-default);
   border-radius: var(--tk-border-radius-lg);
-  overflow: hidden;
 
   &__header {
     display: flex;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
-    border-bottom: 1px solid var(--tk-border-color-light);
     background-color: var(--tk-bg-hover);
+    border-bottom: 1px solid var(--tk-border-color-light);
   }
 
   &__title {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
@@ -429,16 +429,16 @@ onMounted(() => {
   }
 
   &__title-icon {
-    color: var(--tk-text-secondary);
     font-size: 16px;
+    color: var(--tk-text-secondary);
   }
 
   &__hint {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.01em;
     text-transform: uppercase;
+    letter-spacing: 0.01em;
   }
 
   &__body {
@@ -469,19 +469,19 @@ onMounted(() => {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     color: var(--tk-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   &__value {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-primary);
     line-height: 1.3;
+    color: var(--tk-text-primary);
     word-break: break-all;
   }
 
@@ -491,17 +491,17 @@ onMounted(() => {
     justify-content: center;
     width: 22px;
     height: 22px;
-    border: var(--tk-border-default);
-    border-radius: var(--tk-border-radius-sm);
-    background-color: var(--tk-bg-input);
     color: var(--tk-text-secondary);
     cursor: pointer;
+    background-color: var(--tk-bg-input);
+    border: var(--tk-border-default);
+    border-radius: var(--tk-border-radius-sm);
     transition: border-color var(--tk-transition-fast),
       color var(--tk-transition-fast);
 
     &:hover {
-      border-color: var(--tk-primary-color);
       color: var(--tk-primary-color);
+      border-color: var(--tk-primary-color);
     }
   }
 }

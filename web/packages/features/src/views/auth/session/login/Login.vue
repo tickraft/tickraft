@@ -305,19 +305,19 @@ async function handleSubmit(): Promise<void> {
   }
 
   &__title {
-    font-size: 26px;
+    margin: 0 0 6px;
     font-family: var(--tk-font-display);
+    font-size: 26px;
     font-weight: var(--tk-font-weight-bold);
     color: var(--tk-text-primary);
-    margin: 0 0 6px;
     letter-spacing: -0.02em;
   }
 
   &__subtitle {
-    font-size: 13px;
-    color: var(--tk-text-secondary);
     margin: 0;
+    font-size: 13px;
     line-height: 1.5;
+    color: var(--tk-text-secondary);
   }
 
   &__alert {
@@ -338,13 +338,13 @@ async function handleSubmit(): Promise<void> {
 
   &__label {
     display: block;
+    margin-bottom: 8px;
     font-family: var(--tk-font-mono);
     font-size: 11px;
     font-weight: var(--tk-font-weight-medium);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--tk-text-secondary);
-    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   &__input-wrap {
@@ -375,10 +375,10 @@ async function handleSubmit(): Promise<void> {
     font-family: var(--tk-font-body);
     font-size: 14px;
     color: var(--tk-text-primary);
+    outline: none;
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color-base);
     border-radius: var(--tk-radius-md);
-    outline: none;
     transition: border-color var(--tk-duration-fast) var(--tk-ease-out),
       box-shadow var(--tk-duration-fast) var(--tk-ease-out);
 
@@ -413,10 +413,10 @@ async function handleSubmit(): Promise<void> {
     justify-content: center;
     width: 32px;
     height: 32px;
+    color: var(--tk-text-secondary);
+    cursor: pointer;
     background: transparent;
     border: none;
-    cursor: pointer;
-    color: var(--tk-text-secondary);
     border-radius: var(--tk-radius-sm);
 
     &:hover {
@@ -431,11 +431,11 @@ async function handleSubmit(): Promise<void> {
   }
 
   &__field-error {
-    font-size: 12px;
-    color: var(--tk-danger-color-text);
-    margin-top: 6px;
     min-height: 16px;
+    margin-top: 6px;
+    font-size: 12px;
     line-height: 1.4;
+    color: var(--tk-danger-color-text);
   }
 
   &__row {
@@ -447,8 +447,8 @@ async function handleSubmit(): Promise<void> {
 
   &__check {
     display: inline-flex;
-    align-items: center;
     gap: 8px;
+    align-items: center;
     font-size: 13px;
     color: var(--tk-text-regular);
     cursor: pointer;
@@ -475,20 +475,20 @@ async function handleSubmit(): Promise<void> {
   }
 
   &__submit {
-    width: 100%;
-    height: 44px;
     display: inline-flex;
+    gap: 8px;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    width: 100%;
+    height: 44px;
     font-family: var(--tk-font-body);
     font-size: 14px;
     font-weight: var(--tk-font-weight-semibold);
     color: #fff;
+    cursor: pointer;
     background: var(--tk-gradient-primary);
     border: 1px solid var(--tk-primary-color);
     border-radius: var(--tk-radius-md);
-    cursor: pointer;
     transition: box-shadow var(--tk-duration-fast) var(--tk-ease-out),
       transform var(--tk-duration-fast) var(--tk-ease-out);
 
@@ -505,15 +505,15 @@ async function handleSubmit(): Promise<void> {
     }
 
     &--loading {
-      pointer-events: none;
-      color: transparent;
       position: relative;
+      color: transparent;
+      pointer-events: none;
 
       &::after {
-        content: '';
         position: absolute;
         width: 16px;
         height: 16px;
+        content: '';
         border: 2px solid #fff;
         border-top-color: transparent;
         border-radius: 50%;
@@ -524,24 +524,24 @@ async function handleSubmit(): Promise<void> {
 
   &__ce-notice {
     display: flex;
-    align-items: flex-start;
     gap: 10px;
-    margin-top: var(--tk-spacing-lg);
+    align-items: flex-start;
     padding: 12px 14px;
+    margin-top: var(--tk-spacing-lg);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--tk-text-regular);
     background: var(--tk-primary-color-bg);
     border: 1px solid var(--tk-primary-color-border);
     border-radius: var(--tk-radius-md);
-    font-size: 12px;
-    color: var(--tk-text-regular);
-    line-height: 1.55;
   }
 
   &__ce-notice-icon {
     flex-shrink: 0;
     width: 18px;
     height: 18px;
-    color: var(--tk-primary-color);
     margin-top: 1px;
+    color: var(--tk-primary-color);
 
     svg {
       width: 18px;
@@ -550,18 +550,18 @@ async function handleSubmit(): Promise<void> {
   }
 
   &__ce-notice-body strong {
-    color: var(--tk-text-primary);
     font-weight: var(--tk-font-weight-semibold);
+    color: var(--tk-text-primary);
   }
 
   &__foot {
     margin-top: 36px;
-    text-align: center;
     font-family: var(--tk-font-mono);
     font-size: 11px;
-    color: var(--tk-text-placeholder);
-    letter-spacing: 0.04em;
     line-height: 1.7;
+    color: var(--tk-text-placeholder);
+    text-align: center;
+    letter-spacing: 0.04em;
   }
 }
 

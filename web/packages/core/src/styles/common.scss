@@ -130,7 +130,7 @@ body {
 
   // Allow inline form items to wrap on narrow viewports instead of
   // overflowing horizontally.
-  :deep(.el-form--inline .el-form-item) {
+  .el-form--inline .el-form-item {
     margin-right: 0;
   }
 }
@@ -138,18 +138,18 @@ body {
 // Toolbar
 .tk-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--tk-spacing-sm);
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--tk-spacing-md);
 
   &__left,
   &__right {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--tk-spacing-sm);
     align-items: center;
-    flex-wrap: wrap;
   }
 }
 
@@ -163,7 +163,7 @@ body {
     }
   }
 
-  .tk-search-area :deep(.el-form-item) {
+  .tk-search-area .el-form-item {
     width: 100%;
     margin-bottom: var(--tk-spacing-sm);
   }
@@ -176,18 +176,18 @@ body {
   border-radius: var(--tk-border-radius-md);
   box-shadow: var(--tk-shadow-sm);
 
-  :deep(.el-table) {
+  .el-table {
     --el-table-header-bg-color: var(--tk-gray-3);
     --el-table-row-hover-bg-color: var(--tk-primary-color-light-9);
     --el-table-border-color: var(--tk-border-color-lighter);
   }
 
-  :deep(.el-table th) {
+  .el-table th {
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-regular);
   }
 
-  :deep(.el-table td) {
+  .el-table td {
     color: var(--tk-text-regular);
   }
 }

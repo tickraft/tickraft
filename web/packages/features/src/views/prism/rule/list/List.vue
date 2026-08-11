@@ -256,8 +256,8 @@ onMounted(() => {
 <style scoped lang="scss">
 .tk-rule-actions {
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-2);
+  align-items: center;
   white-space: nowrap;
 }
 </style>

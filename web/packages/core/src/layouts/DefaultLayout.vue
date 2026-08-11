@@ -718,25 +718,27 @@ async function handleLogout() {
 
   // ===== Sidebar =====
   &__sidebar {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    overflow: hidden;
     background-color: var(--tk-bg-color-sidebar);
     transition: width var(--tk-transition-slow);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
   }
 
   &__logo {
-    height: var(--tk-header-height);
     display: flex;
+    flex-shrink: 0;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: flex-start;
-    gap: var(--tk-spacing-sm);
+    height: var(--tk-header-height);
+
     // Align the logo's left edge with the first-level menu icon left edge:
     // menu padding (sm) + menu-item padding (tk-menu-item-padding-x)
     padding: 0 var(--tk-spacing-md) 0 calc(var(--tk-spacing-sm) + var(--tk-menu-item-padding-x));
     color: var(--tk-text-sidebar-active);
-    flex-shrink: 0;
+
     // Slide the logo mark to its centered position in sync with the sidebar
     // width transition. justify-content stays flex-start (not flipped to
     // center) because it is not animatable; the mark's horizontal position
@@ -753,15 +755,16 @@ async function handleLogout() {
   }
 
   &__title {
+    max-width: 200px;
+    margin: 0;
+    overflow: hidden;
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-sidebar-active);
-    margin: 0;
-    white-space: nowrap;
     letter-spacing: -0.02em;
-    overflow: hidden;
-    max-width: 200px;
+    white-space: nowrap;
     opacity: 1;
+
     // Fade + collapse the title in sync with the sidebar width transition.
     // The title is always rendered (no v-if) so CSS can transition it;
     // otherwise v-if would remove it instantly and produce a jarring cut.
@@ -769,18 +772,17 @@ async function handleLogout() {
       max-width var(--tk-transition-slow);
 
     .tk-default-layout__logo--collapsed & {
-      opacity: 0;
       max-width: 0;
+      opacity: 0;
     }
   }
 
   // Sidebar menu: override el-menu dark theme via :deep
   &__menu {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    border-right: none;
     padding: var(--tk-spacing-sm);
+    overflow: hidden auto;
+    border-right: none;
 
     :deep(.el-menu) {
       background-color: var(--tk-bg-color-sidebar);
@@ -789,14 +791,15 @@ async function handleLogout() {
 
     :deep(.el-menu-item),
     :deep(.el-sub-menu__title) {
-      background-color: transparent;
-      color: var(--tk-text-sidebar);
       height: 40px;
-      line-height: 40px;
       margin: 2px 0;
-      border-radius: var(--tk-border-radius-md);
       font-size: var(--tk-font-size-sm);
       font-weight: var(--tk-font-weight-medium);
+      line-height: 40px;
+      color: var(--tk-text-sidebar);
+      background-color: transparent;
+      border-radius: var(--tk-border-radius-md);
+
       // padding transitions slowly so icons slide into their centered
       // collapsed position in sync with the sidebar width transition
       // (background/color stay fast for snappy hover feedback).
@@ -805,8 +808,8 @@ async function handleLogout() {
         color var(--tk-transition-fast);
 
       &:hover {
-        background-color: var(--tk-bg-sidebar-hover);
         color: var(--tk-text-sidebar-hover);
+        background-color: var(--tk-bg-sidebar-hover);
       }
     }
 
@@ -815,8 +818,8 @@ async function handleLogout() {
     &:not(.el-menu--collapse) {
       :deep(.el-menu-item),
       :deep(.el-sub-menu__title) {
-        padding-left: var(--tk-menu-item-padding-x);
         padding-right: var(--tk-menu-item-padding-x);
+        padding-left: var(--tk-menu-item-padding-x);
       }
 
       // Nested sub-menu items: indent so their text aligns under the parent
@@ -842,31 +845,31 @@ async function handleLogout() {
 
       :deep(.el-menu-item),
       :deep(.el-sub-menu__title) {
+        justify-content: flex-start;
         padding: 0;
         padding-left: calc(
           (var(--tk-sidebar-collapsed-width) - var(--tk-menu-icon-size)) / 2 -
             var(--tk-spacing-sm)
         );
-        justify-content: flex-start;
       }
 
       // Element Plus wraps collapsed item content in a tooltip trigger that
       // keeps padding 0 20px and flex-start; reset it to the same
       // padding-based centering so the icon sits on the sidebar axis.
       :deep(.el-menu-tooltip__trigger) {
+        justify-content: flex-start;
         padding: 0;
         padding-left: calc(
           (var(--tk-sidebar-collapsed-width) - var(--tk-menu-icon-size)) / 2 -
             var(--tk-spacing-sm)
         );
-        justify-content: flex-start;
       }
     }
 
     :deep(.el-menu-item.is-active) {
-      background-color: var(--tk-bg-sidebar-active);
-      color: var(--tk-text-sidebar-active);
       font-weight: var(--tk-font-weight-semibold);
+      color: var(--tk-text-sidebar-active);
+      background-color: var(--tk-bg-sidebar-active);
     }
 
     :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
@@ -903,9 +906,9 @@ async function handleLogout() {
   }
 
   &__sidebar-footer {
-    margin-top: auto;
-    padding: var(--tk-spacing-sm);
     flex-shrink: 0;
+    padding: var(--tk-spacing-sm);
+    margin-top: auto;
   }
 
   // ===== Main area =====
@@ -918,20 +921,20 @@ async function handleLogout() {
   // ===== Header =====
   &__header {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     height: var(--tk-header-height);
     padding: 0 var(--tk-spacing-xl);
     background-color: var(--tk-bg-color);
     border-bottom: 1px solid var(--tk-border-color);
-    flex-shrink: 0;
   }
 
   &__header-left,
   &__header-right {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-md);
+    align-items: center;
   }
 
   // Collapse button (rounded icon button)
@@ -942,17 +945,17 @@ async function handleLogout() {
     width: 36px;
     height: 36px;
     padding: 0;
-    border: none;
-    background-color: transparent;
-    border-radius: var(--tk-border-radius-md);
     color: var(--tk-text-secondary);
     cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-radius: var(--tk-border-radius-md);
     transition: background-color var(--tk-transition-fast),
       color var(--tk-transition-fast);
 
     &:hover {
-      background-color: var(--tk-bg-hover);
       color: var(--tk-text-primary);
+      background-color: var(--tk-bg-hover);
     }
 
     .el-icon {
@@ -968,17 +971,17 @@ async function handleLogout() {
     width: 40px;
     height: 40px;
     padding: 0;
-    border: none;
-    background-color: transparent;
-    border-radius: var(--tk-border-radius-base);
     color: var(--tk-text-secondary);
     cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-radius: var(--tk-border-radius-base);
     transition: background-color var(--tk-transition-fast),
       color var(--tk-transition-fast);
 
     &:hover {
-      background-color: var(--tk-gray-3);
       color: var(--tk-text-primary);
+      background-color: var(--tk-gray-3);
     }
 
     .el-icon {
@@ -989,21 +992,21 @@ async function handleLogout() {
   // ===== Locale switcher area =====
   &__lang {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     height: 40px;
     padding: 0 var(--tk-spacing-sm);
-    border: none;
-    background-color: transparent;
-    border-radius: var(--tk-border-radius-base);
     color: var(--tk-text-secondary);
     cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-radius: var(--tk-border-radius-base);
     transition: background-color var(--tk-transition-fast),
       color var(--tk-transition-fast);
 
     &:hover {
-      background-color: var(--tk-gray-3);
       color: var(--tk-text-primary);
+      background-color: var(--tk-gray-3);
     }
   }
 
@@ -1017,24 +1020,24 @@ async function handleLogout() {
     flex: 1;
 
     &--active {
-      color: var(--tk-text-link);
       font-weight: var(--tk-font-weight-semibold);
+      color: var(--tk-text-link);
     }
   }
 
   &__lang-check {
     margin-left: var(--tk-spacing-sm);
-    color: var(--tk-text-link);
     font-size: 14px;
+    color: var(--tk-text-link);
   }
 
   // ===== Breadcrumb =====
   &__breadcrumb {
     :deep(.el-breadcrumb__item) {
       .el-breadcrumb__inner {
-        color: var(--tk-text-secondary);
-        font-weight: var(--tk-font-weight-normal);
         font-size: var(--tk-font-size-sm);
+        font-weight: var(--tk-font-weight-normal);
+        color: var(--tk-text-secondary);
         transition: color var(--tk-transition-fast);
       }
 
@@ -1044,25 +1047,25 @@ async function handleLogout() {
 
       // Active state: last item uses primary color + medium weight
       &:last-child .el-breadcrumb__inner {
-        color: var(--tk-text-link);
         font-weight: var(--tk-font-weight-medium);
+        color: var(--tk-text-link);
       }
     }
 
     :deep(.el-breadcrumb__separator) {
-      color: var(--tk-text-tertiary);
       font-size: var(--tk-font-size-sm);
+      color: var(--tk-text-tertiary);
     }
   }
 
   // ===== User area =====
   &__user {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
-    border-radius: var(--tk-border-radius-md);
     cursor: pointer;
+    border-radius: var(--tk-border-radius-md);
     transition: background-color var(--tk-transition-fast);
 
     &:hover {
@@ -1071,30 +1074,30 @@ async function handleLogout() {
   }
 
   &__avatar {
-    background: var(--tk-gradient-brand-accent);
-    color: var(--tk-text-on-primary);
+    flex-shrink: 0;
     font-size: var(--tk-font-size-sm);
     font-weight: var(--tk-font-weight-semibold);
-    flex-shrink: 0;
+    color: var(--tk-text-on-primary);
+    background: var(--tk-gradient-brand-accent);
   }
 
   &__username {
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-primary);
     font-weight: var(--tk-font-weight-medium);
+    color: var(--tk-text-primary);
     white-space: nowrap;
   }
 
   &__arrow {
-    color: var(--tk-text-tertiary);
     font-size: 12px;
+    color: var(--tk-text-tertiary);
   }
 
   // ===== Content area =====
   &__content {
-    background-color: var(--tk-bg-color-page);
     padding: var(--tk-spacing-2xl);
     overflow-y: auto;
+    background-color: var(--tk-bg-color-page);
   }
 }
 
@@ -1104,14 +1107,14 @@ async function handleLogout() {
   vertical-align: middle;
 
   &__text {
+    display: inline-block;
+    padding: 0 6px;
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
-    padding: 0 6px;
-    border-radius: 10px;
-    background-color: var(--tk-primary-color);
-    color: var(--tk-text-on-primary);
     line-height: 16px;
-    display: inline-block;
+    color: var(--tk-text-on-primary);
+    background-color: var(--tk-primary-color);
+    border-radius: 10px;
   }
 
   &--animated {
@@ -1125,6 +1128,7 @@ async function handleLogout() {
     opacity: 1;
     transform: scale(1);
   }
+
   50% {
     opacity: 0.7;
     transform: scale(1.1);
@@ -1174,6 +1178,7 @@ async function handleLogout() {
 
 .tk-default-layout__logo--mobile {
   justify-content: flex-start;
+
   // Match the expanded sidebar logo alignment (menu padding + menu-item padding)
   padding: 0 var(--tk-spacing-md) 0 calc(var(--tk-spacing-sm) + var(--tk-spacing-lg));
 }
@@ -1192,64 +1197,64 @@ async function handleLogout() {
 
 /* List inside sub-menu popper (only effective when .el-menu exists, does not affect leaf tooltip) */
 .tk-menu-popper .el-menu {
+  padding: var(--tk-spacing-xs);
   background-color: var(--tk-bg-color-overlay) !important;
+  border: 1px solid var(--tk-border-color);
   border-right: none;
   border-radius: var(--tk-border-radius-md);
   box-shadow: var(--tk-shadow-md);
-  border: 1px solid var(--tk-border-color);
-  padding: var(--tk-spacing-xs);
 }
 
 .tk-menu-popper .el-menu-item,
 .tk-menu-popper .el-sub-menu__title {
-  background-color: transparent !important;
-  color: var(--tk-text-secondary) !important;
   height: 40px;
-  line-height: 40px;
-  border-radius: var(--tk-border-radius-sm);
   margin: 2px 0;
   font-size: var(--tk-font-size-sm);
+  line-height: 40px;
+  color: var(--tk-text-secondary) !important;
+  background-color: transparent !important;
+  border-radius: var(--tk-border-radius-sm);
 }
 
 .tk-menu-popper .el-menu-item:hover,
 .tk-menu-popper .el-sub-menu__title:hover {
-  background-color: var(--tk-bg-hover) !important;
   color: var(--tk-text-primary) !important;
+  background-color: var(--tk-bg-hover) !important;
 }
 
 .tk-menu-popper .el-menu-item.is-active {
+  font-weight: var(--tk-font-weight-semibold);
   color: var(--tk-text-link) !important;
   background-color: var(--tk-primary-color-bg) !important;
-  font-weight: var(--tk-font-weight-semibold);
 }
 
 /* Locale switcher dropdown popper (teleported to body, must use global class name) */
 .tk-lang-popper.el-popper {
+  border: 1px solid var(--tk-border-color);
   border-radius: var(--tk-border-radius-md);
   box-shadow: var(--tk-shadow-md);
-  border: 1px solid var(--tk-border-color);
 }
 
 .tk-lang-popper .el-dropdown-menu {
+  padding: var(--tk-spacing-xs);
   background-color: var(--tk-bg-color-overlay);
   border-radius: var(--tk-border-radius-md);
-  padding: var(--tk-spacing-xs);
 }
 
 .tk-lang-popper .el-dropdown-menu__item {
   display: flex;
+  gap: var(--tk-spacing-sm);
   align-items: center;
   justify-content: space-between;
-  gap: var(--tk-spacing-sm);
-  border-radius: var(--tk-border-radius-sm);
-  color: var(--tk-text-secondary);
-  font-size: var(--tk-font-size-sm);
   padding: 0 var(--tk-spacing-sm);
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-secondary);
+  border-radius: var(--tk-border-radius-sm);
 }
 
 .tk-lang-popper .el-dropdown-menu__item:hover {
-  background-color: var(--tk-bg-hover);
   color: var(--tk-text-primary);
+  background-color: var(--tk-bg-hover);
 }
 
 /* Mobile drawer: el-drawer teleports to body, so the default white
@@ -1261,8 +1266,8 @@ async function handleLogout() {
 }
 
 .tk-default-layout__mobile-drawer .el-drawer__body {
-  background-color: var(--tk-bg-color-sidebar) !important;
   padding: 0;
+  background-color: var(--tk-bg-color-sidebar) !important;
 }
 
 /* Mobile drawer menu items: el-drawer teleports to body, so scoped :deep()
@@ -1271,7 +1276,7 @@ async function handleLogout() {
    mobile logo. */
 .tk-default-layout__mobile-drawer .tk-default-layout__menu--mobile .el-menu-item,
 .tk-default-layout__mobile-drawer .tk-default-layout__menu--mobile .el-sub-menu__title {
-  padding-left: var(--tk-spacing-lg);
   padding-right: var(--tk-spacing-lg);
+  padding-left: var(--tk-spacing-lg);
 }
 </style>

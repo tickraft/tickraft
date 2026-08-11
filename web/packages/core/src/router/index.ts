@@ -23,15 +23,15 @@ export function createRouter(routes: RouteRecordRaw[]): Router {
   })
 
   /** Navigation guard: bypass token check for public routes, else require token. */
-  router.beforeEach((to, _from, next) => {
+  router.beforeEach((to) => {
     const token = getToken()
     if (to.meta.public) {
-      next()
-    } else if (!token) {
-      next('/login')
-    } else {
-      next()
+      return true
     }
+    if (!token) {
+      return '/login'
+    }
+    return true
   })
 
   return router

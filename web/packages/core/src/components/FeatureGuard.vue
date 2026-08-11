@@ -118,10 +118,10 @@ function handleUpgrade() {
 
 /* Locked state: grayscale filter + reduced opacity */
 .tk-feature-locked {
-  filter: grayscale(0.8);
-  opacity: 0.55;
   pointer-events: none;
   user-select: none;
+  opacity: 0.55;
+  filter: grayscale(0.8);
 }
 
 /* Locked overlay: covers content, click triggers upgrade */
@@ -130,17 +130,22 @@ function handleUpgrade() {
   inset: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--tk-spacing-sm);
   align-items: center;
   justify-content: center;
-  gap: var(--tk-spacing-sm);
+  cursor: pointer;
+
   /* Use gray-10 semi-transparent, applies to both light/dark themes */
+  // Fallback for browsers without color-mix support (#0f172a is --tk-gray-10)
+  background: rgba(15, 23, 42, 0.6);
   background: color-mix(in srgb, var(--tk-gray-10) 60%, transparent);
   border-radius: inherit;
-  cursor: pointer;
   transition: background var(--tk-transition-base);
 }
 
 .tk-feature-guard__overlay:hover {
+  // Fallback for browsers without color-mix support (#0f172a is --tk-gray-10)
+  background: rgba(15, 23, 42, 0.7);
   background: color-mix(in srgb, var(--tk-gray-10) 70%, transparent);
 }
 
@@ -166,12 +171,12 @@ function handleUpgrade() {
   align-items: center;
   padding: 1px 6px;
   font-size: 10px;
-  line-height: 1.4;
   font-weight: var(--tk-font-weight-medium);
+  line-height: 1.4;
   color: var(--tk-neutral-0);
-  border-radius: var(--tk-radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  border-radius: var(--tk-radius-sm);
   box-shadow: var(--tk-shadow-float);
 }
 

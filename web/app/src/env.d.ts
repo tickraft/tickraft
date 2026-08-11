@@ -10,3 +10,7 @@ declare module '*.vue' {
   const component: DefineComponent<object, object, unknown>
   export default component
 }
+
+// SCSS subpath export of @tickraft/core (side-effect import only; type
+// declarations live in vite/client's `*.scss` ambient module).
+declare module '@tickraft/core/styles'

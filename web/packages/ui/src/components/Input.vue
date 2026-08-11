@@ -167,8 +167,8 @@ function handleInput(value: string | number): void {
   }
 
   &__required {
-    color: var(--tk-danger-color, #ef4444);
     margin-left: 2px;
+    color: var(--tk-danger-color, #ef4444);
   }
 
   &__message {

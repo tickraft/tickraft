@@ -79,9 +79,10 @@ const mockMonitors = [
 
 /**
  * Telemetry templates (pre-configured probe/monitor recipes).
- * Uses `let` so the delete route can splice items out during a dev session.
+ * The delete route splices items out of the array during a dev session
+ * (splice mutates in place, so the binding can stay const).
  */
-let mockTemplates = [
+const mockTemplates = [
   { id: 1, name: 'ICMP Ping', description: 'Basic ICMP connectivity probe', category: 'network', executor_type: 'icmp', config: { count: 4, timeout: 3 }, is_builtin: true, created_at: '2026-06-01 10:00:00', updated_at: '2026-06-01 10:00:00' },
   { id: 2, name: 'TCP Port Check', description: 'TCP port connectivity probe', category: 'network', executor_type: 'tcp', config: { timeout: 5 }, is_builtin: true, created_at: '2026-06-01 10:00:00', updated_at: '2026-06-01 10:00:00' },
   { id: 3, name: 'HTTP Health Check', description: 'HTTP endpoint health check with status code validation', category: 'web', executor_type: 'http', config: { method: 'GET', expect_code: 200, timeout: 10 }, is_builtin: true, created_at: '2026-06-01 10:00:00', updated_at: '2026-06-01 10:00:00' },

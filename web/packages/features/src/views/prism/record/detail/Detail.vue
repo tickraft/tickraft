@@ -427,10 +427,10 @@ onMounted(() => {
 .tk-prism-record-detail {
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
-    flex-wrap: wrap;
     padding-bottom: var(--tk-spacing-lg);
     margin-bottom: var(--tk-spacing-lg);
     border-bottom: 1px solid var(--tk-border-color);
@@ -438,22 +438,22 @@ onMounted(() => {
 
   &__header-left {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-md);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
+    align-items: center;
   }
 
   &__header-id {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-lg);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-primary);
   }
 
   &__header-id-hash {
-    color: var(--tk-text-placeholder);
     margin-right: 2px;
+    color: var(--tk-text-placeholder);
   }
 
   &__header-sep {
@@ -464,8 +464,8 @@ onMounted(() => {
 
   &__header-actions {
     display: flex;
-    gap: var(--tk-spacing-sm);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-sm);
   }
 
   &__stat-strip {
@@ -473,18 +473,18 @@ onMounted(() => {
     flex-direction: column;
     gap: var(--tk-spacing-md);
     padding: var(--tk-spacing-lg);
+    margin-bottom: var(--tk-spacing-lg);
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-lg);
-    margin-bottom: var(--tk-spacing-lg);
   }
 
   &__stat-message {
+    margin: 0;
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     line-height: 1.3;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__stat-grid {
@@ -512,8 +512,8 @@ onMounted(() => {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-md);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-primary);
   }
 
   &__stat-value--danger {
@@ -525,26 +525,26 @@ onMounted(() => {
   }
 
   &__section-title {
+    padding-left: var(--tk-spacing-sm);
+    margin: 0 0 var(--tk-spacing-sm);
     font-size: var(--tk-font-size-lg);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin: 0 0 var(--tk-spacing-sm);
-    padding-left: var(--tk-spacing-sm);
     border-left: 3px solid var(--tk-primary-color);
   }
 
   &__value--firing {
-    color: var(--tk-danger-color-text);
     font-weight: var(--tk-font-weight-semibold);
+    color: var(--tk-danger-color-text);
   }
 
   &__expr-code {
+    padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-sm);
-    background-color: var(--tk-bg-fill);
-    padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
-    border-radius: var(--tk-radius-sm);
     word-break: break-all;
+    background-color: var(--tk-bg-fill);
+    border-radius: var(--tk-radius-sm);
   }
 
   &__card {

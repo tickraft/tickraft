@@ -82,10 +82,10 @@ withDefaults(
 
   &__title-row {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-lg);
     align-items: flex-end;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg);
-    flex-wrap: wrap;
   }
 
   &__heading {
@@ -93,44 +93,44 @@ withDefaults(
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-3xl);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     line-height: 1.1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__subtitle {
     margin: var(--tk-spacing-xs) 0 0;
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
   }
 
   &__actions {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-md);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
+    align-items: center;
   }
 
   &__count {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
     gap: 2px;
+    align-items: flex-end;
     padding: var(--tk-spacing-sm) var(--tk-spacing-lg);
+    background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-md);
-    background-color: var(--tk-bg-surface);
   }
 
   &__count-num {
     font-size: var(--tk-font-size-3xl);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
-    line-height: 1;
     font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--tk-text-primary);
   }
 
   &__count-label {

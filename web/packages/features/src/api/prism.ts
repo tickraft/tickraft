@@ -8,7 +8,7 @@ import type { PageData, PageParams, AlertStatus } from '@tickraft/core'
 /** Alert severity level (aligned with backend alert.Severity) */
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 
-/** Alert trigger condition operator (legacy; retained for constants.ts compatibility) */
+/** Alert trigger condition operator (aligned with backend alert.Condition) */
 export type AlertCondition = 'gt' | 'lt' | 'eq' | 'gte' | 'lte'
 
 /** Alert record (aligned with backend handler.AlertRecord) */

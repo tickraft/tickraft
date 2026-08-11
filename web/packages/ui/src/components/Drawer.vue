@@ -163,8 +163,8 @@ function handleClosed(): void {
 
   &__footer {
     display: flex;
-    justify-content: flex-end;
     gap: 12px;
+    justify-content: flex-end;
   }
 }
 </style>

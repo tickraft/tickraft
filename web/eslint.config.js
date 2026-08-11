@@ -5,6 +5,7 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import vuePlugin from 'eslint-plugin-vue'
+import globals from 'globals'
 
 export default tseslint.config(
   // Global ignores: build artifacts, dependencies, legacy/storyboard snapshots
@@ -16,6 +17,15 @@ export default tseslint.config(
       '**/.storyboard/**',
       '**/*.d.ts',
     ],
+  },
+  // eslint-plugin-vue@10 flat configs no longer inject browser globals the way
+  // v9 did (v9 set globals.browser in flat/base), so declare them explicitly to
+  // keep no-undef quiet for standard browser APIs (window, document, navigator…)
+  // used inside Vue SFCs and browser-side modules.
+  {
+    languageOptions: {
+      globals: globals.browser,
+    },
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

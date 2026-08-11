@@ -27,7 +27,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <el-config-provider :locale="elementPlusLocale" class="tk-app">
+  <el-config-provider :locale="elementPlusLocale ?? undefined" class="tk-app">
     <router-view />
   </el-config-provider>
 </template>

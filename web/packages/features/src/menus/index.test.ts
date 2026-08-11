@@ -12,10 +12,11 @@ describe('baseMenus', () => {
     // but the type contract prevents mutation in consumers
   })
 
-  it('contains exactly 5 top-level menus (dashboard, task, telemetry, prism, system)', () => {
-    expect(baseMenus).toHaveLength(5)
+  it('contains exactly 6 top-level menus (dashboard, asset, telemetry, task, prism, system)', () => {
+    expect(baseMenus).toHaveLength(6)
     const paths = baseMenus.map((m) => m.path)
     expect(paths).toContain('/dashboard/overview')
+    expect(paths).toContain('/asset')
     expect(paths).toContain('/task')
     expect(paths).toContain('/telemetry')
     expect(paths).toContain('/prism')

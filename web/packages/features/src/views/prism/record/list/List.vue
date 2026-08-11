@@ -279,16 +279,16 @@ onMounted(() => {
 <style scoped lang="scss">
 .tk-record-actions {
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-2);
+  align-items: center;
   white-space: nowrap;
 }
 
 .tk-prism-record-list {
   &__summary-chip {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     height: 32px;
     padding: 0 var(--tk-spacing-md);
     background-color: var(--tk-danger-color-bg);
@@ -297,11 +297,11 @@ onMounted(() => {
   }
 
   &__summary-dot {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
-    border-radius: var(--tk-radius-circle);
     background-color: var(--tk-danger-color);
-    flex-shrink: 0;
+    border-radius: var(--tk-radius-circle);
   }
 
   &__summary-label {
@@ -317,13 +317,13 @@ onMounted(() => {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-danger-color-text);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-danger-color-text);
   }
 
   &__value--firing {
-    color: var(--tk-danger-color-text);
     font-weight: var(--tk-font-weight-semibold);
+    color: var(--tk-danger-color-text);
   }
 }
 
@@ -340,7 +340,7 @@ onMounted(() => {
 
 :deep(.tk-prism-record-row--firing-critical) {
   td {
-    background-color: var(--tk-danger-color-bg-strong, rgba(245, 108, 108, 0.12)) !important;
+    background-color: var(--tk-danger-color-bg-strong, rgb(245 108 108 / 12%)) !important;
   }
 
   td:first-child {

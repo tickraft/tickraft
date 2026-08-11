@@ -157,8 +157,8 @@ function toggleTheme() {
 
 <style scoped lang="scss">
 .tk-blank-layout {
-  min-height: 100vh;
   display: flex;
+  min-height: 100vh;
   background-color: var(--tk-bg-color-page);
 
   // ===== split layout: 60/40 brand/form split (aligned with prototype) =====
@@ -184,8 +184,8 @@ function toggleTheme() {
     position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     padding: 48px 32px;
     background-color: var(--tk-bg-color-page);
   }
@@ -201,17 +201,17 @@ function toggleTheme() {
     width: 36px;
     height: 36px;
     padding: 0;
-    border: none;
-    background-color: transparent;
-    border-radius: var(--tk-radius-md, 8px);
     color: var(--tk-text-secondary);
     cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-radius: var(--tk-radius-md, 8px);
     transition: background-color var(--tk-transition-fast, 0.15s cubic-bezier(0.4, 0, 0.2, 1)),
       color var(--tk-transition-fast, 0.15s cubic-bezier(0.4, 0, 0.2, 1));
 
     &:hover {
-      background-color: var(--tk-bg-hover);
       color: var(--tk-text-primary);
+      background-color: var(--tk-bg-hover);
     }
 
     .el-icon { font-size: 18px; }
@@ -224,9 +224,9 @@ function toggleTheme() {
 
   &__footer {
     padding: var(--tk-spacing-md);
-    text-align: center;
-    color: var(--tk-text-secondary);
     font-size: var(--tk-font-size-sm);
+    color: var(--tk-text-secondary);
+    text-align: center;
   }
 
   // ===== Responsive =====

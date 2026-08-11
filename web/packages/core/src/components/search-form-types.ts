@@ -11,14 +11,12 @@ export interface SelectOption {
 
 /** Field configuration for SearchForm */
 export interface SearchFormField {
-  /** Field name (current convention) */
-  prop?: string
-  /** Field name (legacy alias for compatibility) */
-  key?: string
+  /** Field name */
+  prop: string
   /** Label */
   label: string
-  /** Control type; date-range is a legacy alias */
-  type: FieldType | 'date-range'
+  /** Control type */
+  type: FieldType
   /** Options for select / cascader */
   options?: SelectOption[]
   /** Placeholder hint */

@@ -252,32 +252,32 @@ onMounted(() => {
 <style scoped lang="scss">
 .tk-asset-detail-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--tk-spacing-md);
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--tk-spacing-md);
 
   &__left {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-md);
+    align-items: center;
     min-width: 0;
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-semibold);
-    color: var(--tk-text-primary);
     line-height: 1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__actions {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-sm);
     flex-shrink: 0;
+    gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 }
 
@@ -293,10 +293,10 @@ onMounted(() => {
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin: 0;
   }
 }
 
@@ -354,15 +354,15 @@ onMounted(() => {
 
 .tk-asset-detail-relation {
   padding: var(--tk-spacing-md);
+  background-color: var(--tk-bg-color-page);
   border: 1px dashed var(--tk-border-color-light);
   border-radius: var(--tk-border-radius-base);
-  background-color: var(--tk-bg-color-page);
 
   &__title {
+    margin-bottom: var(--tk-spacing-sm);
     font-size: var(--tk-font-size-sm);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin-bottom: var(--tk-spacing-sm);
   }
 
   &__empty {

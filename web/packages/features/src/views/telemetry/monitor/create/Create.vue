@@ -704,23 +704,23 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .tk-monitor-create {
-  padding: var(--tk-spacing-lg, 40px) var(--tk-content-padding-x, 24px) var(--tk-spacing-xl, 96px);
   max-width: var(--tk-content-max-width, 1200px);
+  padding: var(--tk-spacing-lg, 40px) var(--tk-content-padding-x, 24px) var(--tk-spacing-xl, 96px);
   margin: 0 auto;
 
   &__header {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-lg, 32px);
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg, 32px);
     margin-bottom: var(--tk-spacing-lg, 40px);
-    flex-wrap: wrap;
   }
 
   &__title-row {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm, 16px);
+    align-items: center;
   }
 
   &__back {
@@ -732,27 +732,27 @@ onMounted(async () => {
   }
 
   &__eyebrow {
+    margin-bottom: 4px;
     font-family: var(--tk-font-mono, 'Monaco', monospace);
     font-size: var(--tk-font-size-xs, 12px);
     color: var(--tk-text-secondary, #909399);
-    letter-spacing: 0.1em;
     text-transform: uppercase;
-    margin-bottom: 4px;
+    letter-spacing: 0.1em;
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-2xl, 24px);
     font-weight: var(--tk-font-weight-bold, 700);
+    line-height: 1.1;
     color: var(--tk-text-primary, #303133);
     letter-spacing: -0.02em;
-    line-height: 1.1;
-    margin: 0;
   }
 
   &__actions {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm, 12px);
+    align-items: center;
   }
 
   &__grid {
@@ -770,43 +770,43 @@ onMounted(async () => {
   }
 
   &__side {
+    position: sticky;
+    top: var(--tk-spacing-md, 24px);
     display: flex;
     flex-direction: column;
     gap: var(--tk-spacing-md, 24px);
     min-width: 0;
-    position: sticky;
-    top: var(--tk-spacing-md, 24px);
   }
 
   &__asset-desc {
     margin-top: 4px;
     font-size: var(--tk-font-size-xs, 12px);
-    color: var(--tk-text-secondary, #909399);
     line-height: 1.5;
+    color: var(--tk-text-secondary, #909399);
   }
 }
 
 /* Section card */
 .tk-form-section {
+  overflow: hidden;
   background: var(--tk-bg-surface, var(--tk-bg-color, #fff));
   border: 1px solid var(--tk-border-color, #e4e7ed);
   border-radius: var(--tk-radius-lg, 12px);
-  overflow: hidden;
 
   &__header {
     display: flex;
+    gap: var(--tk-spacing-md, 24px);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md, 24px);
     padding: var(--tk-spacing-md, 20px) var(--tk-spacing-lg, 40px);
-    border-bottom: 1px solid var(--tk-border-color-light, #ebeef5);
     background: var(--tk-bg-fill-light, #f5f7fa);
+    border-bottom: 1px solid var(--tk-border-color-light, #ebeef5);
   }
 
   &__title {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm, 16px);
+    align-items: center;
     font-size: var(--tk-font-size-md, 16px);
     font-weight: var(--tk-font-weight-semibold, 600);
     color: var(--tk-text-primary, #303133);
@@ -822,8 +822,8 @@ onMounted(async () => {
     font-size: var(--tk-font-size-xs, 12px);
     font-weight: var(--tk-font-weight-bold, 700);
     color: var(--tk-primary-color, #409eff);
-    background: var(--tk-primary-color-bg, rgba(64, 158, 255, 0.1));
-    border: 1px solid var(--tk-primary-color-border, rgba(64, 158, 255, 0.2));
+    background: var(--tk-primary-color-bg, rgb(64 158 255 / 10%));
+    border: 1px solid var(--tk-primary-color-border, rgb(64 158 255 / 20%));
     border-radius: var(--tk-radius-sm, 4px);
   }
 
@@ -831,23 +831,23 @@ onMounted(async () => {
     font-family: var(--tk-font-mono, 'Monaco', monospace);
     font-size: var(--tk-font-size-xs, 12px);
     color: var(--tk-text-secondary, #909399);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   &__body {
-    padding: var(--tk-spacing-lg, 40px);
     display: flex;
     flex-direction: column;
     gap: var(--tk-spacing-md, 24px);
+    padding: var(--tk-spacing-lg, 40px);
   }
 }
 
 .tk-form-help {
   margin-top: var(--tk-spacing-xs, 8px);
   font-size: var(--tk-font-size-xs, 12px);
-  color: var(--tk-text-secondary, #909399);
   line-height: 1.5;
+  color: var(--tk-text-secondary, #909399);
 }
 
 /* Mode radio */
@@ -864,21 +864,21 @@ onMounted(async () => {
   flex-direction: column;
   gap: 6px;
   padding: var(--tk-spacing-md, 16px) var(--tk-spacing-sm, 12px);
+  cursor: pointer;
   background: var(--tk-bg-surface, var(--tk-bg-color, #fff));
   border: 1px solid var(--tk-border-color, #e4e7ed);
   border-radius: var(--tk-radius-md, 8px);
-  cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: var(--tk-border-color-dark, #d0d3d9);
     background: var(--tk-bg-surface-hover, #f5f7fa);
+    border-color: var(--tk-border-color-dark, #d0d3d9);
   }
 
   &--active {
+    background: var(--tk-primary-color-bg, rgb(64 158 255 / 8%));
     border-color: var(--tk-primary-color, #409eff);
-    background: var(--tk-primary-color-bg, rgba(64, 158, 255, 0.08));
-    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+    box-shadow: 0 0 0 2px rgb(64 158 255 / 15%);
   }
 
   &__head {
@@ -896,32 +896,32 @@ onMounted(async () => {
   }
 
   &__dot {
+    position: relative;
     width: 14px;
     height: 14px;
-    border-radius: 50%;
     border: 1.5px solid var(--tk-border-color-dark, #d0d3d9);
-    position: relative;
+    border-radius: 50%;
   }
 
   &--active &__dot {
     border-color: var(--tk-primary-color, #409eff);
 
     &::after {
-      content: "";
       position: absolute;
-      left: 2px;
       top: 2px;
+      left: 2px;
       width: 8px;
       height: 8px;
-      border-radius: 50%;
+      content: "";
       background: var(--tk-primary-color, #409eff);
+      border-radius: 50%;
     }
   }
 
   &__desc {
     font-size: var(--tk-font-size-xs, 12px);
-    color: var(--tk-text-secondary, #909399);
     line-height: 1.4;
+    color: var(--tk-text-secondary, #909399);
   }
 }
 
@@ -939,21 +939,21 @@ onMounted(async () => {
   flex-direction: column;
   gap: 6px;
   padding: var(--tk-spacing-md, 16px) var(--tk-spacing-sm, 12px);
+  cursor: pointer;
   background: var(--tk-bg-surface, var(--tk-bg-color, #fff));
   border: 1px solid var(--tk-border-color, #e4e7ed);
   border-radius: var(--tk-radius-md, 8px);
-  cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: var(--tk-border-color-dark, #d0d3d9);
     background: var(--tk-bg-surface-hover, #f5f7fa);
+    border-color: var(--tk-border-color-dark, #d0d3d9);
   }
 
   &--active {
+    background: var(--tk-primary-color-bg, rgb(64 158 255 / 8%));
     border-color: var(--tk-primary-color, #409eff);
-    background: var(--tk-primary-color-bg, rgba(64, 158, 255, 0.08));
-    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+    box-shadow: 0 0 0 2px rgb(64 158 255 / 15%);
   }
 
   &__head {
@@ -964,8 +964,8 @@ onMounted(async () => {
 
   &__name {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-sm, 12px);
+    align-items: center;
     font-family: var(--tk-font-mono, 'Monaco', monospace);
     font-size: var(--tk-font-size-sm, 14px);
     font-weight: var(--tk-font-weight-semibold, 600);
@@ -980,41 +980,41 @@ onMounted(async () => {
   }
 
   &__dot {
+    position: relative;
     width: 14px;
     height: 14px;
-    border-radius: 50%;
     border: 1.5px solid var(--tk-border-color-dark, #d0d3d9);
-    position: relative;
+    border-radius: 50%;
   }
 
   &--active &__dot {
     border-color: var(--tk-primary-color, #409eff);
 
     &::after {
-      content: "";
       position: absolute;
-      left: 2px;
       top: 2px;
+      left: 2px;
       width: 8px;
       height: 8px;
-      border-radius: 50%;
+      content: "";
       background: var(--tk-primary-color, #409eff);
+      border-radius: 50%;
     }
   }
 
   &__desc {
     font-size: var(--tk-font-size-xs, 12px);
-    color: var(--tk-text-secondary, #909399);
     line-height: 1.4;
+    color: var(--tk-text-secondary, #909399);
   }
 }
 
 /* Code block */
 .tk-code-block {
+  overflow: hidden;
   background: var(--tk-bg-fill-blank, #fafafa);
   border: 1px solid var(--tk-border-color, #e4e7ed);
   border-radius: var(--tk-radius-md, 8px);
-  overflow: hidden;
 
   &__bar {
     display: flex;
@@ -1029,48 +1029,48 @@ onMounted(async () => {
     font-family: var(--tk-font-mono, 'Monaco', monospace);
     font-size: var(--tk-font-size-xs, 12px);
     color: var(--tk-text-secondary, #909399);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   &__code {
     padding: var(--tk-spacing-md, 16px);
+    margin: 0;
     font-family: var(--tk-font-mono, 'Monaco', monospace);
     font-size: var(--tk-font-size-sm, 14px);
-    color: var(--tk-text-primary, #303133);
-    white-space: pre-wrap;
-    word-break: break-all;
     line-height: 1.5;
-    margin: 0;
+    color: var(--tk-text-primary, #303133);
+    word-break: break-all;
+    white-space: pre-wrap;
   }
 }
 
 /* Tips card */
 .tk-tips-card {
   padding: var(--tk-spacing-md, 24px);
-  background: var(--tk-info-color-bg, rgba(64, 158, 255, 0.06));
-  border: 1px solid var(--tk-info-color-border, rgba(64, 158, 255, 0.15));
+  background: var(--tk-info-color-bg, rgb(64 158 255 / 6%));
+  border: 1px solid var(--tk-info-color-border, rgb(64 158 255 / 15%));
   border-radius: var(--tk-radius-md, 8px);
 
   &__title {
     display: flex;
-    align-items: center;
     gap: 6px;
+    align-items: center;
+    margin-bottom: var(--tk-spacing-sm, 12px);
     font-size: var(--tk-font-size-sm, 14px);
     font-weight: var(--tk-font-weight-semibold, 600);
     color: var(--tk-info-color-text, #409eff);
-    margin-bottom: var(--tk-spacing-sm, 12px);
   }
 
   &__list {
-    margin: 0;
-    padding-left: 16px;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    padding-left: 16px;
+    margin: 0;
     font-size: var(--tk-font-size-xs, 12px);
-    color: var(--tk-text-regular, #606266);
     line-height: 1.5;
+    color: var(--tk-text-regular, #606266);
   }
 }
 
@@ -1079,14 +1079,14 @@ onMounted(async () => {
   position: sticky;
   bottom: 0;
   display: flex;
+  gap: var(--tk-spacing-sm, 12px);
   align-items: center;
   justify-content: flex-end;
-  gap: var(--tk-spacing-sm, 12px);
   padding: var(--tk-spacing-md, 20px) var(--tk-spacing-lg, 40px);
   background: var(--tk-bg-surface, var(--tk-bg-color, #fff));
   border: 1px solid var(--tk-border-color, #e4e7ed);
   border-radius: var(--tk-radius-lg, 12px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 8%);
 
   &__icon {
     margin-right: 4px;

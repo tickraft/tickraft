@@ -656,21 +656,21 @@ function handleCancel() {
   }
 
   &__side {
+    position: sticky;
+    top: var(--tk-spacing-md);
     display: flex;
     flex-direction: column;
     gap: var(--tk-spacing-lg);
     min-width: 0;
-    position: sticky;
-    top: var(--tk-spacing-md);
   }
 
   &__footer {
     display: flex;
+    gap: var(--tk-spacing-lg);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-lg);
-    margin-top: var(--tk-spacing-lg);
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
+    margin-top: var(--tk-spacing-lg);
     background: var(--tk-bg-color);
     border: 1px solid var(--tk-border-color-lighter);
     border-radius: var(--tk-border-radius-md);
@@ -684,8 +684,8 @@ function handleCancel() {
 
   &__footer-actions {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   &__item-help {
@@ -696,25 +696,25 @@ function handleCancel() {
 }
 
 .tk-task-form-section {
+  overflow: hidden;
   background: var(--tk-bg-color);
   border: 1px solid var(--tk-border-color-lighter);
   border-radius: var(--tk-border-radius-md);
-  overflow: hidden;
 
   &__header {
     display: flex;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
-    border-bottom: 1px solid var(--tk-border-color-lighter);
     background: var(--tk-fill-color-light);
+    border-bottom: 1px solid var(--tk-border-color-lighter);
   }
 
   &__title {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
@@ -739,26 +739,26 @@ function handleCancel() {
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   &__body {
-    padding: var(--tk-spacing-lg);
     display: flex;
     flex-direction: column;
     gap: var(--tk-spacing-md);
+    padding: var(--tk-spacing-lg);
   }
 
   &__toggle {
-    background: transparent;
-    border: none;
-    cursor: pointer;
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    background: transparent;
+    border: none;
 
     &:hover { color: var(--tk-primary-color); }
   }
@@ -777,21 +777,21 @@ function handleCancel() {
   flex-direction: column;
   gap: var(--tk-spacing-xs);
   padding: var(--tk-spacing-md) var(--tk-spacing-sm);
+  text-align: left;
+  cursor: pointer;
   background-color: var(--tk-bg-color);
   border: 1px solid var(--tk-border-color-lighter);
   border-radius: var(--tk-border-radius-md);
-  cursor: pointer;
   transition: all 0.2s ease;
-  text-align: left;
 
   &:hover {
-    border-color: var(--tk-border-color);
     background-color: var(--tk-fill-color-light);
+    border-color: var(--tk-border-color);
   }
 
   &--active {
-    border-color: var(--tk-primary-color);
     background-color: var(--tk-primary-color-light-9);
+    border-color: var(--tk-primary-color);
   }
 
   &__label {
@@ -809,8 +809,8 @@ function handleCancel() {
     position: absolute;
     top: 4px;
     right: 4px;
-    color: var(--tk-primary-color);
     font-size: 14px;
+    color: var(--tk-primary-color);
   }
 }
 
@@ -824,24 +824,24 @@ function handleCancel() {
 
 .tk-schedule-tab {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   height: 28px;
   padding: 0 var(--tk-spacing-md);
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-medium);
   color: var(--tk-text-secondary);
+  cursor: pointer;
   background: transparent;
   border: none;
   border-radius: var(--tk-border-radius-sm);
-  cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover { color: var(--tk-text-primary); }
 
   &--active {
-    background-color: var(--tk-bg-color);
     color: var(--tk-primary-color);
+    background-color: var(--tk-bg-color);
   }
 
   &__num {
@@ -868,35 +868,35 @@ function handleCancel() {
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-medium);
   color: var(--tk-text-regular);
+  cursor: pointer;
   background-color: var(--tk-bg-fill);
   border: 1px solid var(--tk-border-color-lighter);
   border-radius: var(--tk-border-radius-round);
-  cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
     color: var(--tk-primary-color);
-    border-color: var(--tk-primary-color-light-7);
     background-color: var(--tk-primary-color-light-9);
+    border-color: var(--tk-primary-color-light-7);
   }
 }
 
 .tk-cron-preview {
-  margin-top: var(--tk-spacing-sm);
   padding: var(--tk-spacing-sm) var(--tk-spacing-md);
+  margin-top: var(--tk-spacing-sm);
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-regular);
   background-color: var(--tk-fill-color-light);
   border: 1px dashed var(--tk-border-color);
   border-radius: var(--tk-border-radius-md);
-  font-size: var(--tk-font-size-sm);
-  color: var(--tk-text-regular);
 
   &__label {
+    margin-right: var(--tk-spacing-sm);
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
-    margin-right: var(--tk-spacing-sm);
+    letter-spacing: 0.05em;
   }
 
   &__value {
@@ -907,8 +907,8 @@ function handleCancel() {
 
 .tk-task-form-item__help {
   display: flex;
-  align-items: center;
   gap: 4px;
+  align-items: center;
   margin-top: 4px;
   font-size: var(--tk-font-size-xs);
   color: var(--tk-text-secondary);
@@ -928,19 +928,19 @@ function handleCancel() {
 }
 
 .tk-preview-card {
+  overflow: hidden;
   background: var(--tk-bg-color);
   border: 1px solid var(--tk-border-color-lighter);
   border-radius: var(--tk-border-radius-md);
-  overflow: hidden;
 
   &__header {
     display: flex;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
-    border-bottom: 1px solid var(--tk-border-color-lighter);
     background: var(--tk-fill-color-light);
+    border-bottom: 1px solid var(--tk-border-color-lighter);
   }
 
   &__title {
@@ -956,31 +956,31 @@ function handleCancel() {
 
 .tk-preview-row {
   display: flex;
+  gap: var(--tk-spacing-md);
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--tk-spacing-md);
   padding: var(--tk-spacing-xs) 0;
   border-bottom: 1px dashed var(--tk-border-color-lighter);
 
   &:last-child { border-bottom: none; }
 
   &__label {
+    flex-shrink: 0;
     font-family: var(--tk-font-family-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.05em;
     text-transform: uppercase;
-    flex-shrink: 0;
+    letter-spacing: 0.05em;
   }
 
   &__value {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-primary);
-    font-weight: var(--tk-font-weight-medium);
-    text-align: right;
     max-width: 60%;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: var(--tk-font-size-sm);
+    font-weight: var(--tk-font-weight-medium);
+    color: var(--tk-text-primary);
+    text-align: right;
     white-space: nowrap;
 
     &--mono {
@@ -990,9 +990,9 @@ function handleCancel() {
     }
 
     &--empty {
-      color: var(--tk-text-placeholder);
       font-style: italic;
       font-weight: var(--tk-font-weight-regular);
+      color: var(--tk-text-placeholder);
     }
   }
 }
@@ -1001,9 +1001,11 @@ function handleCancel() {
   .tk-task-form__grid {
     grid-template-columns: 1fr;
   }
+
   .tk-task-form__side {
     position: static;
   }
+
   .tk-executor-grid {
     grid-template-columns: repeat(2, 1fr);
   }

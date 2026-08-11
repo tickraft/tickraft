@@ -8,13 +8,6 @@ import type { Ref, ComputedRef } from 'vue'
 /** Field validator type (sync or async) */
 export type FieldValidator = (value: unknown) => Promise<boolean> | boolean
 
-/** Field link callback type */
-export type FieldLinkCallback<T> = (
-  current: T,
-  newValue: unknown,
-  changedProp: keyof T,
-) => void
-
 /** Field dependency change callback type */
 export type WatchDependencyCallback<T> = (newValue: unknown, form: T) => void
 
@@ -78,32 +71,6 @@ export interface UseFormReturn<T extends Record<string, unknown>> {
   setFieldValue: (field: keyof T, value: unknown) => void
   /** Get a field value */
   getFieldValue: (field: keyof T) => unknown
-
-  // ── Legacy field aliases (backward compatibility) ──
-  /** Current form values (legacy alias, equivalent to form) */
-  values: T
-  /** Submitting state (legacy alias, equivalent to submitting) */
-  loading: Ref<boolean>
-  /** Submit error message (legacy alias) */
-  error: Ref<string | null>
-  /** Immediate submit (legacy alias) */
-  submitImmediate: () => Promise<boolean>
-  /** Debounced submit (legacy alias) */
-  submitDebounced: (delay?: number) => Promise<boolean>
-  /** Submit the form (legacy alias, equivalent to submit) */
-  handleSubmit: (values?: T) => Promise<boolean>
-  /** Reset (legacy alias, equivalent to resetForm) */
-  reset: () => void
-  /** Clear submit error (legacy alias) */
-  clearError: () => void
-  /** Clear a specific field error (legacy alias) */
-  clearFieldError: (field: keyof T) => void
-  /** Register a field link (legacy alias, with dependent field clearing) */
-  linkField: (
-    prop: keyof T,
-    dependentProps: Array<keyof T>,
-    callback: FieldLinkCallback<T>,
-  ) => void
 }
 
 /** Default submit debounce delay (ms) */
@@ -200,7 +167,6 @@ export function useForm<T extends Record<string, unknown>>(
   const initial = ref<T>(cloneDeep(initialValues))
 
   const submitting = ref(false)
-  const error: Ref<string | null> = ref(null)
   const errors: Ref<Record<string, string>> = ref({})
 
   /** Whether there are changes relative to the initial values */
@@ -289,13 +255,11 @@ export function useForm<T extends Record<string, unknown>>(
     if (submitLocked) return false
     submitLocked = true
     submitting.value = true
-    error.value = null
     try {
       await submitFn(form)
       initial.value = cloneDeep(form)
       return true
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Submit failed'
+    } catch {
       return false
     } finally {
       submitting.value = false
@@ -316,7 +280,6 @@ export function useForm<T extends Record<string, unknown>>(
     Object.keys(target).forEach((key) => delete target[key])
     Object.assign(target, snapshot)
     errors.value = {}
-    error.value = null
   }
 
   /**
@@ -372,118 +335,12 @@ export function useForm<T extends Record<string, unknown>>(
     return form[field]
   }
 
-  // ── Legacy alias implementations (backward compatibility) ──
-
-  /** loading (legacy alias, equivalent to submitting) */
-  const loading = submitting
-
-  /**
-   * Immediate submit (legacy alias, bypasses the debounce lock but still tracks submitting state)
-   * @returns whether the submit succeeded
-   */
-  async function submitImmediate(): Promise<boolean> {
-    submitting.value = true
-    error.value = null
-    try {
-      await submitFn(form)
-      initial.value = cloneDeep(form)
-      return true
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Submit failed'
-      return false
-    } finally {
-      submitting.value = false
-    }
-  }
-
-  /**
-   * Debounced submit (legacy alias)
-   * @param delay - debounce delay (ms); defaults to 500
-   * @returns whether the submit succeeded (false when ignored)
-   */
-  async function submitDebounced(delay: number = DEFAULT_SUBMIT_DEBOUNCE): Promise<boolean> {
-    if (submitLocked) return false
-    submitLocked = true
-    try {
-      return await submitImmediate()
-    } finally {
-      clearSubmitLockTimer()
-      submitLockTimer = setTimeout(() => {
-        submitLocked = false
-        submitLockTimer = null
-      }, delay)
-    }
-  }
-
-  /**
-   * Submit the form (legacy alias)
-   * @param values - optional form values; defaults to the current form
-   * @returns whether the submit succeeded
-   */
-  async function handleSubmit(values?: T): Promise<boolean> {
-    submitting.value = true
-    error.value = null
-    try {
-      await submitFn(values ?? form)
-      initial.value = cloneDeep(form)
-      return true
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Submit failed'
-      return false
-    } finally {
-      submitting.value = false
-    }
-  }
-
-  /** Reset (legacy alias, equivalent to resetForm) */
-  function reset(): void {
-    resetForm()
-  }
-
-  /** Clear submit error (legacy alias) */
-  function clearError(): void {
-    error.value = null
-  }
-
-  /**
-   * Clear a specific field error (legacy alias)
-   * @param field - field name
-   */
-  function clearFieldError(field: keyof T): void {
-    delete errors.value[field as string]
-  }
-
-  /**
-   * Register a field link (legacy alias)
-   *
-   * Watches `prop` changes, triggers the callback and clears errors on dependent fields.
-   * @param prop - trigger field
-   * @param dependentProps - dependent field collection (whose errors are cleared after the link)
-   * @param callback - link callback
-   */
-  function linkField(
-    prop: keyof T,
-    dependentProps: Array<keyof T>,
-    callback: FieldLinkCallback<T>,
-  ): void {
-    watch(
-      () => form[prop],
-      (newValue) => {
-        callback(form, newValue, prop)
-        dependentProps.forEach((dep) => {
-          delete errors.value[dep as string]
-        })
-      },
-    )
-  }
-
   // Clear the debounce lock timer on unmount
   onBeforeUnmount(() => {
     clearSubmitLockTimer()
   })
 
   return {
-    // Canonical fields
     form,
     errors,
     submitting,
@@ -496,16 +353,5 @@ export function useForm<T extends Record<string, unknown>>(
     watchDependencies,
     setFieldValue,
     getFieldValue,
-    // Legacy field aliases
-    values: form,
-    loading,
-    error,
-    submitImmediate,
-    submitDebounced,
-    handleSubmit,
-    reset,
-    clearError,
-    clearFieldError,
-    linkField,
   }
 }

@@ -89,51 +89,51 @@ function handleAction() {
 .tk-empty {
   display: flex;
   flex-direction: column;
+  gap: var(--tk-spacing-md);
   align-items: center;
   justify-content: center;
-  gap: var(--tk-spacing-md);
   padding: var(--tk-spacing-2xl) var(--tk-spacing-md);
   text-align: center;
 }
 
 .tk-empty__icon {
-  width: 64px;
-  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--tk-gray-7);
+  width: 64px;
+  height: 64px;
   font-size: 64px;
   line-height: 1;
+  color: var(--tk-gray-7);
   user-select: none;
 }
 
 .tk-empty__icon :deep(svg) {
   width: 100%;
   height: 100%;
-  fill: currentColor;
+  fill: currentcolor;
 }
 
 .tk-empty__title {
   margin: 0;
   font-size: var(--tk-font-size-lg);
   font-weight: var(--tk-font-weight-medium);
-  color: var(--tk-text-primary);
   line-height: var(--tk-line-height-normal);
+  color: var(--tk-text-primary);
 }
 
 .tk-empty__description {
+  max-width: 360px;
   margin: 0;
   font-size: var(--tk-font-size-base);
-  color: var(--tk-text-secondary);
   line-height: var(--tk-line-height-relaxed);
-  max-width: 360px;
+  color: var(--tk-text-secondary);
   word-break: break-all;
 }
 
 .tk-empty__action {
-  margin-top: var(--tk-spacing-lg);
   display: flex;
   gap: var(--tk-spacing-sm);
+  margin-top: var(--tk-spacing-lg);
 }
 </style>

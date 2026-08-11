@@ -425,32 +425,32 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
 
   // ---- Section card ----
   &__card {
+    overflow: hidden;
     background-color: var(--tk-bg-surface);
     border: var(--tk-border-default);
     border-radius: var(--tk-border-radius-lg);
-    overflow: hidden;
   }
 
   &__card-head {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-md);
+    align-items: center;
     padding: var(--tk-spacing-lg) var(--tk-spacing-xl);
-    border-bottom: 1px solid var(--tk-border-color-light);
     background-color: var(--tk-bg-surface-hover);
+    border-bottom: 1px solid var(--tk-border-color-light);
   }
 
   &__card-icon {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 36px;
     height: 36px;
-    flex-shrink: 0;
-    border-radius: var(--tk-border-radius-base);
-    background-color: var(--tk-primary-color-bg);
-    color: var(--tk-primary-color);
     font-size: 18px;
+    color: var(--tk-primary-color);
+    background-color: var(--tk-primary-color-bg);
+    border-radius: var(--tk-border-radius-base);
   }
 
   &__card-heading {
@@ -505,14 +505,14 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
 
   &__row-help {
     font-size: var(--tk-font-size-xs);
-    color: var(--tk-text-secondary);
     line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
   }
 
   &__row-control {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   &__select {
@@ -531,11 +531,11 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
   // ---- Actions ----
   &__actions {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: flex-end;
-    gap: var(--tk-spacing-sm);
-    margin-top: var(--tk-spacing-xl);
     padding-top: var(--tk-spacing-lg);
+    margin-top: var(--tk-spacing-xl);
     border-top: 1px solid var(--tk-border-color-light);
   }
 
@@ -555,22 +555,22 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
 // ---- Segmented control ----
 .tk-segmented {
   display: inline-flex;
+  gap: var(--tk-spacing-xs);
   padding: var(--tk-spacing-xs);
   background-color: var(--tk-bg-hover);
   border: var(--tk-border-default);
   border-radius: var(--tk-border-radius-base);
-  gap: var(--tk-spacing-xs);
 
   &__item {
     padding: var(--tk-spacing-xs) var(--tk-spacing-lg);
     font-size: var(--tk-font-size-sm);
     font-weight: var(--tk-font-weight-medium);
     color: var(--tk-text-secondary);
-    border-radius: var(--tk-border-radius-sm);
     cursor: pointer;
     user-select: none;
-    border: none;
     background: transparent;
+    border: none;
+    border-radius: var(--tk-border-radius-sm);
     transition: all var(--tk-transition-fast);
 
     &:hover {
@@ -578,8 +578,8 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
     }
 
     &--active {
-      background-color: var(--tk-bg-surface);
       color: var(--tk-primary-color);
+      background-color: var(--tk-bg-surface);
     }
   }
 }

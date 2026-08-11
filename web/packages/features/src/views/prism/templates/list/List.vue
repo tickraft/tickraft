@@ -396,14 +396,14 @@ function handleSizeChange(size: number): void {
   // ===== severity chips =====
   &__chip {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     height: 36px;
     padding: 0 var(--tk-spacing-lg);
+    cursor: pointer;
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-md);
-    cursor: pointer;
     transition: border-color var(--tk-animation-duration-fast) var(--tk-ease-out),
       background-color var(--tk-animation-duration-fast) var(--tk-ease-out);
 
@@ -412,8 +412,8 @@ function handleSizeChange(size: number): void {
     }
 
     &.is-active {
-      border-color: var(--tk-primary-color);
       background-color: var(--tk-primary-color-bg);
+      border-color: var(--tk-primary-color);
 
       .tk-prism-templates__chip-label,
       .tk-prism-templates__chip-count {
@@ -423,10 +423,10 @@ function handleSizeChange(size: number): void {
   }
 
   &__chip-dot {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: var(--tk-border-radius-circle);
-    flex-shrink: 0;
   }
 
   &__chip--critical &__chip-dot {
@@ -451,34 +451,34 @@ function handleSizeChange(size: number): void {
   }
 
   &__chip-count {
+    min-width: 18px;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-base);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
-    min-width: 18px;
+    color: var(--tk-text-primary);
     text-align: right;
   }
 
   // ===== filter toolbar =====
   &__toolbar {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-md);
     padding: var(--tk-spacing-lg);
+    margin-bottom: var(--tk-spacing-lg);
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-lg);
-    flex-wrap: wrap;
-    margin-bottom: var(--tk-spacing-lg);
   }
 
   &__filters {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-md);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-md);
+    align-items: center;
   }
 
   &__field {
@@ -517,12 +517,12 @@ function handleSizeChange(size: number): void {
     display: flex;
     flex-direction: column;
     padding: var(--tk-spacing-lg);
+    overflow: hidden;
     background-color: var(--tk-bg-surface);
     border: 1px solid var(--tk-border-color);
     border-radius: var(--tk-radius-lg);
     transition: border-color var(--tk-animation-duration-fast) var(--tk-ease-out),
       transform var(--tk-animation-duration-fast) var(--tk-ease-out);
-    overflow: hidden;
 
     &:hover {
       border-color: var(--tk-border-strong);
@@ -530,12 +530,12 @@ function handleSizeChange(size: number): void {
     }
 
     &::before {
-      content: "";
       position: absolute;
-      left: 0;
       top: 0;
       bottom: 0;
+      left: 0;
       width: 3px;
+      content: "";
     }
   }
 
@@ -553,71 +553,71 @@ function handleSizeChange(size: number): void {
 
   &__card-top {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-sm);
     margin-bottom: var(--tk-spacing-md);
   }
 
   &__card-id {
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
-    color: var(--tk-text-secondary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-secondary);
   }
 
   &__card-hash {
-    color: var(--tk-text-placeholder);
     margin-right: 1px;
+    color: var(--tk-text-placeholder);
   }
 
   &__card-key {
+    max-width: 180px;
+    padding: 2px var(--tk-spacing-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-secondary);
-    padding: 2px var(--tk-spacing-sm);
+    white-space: nowrap;
     background-color: var(--tk-neutral-100);
     border: 1px solid var(--tk-border-color-light);
     border-radius: var(--tk-radius-sm);
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   &__card-name {
+    margin: 0 0 var(--tk-spacing-sm);
     font-size: var(--tk-font-size-lg);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     line-height: 1.25;
-    margin: 0 0 var(--tk-spacing-sm);
+    color: var(--tk-text-primary);
   }
 
   &__card-desc {
-    font-size: var(--tk-font-size-xs);
-    color: var(--tk-text-secondary);
-    line-height: var(--tk-line-height-normal);
-    margin: 0 0 var(--tk-spacing-lg);
     display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    margin: 0 0 var(--tk-spacing-lg);
     overflow: hidden;
+    -webkit-line-clamp: 2;
+    font-size: var(--tk-font-size-xs);
+    line-height: var(--tk-line-height-normal);
+    color: var(--tk-text-secondary);
+    -webkit-box-orient: vertical;
   }
 
   // ===== condition expression =====
   &__expr {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-sm);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-sm);
+    align-items: center;
     padding: var(--tk-spacing-md) var(--tk-spacing-lg);
+    margin-bottom: var(--tk-spacing-lg);
+    font-family: var(--tk-font-family-mono);
+    font-variant-numeric: tabular-nums;
     background-color: var(--tk-neutral-50);
     border: 1px solid var(--tk-border-color-light);
     border-radius: var(--tk-radius-md);
-    font-family: var(--tk-font-family-mono);
-    font-variant-numeric: tabular-nums;
-    margin-bottom: var(--tk-spacing-lg);
   }
 
   &__expr-metric {
@@ -628,44 +628,44 @@ function handleSizeChange(size: number): void {
 
   &__expr-op {
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     font-weight: var(--tk-font-weight-medium);
+    color: var(--tk-text-secondary);
   }
 
   &__expr-thresh {
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-primary);
     font-weight: var(--tk-font-weight-bold);
+    color: var(--tk-text-primary);
   }
 
   &__expr-for {
+    margin-left: var(--tk-spacing-xs);
     font-family: var(--tk-font-family);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-placeholder);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-left: var(--tk-spacing-xs);
   }
 
   &__expr-dur {
     font-size: var(--tk-font-size-xs);
-    color: var(--tk-text-regular);
     font-weight: var(--tk-font-weight-medium);
+    color: var(--tk-text-regular);
   }
 
   // ===== meta row =====
   &__card-meta {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-sm);
-    margin-bottom: var(--tk-spacing-md);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-sm);
+    align-items: center;
+    margin-bottom: var(--tk-spacing-md);
   }
 
   &__usage {
     display: inline-flex;
-    align-items: center;
     gap: var(--tk-spacing-xs);
+    align-items: center;
     font-family: var(--tk-font-family-mono);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-semibold);
@@ -675,8 +675,8 @@ function handleSizeChange(size: number): void {
   }
 
   &__usage-num {
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
+    color: var(--tk-text-primary);
   }
 
   &__usage.is-active &__usage-num {
@@ -686,32 +686,32 @@ function handleSizeChange(size: number): void {
   // ===== footer =====
   &__card-footer {
     display: flex;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: space-between;
-    gap: var(--tk-spacing-sm);
     padding-top: var(--tk-spacing-md);
-    border-top: 1px solid var(--tk-border-color-light);
     margin-top: auto;
+    border-top: 1px solid var(--tk-border-color-light);
   }
 
   &__card-actions {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
   }
 
   // ===== empty state =====
   &__empty {
     display: flex;
     flex-direction: column;
+    gap: var(--tk-spacing-sm);
     align-items: center;
     justify-content: center;
-    gap: var(--tk-spacing-sm);
     padding: var(--tk-spacing-5xl) var(--tk-spacing-lg);
+    color: var(--tk-text-secondary);
     background-color: var(--tk-bg-surface);
     border: 1px dashed var(--tk-border-color);
     border-radius: var(--tk-radius-lg);
-    color: var(--tk-text-secondary);
   }
 
   &__empty-icon {
@@ -720,15 +720,15 @@ function handleSizeChange(size: number): void {
   }
 
   &__empty-text {
+    margin: 0;
     font-size: var(--tk-font-size-sm);
     color: var(--tk-text-secondary);
-    margin: 0;
   }
 
   &__empty-hint {
+    margin: 0;
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-placeholder);
-    margin: 0;
   }
 
   // ===== pagination =====

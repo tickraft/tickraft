@@ -184,8 +184,8 @@ onBeforeUnmount(() => {
 
   &__footer {
     display: flex;
-    justify-content: flex-end;
     gap: var(--tk-spacing-sm, 12px);
+    justify-content: flex-end;
   }
 }
 </style>

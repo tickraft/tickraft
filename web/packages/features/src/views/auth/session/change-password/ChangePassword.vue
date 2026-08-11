@@ -273,28 +273,28 @@ async function handleSubmit(): Promise<void> {
 .tk-cp__bg {
   position: fixed;
   inset: 0;
-  pointer-events: none;
   z-index: 0;
+  pointer-events: none;
 
   &::before {
-    content: '';
     position: absolute;
     top: -240px;
     left: 50%;
-    transform: translateX(-50%);
     width: 900px;
     height: 900px;
-    background: radial-gradient(circle, rgba(59, 91, 246, 0.10) 0%, transparent 65%);
+    content: '';
+    background: radial-gradient(circle, rgb(59 91 246 / 10%) 0%, transparent 65%);
+    transform: translateX(-50%);
   }
 
   &::after {
-    content: '';
     position: absolute;
-    bottom: -200px;
     right: -200px;
+    bottom: -200px;
     width: 600px;
     height: 600px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+    content: '';
+    background: radial-gradient(circle, rgb(139 92 246 / 8%) 0%, transparent 70%);
   }
 }
 
@@ -304,12 +304,12 @@ async function handleSubmit(): Promise<void> {
   left: 24px;
   z-index: 10;
   display: inline-flex;
-  align-items: center;
   gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
   font-size: 13px;
   color: var(--tk-text-secondary);
   text-decoration: none;
-  padding: 6px 10px;
   border-radius: var(--tk-radius-md);
   transition: color var(--tk-duration-fast), background var(--tk-duration-fast);
 
@@ -326,73 +326,73 @@ async function handleSubmit(): Promise<void> {
   z-index: 1;
   width: 100%;
   max-width: 440px;
+  padding: 36px;
   background-color: var(--tk-bg-surface);
   border: 1px solid var(--tk-border-color-base);
   border-radius: var(--tk-radius-xl);
-  padding: 36px;
 }
 
 .tk-cp__header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
   margin-bottom: 28px;
+  text-align: center;
 }
 
 .tk-cp__icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 56px;
   height: 56px;
-  border-radius: var(--tk-radius-lg);
+  margin-bottom: 16px;
+  color: var(--tk-primary-color);
   background: var(--tk-primary-color-bg);
   border: 1px solid var(--tk-primary-color-border);
-  color: var(--tk-primary-color);
-  margin-bottom: 16px;
-  position: relative;
+  border-radius: var(--tk-radius-lg);
 
   svg { width: 26px; height: 26px; }
 
   &::after {
-    content: '';
     position: absolute;
     inset: -6px;
-    border-radius: var(--tk-radius-xl);
-    background: radial-gradient(circle, rgba(59, 91, 246, 0.20) 0%, transparent 70%);
     z-index: -1;
+    content: '';
+    background: radial-gradient(circle, rgb(59 91 246 / 20%) 0%, transparent 70%);
+    border-radius: var(--tk-radius-xl);
     filter: blur(6px);
   }
 }
 
 .tk-cp__title {
+  margin: 0 0 6px;
   font-family: var(--tk-font-display);
   font-size: 22px;
   font-weight: var(--tk-font-weight-bold);
-  letter-spacing: -0.02em;
   color: var(--tk-text-primary);
-  margin: 0 0 6px;
+  letter-spacing: -0.02em;
 }
 
 .tk-cp__subtitle {
-  font-size: 13px;
-  color: var(--tk-text-secondary);
-  line-height: 1.5;
   margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tk-text-secondary);
 }
 
 .tk-cp__field { margin-bottom: 16px; }
 
 .tk-cp__label {
   display: block;
+  margin-bottom: 8px;
   font-family: var(--tk-font-mono);
   font-size: 11px;
   font-weight: var(--tk-font-weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--tk-text-secondary);
-  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .tk-cp__input-wrap {
@@ -420,15 +420,16 @@ async function handleSubmit(): Promise<void> {
   font-family: var(--tk-font-body);
   font-size: 14px;
   color: var(--tk-text-primary);
+  outline: none;
   background-color: var(--tk-bg-surface);
   border: 1px solid var(--tk-border-color-base);
   border-radius: var(--tk-radius-md);
-  outline: none;
   transition: border-color var(--tk-duration-fast) var(--tk-ease-out),
     box-shadow var(--tk-duration-fast) var(--tk-ease-out);
 
   &::placeholder { color: var(--tk-text-placeholder); }
   &:hover { border-color: var(--tk-border-color-dark); }
+
   &:focus {
     border-color: var(--tk-primary-color);
     box-shadow: var(--tk-shadow-focus);
@@ -436,6 +437,7 @@ async function handleSubmit(): Promise<void> {
 
   &--error {
     border-color: var(--tk-danger-color);
+
     &:focus {
       border-color: var(--tk-danger-color);
       box-shadow: var(--tk-shadow-danger-focus);
@@ -451,10 +453,10 @@ async function handleSubmit(): Promise<void> {
   justify-content: center;
   width: 32px;
   height: 32px;
+  color: var(--tk-text-secondary);
+  cursor: pointer;
   background: transparent;
   border: none;
-  cursor: pointer;
-  color: var(--tk-text-secondary);
   border-radius: var(--tk-radius-sm);
 
   &:hover {
@@ -466,11 +468,11 @@ async function handleSubmit(): Promise<void> {
 }
 
 .tk-cp__field-error {
-  font-size: 12px;
-  color: var(--tk-danger-color-text);
-  margin-top: 6px;
   min-height: 16px;
+  margin-top: 6px;
+  font-size: 12px;
   line-height: 1.4;
+  color: var(--tk-danger-color-text);
 }
 
 // Strength meter
@@ -486,9 +488,9 @@ async function handleSubmit(): Promise<void> {
 
   &-seg {
     height: 5px;
-    border-radius: var(--tk-radius-round);
     background: var(--tk-bg-fill);
     border: 1px solid var(--tk-border-color-light);
+    border-radius: var(--tk-radius-round);
     transition: background var(--tk-duration-fast) var(--tk-ease-out),
       border-color var(--tk-duration-fast) var(--tk-ease-out);
   }
@@ -500,13 +502,13 @@ async function handleSubmit(): Promise<void> {
 
   &-meta {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     font-family: var(--tk-font-mono);
     font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--tk-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   &-label { font-weight: var(--tk-font-weight-semibold); }
@@ -521,8 +523,8 @@ async function handleSubmit(): Promise<void> {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 14px;
-  margin: 0 0 22px;
   padding: 12px 14px;
+  margin: 0 0 22px;
   background: var(--tk-bg-fill-light);
   border: 1px solid var(--tk-border-color-light);
   border-radius: var(--tk-radius-md);
@@ -530,8 +532,8 @@ async function handleSubmit(): Promise<void> {
 
 .tk-cp__rule {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   font-size: 12px;
   color: var(--tk-text-secondary);
   transition: color var(--tk-duration-fast) var(--tk-ease-out);
@@ -540,24 +542,24 @@ async function handleSubmit(): Promise<void> {
     color: var(--tk-success-color-text);
 
     .tk-cp__rule-icon {
+      color: #fff;
       background: var(--tk-success-color);
       border-color: var(--tk-success-color);
-      color: #fff;
     }
   }
 }
 
 .tk-cp__rule-icon {
-  flex-shrink: 0;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  background: var(--tk-bg-fill);
   color: var(--tk-text-placeholder);
+  background: var(--tk-bg-fill);
   border: 1px solid var(--tk-border-color-base);
+  border-radius: 50%;
   transition: background var(--tk-duration-fast), border-color var(--tk-duration-fast), color var(--tk-duration-fast);
 
   svg { width: 10px; height: 10px; stroke-width: 3; }
@@ -565,26 +567,27 @@ async function handleSubmit(): Promise<void> {
 
 // Submit button
 .tk-cp__submit {
-  width: 100%;
-  height: 44px;
   display: inline-flex;
+  gap: 8px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  width: 100%;
+  height: 44px;
   font-family: var(--tk-font-body);
   font-size: 14px;
   font-weight: var(--tk-font-weight-semibold);
   color: #fff;
+  cursor: pointer;
   background: var(--tk-gradient-primary);
   border: 1px solid var(--tk-primary-color);
   border-radius: var(--tk-radius-md);
-  cursor: pointer;
   transition: box-shadow var(--tk-duration-fast) var(--tk-ease-out),
     transform var(--tk-duration-fast) var(--tk-ease-out),
     opacity var(--tk-duration-fast) var(--tk-ease-out);
 
   &:hover:not(:disabled) { box-shadow: var(--tk-glow-primary); }
   &:active:not(:disabled) { transform: translateY(1px); }
+
   &:disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -592,15 +595,15 @@ async function handleSubmit(): Promise<void> {
   }
 
   &--loading {
-    pointer-events: none;
-    color: transparent;
     position: relative;
+    color: transparent;
+    pointer-events: none;
 
     &::after {
-      content: '';
       position: absolute;
       width: 16px;
       height: 16px;
+      content: '';
       border: 2px solid #fff;
       border-top-color: transparent;
       border-radius: 50%;
@@ -611,16 +614,16 @@ async function handleSubmit(): Promise<void> {
 
 .tk-cp__foot {
   margin-top: 22px;
-  text-align: center;
   font-family: var(--tk-font-mono);
   font-size: 11px;
   color: var(--tk-text-placeholder);
+  text-align: center;
   letter-spacing: 0.04em;
 
   a {
+    margin: 0 4px;
     color: var(--tk-text-link);
     text-decoration: none;
-    margin: 0 4px;
 
     &:hover {
       text-decoration: underline;

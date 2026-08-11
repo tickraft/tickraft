@@ -99,13 +99,19 @@ const features = computed<UpgradeFeature[]>(() => [
 .tk-upgrade-banner {
   position: relative;
   display: block;
-  border-radius: var(--tk-border-radius-lg);
+  padding: var(--tk-spacing-lg);
   overflow: hidden;
+  // Fallback for browsers without color-mix support (#4263eb is --tk-primary-color)
+  background:
+    linear-gradient(135deg, rgba(66, 99, 235, 0.12) 0%, transparent 60%),
+    var(--tk-bg-surface);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--tk-primary-color) 12%, transparent) 0%, transparent 60%),
     var(--tk-bg-surface);
+  // Fallback for browsers without color-mix support
+  border: 1px solid rgba(66, 99, 235, 0.3);
   border: 1px solid color-mix(in srgb, var(--tk-primary-color) 30%, var(--tk-border-color));
-  padding: var(--tk-spacing-lg);
+  border-radius: var(--tk-border-radius-lg);
   isolation: isolate;
 }
 
@@ -113,16 +119,22 @@ const features = computed<UpgradeFeature[]>(() => [
   position: absolute;
   top: -60px;
   right: -60px;
+  z-index: -1;
   width: 220px;
   height: 220px;
-  border-radius: 50%;
+  pointer-events: none;
+  // Fallback for browsers without color-mix support
+  background: radial-gradient(
+    circle,
+    rgba(66, 99, 235, 0.22) 0%,
+    transparent 70%
+  );
   background: radial-gradient(
     circle,
     color-mix(in srgb, var(--tk-primary-color) 22%, transparent) 0%,
     transparent 70%
   );
-  pointer-events: none;
-  z-index: -1;
+  border-radius: 50%;
 }
 
 .tk-upgrade-banner__content {
@@ -139,9 +151,9 @@ const features = computed<UpgradeFeature[]>(() => [
 
 .tk-upgrade-banner__heading {
   display: flex;
-  align-items: center;
-  gap: var(--tk-spacing-sm);
   flex-wrap: wrap;
+  gap: var(--tk-spacing-sm);
+  align-items: center;
 }
 
 .tk-upgrade-banner__badge {
@@ -152,10 +164,10 @@ const features = computed<UpgradeFeature[]>(() => [
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-bold);
   color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   background: linear-gradient(135deg, var(--tk-primary-color) 0%, var(--tk-primary-color-dark, var(--tk-primary-color)) 100%);
   border-radius: var(--tk-radius-sm);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .tk-upgrade-banner__title {
@@ -163,32 +175,32 @@ const features = computed<UpgradeFeature[]>(() => [
   font-family: var(--tk-font-family);
   font-size: var(--tk-font-size-xl);
   font-weight: var(--tk-font-weight-bold);
+  line-height: 1.2;
   color: var(--tk-text-primary);
   letter-spacing: -0.02em;
-  line-height: 1.2;
 }
 
 .tk-upgrade-banner__desc {
+  max-width: 640px;
   margin: 0;
   font-size: var(--tk-font-size-sm);
-  color: var(--tk-text-secondary);
   line-height: var(--tk-line-height-normal);
-  max-width: 640px;
+  color: var(--tk-text-secondary);
 }
 
 .tk-upgrade-banner__features {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--tk-spacing-sm);
-  list-style: none;
-  margin: 0;
   padding: 0;
+  margin: 0;
+  list-style: none;
 }
 
 .tk-upgrade-banner__feature {
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-sm);
+  align-items: center;
   padding: var(--tk-spacing-sm) var(--tk-spacing-md);
   background-color: var(--tk-bg-surface);
   border: 1px solid var(--tk-border-color-lighter);
@@ -196,21 +208,25 @@ const features = computed<UpgradeFeature[]>(() => [
   transition: border-color var(--tk-transition-fast), background-color var(--tk-transition-fast);
 
   &:hover {
-    border-color: color-mix(in srgb, var(--tk-primary-color) 40%, var(--tk-border-color));
+    // Fallback for browsers without color-mix support
+    background-color: rgba(66, 99, 235, 0.05);
     background-color: color-mix(in srgb, var(--tk-primary-color) 5%, var(--tk-bg-surface));
+    // Fallback for browsers without color-mix support
+    border-color: rgba(66, 99, 235, 0.4);
+    border-color: color-mix(in srgb, var(--tk-primary-color) 40%, var(--tk-border-color));
   }
 }
 
 .tk-upgrade-banner__feature-icon {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
-  flex-shrink: 0;
-  border-radius: var(--tk-radius-sm);
-  background-color: var(--tk-primary-color-bg);
   color: var(--tk-primary-color);
+  background-color: var(--tk-primary-color-bg);
+  border-radius: var(--tk-radius-sm);
 
   i { font-size: 15px; }
 }
@@ -218,35 +234,35 @@ const features = computed<UpgradeFeature[]>(() => [
 .tk-upgrade-banner__feature-label {
   font-size: var(--tk-font-size-sm);
   font-weight: var(--tk-font-weight-medium);
-  color: var(--tk-text-primary);
   line-height: 1.3;
+  color: var(--tk-text-primary);
 }
 
 .tk-upgrade-banner__actions {
   display: flex;
-  align-items: center;
   gap: var(--tk-spacing-sm);
+  align-items: center;
 }
 
 .tk-upgrade-banner__cta {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   padding: var(--tk-spacing-sm) var(--tk-spacing-lg);
   font-family: var(--tk-font-family);
   font-size: var(--tk-font-size-sm);
   font-weight: var(--tk-font-weight-semibold);
   color: #fff;
+  text-decoration: none;
+  cursor: pointer;
   background: var(--tk-gradient-primary, var(--tk-primary-color));
   border: 1px solid var(--tk-primary-color);
   border-radius: var(--tk-radius-md);
-  text-decoration: none;
-  cursor: pointer;
   transition: box-shadow var(--tk-transition-fast), transform var(--tk-transition-fast);
 
   &:hover {
-    box-shadow: var(--tk-glow-primary, 0 0 0 3px color-mix(in srgb, var(--tk-primary-color) 20%, transparent));
     color: #fff;
+    box-shadow: var(--tk-glow-primary, 0 0 0 3px color-mix(in srgb, var(--tk-primary-color) 20%, transparent));
   }
 
   &:active {

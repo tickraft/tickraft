@@ -20,7 +20,7 @@ export interface TaskListParams extends PageParams {
 }
 
 /** Execution log list query parameters (backend only reads page/size) */
-export interface LogListParams extends PageParams {}
+export type LogListParams = PageParams
 
 /** Execution stats query parameters */
 export interface ExecutionStatsParams {

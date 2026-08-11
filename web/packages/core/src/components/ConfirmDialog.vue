@@ -194,8 +194,8 @@ watch(
 <style scoped lang="scss">
 .tk-confirm-dialog__content {
   display: flex;
-  align-items: flex-start;
   gap: var(--tk-spacing-sm);
+  align-items: flex-start;
 }
 
 .tk-confirm-dialog__body {
@@ -205,17 +205,17 @@ watch(
 
 .tk-confirm-dialog__message {
   margin: 0;
-  line-height: var(--tk-line-height-normal);
   font-size: var(--tk-font-size-base);
+  line-height: var(--tk-line-height-normal);
   color: var(--tk-text-regular);
   word-break: break-all;
 }
 
 .tk-confirm-dialog__icon {
-  font-size: 20px;
-  color: var(--tk-info-color);
   flex-shrink: 0;
   margin-top: 2px;
+  font-size: 20px;
+  color: var(--tk-info-color);
 }
 
 .tk-confirm-dialog__icon--danger {
@@ -230,10 +230,10 @@ watch(
 }
 
 .tk-confirm-dialog__verify {
-  margin-top: var(--tk-spacing-md);
   display: flex;
   flex-direction: column;
   gap: var(--tk-spacing-xs);
+  margin-top: var(--tk-spacing-md);
 }
 
 .tk-confirm-dialog__verify-hint {
@@ -243,8 +243,8 @@ watch(
 
 .tk-confirm-dialog__verify-code {
   display: inline-block;
-  margin-left: var(--tk-spacing-xs);
   padding: 2px var(--tk-spacing-xs);
+  margin-left: var(--tk-spacing-xs);
   font-family: var(--tk-font-family-mono);
   font-size: var(--tk-font-size-sm);
   color: var(--tk-danger-color-text);

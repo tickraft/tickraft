@@ -17,9 +17,61 @@
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/Sora-latin.woff2" />
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/HankenGrotesk-latin.woff2" />
     <title>Tickraft</title>
+    <!-- Inline critical styles: render a branded loading screen and a basic
+         color foundation before the app bundle is ready. Hard-coded values
+         only (no var()) so it also renders correctly in legacy browsers
+         (IE11/Trident) where CSS custom properties are unsupported until
+         css-vars-ponyfill resolves them. Vue's mount replaces #app, so the
+         placeholder disappears automatically once the app boots. -->
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background-color: #f5f7fb;
+        color: #1f2329;
+      }
+
+      #app-loading {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      }
+
+      #app-loading__spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #4263eb;
+        border-radius: 50%;
+        animation: tk-loading-spin 1s linear infinite;
+      }
+
+      @keyframes tk-loading-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      #app-loading__brand {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #64748b;
+      }
+    </style>
   </head>
   <body>
-    <div id="app" class="tk-app"></div>
+    <div id="app" class="tk-app">
+      <div id="app-loading">
+        <div id="app-loading__spinner"></div>
+        <div id="app-loading__brand">Tickraft</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

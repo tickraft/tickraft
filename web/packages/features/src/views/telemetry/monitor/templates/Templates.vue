@@ -351,16 +351,16 @@ onMounted(() => {
 <style scoped lang="scss">
 .tk-tpl-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--tk-spacing-md);
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--tk-spacing-md);
   margin-bottom: var(--tk-spacing-md);
-  flex-wrap: wrap;
 
   &__left {
     display: flex;
-    align-items: flex-start;
     gap: var(--tk-spacing-sm);
+    align-items: flex-start;
     min-width: 0;
   }
 
@@ -373,27 +373,27 @@ onMounted(() => {
   }
 
   &__eyebrow {
+    margin-bottom: 4px;
     font-family: var(--tk-font-mono, monospace);
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-secondary);
-    letter-spacing: 0.1em;
     text-transform: uppercase;
-    margin-bottom: 4px;
+    letter-spacing: 0.1em;
   }
 
   &__title-line {
     display: flex;
-    align-items: baseline;
-    gap: var(--tk-spacing-sm);
     flex-wrap: wrap;
+    gap: var(--tk-spacing-sm);
+    align-items: baseline;
   }
 
   &__title {
+    margin: 0;
     font-size: var(--tk-font-size-xl);
     font-weight: var(--tk-font-weight-semibold);
-    color: var(--tk-text-primary);
     line-height: 1;
-    margin: 0;
+    color: var(--tk-text-primary);
   }
 
   &__count {
@@ -403,50 +403,50 @@ onMounted(() => {
   }
 
   &__subtitle {
+    max-width: 680px;
     margin-top: 6px;
     font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
     line-height: 1.5;
-    max-width: 680px;
+    color: var(--tk-text-secondary);
   }
 
   &__actions {
     display: flex;
-    align-items: center;
-    gap: var(--tk-spacing-xs);
     flex-shrink: 0;
+    gap: var(--tk-spacing-xs);
+    align-items: center;
   }
 }
 
 .tk-type-chips {
   display: flex;
-  gap: var(--tk-spacing-sm);
   flex-wrap: wrap;
+  gap: var(--tk-spacing-sm);
   margin-bottom: var(--tk-spacing-md);
 }
 
 .tk-type-chip {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
-  border: 1px solid var(--tk-border-color-light);
-  border-radius: var(--tk-border-radius-base);
-  background: var(--tk-bg-color);
   font-size: var(--tk-font-size-xs);
   cursor: pointer;
-  transition: border-color var(--tk-transition-fast), background-color var(--tk-transition-fast);
   user-select: none;
+  background: var(--tk-bg-color);
+  border: 1px solid var(--tk-border-color-light);
+  border-radius: var(--tk-border-radius-base);
+  transition: border-color var(--tk-transition-fast), background-color var(--tk-transition-fast);
 
   &:hover {
     border-color: var(--tk-border-color);
   }
 
   &__dot {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    flex-shrink: 0;
   }
 
   &__label {
@@ -459,18 +459,18 @@ onMounted(() => {
   }
 
   &__count {
+    min-width: 14px;
     font-family: var(--tk-font-mono, monospace);
     font-size: var(--tk-font-size-xs);
     font-weight: var(--tk-font-weight-bold);
-    color: var(--tk-text-primary);
     font-variant-numeric: tabular-nums;
-    min-width: 14px;
+    color: var(--tk-text-primary);
     text-align: right;
   }
 
   &.is-active {
-    border-color: var(--tk-primary-color);
     background: var(--tk-primary-color-light-9);
+    border-color: var(--tk-primary-color);
 
     .tk-type-chip__label,
     .tk-type-chip__count {
@@ -481,56 +481,56 @@ onMounted(() => {
 
 .tk-type-badge {
   display: inline-flex;
-  align-items: center;
   gap: var(--tk-spacing-xs);
+  align-items: center;
   padding: 1px var(--tk-spacing-sm);
-  border-radius: var(--tk-border-radius-sm);
+  font-family: var(--tk-font-mono, monospace);
   font-size: var(--tk-font-size-xs);
   font-weight: var(--tk-font-weight-medium);
   border: 1px solid transparent;
-  font-family: var(--tk-font-mono, monospace);
+  border-radius: var(--tk-border-radius-sm);
 
   &__dot {
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
+    background: currentcolor;
     border-radius: 50%;
-    background: currentColor;
-    flex-shrink: 0;
   }
 
   &--icmp {
-    background: var(--tk-info-color-light-9);
     color: var(--tk-info-color);
+    background: var(--tk-info-color-light-9);
     border-color: var(--tk-info-color-light-7);
   }
 
   &--tcp {
-    background: var(--tk-success-color-light-9);
     color: var(--tk-success-color);
+    background: var(--tk-success-color-light-9);
     border-color: var(--tk-success-color-light-7);
   }
 
   &--http {
-    background: var(--tk-primary-color-light-9);
     color: var(--tk-primary-color);
+    background: var(--tk-primary-color-light-9);
     border-color: var(--tk-primary-color-light-7);
   }
 
   &--webhook {
-    background: var(--tk-warning-color-light-9);
     color: var(--tk-warning-color);
+    background: var(--tk-warning-color-light-9);
     border-color: var(--tk-warning-color-light-7);
   }
 
   &--dns {
-    background: var(--tk-warning-color-light-9);
     color: var(--tk-warning-color);
+    background: var(--tk-warning-color-light-9);
     border-color: var(--tk-warning-color-light-7);
   }
 
   &--ssl {
-    background: var(--tk-danger-color-light-9);
     color: var(--tk-danger-color);
+    background: var(--tk-danger-color-light-9);
     border-color: var(--tk-danger-color-light-7);
   }
 }

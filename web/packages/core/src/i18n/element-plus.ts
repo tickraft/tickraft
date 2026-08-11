@@ -4,6 +4,7 @@
 
 import { ref } from 'vue'
 import type { Ref } from 'vue'
+import type { Language } from 'element-plus/es/locale'
 
 /**
  * Element Plus locale loader.
@@ -26,7 +27,7 @@ const builtinLoaders: Record<string, () => Promise<{ default: unknown }>> = {
 const customLocales = new Map<string, unknown>()
 
 /** Currently active Element Plus locale object */
-export const elementPlusLocale: Ref<unknown> = ref(null)
+export const elementPlusLocale: Ref<Language | null> = ref(null)
 
 /**
  * Load an Element Plus locale pack.
@@ -40,7 +41,7 @@ export const elementPlusLocale: Ref<unknown> = ref(null)
 export async function loadElementPlusLocale(locale: string): Promise<void> {
   // 1. Check custom locales registered by extension
   if (customLocales.has(locale)) {
-    elementPlusLocale.value = customLocales.get(locale)
+    elementPlusLocale.value = (customLocales.get(locale) as Language | undefined) ?? null
     return
   }
 
@@ -49,7 +50,7 @@ export async function loadElementPlusLocale(locale: string): Promise<void> {
   if (loader) {
     try {
       const mod = await loader()
-      elementPlusLocale.value = mod.default
+      elementPlusLocale.value = (mod.default as Language | undefined) ?? null
     } catch {
       // Load failed; keep current locale unchanged
     }

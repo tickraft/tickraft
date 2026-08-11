@@ -391,11 +391,11 @@ function handleCancel(): void {
   }
 
   &__section-title {
+    padding-bottom: var(--tk-spacing-sm);
+    margin: 0 0 var(--tk-spacing-md);
     font-size: var(--tk-font-size-md);
     font-weight: var(--tk-font-weight-semibold);
     color: var(--tk-text-primary);
-    margin: 0 0 var(--tk-spacing-md);
-    padding-bottom: var(--tk-spacing-sm);
     border-bottom: 1px solid var(--tk-border-color-light);
   }
 
@@ -404,10 +404,10 @@ function handleCancel(): void {
   }
 
   &__help {
-    font-size: var(--tk-font-size-sm);
-    color: var(--tk-text-secondary);
-    line-height: 1.5;
     margin-top: 4px;
+    font-size: var(--tk-font-size-sm);
+    line-height: 1.5;
+    color: var(--tk-text-secondary);
   }
 
   &__headers {
@@ -416,8 +416,8 @@ function handleCancel(): void {
 
   &__header-row {
     display: flex;
-    align-items: center;
     gap: var(--tk-spacing-sm);
+    align-items: center;
     margin-bottom: var(--tk-spacing-sm);
   }
 
@@ -431,8 +431,8 @@ function handleCancel(): void {
 
   &__footer {
     display: flex;
-    justify-content: flex-end;
     gap: var(--tk-spacing-sm);
+    justify-content: flex-end;
   }
 }
 </style>

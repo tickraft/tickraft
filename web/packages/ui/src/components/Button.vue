@@ -106,8 +106,8 @@ function handleClick(evt: MouseEvent): void {
 <style scoped lang="scss">
 .tk-ui-button {
   &--block {
-    width: 100%;
     display: flex;
+    width: 100%;
   }
 }
 </style>

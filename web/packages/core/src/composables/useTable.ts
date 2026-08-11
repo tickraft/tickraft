@@ -80,38 +80,6 @@ export interface UseTableReturn<T extends object> {
   sortChange: (sortBy: string, sortOrder?: SortOrder) => void
   /** URL sync parameters object */
   urlParams: ComputedRef<Record<string, unknown>>
-
-  // ── Legacy field aliases (backward compatibility) ──
-  /** Pagination state (legacy alias) */
-  pagination: PaginationState
-  /** Search parameters (legacy alias) */
-  searchParams: Record<string, unknown>
-  /** Sort field (legacy alias) */
-  sortBy: Ref<string>
-  /** Sort order (legacy alias) */
-  sortOrder: Ref<SortOrder>
-  /** Selected row keys (legacy alias) */
-  selectedKeys: ComputedRef<string[]>
-  /** Load data (legacy alias) */
-  fetchData: () => Promise<void>
-  /** Page number change (legacy alias) */
-  handlePageChange: (page: number) => void
-  /** Page size change (legacy alias) */
-  handleSizeChange: (size: number) => void
-  /** Keyword debounced search (legacy alias, equivalent to search) */
-  searchDebounced: (keyword: string, delay?: number) => void
-  /** Reset search and sort (legacy alias, equivalent to resetSearch) */
-  reset: () => void
-  /** Sort change (legacy alias, equivalent to sortChange) */
-  handleSort: (field: string, order: SortOrder) => void
-  /** Toggle the selection state of a row (legacy alias) */
-  toggleSelection: (row: T) => void
-  /** Whether a row is selected (legacy alias) */
-  isSelected: (row: T) => boolean
-  /** Select the given row set (legacy alias) */
-  selectAll: (rows: T[]) => void
-  /** Clear all selections (legacy alias, equivalent to clearSelection) */
-  resetSelection: () => void
 }
 
 /**
@@ -163,8 +131,6 @@ export function useTable<T extends object>(
 
   /** Selected row objects */
   const selectedRows: ComputedRef<T[]> = computed(() => Array.from(selectedRowMap.values()))
-  /** Selected row keys (stringified, for legacy callers) */
-  const selectedKeys: ComputedRef<string[]> = computed(() => Array.from(selectedRowMap.keys()))
 
   /** URL sync parameters object */
   const urlParams: ComputedRef<Record<string, unknown>> = computed(() => {
@@ -380,76 +346,6 @@ export function useTable<T extends object>(
     return Array.from(selectedRowMap.values())
   }
 
-  // ── Legacy alias implementations (backward compatibility) ──
-
-  /** Page number change (legacy alias) */
-  function handlePageChange(newPage: number): void {
-    changePage(newPage)
-  }
-
-  /** Page size change (legacy alias) */
-  function handleSizeChange(size: number): void {
-    changePageSize(size)
-  }
-
-  /**
-   * Keyword debounced search (legacy alias)
-   * @param keyword - keyword
-   * @param delay - debounce delay (ms); defaults to the configured value
-   */
-  function searchDebounced(keyword: string, delay: number = searchDebounceDelay): void {
-    clearSearchTimer()
-    searchTimer = setTimeout(() => {
-      searchParams.keyword = keyword
-      pagination.page = 1
-      void fetchData()
-      searchTimer = null
-    }, delay)
-  }
-
-  /** Reset search and sort (legacy alias) */
-  function reset(): void {
-    resetSearch()
-  }
-
-  /** Sort change (legacy alias) */
-  function handleSort(field: string, order: SortOrder): void {
-    sortChange(field, order)
-  }
-
-  /** Toggle the selection state of a row (legacy alias) */
-  function toggleSelection(row: T): void {
-    toggleRowSelection(row)
-  }
-
-  /**
-   * Whether a row is selected (legacy alias)
-   * @param row - row data
-   * @returns whether selected
-   */
-  function isSelected(row: T): boolean {
-    const key = getRowKey(row)
-    return selectedRowMap.has(key)
-  }
-
-  /**
-   * Select the given row set (appended, deduplicated)
-   * @param rows - row data collection
-   */
-  function selectAll(rows: T[]): void {
-    rows.forEach((row) => {
-      const key = getRowKey(row)
-      if (key && !selectedRowMap.has(key)) {
-        selectedRowMap.set(key, row)
-      }
-    })
-  }
-
-  /** Clear all selections (legacy alias) */
-  function resetSelection(): void {
-    clearSelection()
-  }
-
   // When URL sync is enabled, restore initial state from the query
   if (syncUrl) {
     readUrlState()
@@ -461,7 +357,6 @@ export function useTable<T extends object>(
   })
 
   return {
-    // Canonical fields
     data,
     loading,
     error,
@@ -480,21 +375,5 @@ export function useTable<T extends object>(
     changePageSize,
     sortChange,
     urlParams,
-    // Legacy field aliases
-    pagination,
-    searchParams,
-    sortBy,
-    sortOrder,
-    selectedKeys,
-    fetchData,
-    handlePageChange,
-    handleSizeChange,
-    searchDebounced,
-    reset,
-    handleSort,
-    toggleSelection,
-    isSelected,
-    selectAll,
-    resetSelection,
   }
 }
