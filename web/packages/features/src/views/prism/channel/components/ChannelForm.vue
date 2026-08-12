@@ -11,7 +11,7 @@ import {
   createChannel,
   updateChannel,
 } from '../../../../api/prism'
-import type { ChannelPayload, NotificationChannel, WebhookConfig } from '../../../../api/prism'
+import type { ChannelPayload, NotificationChannel, WebhookConfig, EmailConfig } from '../../../../api/prism'
 
 /** A single header row in the dynamic headers editor */
 interface HeaderRow {
@@ -56,11 +56,22 @@ const form = ref({
   webhookMethod: 'POST' as 'POST' | 'PUT',
   webhookTimeout: 10,
   headers: [] as HeaderRow[],
+  // Email-specific fields
+  emailHost: '',
+  emailPort: 587,
+  emailUsername: '',
+  emailPassword: '',
+  emailFrom: '',
+  emailTo: '',  // comma-separated string in UI, split to array on submit
+  emailTlsMode: 'starttls' as string,
+  emailAuthType: 'plain' as string,
+  emailHtmlMode: false,
 })
 
-/** Channel type options (CE supports only webhook) */
+/** Channel type options (supports webhook and email) */
 const typeOptions = computed(() => [
   { value: 'webhook', label: t('prism.channel.type.webhook') },
+  { value: 'email', label: t('prism.channel.type.email') },
 ])
 
 /** HTTP method options */
@@ -68,6 +79,26 @@ const methodOptions = computed(() => [
   { value: 'POST', label: 'POST' },
   { value: 'PUT', label: 'PUT' },
 ])
+
+/** TLS mode options for email channel */
+const tlsModeOptions = computed(() => [
+  { value: 'none', label: 'None' },
+  { value: 'implicit', label: 'Implicit TLS (465)' },
+  { value: 'starttls', label: 'STARTTLS (587)' },
+])
+
+/** Auth type options for email channel */
+const authTypeOptions = computed(() => [
+  { value: 'plain', label: 'PLAIN' },
+  { value: 'login', label: 'LOGIN' },
+  { value: 'cram-md5', label: 'CRAM-MD5' },
+])
+
+/** Whether the current channel type is webhook */
+const isWebhook = computed(() => form.value.type === 'webhook')
+
+/** Whether the current channel type is email */
+const isEmail = computed(() => form.value.type === 'email')
 
 /** Form validation rules */
 const rules = computed<FormRules>(() => ({
@@ -80,6 +111,7 @@ const rules = computed<FormRules>(() => ({
     {
       required: true,
       validator: (_rule, value: string, callback) => {
+        if (!isWebhook.value) return callback()
         if (!value) {
           callback(new Error(t('prism.channel.form.webhookUrlPlaceholder')))
         } else if (!isValidUrl(value) || !/^https?:\/\//.test(value)) {
@@ -92,8 +124,104 @@ const rules = computed<FormRules>(() => ({
     },
   ],
   webhookTimeout: [
-    { required: true, message: t('prism.channel.form.webhookTimeoutPlaceholder'), trigger: 'blur' },
-    { type: 'number', min: 1, max: 60, message: t('prism.channel.form.webhookTimeoutPlaceholder'), trigger: 'blur' },
+    {
+      required: true,
+      validator: (_rule, value: number, callback) => {
+        if (!isWebhook.value) return callback()
+        if (!value) {
+          callback(new Error(t('prism.channel.form.webhookTimeoutPlaceholder')))
+        } else if (value < 1 || value > 60) {
+          callback(new Error(t('prism.channel.form.webhookTimeoutPlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailHost: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value || !value.trim()) {
+          callback(new Error(t('prism.channel.form.emailHostPlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailPort: [
+    {
+      required: true,
+      validator: (_rule, value: number, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value || value < 1 || value > 65535) {
+          callback(new Error(t('prism.channel.form.emailPort')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailUsername: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value || !value.trim()) {
+          callback(new Error(t('prism.channel.form.emailUsernamePlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailPassword: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value) {
+          callback(new Error(t('prism.channel.form.emailPasswordPlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailFrom: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value || !value.trim()) {
+          callback(new Error(t('prism.channel.form.emailFromPlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  emailTo: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isEmail.value) return callback()
+        if (!value || !value.trim()) {
+          callback(new Error(t('prism.channel.form.emailToPlaceholder')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
   ],
 }))
 
@@ -111,25 +239,36 @@ function loadChannel(channel: NotificationChannel): void {
   form.value.type = channel.type
   form.value.enabled = channel.enabled
 
-  // Parse webhook config from the JSON config string
   try {
-    const cfg = JSON.parse(channel.config) as Partial<WebhookConfig>
-    form.value.webhookUrl = cfg.url ?? ''
-    form.value.webhookMethod = (cfg.method as 'POST' | 'PUT') ?? 'POST'
-    form.value.webhookTimeout = parseTimeoutSeconds(cfg.timeout ?? '10s')
-    const headerEntries = Object.entries(cfg.headers ?? {})
-    form.value.headers = headerEntries.map(([key, value]) => ({ key, value: String(value) }))
+    if (channel.type === 'email') {
+      // Parse email config from the JSON config string
+      const cfg = JSON.parse(channel.config) as Partial<EmailConfig>
+      form.value.emailHost = cfg.host ?? ''
+      form.value.emailPort = cfg.port ?? 587
+      form.value.emailUsername = cfg.username ?? ''
+      form.value.emailPassword = cfg.password ?? ''
+      form.value.emailFrom = cfg.from ?? ''
+      form.value.emailTo = (cfg.to ?? []).join(', ')
+      form.value.emailTlsMode = cfg.tls_mode ?? 'starttls'
+      form.value.emailAuthType = cfg.auth_type ?? 'plain'
+      form.value.emailHtmlMode = cfg.html_mode ?? false
+    } else {
+      // Parse webhook config from the JSON config string
+      const cfg = JSON.parse(channel.config) as Partial<WebhookConfig>
+      form.value.webhookUrl = cfg.url ?? ''
+      form.value.webhookMethod = (cfg.method as 'POST' | 'PUT') ?? 'POST'
+      form.value.webhookTimeout = parseTimeoutSeconds(cfg.timeout ?? '10s')
+      const headerEntries = Object.entries(cfg.headers ?? {})
+      form.value.headers = headerEntries.map(([key, value]) => ({ key, value: String(value) }))
+    }
   } catch {
-    // If config is not valid JSON, start with empty webhook fields
-    form.value.webhookUrl = ''
-    form.value.webhookMethod = 'POST'
-    form.value.webhookTimeout = 10
-    form.value.headers = []
+    // If config is not valid JSON, start with empty fields
+    resetFormFields()
   }
 }
 
-/** Reset form to default create-mode state */
-function resetForm(): void {
+/** Reset form fields to default values (shared by resetForm and loadChannel error fallback) */
+function resetFormFields(): void {
   form.value = {
     name: '',
     type: 'webhook',
@@ -138,7 +277,21 @@ function resetForm(): void {
     webhookMethod: 'POST',
     webhookTimeout: 10,
     headers: [],
+    emailHost: '',
+    emailPort: 587,
+    emailUsername: '',
+    emailPassword: '',
+    emailFrom: '',
+    emailTo: '',
+    emailTlsMode: 'starttls',
+    emailAuthType: 'plain',
+    emailHtmlMode: false,
   }
+}
+
+/** Reset form to default create-mode state */
+function resetForm(): void {
+  resetFormFields()
   formRef.value?.resetFields()
 }
 
@@ -166,8 +319,24 @@ function removeHeader(index: number): void {
   form.value.headers.splice(index, 1)
 }
 
-/** Build the webhook config JSON string from form data */
+/** Build the channel config JSON string from form data based on channel type */
 function buildConfigJson(): string {
+  if (isEmail.value) {
+    const config: EmailConfig = {
+      host: form.value.emailHost.trim(),
+      port: form.value.emailPort,
+      username: form.value.emailUsername.trim(),
+      password: form.value.emailPassword,
+      from: form.value.emailFrom.trim(),
+      to: form.value.emailTo.split(',').map(s => s.trim()).filter(Boolean),
+      tls_mode: form.value.emailTlsMode,
+      auth_type: form.value.emailAuthType,
+      html_mode: form.value.emailHtmlMode,
+    }
+    return JSON.stringify(config)
+  }
+
+  // Webhook config (default)
   const headers: Record<string, string> = {}
   for (const row of form.value.headers) {
     const key = row.key.trim()
@@ -285,7 +454,7 @@ function handleCancel(): void {
       </section>
 
       <!-- Section: Webhook Configuration -->
-      <section class="tk-channel-form__section">
+      <section v-if="isWebhook" class="tk-channel-form__section">
         <h3 class="tk-channel-form__section-title">
           {{ t('prism.channel.form.sectionWebhook') }}
         </h3>
@@ -362,6 +531,44 @@ function handleCancel(): void {
               + {{ t('prism.channel.form.webhookAddHeader') }}
             </el-button>
           </div>
+        </el-form-item>
+      </section>
+
+      <!-- Section: Email Configuration -->
+      <section v-if="isEmail" class="tk-channel-form__section">
+        <h3 class="tk-channel-form__section-title">
+          {{ t('prism.channel.form.sectionEmail') }}
+        </h3>
+        <el-form-item :label="t('prism.channel.form.emailHost')" prop="emailHost">
+          <el-input v-model="form.emailHost" :placeholder="t('prism.channel.form.emailHostPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailPort')" prop="emailPort">
+          <el-input-number v-model="form.emailPort" :min="1" :max="65535" class="tk-channel-form__block" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailUsername')" prop="emailUsername">
+          <el-input v-model="form.emailUsername" :placeholder="t('prism.channel.form.emailUsernamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailPassword')" prop="emailPassword">
+          <el-input v-model="form.emailPassword" type="password" show-password :placeholder="t('prism.channel.form.emailPasswordPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailFrom')" prop="emailFrom">
+          <el-input v-model="form.emailFrom" :placeholder="t('prism.channel.form.emailFromPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailTo')" prop="emailTo">
+          <el-input v-model="form.emailTo" type="textarea" :rows="2" :placeholder="t('prism.channel.form.emailToPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailTlsMode')">
+          <el-select v-model="form.emailTlsMode" class="tk-channel-form__block">
+            <el-option v-for="opt in tlsModeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailAuthType')">
+          <el-select v-model="form.emailAuthType" class="tk-channel-form__block">
+            <el-option v-for="opt in authTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('prism.channel.form.emailHtmlMode')">
+          <el-switch v-model="form.emailHtmlMode" />
         </el-form-item>
       </section>
     </el-form>

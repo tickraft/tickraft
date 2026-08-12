@@ -429,6 +429,21 @@
       "enabled": "启用",
       "sectionBasic": "基础信息",
       "sectionWebhook": "Webhook 配置",
+      "sectionEmail": "邮件配置",
+      "emailHost": "SMTP 主机",
+      "emailHostPlaceholder": "smtp.example.com",
+      "emailPort": "SMTP 端口",
+      "emailUsername": "用户名",
+      "emailUsernamePlaceholder": "user@example.com",
+      "emailPassword": "密码",
+      "emailPasswordPlaceholder": "输入 SMTP 密码",
+      "emailFrom": "发件人地址",
+      "emailFromPlaceholder": "noreply@example.com",
+      "emailTo": "收件人地址",
+      "emailToPlaceholder": "多个地址用逗号分隔",
+      "emailTlsMode": "TLS 模式",
+      "emailAuthType": "认证方式",
+      "emailHtmlMode": "HTML 邮件",
       "webhookUrl": "Webhook URL",
       "webhookUrlPlaceholder": "https://example.com/webhook",
       "webhookMethod": "请求方法",
@@ -458,7 +473,8 @@
       "deletedToast": "渠道已删除"
     },
     "type": {
-      "webhook": "Webhook"
+      "webhook": "Webhook",
+      "email": "邮件"
     }
   }
 }

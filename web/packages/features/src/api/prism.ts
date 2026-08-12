@@ -148,8 +148,8 @@ export function deleteAlertRule(id: number): Promise<void> {
 
 // ── Notification channels ──
 
-/** Notification channel type (CE supports "webhook"; extensible via SPI) */
-export type ChannelType = 'webhook' | string
+/** Notification channel type (supports "webhook" and "email"; extensible via SPI) */
+export type ChannelType = 'webhook' | 'email' | string
 
 /** Webhook channel configuration (stored as JSON in NotificationChannel.config) */
 export interface WebhookConfig {
@@ -161,6 +161,29 @@ export interface WebhookConfig {
   timeout: string
   /** Custom HTTP headers */
   headers: Record<string, string>
+}
+
+/** Email channel configuration (stored as JSON in NotificationChannel.config).
+ *  Field names use snake_case to align with the backend channel.Config JSON tags. */
+export interface EmailConfig {
+  /** SMTP server hostname */
+  host: string
+  /** SMTP server port (25, 465 for implicit TLS, 587 for STARTTLS) */
+  port: number
+  /** SMTP authentication username */
+  username: string
+  /** SMTP authentication password */
+  password: string
+  /** Sender email address */
+  from: string
+  /** Recipient email addresses */
+  to: string[]
+  /** TLS mode: none, implicit, starttls */
+  tls_mode: string
+  /** Auth type: plain, login, cram-md5 */
+  auth_type: string
+  /** Send as HTML email */
+  html_mode: boolean
 }
 
 /** Notification channel (aligned with backend handler.NotificationChannel) */

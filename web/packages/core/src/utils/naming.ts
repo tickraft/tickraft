@@ -3,7 +3,7 @@
 // Dual-licensed — see LICENSE for details.
 
 /**
- * Case conversion utility for transparent snake_case ↔ camelCase transformation.
+ * Naming convention utility for transparent snake_case ↔ camelCase transformation.
  *
  * Wraps the `humps` library (stable, MIT-licensed) for key conversion and adds
  * protection for non-serializable types (FormData, File, Blob, Date, ArrayBuffer).

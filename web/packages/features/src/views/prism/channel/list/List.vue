@@ -188,7 +188,7 @@ onMounted(() => {
       <!-- Type column: badge showing channel type -->
       <template #type="{ row }">
         <el-tag
-          type="primary"
+          :type="(row as NotificationChannel).type === 'email' ? 'warning' : 'primary'"
           effect="light"
         >
           {{ t(`prism.channel.type.${(row as NotificationChannel).type}`) }}

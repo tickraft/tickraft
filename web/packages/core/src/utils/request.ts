@@ -5,7 +5,7 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import { getStorage, removeStorage, setStorage } from './storage'
-import { camelizeKeys, snakeizeKeys } from './caseconv'
+import { camelizeKeys, snakeizeKeys } from './naming'
 
 /** Token storage key */
 const TOKEN_KEY = 'tk-token'

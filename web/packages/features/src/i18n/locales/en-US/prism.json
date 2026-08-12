@@ -434,6 +434,21 @@
       "enabled": "Enabled",
       "sectionBasic": "Basic Info",
       "sectionWebhook": "Webhook Configuration",
+      "sectionEmail": "Email Configuration",
+      "emailHost": "SMTP Host",
+      "emailHostPlaceholder": "smtp.example.com",
+      "emailPort": "SMTP Port",
+      "emailUsername": "Username",
+      "emailUsernamePlaceholder": "user@example.com",
+      "emailPassword": "Password",
+      "emailPasswordPlaceholder": "Enter SMTP password",
+      "emailFrom": "From Address",
+      "emailFromPlaceholder": "noreply@example.com",
+      "emailTo": "Recipients",
+      "emailToPlaceholder": "Separate multiple addresses with commas",
+      "emailTlsMode": "TLS Mode",
+      "emailAuthType": "Auth Type",
+      "emailHtmlMode": "HTML Email",
       "webhookUrl": "Webhook URL",
       "webhookUrlPlaceholder": "https://example.com/webhook",
       "webhookMethod": "Request Method",
@@ -463,7 +478,8 @@
       "deletedToast": "Channel deleted"
     },
     "type": {
-      "webhook": "Webhook"
+      "webhook": "Webhook",
+      "email": "Email"
     }
   }
 }
