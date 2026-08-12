@@ -15,7 +15,7 @@ import (
 	"github.com/tickraft/tickraft/internal/api/router"
 	"github.com/tickraft/tickraft/internal/api/service/prism"
 	"github.com/tickraft/tickraft/internal/api/service/scheduler"
-	systemsvc "github.com/tickraft/tickraft/internal/api/service/system"
+	"github.com/tickraft/tickraft/internal/api/service/system"
 	"github.com/tickraft/tickraft/internal/web"
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
@@ -56,7 +56,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	// The Logger.Mode is passed as the API server's Mode to keep logger
 	// and server output format consistent.
 	sc := rt.cfg.Server
-	apiCfg := api.ServerConfig{
+	cfg := api.ServerConfig{
 		Addr:            sc.Addr,
 		Mode:            rt.cfg.Logger.Mode,
 		EnableCORS:      sc.EnableCORS,
@@ -79,8 +79,9 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 			Domains:       append([]string(nil), sc.ACME.Domains...),
 		},
 	}
-	apiCfg.SetDefaults()
-	if err := apiCfg.Validate(); err != nil {
+
+	cfg.SetDefaults()
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate server tls config: %w", err)
 	}
 
@@ -92,7 +93,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	// logger rather than the default stderr-based hlog writer.
 	api.SetLogger(rt.logger)
 
-	srv := api.NewServer(apiCfg)
+	srv := api.NewServer(cfg)
 
 	// Build the asset-key getter from the asset store so that
 	// telemetry report endpoints can validate X-Tickraft-Asset-Key
@@ -108,29 +109,32 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	// partial route surface.
 	var routeOpts []router.RegisterOption
 
-	// Alert service: backed by the rule engine and persistent stores.
-	// The prism engine must have been started by this point in standalone
-	// mode; nil stores indicate a startup order bug.
-	if rt.ruleStore == nil || rt.alertRecordStore == nil {
-		return nil, fmt.Errorf("start api server: alert rule/record stores are nil; prism engine may not have started")
+	// Alert service: backed by the rule engine and persistent stores
+	// accessed via the prism engine's accessor methods.
+	if rt.prismEngine == nil {
+		return nil, fmt.Errorf("start api server: prism engine is nil; prism engine may not have started")
 	}
-	alertSvc := prism.NewAlertService(rt.ruleStore, rt.alertRecordStore, rt.ruleEngine)
+	eng := rt.prismEngine
+	if eng.RuleStore() == nil || eng.RecordStore() == nil {
+		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
+	}
+	alertSvc := prism.NewAlertService(eng.RuleStore(), eng.RecordStore(), eng.RuleEngine())
 	routeOpts = append(routeOpts, router.WithAlertService(alertSvc))
 
-	// Channel service: backed by the persistent channel store created by
-	// startPrismEngine. Must be non-nil in standalone mode.
-	if rt.channelStore == nil {
-		return nil, fmt.Errorf("start api server: channel store is nil; prism engine may not have started")
+	// Channel service: backed by the persistent channel store accessed
+	// via the prism engine.
+	if eng.ChannelStore() == nil {
+		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
 	}
-	channelSvc := prism.NewChannelService(rt.channelStore)
+	channelSvc := prism.NewChannelService(eng.ChannelStore(), eng)
 	routeOpts = append(routeOpts, router.WithChannelService(channelSvc))
 
 	// Remediation rule service: backed by the persistent remediation rule
-	// store created by startPrismEngine. Must be non-nil in standalone mode.
-	if rt.remediationRuleStore == nil {
-		return nil, fmt.Errorf("start api server: remediation rule store is nil; prism engine may not have started")
+	// store accessed via the prism engine.
+	if eng.RemediationStore() == nil {
+		return nil, fmt.Errorf("start api server: prism remediation store is nil; prism engine may not have started")
 	}
-	remediationRuleSvc := prism.NewRemediationService(rt.remediationRuleStore)
+	remediationRuleSvc := prism.NewRemediationService(eng.RemediationStore())
 	routeOpts = append(routeOpts, router.WithRemediationRuleService(remediationRuleSvc))
 
 	// Task service: backed by the scheduler engine and persistent task /
@@ -230,7 +234,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	// build-time metadata for version info, and the runtime's task /
 	// asset / execution stores for global stats. Always available when
 	// the runtime is initialized.
-	systemSvc := systemsvc.New(rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore)
+	systemSvc := system.New(rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore)
 	if err := systemSvc.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate system service: %w", err)
 	}
@@ -263,10 +267,10 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		srv.Group("").GET(api.HTTP01ChallengePath+":token", http01.Handler)
 
 		acmeMgr := &api.ACMEManager{
-			DirectoryURL:  apiCfg.ACME.DirectoryURL,
-			Email:         apiCfg.ACME.Email,
-			ChallengeType: apiCfg.ACME.ChallengeType,
-			Domains:       apiCfg.ACME.Domains,
+			DirectoryURL:  cfg.ACME.DirectoryURL,
+			Email:         cfg.ACME.Email,
+			ChallengeType: cfg.ACME.ChallengeType,
+			Domains:       cfg.ACME.Domains,
 			Reloader:      srv,
 		}
 		acmeCtx, acmeCancel := context.WithCancel(ctx)
@@ -281,7 +285,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 			acmeCancel()
 		}()
 		rt.logger.Info("acme manager started",
-			zap.String("directory", apiCfg.ACME.DirectoryURL),
+			zap.String("directory", cfg.ACME.DirectoryURL),
 			zap.Strings("domains", acmeMgr.Domains),
 		)
 	}

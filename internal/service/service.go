@@ -51,10 +51,10 @@ func Start(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// 2. Prism. Concurrence sizes the notification dispatch goroutine
-	// pool; ChannelConfig holds the notification channel definitions.
+	// pool. Channels are loaded from the database at startup and
+	// hot-reloaded on CRUD operations via the API.
 	prismStop, err := startPrismEngine(ctx, rt,
-		cfg.Prism.Concurrence,
-		cfg.Prism.ChannelConfig)
+		cfg.Prism.Concurrence)
 	if err != nil {
 		stopQuietly(ctx, rt.logger, "worker", workerStop)
 		return err

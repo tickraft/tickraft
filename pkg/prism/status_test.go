@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package alert
+package prism
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
 )
 
@@ -40,8 +41,8 @@ func TestStatusPayloadToAlertHeartbeatLoss(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true for heartbeat-loss transition")
 	}
-	if got.Type != TypeHeartbeat {
-		t.Errorf("Type: got %q, want %q", got.Type, TypeHeartbeat)
+	if got.Type != alert.TypeHeartbeat {
+		t.Errorf("Type: got %q, want %q", got.Type, alert.TypeHeartbeat)
 	}
 	if got.AssetID != 42 {
 		t.Errorf("AssetID: got %d, want 42", got.AssetID)
@@ -53,8 +54,8 @@ func TestStatusPayloadToAlertHeartbeatLoss(t *testing.T) {
 		t.Fatalf("Violations: got %d items, want 1", len(got.Violations))
 	}
 	v := got.Violations[0]
-	if v.Kind != ViolationKindHeartbeat {
-		t.Errorf("Kind: got %q, want %q", v.Kind, ViolationKindHeartbeat)
+	if v.Kind != alert.ViolationKindHeartbeat {
+		t.Errorf("Kind: got %q, want %q", v.Kind, alert.ViolationKindHeartbeat)
 	}
 	if v.Severity != "critical" {
 		t.Errorf("Severity: got %q, want %q", v.Severity, "critical")
@@ -97,8 +98,8 @@ func TestStatusPayloadToAlertStatusDegradation(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true for status degradation")
 	}
-	if got.Type != TypeStatus {
-		t.Errorf("Type: got %q, want %q", got.Type, TypeStatus)
+	if got.Type != alert.TypeStatus {
+		t.Errorf("Type: got %q, want %q", got.Type, alert.TypeStatus)
 	}
 	if got.AssetID != 10 {
 		t.Errorf("AssetID: got %d, want 10", got.AssetID)
@@ -107,8 +108,8 @@ func TestStatusPayloadToAlertStatusDegradation(t *testing.T) {
 		t.Fatalf("Violations: got %d items, want 1", len(got.Violations))
 	}
 	v := got.Violations[0]
-	if v.Kind != ViolationKindStatus {
-		t.Errorf("Kind: got %q, want %q", v.Kind, ViolationKindStatus)
+	if v.Kind != alert.ViolationKindStatus {
+		t.Errorf("Kind: got %q, want %q", v.Kind, alert.ViolationKindStatus)
 	}
 	if v.Severity != "error" {
 		t.Errorf("Severity: got %q, want %q", v.Severity, "error")
@@ -159,11 +160,11 @@ func TestStatusPayloadToAlertWarningStatus(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true for warning transition")
 	}
-	if got.Type != TypeStatus {
-		t.Errorf("Type: got %q, want %q", got.Type, TypeStatus)
+	if got.Type != alert.TypeStatus {
+		t.Errorf("Type: got %q, want %q", got.Type, alert.TypeStatus)
 	}
-	if got.Violations[0].Kind != ViolationKindStatus {
-		t.Errorf("Kind: got %q, want %q", got.Violations[0].Kind, ViolationKindStatus)
+	if got.Violations[0].Kind != alert.ViolationKindStatus {
+		t.Errorf("Kind: got %q, want %q", got.Violations[0].Kind, alert.ViolationKindStatus)
 	}
 }
 
@@ -248,8 +249,8 @@ func TestHeartbeatAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
 	a := alerts[0]
-	if a.Type != TypeHeartbeat {
-		t.Errorf("Type: got %q, want %q", a.Type, TypeHeartbeat)
+	if a.Type != alert.TypeHeartbeat {
+		t.Errorf("Type: got %q, want %q", a.Type, alert.TypeHeartbeat)
 	}
 	if a.AssetID != 42 {
 		t.Errorf("AssetID: got %d, want 42", a.AssetID)
@@ -258,8 +259,8 @@ func TestHeartbeatAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("violations: got %d items, want 1", len(a.Violations))
 	}
 	v := a.Violations[0]
-	if v.Kind != ViolationKindHeartbeat {
-		t.Errorf("Kind: got %q, want %q", v.Kind, ViolationKindHeartbeat)
+	if v.Kind != alert.ViolationKindHeartbeat {
+		t.Errorf("Kind: got %q, want %q", v.Kind, alert.ViolationKindHeartbeat)
 	}
 	if v.Severity != "critical" {
 		t.Errorf("Severity: got %q, want %q", v.Severity, "critical")
@@ -313,8 +314,8 @@ func TestStatusAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
 	a := alerts[0]
-	if a.Type != TypeStatus {
-		t.Errorf("Type: got %q, want %q", a.Type, TypeStatus)
+	if a.Type != alert.TypeStatus {
+		t.Errorf("Type: got %q, want %q", a.Type, alert.TypeStatus)
 	}
 	if a.AssetID != 10 {
 		t.Errorf("AssetID: got %d, want 10", a.AssetID)
@@ -323,8 +324,8 @@ func TestStatusAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("violations: got %d items, want 1", len(a.Violations))
 	}
 	v := a.Violations[0]
-	if v.Kind != ViolationKindStatus {
-		t.Errorf("Kind: got %q, want %q", v.Kind, ViolationKindStatus)
+	if v.Kind != alert.ViolationKindStatus {
+		t.Errorf("Kind: got %q, want %q", v.Kind, alert.ViolationKindStatus)
 	}
 	if v.Severity != "error" {
 		t.Errorf("Severity: got %q, want %q", v.Severity, "error")
@@ -416,23 +417,23 @@ func TestHeartbeatAndStatusBothDispatched(t *testing.T) {
 	}
 
 	kinds := make(map[string]int)
-	types := make(map[Type]int)
+	types := make(map[alert.Type]int)
 	for _, a := range alerts {
 		types[a.Type]++
 		for _, v := range a.Violations {
 			kinds[v.Kind]++
 		}
 	}
-	if types[TypeHeartbeat] != 1 {
-		t.Errorf("expected 1 TypeHeartbeat alert, got %d", types[TypeHeartbeat])
+	if types[alert.TypeHeartbeat] != 1 {
+		t.Errorf("expected 1 TypeHeartbeat alert, got %d", types[alert.TypeHeartbeat])
 	}
-	if types[TypeStatus] != 1 {
-		t.Errorf("expected 1 TypeStatus alert, got %d", types[TypeStatus])
+	if types[alert.TypeStatus] != 1 {
+		t.Errorf("expected 1 TypeStatus alert, got %d", types[alert.TypeStatus])
 	}
-	if kinds[ViolationKindHeartbeat] != 1 {
-		t.Errorf("expected 1 ViolationKindHeartbeat, got %d", kinds[ViolationKindHeartbeat])
+	if kinds[alert.ViolationKindHeartbeat] != 1 {
+		t.Errorf("expected 1 ViolationKindHeartbeat, got %d", kinds[alert.ViolationKindHeartbeat])
 	}
-	if kinds[ViolationKindStatus] != 1 {
-		t.Errorf("expected 1 ViolationKindStatus, got %d", kinds[ViolationKindStatus])
+	if kinds[alert.ViolationKindStatus] != 1 {
+		t.Errorf("expected 1 ViolationKindStatus, got %d", kinds[alert.ViolationKindStatus])
 	}
 }

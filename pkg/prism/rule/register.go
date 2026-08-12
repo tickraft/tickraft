@@ -12,6 +12,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// RuleTarget is the minimal interface rule.Register needs from the prism
+// engine. It is defined here (at the consumption site) so the rule package
+// does not need to import prism, avoiding a circular dependency.
+type RuleTarget interface {
+	AddRule(m alert.Matcher)
+}
+
 // Register is the startup entry point for the rule matching engine.
 // It mirrors the Register pattern used by other subsystems
 // (xchannel.Register, xcollector.Register): it builds the Engine,
@@ -34,12 +41,12 @@ import (
 // launches engine.runReloadLoop in a background goroutine. The goroutine
 // is tied to a cancellable context derived from ctx, so it exits when
 // either ctx is cancelled or Engine.Stop is called.
-func Register(ctx context.Context, eng *alert.Engine, cfg Config) (*Engine, error) {
+func Register(ctx context.Context, target RuleTarget, cfg Config) (*Engine, error) {
 	if !cfg.IsEnabled() {
 		return nil, nil
 	}
-	if eng == nil {
-		return nil, fmt.Errorf("rule: prism engine is nil")
+	if target == nil {
+		return nil, fmt.Errorf("rule: target is nil")
 	}
 
 	logger := cfg.logger()
@@ -110,7 +117,7 @@ func Register(ctx context.Context, eng *alert.Engine, cfg Config) (*Engine, erro
 	// returns true so the default-allow prism semantics are
 	// preserved.
 	metricMatcher := NewMetricMatcher(engine, cfg.AssetStore)
-	eng.AddRule(metricMatcher)
+	target.AddRule(metricMatcher)
 
 	logger.Info("rule engine registered",
 		zap.Int("static_rules", len(staticRules)),

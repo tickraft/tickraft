@@ -7,7 +7,7 @@ package governance
 import (
 	"context"
 
-	"github.com/tickraft/tickraft/internal/alert"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // Decision instructs the engine how to handle an alert event after a

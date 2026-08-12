@@ -155,12 +155,6 @@ type PrismConfig struct {
 	//   - Notes: a value of 0 disables the pool (synchronous dispatch).
 	//     Negative values are rejected by Validate.
 	Concurrence int `yaml:"concurrence" json:"concurrence"`
-	// ChannelConfig is an opaque string holding notification channel
-	// configuration. It may itself be a path to a JSON/YAML file or an
-	// inline JSON/YAML string.
-	//   - Default: "" (no notification channels configured).
-	//   - Effective: startup; changes require a restart.
-	ChannelConfig string `yaml:"channel_config" json:"channel_config"`
 }
 
 // DatabaseConfig configures the backend database connection. The database
@@ -324,7 +318,6 @@ func (c *WorkerConfig) SetDefaults() {
 func (c *PrismConfig) SetDefaults() {
 	c.EvalInterval = Duration(30 * time.Second)
 	c.Concurrence = 8
-	// ChannelConfig defaults to empty string.
 }
 
 // SetDefaults populates DatabaseConfig with default values.

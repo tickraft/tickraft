@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/alert"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
 )
 

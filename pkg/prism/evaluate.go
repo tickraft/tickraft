@@ -2,57 +2,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package alert
+package prism
 
 import (
 	"context"
 
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
 )
 
 // Matcher evaluates whether an alert event should be dispatched to channels.
-// A matcher returns true to forward the alert, false to suppress it.
-type Matcher interface {
-	// Match returns true if the alert event should be dispatched.
-	Match(ctx context.Context, alert Event) bool
-}
+//
+// These are type aliases for alert.Matcher so that the canonical interface
+// definitions live in the alert domain package, allowing downstream packages
+// (rule) to reference them without importing prism.
+type Matcher = alert.Matcher
 
-// NamedMatcher is an optional interface that rules may implement to expose their
-// name for observability and logging. Rules that do not implement NamedMatcher
-// are counted as matched but omitted from the returned name list.
-type NamedMatcher interface {
-	Matcher
-	// Name returns the human-readable rule identifier.
-	Name() string
-}
+// NamedMatcher is an optional interface that rules may implement to expose
+// their name for observability and logging.
+type NamedMatcher = alert.NamedMatcher
 
 // ViolationMatcher is an optional interface that rules may implement to
-// return structured Violations for a matched alert event. When a rule
-// implements ViolationMatcher, Dispatch calls MatchWithViolations after
-// Match returns true and collects the returned violations into
-// Event.Violations, replacing the single violation populated by the
-// payload converter. This enables compound rules (e.g.
-// "cpu > 90 && mem > 85") to contribute one Violation per matched
-// condition.
-//
-// Rules that do not implement ViolationMatcher are unaffected: Dispatch
-// continues to use the payload-populated Event.Violations as-is.
-type ViolationMatcher interface {
-	// MatchWithViolations evaluates the rule and returns all violations
-	// for the matched comparison sub-conditions. Returns nil or an empty
-	// slice when the rule does not match or produces no structured
-	// violations; in that case Dispatch preserves the existing
-	// Event.Violations.
-	MatchWithViolations(ctx context.Context, alert Event) []Violation
-}
+// return structured Violations for a matched alert event.
+type ViolationMatcher = alert.ViolationMatcher
 
 // MatcherFunc adapts a function into a Matcher.
-type MatcherFunc func(ctx context.Context, alert Event) bool
-
-// Match implements Matcher.
-func (f MatcherFunc) Match(ctx context.Context, alert Event) bool {
-	return f(ctx, alert)
-}
+type MatcherFunc = alert.MatcherFunc
 
 // AddRule registers an alert rule. Rules are evaluated in registration
 // order; if any rule matches, the alert is dispatched. When no rules are
@@ -62,16 +37,16 @@ func (e *Engine) AddRule(rule Matcher) {
 	if rule == nil {
 		return
 	}
-	e.mu.Lock()
+	e.rulesMu.Lock()
 	e.rules = append(e.rules, rule)
-	e.mu.Unlock()
+	e.rulesMu.Unlock()
 }
 
 // Rules returns the registered alert rules. The returned slice is a copy
 // and safe to read concurrently with AddRule.
 func (e *Engine) Rules() []Matcher {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.rulesMu.RLock()
+	defer e.rulesMu.RUnlock()
 	out := make([]Matcher, len(e.rules))
 	copy(out, e.rules)
 	return out
@@ -85,8 +60,8 @@ func (e *Engine) Rules() []Matcher {
 // not implement NamedMatcher are skipped during the lookup. It is safe to
 // call concurrently with AddRule, RemoveRule and Dispatch.
 func (e *Engine) UpdateRule(oldName string, newMatcher Matcher) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.rulesMu.Lock()
+	defer e.rulesMu.Unlock()
 	for i, r := range e.rules {
 		nr, ok := r.(NamedMatcher)
 		if !ok {
@@ -113,8 +88,8 @@ func (e *Engine) UpdateRule(oldName string, newMatcher Matcher) {
 // do not implement NamedMatcher are skipped during the lookup. It is safe
 // to call concurrently with AddRule, UpdateRule and Dispatch.
 func (e *Engine) RemoveRule(name string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.rulesMu.Lock()
+	defer e.rulesMu.Unlock()
 	for i, r := range e.rules {
 		nr, ok := r.(NamedMatcher)
 		if !ok {
@@ -127,40 +102,40 @@ func (e *Engine) RemoveRule(name string) {
 	}
 }
 
-// safeMatch invokes rule.Match with panic recovery so that a buggy custom
-// Matcher implementation cannot crash the prism alert engine. A panic is recovered,
+// match invokes rule.Match with panic recovery so that a buggy custom
+// Matcher implementation cannot crash the prism engine. A panic is recovered,
 // logged at error level, and treated as not matching so the alert evaluation
 // continues with the remaining rules.
-func safeMatch(ctx context.Context, rule Matcher, alert Event, logger *zap.Logger) (matched bool) {
+func match(ctx context.Context, rule Matcher, evt alert.Event, logger *zap.Logger) (matched bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("rule Match panicked",
-				zap.String("event_id", alert.EventID),
-				zap.String("type", string(alert.Type)),
-				zap.Int64("asset_id", alert.AssetID),
+				zap.String("event_id", evt.EventID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
 				zap.Any("panic", r),
 			)
 		}
 	}()
-	return rule.Match(ctx, alert)
+	return rule.Match(ctx, evt)
 }
 
-// safeMatchWithViolations invokes vm.MatchWithViolations with panic recovery
+// matchWithViolations invokes vm.MatchWithViolations with panic recovery
 // so that a buggy custom ViolationMatcher implementation cannot crash the
-// prism alert engine. A panic is recovered, logged at error level, and
+// prism engine. A panic is recovered, logged at error level, and
 // treated as returning no violations so the alert evaluation continues with
 // the remaining rules. The returned slice may be nil.
-func safeMatchWithViolations(ctx context.Context, vm ViolationMatcher, alert Event, logger *zap.Logger) (violations []Violation) {
+func matchWithViolations(ctx context.Context, vm ViolationMatcher, evt alert.Event, logger *zap.Logger) (violations []alert.Violation) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("rule MatchWithViolations panicked",
-				zap.String("event_id", alert.EventID),
-				zap.String("type", string(alert.Type)),
-				zap.Int64("asset_id", alert.AssetID),
+				zap.String("event_id", evt.EventID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
 				zap.Any("panic", r),
 			)
 			violations = nil
 		}
 	}()
-	return vm.MatchWithViolations(ctx, alert)
+	return vm.MatchWithViolations(ctx, evt)
 }

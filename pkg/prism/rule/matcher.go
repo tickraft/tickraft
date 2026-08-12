@@ -22,9 +22,9 @@ import (
 // interfaces they extend. Failures surface at build time
 // rather than at registration time.
 var (
-	_ telemetry.Processor    = (*ProbeMatcher)(nil)
-	_ alert.Matcher          = (*MetricMatcher)(nil)
-	_ alert.ViolationMatcher = (*MetricMatcher)(nil)
+	_ telemetry.Processor     = (*ProbeMatcher)(nil)
+	_ alert.Matcher           = (*MetricMatcher)(nil)
+	_ alert.ViolationMatcher  = (*MetricMatcher)(nil)
 )
 
 // TaskMatcher adapts the engine's task-scene evaluation to the

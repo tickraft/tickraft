@@ -423,7 +423,7 @@ func (b *channelBus) callHandler(ctx context.Context, sub *subscriber, eventType
 
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
 		start := time.Now()
-		err := b.safeCall(callCtx, sub, eventType, env)
+		err := b.call(callCtx, sub, eventType, env)
 		cancel()
 		elapsed := time.Since(start)
 		b.instrumenter.ObserveHandlerDuration(eventType, sub.id, elapsed)
@@ -452,8 +452,8 @@ func (b *channelBus) callHandler(ctx context.Context, sub *subscriber, eventType
 	b.handleFailedEvent(eventType, env, lastErr)
 }
 
-// safeCall invokes the Handler safely, recovering from panics and recording metrics and logs.
-func (b *channelBus) safeCall(ctx context.Context, sub *subscriber, eventType Type, env Envelope) (err error) {
+// call invokes the Handler safely, recovering from panics and recording metrics and logs.
+func (b *channelBus) call(ctx context.Context, sub *subscriber, eventType Type, env Envelope) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			b.instrumenter.IncHandlerPanic(eventType, sub.id)

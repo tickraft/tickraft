@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package alert
+package prism
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
 )
 
@@ -119,18 +120,18 @@ func TestStartStopIdempotent(t *testing.T) {
 // recordingChannel is a test Channel that records received alerts.
 type recordingChannel struct {
 	mu     sync.Mutex
-	alerts []Event
+	alerts []alert.Event
 	name   string
 	err    error
 }
 
-func (r *recordingChannel) Send(_ context.Context, alert Event) error {
+func (r *recordingChannel) Send(_ context.Context, evt alert.Event) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.err != nil {
 		return r.err
 	}
-	r.alerts = append(r.alerts, alert)
+	r.alerts = append(r.alerts, evt)
 	return nil
 }
 
@@ -142,10 +143,10 @@ func (r *recordingChannel) len() int {
 	return len(r.alerts)
 }
 
-func (r *recordingChannel) snapshot() []Event {
+func (r *recordingChannel) snapshot() []alert.Event {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]Event, len(r.alerts))
+	out := make([]alert.Event, len(r.alerts))
 	copy(out, r.alerts)
 	return out
 }
@@ -186,8 +187,8 @@ func TestMetricAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
 	a := alerts[0]
-	if a.Type != TypeMetric {
-		t.Errorf("type: got %q, want %q", a.Type, TypeMetric)
+	if a.Type != alert.TypeMetric {
+		t.Errorf("type: got %q, want %q", a.Type, alert.TypeMetric)
 	}
 	if a.AssetID != 42 {
 		t.Errorf("asset_id: got %d, want 42", a.AssetID)
@@ -239,8 +240,8 @@ func TestLogAlertDispatchedToChannel(t *testing.T) {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
 	a := alerts[0]
-	if a.Type != TypeLog {
-		t.Errorf("type: got %q, want %q", a.Type, TypeLog)
+	if a.Type != alert.TypeLog {
+		t.Errorf("type: got %q, want %q", a.Type, alert.TypeLog)
 	}
 	if len(a.Violations) != 1 {
 		t.Fatalf("violations: got %d items, want 1", len(a.Violations))
@@ -269,7 +270,7 @@ func TestRuleSuppressesAlert(t *testing.T) {
 	}
 	eng.AddChannel(ch)
 	// Matcher that suppresses all alerts.
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ Event) bool {
+	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return false
 	}))
 
@@ -305,8 +306,8 @@ func TestRuleMatchesAlert(t *testing.T) {
 	}
 	eng.AddChannel(ch)
 	// Matcher that matches only metric alerts for asset 42.
-	eng.AddRule(MatcherFunc(func(_ context.Context, a Event) bool {
-		return a.Type == TypeMetric && a.AssetID == 42
+	eng.AddRule(MatcherFunc(func(_ context.Context, a alert.Event) bool {
+		return a.Type == alert.TypeMetric && a.AssetID == 42
 	}))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -458,8 +459,8 @@ func TestMetricPayloadToAlert(t *testing.T) {
 		Timestamp: ts,
 	}
 	a := metricPayloadToAlert(ev)
-	if a.Type != TypeMetric {
-		t.Errorf("type: got %q, want %q", a.Type, TypeMetric)
+	if a.Type != alert.TypeMetric {
+		t.Errorf("type: got %q, want %q", a.Type, alert.TypeMetric)
 	}
 	if a.AssetID != 5 {
 		t.Errorf("asset_id: got %d, want 5", a.AssetID)
@@ -474,8 +475,8 @@ func TestMetricPayloadToAlert(t *testing.T) {
 		t.Fatalf("violations: got %d items, want 1", len(a.Violations))
 	}
 	v := a.Violations[0]
-	if v.Kind != ViolationKindMetric {
-		t.Errorf("violations[0].kind: got %q, want %q", v.Kind, ViolationKindMetric)
+	if v.Kind != alert.ViolationKindMetric {
+		t.Errorf("violations[0].kind: got %q, want %q", v.Kind, alert.ViolationKindMetric)
 	}
 	if v.Metric == nil || v.Metric.Name != "cpu" {
 		t.Errorf("violations[0].metric: got %+v, want %q", v.Metric, "cpu")
@@ -503,8 +504,8 @@ func TestLogPayloadToAlert(t *testing.T) {
 		},
 	}
 	a := logPayloadToAlert(ev)
-	if a.Type != TypeLog {
-		t.Errorf("type: got %q, want %q", a.Type, TypeLog)
+	if a.Type != alert.TypeLog {
+		t.Errorf("type: got %q, want %q", a.Type, alert.TypeLog)
 	}
 	if a.Violations[0].Severity != "ERROR" {
 		t.Errorf("level: got %q, want %q", a.Violations[0].Severity, "ERROR")
@@ -516,8 +517,8 @@ func TestLogPayloadToAlert(t *testing.T) {
 		t.Fatalf("violations: got %d items, want 1", len(a.Violations))
 	}
 	v := a.Violations[0]
-	if v.Kind != ViolationKindLog {
-		t.Errorf("violations[0].kind: got %q, want %q", v.Kind, ViolationKindLog)
+	if v.Kind != alert.ViolationKindLog {
+		t.Errorf("violations[0].kind: got %q, want %q", v.Kind, alert.ViolationKindLog)
 	}
 	if v.Severity != "ERROR" {
 		t.Errorf("violations[0].level: got %q, want %q", v.Severity, "ERROR")
@@ -535,17 +536,17 @@ func TestLogPayloadToAlert(t *testing.T) {
 
 // TestEventJSON verifies the JSON serialization of Event.
 func TestEventJSON(t *testing.T) {
-	a := Event{
-		Type:       TypeMetric,
+	a := alert.Event{
+		Type:       alert.TypeMetric,
 		AssetID:    1,
 		TenantID:   2,
-		Violations: []Violation{{Kind: ViolationKindMetric, Metric: &MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 	data, err := json.Marshal(a)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var got Event
+	var got alert.Event
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -564,11 +565,11 @@ func TestEventJSON(t *testing.T) {
 // TestMatcherFunc verifies that MatcherFunc adapts a function into a Matcher.
 func TestMatcherFunc(t *testing.T) {
 	called := atomic.Bool{}
-	r := MatcherFunc(func(_ context.Context, _ Event) bool {
+	r := MatcherFunc(func(_ context.Context, _ alert.Event) bool {
 		called.Store(true)
 		return true
 	})
-	if !r.Match(context.Background(), Event{}) {
+	if !r.Match(context.Background(), alert.Event{}) {
 		t.Error("expected MatcherFunc to return true")
 	}
 	if !called.Load() {
@@ -644,7 +645,7 @@ func TestDispatchEventIDPropagatedToChannel(t *testing.T) {
 	ch := &recordingChannel{name: "recorder"}
 	eng.AddChannel(ch)
 
-	res := eng.Dispatch(context.Background(), Event{Type: TypeMetric, AssetID: 1})
+	res := eng.Dispatch(context.Background(), alert.Event{Type: alert.TypeMetric, AssetID: 1})
 	if !res.Accepted {
 		t.Fatal("expected alert to be accepted")
 	}
@@ -670,11 +671,11 @@ func TestDispatchEventIDStableAcrossSuppression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ Event) bool {
+	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return false
 	}))
 
-	res := eng.Dispatch(context.Background(), Event{Type: TypeMetric})
+	res := eng.Dispatch(context.Background(), alert.Event{Type: alert.TypeMetric})
 	if res.Accepted {
 		t.Fatal("expected alert to be suppressed")
 	}
@@ -690,14 +691,14 @@ func TestDispatchEventIDStableAcrossSuppression(t *testing.T) {
 // panickingRule is a Matcher implementation whose Match method always panics.
 type panickingRule struct{ name string }
 
-func (p *panickingRule) Match(_ context.Context, _ Event) bool {
+func (p *panickingRule) Match(_ context.Context, _ alert.Event) bool {
 	panic("boom from panickingRule")
 }
 
 func (p *panickingRule) Name() string { return p.name }
 
 // TestRulePanicDoesNotCrashEngine verifies that a panicking custom Matcher is
-// recovered by safeMatch, treated as not matching, and does not crash the
+// recovered by match, treated as not matching, and does not crash the
 // engine. A second healthy rule should still be evaluated and match.
 func TestRulePanicDoesNotCrashEngine(t *testing.T) {
 	eng, err := New(WithLogger(zap.NewNop()))
@@ -708,15 +709,15 @@ func TestRulePanicDoesNotCrashEngine(t *testing.T) {
 	eng.AddChannel(ch)
 	// First rule panics; second rule matches.
 	eng.AddRule(&panickingRule{name: "panicker"})
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ Event) bool {
+	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return true
 	}))
 
-	res := eng.Dispatch(context.Background(), Event{Type: TypeMetric, AssetID: 1})
+	res := eng.Dispatch(context.Background(), alert.Event{Type: alert.TypeMetric, AssetID: 1})
 	if !res.Accepted {
 		t.Fatal("expected alert to be accepted via the healthy rule")
 	}
-	// The panicking rule is omitted from MatchedRules because safeMatch
+	// The panicking rule is omitted from MatchedRules because match
 	// treats it as not matching.
 	for _, name := range res.MatchedRules {
 		if name == "panicker" {
@@ -735,12 +736,12 @@ func TestRulePanicDoesNotCrashEngine(t *testing.T) {
 // violations, simulating a compound rule that matched multiple conditions.
 type violationMatcherRule struct {
 	name       string
-	violations []Violation
+	violations []alert.Violation
 }
 
-func (r *violationMatcherRule) Match(_ context.Context, _ Event) bool { return true }
-func (r *violationMatcherRule) Name() string                          { return r.name }
-func (r *violationMatcherRule) MatchWithViolations(_ context.Context, _ Event) []Violation {
+func (r *violationMatcherRule) Match(_ context.Context, _ alert.Event) bool { return true }
+func (r *violationMatcherRule) Name() string                                { return r.name }
+func (r *violationMatcherRule) MatchWithViolations(_ context.Context, _ alert.Event) []alert.Violation {
 	return r.violations
 }
 
@@ -761,9 +762,9 @@ func TestDispatchCollectsViolationsFromViolationMatcher(t *testing.T) {
 	eng.AddChannel(ch)
 	// Register a ViolationMatcher rule that returns two violations,
 	// simulating a compound rule match.
-	expected := []Violation{
-		{Kind: ViolationKindMetric, Metric: &MetricContext{Name: "cpu", Value: 95, Threshold: 90}},
-		{Kind: ViolationKindMetric, Metric: &MetricContext{Name: "mem", Value: 88, Threshold: 85}},
+	expected := []alert.Violation{
+		{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 95, Threshold: 90}},
+		{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "mem", Value: 88, Threshold: 85}},
 	}
 	eng.AddRule(&violationMatcherRule{name: "compound", violations: expected})
 
@@ -815,7 +816,7 @@ func TestDispatchPreservesPayloadViolationsWithoutViolationMatcher(t *testing.T)
 	}
 	eng.AddChannel(ch)
 	// Register a plain Matcher (not ViolationMatcher) that matches all.
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ Event) bool { return true }))
+	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool { return true }))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -845,8 +846,8 @@ func TestDispatchPreservesPayloadViolationsWithoutViolationMatcher(t *testing.T)
 	if len(a.Violations) != 1 {
 		t.Fatalf("expected 1 payload violation preserved, got %d: %+v", len(a.Violations), a.Violations)
 	}
-	if a.Violations[0].Kind != ViolationKindMetric {
-		t.Errorf("violation kind: got %q, want %q", a.Violations[0].Kind, ViolationKindMetric)
+	if a.Violations[0].Kind != alert.ViolationKindMetric {
+		t.Errorf("violation kind: got %q, want %q", a.Violations[0].Kind, alert.ViolationKindMetric)
 	}
 	if a.Violations[0].Metric == nil || a.Violations[0].Metric.Name != "cpu" {
 		t.Errorf("violation metric: got %+v, want %q", a.Violations[0].Metric, "cpu")

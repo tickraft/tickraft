@@ -149,6 +149,20 @@ func (s *Store) TouchLastUsedAt(ctx context.Context, id int64, at time.Time) err
 	return nil
 }
 
+// ListEnabled returns all enabled channel records ordered by ID ascending.
+// It is used by the prism engine to load active channels into memory at
+// startup and during hot-reload.
+func (s *Store) ListEnabled(ctx context.Context) ([]*Record, error) {
+	var models []*Record
+	if err := s.dbc.WithContext(ctx).
+		Where("enabled = ?", true).
+		Order("id ASC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("channel: list enabled: %w", errmap.MapError(err))
+	}
+	return models, nil
+}
+
 // Compile-time assertion that Store implements the expected CRUD
 // surface. The interface is not exported because the handler layer
 // defines its own ChannelService interface; the Store is consumed by

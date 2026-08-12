@@ -17,16 +17,29 @@ import (
 	"go.uber.org/zap"
 )
 
-// mustNewPrism creates an alert.Engine for tests, failing on error.
-// The default-pool initialization path is unreachable in practice, so
-// this helper keeps tests concise without ignoring errors.
-func mustNewPrism(t *testing.T) *a.Engine {
+// mockRuleTarget implements RuleTarget for tests without importing the prism
+// package, avoiding an import cycle (prism imports rule for Register).
+type mockRuleTarget struct {
+	mu    sync.Mutex
+	rules []a.Matcher
+}
+
+func (m *mockRuleTarget) AddRule(matcher a.Matcher) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.rules = append(m.rules, matcher)
+}
+
+func (m *mockRuleTarget) Rules() []a.Matcher {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]a.Matcher(nil), m.rules...)
+}
+
+// mustNewTarget creates a mockRuleTarget for tests.
+func mustNewTarget(t *testing.T) *mockRuleTarget {
 	t.Helper()
-	eng, err := a.New()
-	if err != nil {
-		t.Fatalf("alert.New() error: %v", err)
-	}
-	return eng
+	return &mockRuleTarget{}
 }
 
 // ---------------------------------------------------------------------------
@@ -82,13 +95,12 @@ func TestConfig_Logger_NilFallback(t *testing.T) {
 // Register to return nil without touching the supplied prism Engine: no rule
 // is added.
 func TestRegister_ZeroConfigIsNoOp(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
-	if _, err := Register(context.Background(), alertEng, Config{}); err != nil {
+	if _, err := Register(context.Background(), target, Config{}); err != nil {
 		t.Fatalf("Register zero config: %v", err)
 	}
-	if got := alertEng.Rules(); len(got) != 0 {
+	if got := target.Rules(); len(got) != 0 {
 		t.Errorf("expected no rules registered for zero config, got %d", len(got))
 	}
 }
@@ -112,8 +124,7 @@ func TestRegister_NilPrismEngineReturnsError(t *testing.T) {
 // loaded with negative IDs (so they never collide with database-assigned IDs),
 // and that the MetricMatcher is registered on the prism Engine.
 func TestRegister_StaticRulesLoaded(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	cfg := Config{
 		Logger: zap.NewNop(),
@@ -122,12 +133,12 @@ func TestRegister_StaticRulesLoaded(t *testing.T) {
 			{Name: "task-priority", Scene: SceneTask, Expression: "task.priority > 5", Priority: 5},
 		},
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
 	// The MetricMatcher is registered as an alert.Matcher.
-	rules := alertEng.Rules()
+	rules := target.Rules()
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 prism rule (MetricMatcher), got %d", len(rules))
 	}
@@ -170,8 +181,7 @@ func TestRegister_StaticRulesLoaded(t *testing.T) {
 // static rule expression is logged and skipped while valid sibling rules load
 // normally.
 func TestRegister_StaticRuleCompileFailureIsolation(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	cfg := Config{
 		Logger: zap.NewNop(),
@@ -181,11 +191,11 @@ func TestRegister_StaticRuleCompileFailureIsolation(t *testing.T) {
 			{Name: "also-good", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 90`, Priority: 1},
 		},
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	rules := alertEng.Rules()
+	rules := target.Rules()
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 prism rule, got %d", len(rules))
 	}
@@ -213,8 +223,7 @@ func TestRegister_StaticRuleCompileFailureIsolation(t *testing.T) {
 // TestRegister_StoreInitialReload verifies that when a Store is configured, the
 // initial Reload replaces the static rule set with the store's enabled rules.
 func TestRegister_StoreInitialReload(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	store := &stubRuleStore{rules: []Record{
 		{ID: 100, TenantID: 1, Name: "dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 50`, Enabled: true, Priority: 5},
@@ -226,11 +235,11 @@ func TestRegister_StoreInitialReload(t *testing.T) {
 		},
 		Store: store,
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	mm := alertEng.Rules()[0].(*MetricMatcher)
+	mm := target.Rules()[0].(*MetricMatcher)
 
 	// The static rule (threshold 999) is replaced by the dynamic rule (threshold 50)
 	// after the initial Reload. A value of 60 matches the dynamic rule but not the
@@ -257,8 +266,7 @@ func TestRegister_StoreInitialReload(t *testing.T) {
 // failure during the initial Reload is non-fatal: Register returns nil and the
 // previously loaded static rules remain in the engine.
 func TestRegister_StoreReloadFailureNonFatal(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	store := &stubRuleStore{listErr: errStubStoreUnavailable}
 	cfg := Config{
@@ -268,11 +276,11 @@ func TestRegister_StoreReloadFailureNonFatal(t *testing.T) {
 		},
 		Store: store,
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	mm := alertEng.Rules()[0].(*MetricMatcher)
+	mm := target.Rules()[0].(*MetricMatcher)
 
 	// The static rule remains loaded despite the Store failure.
 	ctx := context.Background()
@@ -321,8 +329,7 @@ func (s *countingStore) ListEnabled(ctx context.Context, tenantID int64, scene S
 // The reload loop goroutine is cancelled via Engine.Stop so it does not
 // leak past the test.
 func TestRegister_EvalIntervalStartsReloadLoop(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	var calls int64
 	store := &countingStore{
@@ -336,7 +343,7 @@ func TestRegister_EvalIntervalStartsReloadLoop(t *testing.T) {
 		Store:        store,
 		EvalInterval: 50 * time.Millisecond,
 	}
-	ruleEng, err := Register(context.Background(), alertEng, cfg)
+	ruleEng, err := Register(context.Background(), target, cfg)
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -367,8 +374,7 @@ func TestRegister_EvalIntervalStartsReloadLoop(t *testing.T) {
 // zero, Register does NOT start a reload goroutine: only the initial Reload's
 // 4 ListEnabled calls occur, and the count does not grow over time.
 func TestRegister_EvalIntervalZeroNoReloadLoop(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	var calls int64
 	store := &countingStore{
@@ -382,7 +388,7 @@ func TestRegister_EvalIntervalZeroNoReloadLoop(t *testing.T) {
 		Store:        store,
 		EvalInterval: 0, // no periodic loop
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
@@ -403,8 +409,7 @@ func TestRegister_EvalIntervalZeroNoReloadLoop(t *testing.T) {
 // configured, the MetricMatcher's store field is populated so Match can enrich
 // the env via GetByID.
 func TestRegister_AssetStoreWired(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	resStore := &stubAssetStore{asset: assetAssetForRegisterPtr()}
 	cfg := Config{
@@ -414,11 +419,11 @@ func TestRegister_AssetStoreWired(t *testing.T) {
 			{Name: "by-name", Scene: SceneMetric, Expression: `asset.name == "enriched-host"`, Priority: 1},
 		},
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	mm := alertEng.Rules()[0].(*MetricMatcher)
+	mm := target.Rules()[0].(*MetricMatcher)
 	if mm.store == nil {
 		t.Fatal("expected MetricMatcher.store to be wired from cfg.AssetStore")
 	}
@@ -456,8 +461,7 @@ func assetAssetForRegisterPtr() *asset.Asset {
 // rules are loaded, the store performs an initial Reload, the MetricMatcher is
 // registered, and matching reflects the dynamic rules.
 func TestRegister_FullIntegration(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	store := &stubRuleStore{rules: []Record{
 		{ID: 1, TenantID: 1, Name: "cpu-dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 70`, Enabled: true, Priority: 10},
@@ -470,11 +474,11 @@ func TestRegister_FullIntegration(t *testing.T) {
 		Store:      store,
 		AssetStore: &stubAssetStore{},
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	rules := alertEng.Rules()
+	rules := target.Rules()
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 prism rule, got %d", len(rules))
 	}
@@ -491,23 +495,6 @@ func TestRegister_FullIntegration(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// alert.Engine cleanup helper
-// ---------------------------------------------------------------------------
-
-// The alert.Engine exposes a Stop method that we invoke via defer to release
-// the worker pool. The helper below is intentionally a no-op placeholder that
-// documents the convention; tests use `defer alertEng.Stop()` directly.
-func TestRegister_StopHelper(t *testing.T) {
-	// Verify alert.Engine has a Stop method by invoking it on a fresh engine.
-	eng := mustNewPrism(t)
-	if eng == nil {
-		t.Fatal("alert.New returned nil")
-	}
-	// Stop on a fresh engine without Start must be safe (no-op or quick return).
-	_ = eng.Stop(context.Background())
-}
-
-// ---------------------------------------------------------------------------
 // concurrency: Register + Match
 // ---------------------------------------------------------------------------
 
@@ -515,8 +502,7 @@ func TestRegister_StopHelper(t *testing.T) {
 // by Register is safe for concurrent Match invocations. Run with -race to
 // detect data races.
 func TestRegister_ConcurrentMatchAfterRegister(t *testing.T) {
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
+	target := mustNewTarget(t)
 
 	cfg := Config{
 		Logger: zap.NewNop(),
@@ -524,10 +510,10 @@ func TestRegister_ConcurrentMatchAfterRegister(t *testing.T) {
 			{Name: "cpu", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 80`, Priority: 10},
 		},
 	}
-	if _, err := Register(context.Background(), alertEng, cfg); err != nil {
+	if _, err := Register(context.Background(), target, cfg); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	mm := alertEng.Rules()[0].(*MetricMatcher)
+	mm := target.Rules()[0].(*MetricMatcher)
 
 	const goroutines = 50
 	var wg sync.WaitGroup

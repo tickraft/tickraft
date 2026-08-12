@@ -48,12 +48,11 @@ func TestMetricMatcher_WithPrismEngine(t *testing.T) {
 
 	metricMatcher := NewMetricMatcher(eng, nil)
 
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
-	alertEng.AddRule(metricMatcher)
+	target := mustNewTarget(t)
+	target.AddRule(metricMatcher)
 
 	// The prism engine should expose the matcher through Rules().
-	registered := alertEng.Rules()
+	registered := target.Rules()
 	if len(registered) != 1 {
 		t.Fatalf("expected 1 rule registered, got %d", len(registered))
 	}

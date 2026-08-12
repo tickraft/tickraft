@@ -67,8 +67,6 @@ prism:
   # Goroutine pool size for sending notifications across all configured
   # channels. 0 disables the pool (synchronous dispatch).
   concurrence: 8
-  # Opaque notification channel configuration (path or inline JSON/YAML).
-  channel_config: ""
 
 # ---------------------------------------------------------------------------
 # Database: backend database connection.

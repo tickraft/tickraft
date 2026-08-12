@@ -30,19 +30,19 @@ func RunMigrate(ctx context.Context, dbCfg db.Config, displayDSN string) error {
 		}
 	}()
 
-	if err := db.AutoMigrate(ctx, dbc); err != nil {
+	if err = db.AutoMigrate(ctx, dbc); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err := remediation.Migrate(ctx, dbc); err != nil {
+	if err = remediation.Migrate(ctx, dbc); err != nil {
 		return fmt.Errorf("migrate remediation: %w", err)
 	}
 
-	if err := rule.NewStore(dbc, rule.NewCompiler()).Migrate(ctx); err != nil {
+	if err = rule.NewStore(dbc, rule.NewCompiler()).Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate rule table: %w", err)
 	}
 
-	if err := alert.Migrate(ctx, dbc); err != nil {
+	if err = alert.Migrate(ctx, dbc); err != nil {
 		return fmt.Errorf("migrate alert tables: %w", err)
 	}
 
@@ -58,11 +58,12 @@ func RunMigrateFromDSN(ctx context.Context, dsn string) error {
 	if dsn == "" {
 		return errors.New("db: --dsn is set but empty")
 	}
-	dbCfg, err := db.Parse(dsn)
+
+	cfg, err := db.Parse(dsn)
 	if err != nil {
 		return fmt.Errorf("parse database dsn: %w", err)
 	}
-	return RunMigrate(ctx, dbCfg, dsn)
+	return RunMigrate(ctx, cfg, dsn)
 }
 
 // RunMigrateFromConfig loads the config file, resolves the database
@@ -73,6 +74,7 @@ func RunMigrateFromConfig(ctx context.Context, configPath string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+
 	dbCfg, err := cfg.Database.ResolveDBConfig()
 	if err != nil {
 		return fmt.Errorf("resolve database config: %w", err)

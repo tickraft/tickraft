@@ -12,14 +12,13 @@ import (
 
 // Record is the GORM persistence model for the sys_prism_channel
 // table. It stores notification channel definitions managed through the
-// CRUD API, decoupling channel configuration from the file-based
-// channel loader (internal/service.LoadChannels).
+// CRUD API at /api/v1/prism/channels.
 //
 // The Config field holds a JSON-encoded channel.Config payload so the
-// same Factory/Config mechanism used by the file-based loader can
-// construct a runtime alert.Channel from a database row. The open-source
-// edition supports the "webhook" type exclusively; additional types are
-// injected via the extension SPI (channel.Register).
+// BuildFromRecord function can construct a runtime alert.Channel from a
+// database row. The open-source edition supports the "webhook" and "email"
+// types; additional types are injected via the extension SPI
+// (channel.Register).
 type Record struct {
 	// ID is the auto-incremented primary key.
 	ID int64 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`

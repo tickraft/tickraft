@@ -221,11 +221,11 @@ func (c *Crontab) start(ctx context.Context) {
 	go c.scheduleLoop(ctx)
 }
 
-// safeRun invokes a job with panic isolation. A panicking job is recovered
+// run invokes a job with panic isolation. A panicking job is recovered
 // and logged via zap so that a single faulty job cannot crash the scheduler
 // or sibling workers. The recovered panic is never re-propagated, honoring
 // the "no panic in business logic" rule.
-func (c *Crontab) safeRun(ctx context.Context, job Job) {
+func (c *Crontab) run(ctx context.Context, job Job) {
 	defer func() {
 		if r := recover(); r != nil {
 			c.logger.Error("cron job panic recovered",
@@ -244,7 +244,7 @@ func (c *Crontab) worker(ctx context.Context) {
 			if !ok {
 				return
 			}
-			c.safeRun(ctx, job)
+			c.run(ctx, job)
 		case <-ctx.Done():
 			return
 		case <-c.done:
@@ -315,7 +315,7 @@ func (c *Crontab) runDueJobs(ctx context.Context) {
 			return
 		default:
 			// Worker pool full; run inline to avoid unbounded goroutine creation.
-			c.safeRun(ctx, job)
+			c.run(ctx, job)
 		}
 	}
 }

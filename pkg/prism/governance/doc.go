@@ -16,5 +16,5 @@
 // This package is defined in the the repository because the
 // Engine itself consumes it (define-at-consumption-site). The
 // shared alert.Event type referenced by Guard.Process lives in
-// internal/alert, re-exported through pkg/prism/alert.
+// pkg/prism/alert.
 package governance

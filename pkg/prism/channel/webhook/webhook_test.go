@@ -688,7 +688,7 @@ func TestApplyDefaults(t *testing.T) {
 
 // TestImplementsPrismChannel verifies that *Channel satisfies the
 // alert.Channel interface at runtime.
-func TestImplementsPrismChannel(t *testing.T) {
+func TestImplementsAlertChannel(t *testing.T) {
 	var _ alert.Channel = (*Channel)(nil)
 	ch, err := New(Config{URL: "http://example.com"})
 	if err != nil {

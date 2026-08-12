@@ -27,7 +27,6 @@ worker:
 prism:
   eval_interval: "30s"
   concurrence: 8
-  channel_config: ""
 database:
   dsn: ${TICKRAFT_TEST_DB_DSN}
 auth:

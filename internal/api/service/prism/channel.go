@@ -6,31 +6,33 @@ package prism
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/channel"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	prismcore "github.com/tickraft/tickraft/pkg/prism"
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
 	prismchannel "github.com/tickraft/tickraft/pkg/prism/channel"
-	"github.com/tickraft/tickraft/pkg/prism/channel/webhook"
 )
 
 // ChannelService implements channel.Service using the prism channel
-// store.
+// store. Mutating operations (Create/Update/Delete) trigger a hot-reload
+// of the engine's in-memory channel list via ReloadChannels.
 type ChannelService struct {
-	store *prismchannel.Store
+	store  *prismchannel.Store
+	engine *prismcore.Engine
 }
 
-// NewChannelService creates a ChannelService backed by the given store.
-func NewChannelService(store *prismchannel.Store) *ChannelService {
-	return &ChannelService{store: store}
+// NewChannelService creates a ChannelService backed by the given store
+// and engine. The engine is used to hot-reload channels after mutations;
+// a nil engine disables hot-reload (useful for tests).
+func NewChannelService(store *prismchannel.Store, engine *prismcore.Engine) *ChannelService {
+	return &ChannelService{store: store, engine: engine}
 }
 
 // ListChannels returns a page of notification channels and the total count.
@@ -58,6 +60,7 @@ func (s *ChannelService) GetChannel(ctx context.Context, id int64) (*channel.Cha
 }
 
 // CreateChannel creates a new notification channel from the given request.
+// After a successful insert the engine's channel list is hot-reloaded.
 func (s *ChannelService) CreateChannel(ctx context.Context, req *channel.Channel) (*channel.Channel, error) {
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
@@ -69,11 +72,13 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channel.Channel
 	if err := s.store.Create(ctx, m); err != nil {
 		return nil, mapChannelStoreError(err)
 	}
+	s.reloadChannels(ctx)
 	h := channelModelToHandler(m)
 	return &h, nil
 }
 
 // UpdateChannel updates an existing notification channel identified by ID.
+// After a successful update the engine's channel list is hot-reloaded.
 func (s *ChannelService) UpdateChannel(ctx context.Context, id int64, req *channel.Channel) (*channel.Channel, error) {
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
@@ -88,15 +93,18 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, id int64, req *chann
 	if err := s.store.Update(ctx, m); err != nil {
 		return nil, mapChannelStoreError(err)
 	}
+	s.reloadChannels(ctx)
 	h := channelModelToHandler(m)
 	return &h, nil
 }
 
-// DeleteChannel deletes a notification channel by ID.
+// DeleteChannel deletes a notification channel by ID. After a successful
+// delete the engine's channel list is hot-reloaded.
 func (s *ChannelService) DeleteChannel(ctx context.Context, id int64) error {
 	if err := s.store.DeleteByID(ctx, id); err != nil {
 		return mapChannelStoreError(err)
 	}
+	s.reloadChannels(ctx)
 	return nil
 }
 
@@ -107,7 +115,7 @@ func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
 	if err != nil {
 		return mapChannelStoreError(err)
 	}
-	ch, err := buildChannelFromRecord(m)
+	ch, err := prismcore.BuildChannelFromRecord(m)
 	if err != nil {
 		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, fmt.Sprintf("build channel: %v", err))
 	}
@@ -122,6 +130,20 @@ func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
 		},
 	}
 	return ch.Send(ctx, evt)
+}
+
+// reloadChannels triggers a hot-reload of the engine's channel list.
+// Errors are logged but not returned to the caller, since a reload failure
+// does not invalidate the CRUD operation that triggered it.
+func (s *ChannelService) reloadChannels(ctx context.Context) {
+	if s.engine == nil {
+		return
+	}
+	if err := s.engine.ReloadChannels(ctx); err != nil {
+		// Best-effort: log and continue. The CRUD operation succeeded;
+		// the engine will pick up the change on next restart.
+		_ = err // engine.ReloadChannels already logged the error
+	}
 }
 
 // channelModelToHandler converts a prismchannel.Record persistence model into
@@ -163,50 +185,4 @@ func mapChannelStoreError(err error) error {
 		return handler.ErrChannelNotFound
 	}
 	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
-}
-
-// buildChannelFromRecord parses the record's Config JSON, looks up a
-// registered channel factory by type, and constructs a runtime
-// prismalert.Channel. When no factory is registered for the "webhook" type,
-// the built-in webhook constructor is used as a fallback.
-func buildChannelFromRecord(m *prismchannel.Record) (prismalert.Channel, error) {
-	var cfg prismchannel.Config
-	if err := json.Unmarshal([]byte(m.Config), &cfg); err != nil {
-		return nil, fmt.Errorf("parse channel config: %w", err)
-	}
-	normalizedType := normalizeType(m.Type)
-	if factory := prismchannel.LookupFactory(normalizedType); factory != nil {
-		return factory(cfg)
-	}
-	if normalizedType == "webhook" {
-		return buildWebhookChannel(cfg)
-	}
-	return nil, fmt.Errorf("unsupported channel type: %s", m.Type)
-}
-
-// buildWebhookChannel constructs a webhook prismalert.Channel from a
-// prismchannel.Config.
-func buildWebhookChannel(cfg prismchannel.Config) (prismalert.Channel, error) {
-	whCfg := webhook.Config{
-		URL:     cfg.URL,
-		Headers: cfg.Headers,
-	}
-	if cfg.Timeout != "" {
-		d, err := time.ParseDuration(cfg.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("parse webhook timeout: %w", err)
-		}
-		whCfg.Timeout = d
-	}
-	ch, err := webhook.New(whCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create webhook channel: %w", err)
-	}
-	return ch, nil
-}
-
-// normalizeType lowercases a channel type name for case-insensitive factory
-// lookup.
-func normalizeType(t string) string {
-	return strings.ToLower(t)
 }

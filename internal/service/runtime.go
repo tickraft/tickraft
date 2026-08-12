@@ -34,10 +34,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/i18n"
-	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"github.com/tickraft/tickraft/pkg/prism/channel"
-	premed "github.com/tickraft/tickraft/pkg/prism/remediation"
-	"github.com/tickraft/tickraft/pkg/prism/rule"
+	"github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/user"
@@ -90,25 +87,10 @@ type runtime struct {
 	// the asset-key middleware getter.
 	assetStore asset.Store
 
-	// Alert-related resources created by startPrismEngine and consumed by
-	// startAPIServer when wiring the alert service into the API routes.
-	alertEngine      *alert.Engine
-	ruleEngine       *rule.Engine
-	ruleStore        *rule.Store
-	alertRecordStore alert.RecordStore
-
-	// channelStore is the notification channel persistence store, created
-	// by startPrismEngine and consumed by startAPIServer when wiring the
-	// channel service into the API routes. It persists channel definitions
-	// managed through the CRUD API at /api/v1/prism/channels.
-	channelStore *channel.Store
-
-	// remediationRuleStore is the self-healing rule persistence store,
-	// created by startPrismEngine and consumed by startAPIServer when
-	// wiring the remediation rule service into the API routes. It persists
-	// remediation rule definitions managed through the CRUD API at
-	// /api/v1/prism/remediation/rules.
-	remediationRuleStore *premed.Store
+	// Alert-related resources: the prismEngine is created by
+	// startPrismEngine and stores are accessed via accessor methods
+	// (RuleStore, RecordStore, ChannelStore, RemediationStore, RuleEngine).
+	prismEngine *prism.Engine
 
 	// Scheduler-related resources created by startWorkerEngines and consumed
 	// by startAPIServer when wiring the task service into the API routes.

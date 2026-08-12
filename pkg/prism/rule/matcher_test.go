@@ -26,7 +26,7 @@ import (
 // failure in addition to the package-level assertion.
 var (
 	_ telemetry.Processor = (*ProbeMatcher)(nil)
-	_ a.Matcher           = (*MetricMatcher)(nil)
+	_ a.Matcher          = (*MetricMatcher)(nil)
 )
 
 // stubAssetStore is a minimal asset.Store double. It records every
@@ -549,11 +549,10 @@ func TestMetricMatcher_AsPrismRule(t *testing.T) {
 	eng := NewEngine(zap.NewNop())
 	matcher := NewMetricMatcher(eng, nil)
 
-	alertEng := mustNewPrism(t)
-	defer alertEng.Stop(context.Background())
-	alertEng.AddRule(matcher)
+	target := mustNewTarget(t)
+	target.AddRule(matcher)
 
-	registered := alertEng.Rules()
+	registered := target.Rules()
 	if len(registered) != 1 {
 		t.Fatalf("expected 1 rule registered, got %d", len(registered))
 	}

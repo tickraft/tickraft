@@ -16,6 +16,9 @@ type RecordStore interface {
 	// Create inserts a new alert record. The ID and CreatedAt are populated
 	// by the database on success.
 	Create(ctx context.Context, m *Record) error
+	// CreateBatch inserts multiple alert records in a single DB round-trip.
+	// IDs and CreatedAt are populated by the database on success.
+	CreateBatch(ctx context.Context, models []*Record) error
 	// GetByID retrieves an alert record by its ID. Returns errdefs.ErrNotFound
 	// when no record with the given ID exists.
 	GetByID(ctx context.Context, id int64) (*Record, error)

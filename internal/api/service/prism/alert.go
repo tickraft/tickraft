@@ -7,9 +7,7 @@ package prism
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
@@ -238,57 +236,4 @@ func mapRecordStoreError(err error) error {
 		return handler.ErrRecordNotFound
 	}
 	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
-}
-
-// RecordAlert creates alert records for each violation carried by the event.
-// It is intended as the OnAlert callback wired into the prism alert engine.
-// A nil recordStore makes the function a no-op so the callback is safe to
-// register even when record persistence is disabled.
-func RecordAlert(ctx context.Context, recordStore prismalert.RecordStore, evt prismalert.Event) error {
-	if recordStore == nil {
-		return nil
-	}
-	triggeredAt := evt.Timestamp
-	if triggeredAt.IsZero() {
-		triggeredAt = time.Now()
-	}
-	for _, v := range evt.Violations {
-		rec := violationToRecord(v, triggeredAt)
-		if err := recordStore.Create(ctx, rec); err != nil {
-			return fmt.Errorf("persist alert record: %w", err)
-		}
-	}
-	return nil
-}
-
-// violationToRecord builds a prismalert.Record from a single violation. The
-// rule name is derived from the metric name, log keyword, or violation source;
-// severity defaults to "warning" when empty.
-func violationToRecord(v prismalert.Violation, triggeredAt time.Time) *prismalert.Record {
-	severity := v.Severity
-	if severity == "" {
-		severity = "warning"
-	}
-	ruleName := v.Source
-	var value float64
-	if v.Metric != nil {
-		ruleName = v.Metric.Name
-		value = v.Metric.Value
-	}
-	if ruleName == "" && v.Log != nil {
-		ruleName = v.Log.Keyword
-	}
-	message := v.Message
-	if message == "" {
-		message = fmt.Sprintf("alert %s: %s", v.Kind, ruleName)
-	}
-	return &prismalert.Record{
-		RuleID:      0,
-		RuleName:    ruleName,
-		Severity:    severity,
-		Value:       value,
-		Message:     message,
-		Status:      "firing",
-		TriggeredAt: triggeredAt,
-	}
 }

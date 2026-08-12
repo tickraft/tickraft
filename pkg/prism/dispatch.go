@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package alert
+package prism
 
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
+	"encoding/binary"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/governance"
 	"go.uber.org/zap"
 )
@@ -47,13 +49,13 @@ type DispatchResult struct {
 // dispatch is the event-bus subscription callback. It delegates to Dispatch
 // and discards the result so the existing fire-and-forget semantics are
 // preserved.
-func (e *Engine) dispatch(ctx context.Context, alert Event) {
+func (e *Engine) dispatch(ctx context.Context, evt alert.Event) {
 	// Dispatch returns a DispatchResult carrying observability metadata (matched
 	// rules, dispatched channels). The event-bus callback has no caller to
 	// surface this to, and Dispatch already logs every relevant outcome
 	// (suppression, channel send failure, onAlert error) via zap, so the result
 	// is intentionally not captured here.
-	e.Dispatch(ctx, alert)
+	e.Dispatch(ctx, evt)
 }
 
 // Dispatch synchronously evaluates the alert against the registered rules
@@ -82,19 +84,19 @@ func (e *Engine) dispatch(ctx context.Context, alert Event) {
 // the dispatch decision (any-match) is unchanged. Each rule.Match call is
 // wrapped with panic recovery so a buggy custom Matcher cannot crash the
 // engine; a panicking rule is logged and treated as not matching.
-func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
+func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// Defensive check: ensure the event has at least one violation.
 	// When Violations is empty, initialize a default violation based on
 	// the event type so that downstream consumers (channels, governance)
 	// do not receive an empty violation list.
-	if len(alert.Violations) == 0 {
-		alert.Violations = []Violation{{
-			Kind: string(alert.Type),
+	if len(evt.Violations) == 0 {
+		evt.Violations = []alert.Violation{{
+			Kind: string(evt.Type),
 		}}
 	}
 
 	eventID := newEventID()
-	alert.EventID = eventID
+	evt.EventID = eventID
 
 	rules := e.rulesSnapshot()
 	channels := e.channelsSnapshot()
@@ -106,15 +108,15 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 	// dispatch. default deployments pass an empty chain, so this loop
 	// is a no-op and Dispatch falls through to rule evaluation.
 	for _, g := range guards {
-		decision := safeProcess(ctx, g, &alert, e.logger)
+		decision := process(ctx, g, &evt, e.logger)
 		switch decision {
 		case governance.DecisionSuppress:
-			e.recordAlert(ctx, alert, eventID)
+			e.recordAlert(ctx, evt, eventID)
 			e.logger.Debug("alert suppressed by governance guard",
 				zap.String("event_id", eventID),
 				zap.String("guard", guardName(g)),
-				zap.String("type", string(alert.Type)),
-				zap.Int64("asset_id", alert.AssetID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
 			)
 			return DispatchResult{
 				Accepted: false,
@@ -122,12 +124,12 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 				Message:  "alert suppressed by governance guard",
 			}
 		case governance.DecisionAggregate:
-			e.recordAlert(ctx, alert, eventID)
+			e.recordAlert(ctx, evt, eventID)
 			e.logger.Debug("alert aggregated by governance guard",
 				zap.String("event_id", eventID),
 				zap.String("guard", guardName(g)),
-				zap.String("type", string(alert.Type)),
-				zap.Int64("asset_id", alert.AssetID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
 			)
 			return DispatchResult{
 				Accepted: false,
@@ -141,9 +143,7 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 	// hook so the callers can notify the Suppressor about active
 	// source alerts before rule evaluation. The hook is nil in default
 	// deployments, so this is a no-op there.
-	if e.postGuardHook != nil {
-		e.postGuardHook(ctx, &alert)
-	}
+	postGuardHook(ctx, e.postGuardHook, &evt, e.logger)
 
 	matchedRules := make([]string, 0)
 	matched := len(rules) == 0
@@ -156,27 +156,27 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 	// fingerprint, record persistence) see the full set of matched
 	// conditions. When no ViolationMatcher rules match or none return
 	// violations, the payload-populated Event.Violations are preserved.
-	var collectedViolations []Violation
+	var collectedViolations []alert.Violation
 	for _, r := range rules {
-		if safeMatch(ctx, r, alert, e.logger) {
+		if match(ctx, r, evt, e.logger) {
 			matched = true
 			if nr, ok := r.(NamedMatcher); ok {
 				matchedRules = append(matchedRules, nr.Name())
 			}
 			if vm, ok := r.(ViolationMatcher); ok {
 				collectedViolations = append(collectedViolations,
-					safeMatchWithViolations(ctx, vm, alert, e.logger)...)
+					matchWithViolations(ctx, vm, evt, e.logger)...)
 			}
 		}
 	}
 	if len(collectedViolations) > 0 {
-		alert.Violations = collectedViolations
+		evt.Violations = collectedViolations
 	}
 	if !matched {
 		e.logger.Debug("alert suppressed by rules",
 			zap.String("event_id", eventID),
-			zap.String("type", string(alert.Type)),
-			zap.Int64("asset_id", alert.AssetID),
+			zap.String("type", string(evt.Type)),
+			zap.Int64("asset_id", evt.AssetID),
 		)
 		return DispatchResult{
 			Accepted: false,
@@ -186,26 +186,26 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 	}
 
 	// Invoke the OnAlert callback (if registered) so that callers can
-	// persist the alert record without the prism alert package depending on a
+	// persist the alert record without the prism package depending on a
 	// store. Errors from the callback are logged but do not suppress
 	// channel notification.
-	e.recordAlert(ctx, alert, eventID)
+	e.recordAlert(ctx, evt, eventID)
 
 	dispatchedChannels := make([]string, 0, len(channels))
 	if len(channels) == 0 {
 		// No channels registered: log the alert so it is still
 		// observable in deployments without a configured
 		// notification sink.
-		primary, _ := alert.PrimaryViolation()
+		primary, _ := evt.PrimaryViolation()
 		metricName := ""
 		if primary.Metric != nil {
 			metricName = primary.Metric.Name
 		}
 		e.logger.Info("alert received (no channels registered)",
 			zap.String("event_id", eventID),
-			zap.String("type", string(alert.Type)),
-			zap.Int64("asset_id", alert.AssetID),
-			zap.Int64("tenant_id", alert.TenantID),
+			zap.String("type", string(evt.Type)),
+			zap.Int64("asset_id", evt.AssetID),
+			zap.Int64("tenant_id", evt.TenantID),
 			zap.String("metric_name", metricName),
 			zap.String("level", primary.Severity),
 		)
@@ -223,7 +223,14 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 		e.wg.Add(1)
 		job := pool.Lambda(func(jobCtx context.Context) error {
 			defer e.wg.Done()
-			if err := c.Send(jobCtx, alert); err != nil {
+			// Enforce a per-channel send timeout so a slow or unresponsive
+			// channel cannot indefinitely occupy a worker pool slot and
+			// cause backpressure on the dispatch path. The timeout is
+			// applied here (in the pool worker) rather than at the channel
+			// implementation so it covers all channel types uniformly.
+			sendCtx, cancel := context.WithTimeout(jobCtx, channelSendTimeout)
+			defer cancel()
+			if err := c.Send(sendCtx, evt); err != nil {
 				e.logger.Warn("channel send failed",
 					zap.String("event_id", eventID),
 					zap.String("channel", c.Name()),
@@ -239,6 +246,12 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 				zap.String("channel", c.Name()),
 				zap.Error(err),
 			)
+			// Forward to the dead-letter handler if registered so the event
+			// can be persisted for retry by a background worker. When no
+			// handler is registered the alert is dropped (logged above).
+			if e.deadLetterHandler != nil {
+				handleDeadLetter(ctx, e.deadLetterHandler, evt, c.Name(), e.logger)
+			}
 		}
 	}
 
@@ -251,49 +264,49 @@ func (e *Engine) Dispatch(ctx context.Context, alert Event) DispatchResult {
 	}
 }
 
-// safeOnAlert invokes the OnAlert callback with panic recovery so that a
-// buggy callback cannot crash the prism alert engine. The returned error is
+// onAlert invokes the OnAlert callback with panic recovery so that a
+// buggy callback cannot crash the prism engine. The returned error is
 // non-nil only when the callback returned an error; panics are recovered,
 // logged, and reported as an error so the caller can log them.
-func safeOnAlert(ctx context.Context, fn OnAlertFunc, alert Event, logger *zap.Logger) (err error) {
+func onAlert(ctx context.Context, fn OnAlertFunc, evt alert.Event, logger *zap.Logger) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("onAlert callback panicked",
-				zap.String("type", string(alert.Type)),
-				zap.Int64("asset_id", alert.AssetID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
 				zap.Any("panic", r),
 			)
 			err = fmt.Errorf("alert: onAlert callback panicked: %v", r)
 		}
 	}()
-	fn(ctx, alert)
+	fn(ctx, evt)
 	return nil
 }
 
 // recordAlert invokes the OnAlert callback (if registered) so that callers
-// can persist the alert record without the prism alert package depending on a
+// can persist the alert record without the prism package depending on a
 // store. Errors from the callback are logged but do not suppress channel
 // notification. It is called both for governance-suppressed alerts (which are
 // still recorded) and for alerts that passed rule evaluation.
-func (e *Engine) recordAlert(ctx context.Context, alert Event, eventID string) {
+func (e *Engine) recordAlert(ctx context.Context, evt alert.Event, eventID string) {
 	if e.onAlert == nil {
 		return
 	}
-	if err := safeOnAlert(ctx, e.onAlert, alert, e.logger); err != nil {
+	if err := onAlert(ctx, e.onAlert, evt, e.logger); err != nil {
 		e.logger.Warn("onAlert callback returned error",
 			zap.String("event_id", eventID),
-			zap.String("type", string(alert.Type)),
-			zap.Int64("asset_id", alert.AssetID),
+			zap.String("type", string(evt.Type)),
+			zap.Int64("asset_id", evt.AssetID),
 			zap.Error(err),
 		)
 	}
 }
 
-// safeProcess invokes a governance.Guard.Process with panic recovery so
+// process invokes a governance.Guard.Process with panic recovery so
 // that a buggy guard cannot crash the engine. A panic is recovered,
 // logged, and treated as governance.DecisionPass so the alert is not silently swallowed
 // by a faulty guard.
-func safeProcess(ctx context.Context, g governance.Guard, evt *Event, logger *zap.Logger) (decision governance.Decision) {
+func process(ctx context.Context, g governance.Guard, evt *alert.Event, logger *zap.Logger) (decision governance.Decision) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("governance guard panicked",
@@ -307,6 +320,43 @@ func safeProcess(ctx context.Context, g governance.Guard, evt *Event, logger *za
 	return g.Process(ctx, evt)
 }
 
+// postGuardHook invokes the PostGuardHook callback with panic recovery so
+// that a buggy hook cannot crash the engine. A panic is recovered, logged at
+// error level, and the dispatch continues — the hook's side effect (e.g.
+// suppression notification) is lost but the alert itself is not.
+func postGuardHook(ctx context.Context, hook PostGuardHook, evt *alert.Event, logger *zap.Logger) {
+	if hook == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("postGuardHook panicked",
+				zap.String("event_id", evt.EventID),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
+				zap.Any("panic", r),
+			)
+		}
+	}()
+	hook(ctx, evt)
+}
+
+// handleDeadLetter invokes the DeadLetterHandler with panic recovery so a
+// buggy handler cannot crash the engine. The event is already lost from the
+// notification path, so a panic here is logged and swallowed.
+func handleDeadLetter(ctx context.Context, handler DeadLetterHandler, evt alert.Event, channelName string, logger *zap.Logger) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("deadLetterHandler panicked",
+				zap.String("event_id", evt.EventID),
+				zap.String("channel", channelName),
+				zap.Any("panic", r),
+			)
+		}
+	}()
+	handler.HandleDeadLetter(ctx, evt, channelName)
+}
+
 // guardName returns a human-readable name for a governance guard
 // for logging. It uses a type-naming fallback when the guard does not
 // expose a Name method.
@@ -317,22 +367,36 @@ func guardName(g governance.Guard) string {
 	return fmt.Sprintf("%T", g)
 }
 
-// newEventID generates a unique 32-char hex identifier for a dispatched alert
-// event. It uses crypto/rand so identifiers are unpredictable enough for
-// deduplication keys; the prism alert engine does not rely on them for security. On read
-// failure (extremely unlikely) it falls back to a timestamp-based value so the
-// engine never blocks on entropy availability.
+// newEventID generates a unique identifier for a dispatched alert event.
+// It uses a monotonically increasing counter combined with the current
+// timestamp and a per-process random prefix, producing IDs that are unique
+// across process restarts and concurrent goroutines without the syscall
+// overhead of crypto/rand.
 func newEventID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("evt-%x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	ts := time.Now().UnixNano()
+	seq := atomic.AddUint64(&eventIDCounter, 1)
+	return fmt.Sprintf("%x-%x", ts, seq)
+}
+
+// eventIDCounter is a process-wide monotonic counter ensuring uniqueness
+// of event IDs across concurrent Dispatch calls within the same process.
+// It is seeded with a random offset at init time so IDs from different
+// process instances are unlikely to collide even if they start at the
+// same nanosecond.
+var eventIDCounter uint64
+
+func init() {
+	// Seed the counter with a random offset so IDs from different process
+	// instances are unlikely to collide even if they start at the same nanosecond.
+	// crypto/rand is used here only once at init, not on the hot path.
+	var seed [8]byte
+	_, _ = rand.Read(seed[:])
+	eventIDCounter = binary.BigEndian.Uint64(seed[:])
 }
 
 // metricPayloadToAlert converts a typed metric alert event into the
 // normalized Event consumed by channels.
-func metricPayloadToAlert(ev event.Event[event.MetricExceededPayload]) Event {
+func metricPayloadToAlert(ev event.Event[event.MetricExceededPayload]) alert.Event {
 	p := ev.Payload
 	ts := ev.Timestamp
 	if ts.IsZero() {
@@ -344,15 +408,15 @@ func metricPayloadToAlert(ev event.Event[event.MetricExceededPayload]) Event {
 	if severity == "" {
 		severity = "warning"
 	}
-	return Event{
-		Type:      TypeMetric,
+	return alert.Event{
+		Type:      alert.TypeMetric,
 		AssetID:   assetID,
 		TenantID:  tenantID,
 		Timestamp: ts,
-		Violations: []Violation{{
-			Kind:     ViolationKindMetric,
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindMetric,
 			Severity: severity,
-			Metric: &MetricContext{
+			Metric: &alert.MetricContext{
 				Name:      p.MetricName,
 				Value:     p.MetricValue,
 				Threshold: p.Threshold,
@@ -364,7 +428,7 @@ func metricPayloadToAlert(ev event.Event[event.MetricExceededPayload]) Event {
 
 // logPayloadToAlert converts a typed log alert event into the normalized
 // Event consumed by channels.
-func logPayloadToAlert(ev event.Event[event.LogMatchedPayload]) Event {
+func logPayloadToAlert(ev event.Event[event.LogMatchedPayload]) alert.Event {
 	p := ev.Payload
 	ts := ev.Timestamp
 	if ts.IsZero() {
@@ -372,16 +436,16 @@ func logPayloadToAlert(ev event.Event[event.LogMatchedPayload]) Event {
 	}
 	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
 	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
-	return Event{
-		Type:      TypeLog,
+	return alert.Event{
+		Type:      alert.TypeLog,
 		AssetID:   assetID,
 		TenantID:  tenantID,
 		Timestamp: ts,
-		Violations: []Violation{{
-			Kind:     ViolationKindLog,
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
 			Severity: mapLogLevel(p.Level),
 			Source:   p.SourceIP,
-			Log: &LogContext{
+			Log: &alert.LogContext{
 				Keyword: p.Keyword,
 				Content: p.Content,
 			},
@@ -396,10 +460,10 @@ func logPayloadToAlert(ev event.Event[event.LogMatchedPayload]) Event {
 // to TypeStatus with ViolationKindStatus. Transitions to a non-abnormal state
 // (healthy/unknown) are skipped by returning ok=false so the engine does not
 // emit alert noise for recoveries.
-func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (Event, bool) {
+func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (alert.Event, bool) {
 	p := ev.Payload
 	if !isAbnormalStatus(p.CurrStatus) {
-		return Event{}, false
+		return alert.Event{}, false
 	}
 	ts := ev.Timestamp
 	if ts.IsZero() {
@@ -408,13 +472,13 @@ func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (Event, boo
 	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
 	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
 
-	alertType := TypeStatus
-	kind := ViolationKindStatus
+	alertType := alert.TypeStatus
+	kind := alert.ViolationKindStatus
 	severity := "error"
 	message := fmt.Sprintf("asset %s transitioned %s -> %s", p.AssetID, p.PrevStatus, p.CurrStatus)
 	if p.Source == "timeout" {
-		alertType = TypeHeartbeat
-		kind = ViolationKindHeartbeat
+		alertType = alert.TypeHeartbeat
+		kind = alert.ViolationKindHeartbeat
 		severity = "critical"
 		message = fmt.Sprintf("asset %s heartbeat lost, marked offline", p.AssetID)
 	}
@@ -422,17 +486,17 @@ func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (Event, boo
 		message = fmt.Sprintf("%s (%s)", message, p.Reason)
 	}
 
-	return Event{
+	return alert.Event{
 		Type:      alertType,
 		AssetID:   assetID,
 		TenantID:  tenantID,
 		Timestamp: ts,
-		Violations: []Violation{{
+		Violations: []alert.Violation{{
 			Kind:     kind,
 			Severity: severity,
 			Source:   p.AssetKey,
 			Message:  message,
-			Status: &StatusContext{
+			Status: &alert.StatusContext{
 				PrevStatus: p.PrevStatus,
 				CurrStatus: p.CurrStatus,
 			},

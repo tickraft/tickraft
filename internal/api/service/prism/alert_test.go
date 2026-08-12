@@ -121,7 +121,7 @@ func TestViolationToRecord(t *testing.T) {
 			Kind:   prismalert.ViolationKindMetric,
 			Metric: &prismalert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
 		}
-		rec := violationToRecord(v, time.Now())
+		rec := prismalert.ViolationToRecord(v, time.Now())
 		if rec.RuleID != 0 {
 			t.Errorf("RuleID = %d, want 0", rec.RuleID)
 		}
@@ -140,7 +140,7 @@ func TestViolationToRecord(t *testing.T) {
 	})
 
 	t.Run("empty violation yields defaults", func(t *testing.T) {
-		rec := violationToRecord(prismalert.Violation{}, time.Now())
+		rec := prismalert.ViolationToRecord(prismalert.Violation{}, time.Now())
 		if rec.RuleID != 0 || rec.RuleName != "" || rec.Severity != "warning" {
 			t.Errorf("empty violation should yield defaults, got id=%d name=%q severity=%q",
 				rec.RuleID, rec.RuleName, rec.Severity)
@@ -152,7 +152,7 @@ func TestViolationToRecord(t *testing.T) {
 			Severity: "critical",
 			Source:   "cpu_usage",
 		}
-		rec := violationToRecord(v, time.Now())
+		rec := prismalert.ViolationToRecord(v, time.Now())
 		if rec.Severity != "critical" {
 			t.Errorf("Severity = %q, want %q", rec.Severity, "critical")
 		}
@@ -166,7 +166,7 @@ func TestViolationToRecord(t *testing.T) {
 			Severity: "error",
 			Log:      &prismalert.LogContext{Keyword: "panic"},
 		}
-		rec := violationToRecord(v, time.Now())
+		rec := prismalert.ViolationToRecord(v, time.Now())
 		if rec.RuleName != "panic" {
 			t.Errorf("RuleName = %q, want %q", rec.RuleName, "panic")
 		}
@@ -177,7 +177,7 @@ func TestViolationToRecord(t *testing.T) {
 			Kind:   prismalert.ViolationKindMetric,
 			Metric: &prismalert.MetricContext{Name: "cpu_usage"},
 		}
-		rec := violationToRecord(v, time.Now())
+		rec := prismalert.ViolationToRecord(v, time.Now())
 		if !strings.Contains(rec.Message, "cpu_usage") {
 			t.Errorf("expected message to contain rule name, got %q", rec.Message)
 		}
@@ -201,7 +201,7 @@ func TestRecordAlert(t *testing.T) {
 			Timestamp: time.Now(),
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0}}},
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
@@ -250,7 +250,7 @@ func TestRecordAlert(t *testing.T) {
 			Timestamp: time.Now(),
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "nonexistent"}}},
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
@@ -274,7 +274,7 @@ func TestRecordAlert(t *testing.T) {
 			Type:       prismalert.TypeMetric,
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage"}}},
 		}
-		if err := RecordAlert(ctx, nil, evt); err != nil {
+		if err := prismalert.RecordAlert(ctx, nil, evt); err != nil {
 			t.Errorf("RecordAlert with nil recordStore should return nil, got %v", err)
 		}
 	})
@@ -289,7 +289,7 @@ func TestRecordAlert(t *testing.T) {
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage"}}},
 			// Timestamp left zero — RecordAlert should populate it with time.Now().
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 		records, _, err := recordStore.List(ctx, 1, 10)

@@ -38,6 +38,19 @@ func (s *recordStore) Create(ctx context.Context, m *Record) error {
 	return nil
 }
 
+// CreateBatch inserts multiple alert records in a single DB round-trip,
+// reducing per-violation INSERT overhead for events carrying multiple
+// violations. Empty slices are a no-op.
+func (s *recordStore) CreateBatch(ctx context.Context, models []*Record) error {
+	if len(models) == 0 {
+		return nil
+	}
+	if err := s.dbc.WithContext(ctx).CreateInBatches(models, 100).Error; err != nil {
+		return fmt.Errorf("alert: create records batch: %w", errmap.MapError(err))
+	}
+	return nil
+}
+
 // GetByID retrieves an alert record by its ID. Returns errdefs.ErrNotFound
 // when no record with the given ID exists.
 func (s *recordStore) GetByID(ctx context.Context, id int64) (*Record, error) {

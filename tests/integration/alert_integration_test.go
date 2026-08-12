@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/api/service/prism"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
+	prismengine "github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
 )
@@ -39,6 +39,19 @@ func (s *mockAlertRecordStore) Create(_ context.Context, m *alert.Record) error 
 	// Copy to avoid aliasing the caller's pointer.
 	cp := *m
 	s.records = append(s.records, &cp)
+	return nil
+}
+
+func (s *mockAlertRecordStore) CreateBatch(_ context.Context, models []*alert.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range models {
+		if m == nil {
+			continue
+		}
+		cp := *m
+		s.records = append(s.records, &cp)
+	}
 	return nil
 }
 
@@ -122,22 +135,22 @@ func TestAlertFlow(t *testing.T) {
 	// Wire the production OnAlert callback exactly as internal/service
 	// does so the test exercises the same record-persistence path.
 	onAlert := func(ctx context.Context, evt alert.Event) {
-		if err := prism.RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Logf("RecordAlert returned error: %v", err)
 		}
 	}
 
-	eng, err := alert.New(
-		alert.WithEventBus(bus),
-		alert.WithLogger(zap.NewNop()),
-		alert.WithOnAlert(onAlert),
+	eng, err := prismengine.New(
+		prismengine.WithEventBus(bus),
+		prismengine.WithLogger(zap.NewNop()),
+		prismengine.WithOnAlert(onAlert),
 	)
 	if err != nil {
 		t.Fatalf("create prism engine: %v", err)
 	}
 	// Register a metric rule that matches the upcoming alert: the engine
 	// matches on metric name + operator comparison (value > threshold).
-	eng.AddRule(alert.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
+	eng.AddRule(prismengine.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
 		return evt.Type == alert.TypeMetric &&
 			len(evt.Violations) > 0 &&
 			evt.Violations[0].Metric != nil &&
@@ -228,20 +241,20 @@ func TestAlertFlowRuleSuppressed(t *testing.T) {
 	recordStore := newMockAlertRecordStore()
 
 	onAlert := func(ctx context.Context, evt alert.Event) {
-		_ = prism.RecordAlert(ctx, recordStore, evt)
+		_ = alert.RecordAlert(ctx, recordStore, evt)
 	}
 
-	eng, err := alert.New(
-		alert.WithEventBus(bus),
-		alert.WithLogger(zap.NewNop()),
-		alert.WithOnAlert(onAlert),
+	eng, err := prismengine.New(
+		prismengine.WithEventBus(bus),
+		prismengine.WithLogger(zap.NewNop()),
+		prismengine.WithOnAlert(onAlert),
 	)
 	if err != nil {
 		t.Fatalf("create prism engine: %v", err)
 	}
 	// Register a rule that only matches cpu_usage; the test will emit a
 	// memory_usage alert which must be suppressed.
-	eng.AddRule(alert.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
+	eng.AddRule(prismengine.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
 		return len(evt.Violations) > 0 &&
 			evt.Violations[0].Metric != nil &&
 			evt.Violations[0].Metric.Name == "cpu_usage"
