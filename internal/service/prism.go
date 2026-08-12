@@ -41,7 +41,7 @@ func startPrismEngine(ctx context.Context, rt *runtime,
 		return nil, fmt.Errorf("start prism: %w", err)
 	}
 
-	if err := engine.Start(ctx); err != nil {
+	if err = engine.Start(ctx); err != nil {
 		return nil, fmt.Errorf("start prism engine: %w", err)
 	}
 

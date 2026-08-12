@@ -110,9 +110,9 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 	executorPoolSize int, probeTimeout time.Duration,
 ) (stopFunc, error) {
 	var (
-		execRunner executor.Runner
-		sched      task.Manager
-		col        telemetry.Collector
+		runner    executor.Runner
+		sched     task.Manager
+		collector telemetry.Collector
 	)
 
 	// Collector needs the asset store (already created in initRuntime)
@@ -137,15 +137,15 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 	// dropped every execution result; wiring the GORM-backed adapter
 	// ensures ListExecutions returns real outcomes (status, output,
 	// error, duration, finished_at) instead of only trigger placeholders.
-	if err := task.Migrate(ctx, rt.dbc); err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+	if err = task.Migrate(ctx, rt.dbc); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("migrate scheduler tables: %w", err)
 	}
 	taskStore := task.NewStore(rt.dbc)
 	execStore := task.NewExecutionStore(rt.dbc)
 	recordStore := task.NewExecutionRecordStore(execStore)
 
-	execRunner, err = executor.New(
+	runner, err = executor.New(
 		executor.WithExecutorRegistry(reg),
 		executor.WithWorkerPoolSize(executorPoolSize),
 		executor.WithEventBus(bus),
@@ -155,10 +155,10 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 	if err != nil {
 		return nil, fmt.Errorf("create executor: %w", err)
 	}
-	if err := execRunner.Start(ctx); err != nil {
+	if err = runner.Start(ctx); err != nil {
 		return nil, fmt.Errorf("start executor: %w", err)
 	}
-	execRunner.SubscribeEvents(ctx)
+	runner.SubscribeEvents(ctx)
 	rt.logger.Info("executor runner started")
 
 	sched, err = task.NewService(
@@ -167,15 +167,15 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 		task.WithStore(taskStore),
 	)
 	if err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 	sched.SubscribeEvents(ctx)
 
 	// Restore persisted tasks into memory and schedule them before
 	// the engine starts serving traffic.
-	if err := sched.Restore(ctx); err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+	if err = sched.Restore(ctx); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("restore scheduler tasks: %w", err)
 	}
 
@@ -191,12 +191,12 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 	// not bind its own HTTP listener; webhook report ingestion is handled
 	// by the main API server.
 	procReg := telemetry.NewProcessorRegistry()
-	if err := registerBuiltinProcessors(procReg, rt.assetStore, bus, rt.logger); err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+	if err = registerBuiltinProcessors(procReg, rt.assetStore, bus, rt.logger); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("register processors: %w", err)
 	}
 
-	col, err = telemetry.New(
+	collector, err = telemetry.New(
 		telemetry.WithProcessorRegistry(procReg),
 		telemetry.WithAssetStore(rt.assetStore),
 		telemetry.WithEventBus(bus),
@@ -207,31 +207,31 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 		telemetry.WithAggregationWindow(time.Minute),
 	)
 	if err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("create telemetry: %w", err)
 	}
-	if err := col.Start(ctx); err != nil {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+	if err = collector.Start(ctx); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("start telemetry: %w", err)
 	}
 	// Store the collector on the runtime so startAPIServer can wire the
 	// webhook listener's ingest callback to the collector's Submit method.
 	// This enables POST /api/v1/telemetry to forward received telemetry
 	// into the processing pipeline.
-	rt.telemetryCollector = col
+	rt.telemetryCollector = collector
 	rt.logger.Info("telemetry started")
 
 	return func(ctx context.Context) error {
-		stopWorkerEngines(ctx, rt.logger, col, sched, execRunner)
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil
 	}, nil
 }
 
 // stopWorkerEngines stops the telemetry, scheduler, and executor in reverse
 // sub-order, logging any errors. Components that were not started are skipped.
-func stopWorkerEngines(ctx context.Context, logger *zap.Logger, col telemetry.Collector, sched task.Manager, execRunner executor.Runner) {
-	if col != nil {
-		if err := col.Stop(ctx); err != nil {
+func stopWorkerEngines(ctx context.Context, logger *zap.Logger, collector telemetry.Collector, sched task.Manager, runner executor.Runner) {
+	if collector != nil {
+		if err := collector.Stop(ctx); err != nil {
 			logger.Error("stop telemetry", zap.Error(err))
 		}
 	}
@@ -240,8 +240,8 @@ func stopWorkerEngines(ctx context.Context, logger *zap.Logger, col telemetry.Co
 			logger.Error("stop scheduler", zap.Error(err))
 		}
 	}
-	if execRunner != nil {
-		if err := execRunner.Stop(ctx); err != nil {
+	if runner != nil {
+		if err := runner.Stop(ctx); err != nil {
 			logger.Error("stop executor", zap.Error(err))
 		}
 	}

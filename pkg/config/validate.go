@@ -77,7 +77,7 @@ func (c *DatabaseConfig) validate() error {
 
 func (c *AuthConfig) validate() error {
 	if c.JWTSecret == "" {
-		return fmt.Errorf("config: auth.jwt_secret is required")
+		return fmt.Errorf("config: auth.jwt_secret is required (set it directly or use ${TICKRAFT_JWT_SECRET} env var interpolation in your config file)")
 	}
 	if len(c.JWTSecret) < 32 {
 		return fmt.Errorf("config: auth.jwt_secret must be at least 32 bytes, got %d", len(c.JWTSecret))

@@ -80,7 +80,7 @@ type runtime struct {
 	cache  *cache.LRUCache
 	bus    event.Bus
 	authz  *auth.Service
-	jwtMgr *jwt.JWT
+	jwt    *jwt.JWT
 
 	// assetStore is the asset persistence store, created once and
 	// shared between the telemetry manager, asset management API, and
@@ -198,12 +198,12 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 
 	cacheInst := cache.NewLRU(1024, 5*time.Minute)
 
-	if err := db.AutoMigrate(ctx, dbc); err != nil {
+	if err = db.AutoMigrate(ctx, dbc); err != nil {
 		closeRuntimeDB(dbc, cacheInst)
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err := remediation.Migrate(ctx, dbc); err != nil {
+	if err = remediation.Migrate(ctx, dbc); err != nil {
 		closeRuntimeDB(dbc, cacheInst)
 		return nil, fmt.Errorf("migrate remediation: %w", err)
 	}
@@ -238,7 +238,7 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 	// telemetry manager, asset management API, and asset-key
 	// middleware getter. The asset table migration is idempotent.
 	assetStore := asset.NewStore(dbc)
-	if err := assetStore.Migrate(ctx); err != nil {
+	if err = assetStore.Migrate(ctx); err != nil {
 		closeRuntimeDB(dbc, cacheInst)
 		return nil, fmt.Errorf("migrate asset store: %w", err)
 	}
@@ -249,7 +249,7 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 	// to an empty default-locale bundle so alerts still render.
 	i18nRegistry := i18n.NewRegistry(logger)
 	i18nLoader := i18n.NewLoader(logger)
-	if err := i18nLoader.LoadToRegistry(i18n.EmbeddedFS(), i18nRegistry); err != nil {
+	if err = i18nLoader.LoadToRegistry(i18n.EmbeddedFS(), i18nRegistry); err != nil {
 		logger.Warn("init runtime: failed to load i18n resources, falling back to default locale",
 			zap.Error(err))
 	}
@@ -289,7 +289,7 @@ func closeRuntimeDB(dbc *gorm.DB, cacheInst *cache.LRUCache) {
 
 // initAuth initializes the JWT manager and auth service. The auth services
 // are stored on the runtime.
-func initAuth(ctx context.Context, rt *runtime) error {
+func initAuth(_ context.Context, rt *runtime) error {
 	jwtSecret := rt.cfg.Auth.JWTSecret
 	if jwtSecret == "" {
 		jwtSecret = os.Getenv("TICKRAFT_JWT_SECRET")
@@ -316,7 +316,7 @@ func initAuth(ctx context.Context, rt *runtime) error {
 	apiKeyStore := user.NewAPIKeyStore(rt.dbc, rt.cache)
 	authz := auth.NewService(jwtMgr, userStore, apiKeyStore, blacklistStore)
 
-	rt.jwtMgr = jwtMgr
+	rt.jwt = jwtMgr
 	rt.authz = authz
 	return nil
 }

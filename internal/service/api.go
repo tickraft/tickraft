@@ -250,7 +250,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		routeOpts = append(routeOpts, router.WithI18nHandler(i18nHandler))
 	}
 
-	if err := router.RegisterRoutes(srv, rt.jwtMgr, rt.authz, assetKeyGetter, routeOpts...); err != nil {
+	if err := router.RegisterRoutes(srv, rt.jwt, rt.authz, assetKeyGetter, routeOpts...); err != nil {
 		return nil, fmt.Errorf("register routes: %w", err)
 	}
 
