@@ -126,15 +126,13 @@ func (s *Service) UpdateConfig(ctx context.Context, req *system.Config) (*system
 // GetInfo returns runtime system information derived from build metadata.
 func (s *Service) GetInfo(_ context.Context) (*system.Info, error) {
 	version := "dev"
-	buildTags := "standalone"
+	buildTags := ""
 
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range bi.Settings {
 			switch setting.Key {
 			case "-tags":
-				if setting.Value != "" {
-					buildTags = setting.Value
-				}
+				buildTags = setting.Value
 			case "vcs.revision":
 				if setting.Value != "" {
 					version = setting.Value

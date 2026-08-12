@@ -427,9 +427,9 @@ func TestMemorySystemService(t *testing.T) {
 		if info.Version != "dev" {
 			t.Errorf("Version = %q, want %q", info.Version, "dev")
 		}
-		if info.BuildTags != "standalone" {
-			t.Errorf("BuildTags = %q, want %q", info.BuildTags, "standalone")
-		}
+		if info.BuildTags != "" {
+		t.Errorf("BuildTags = %q, want %q", info.BuildTags, "")
+	}
 		if info.Uptime == "" {
 			t.Error("Uptime = empty, want non-empty duration string")
 		}

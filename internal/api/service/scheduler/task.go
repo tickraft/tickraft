@@ -118,7 +118,7 @@ func (s *TaskService) CreateTask(ctx context.Context, req *task.Task) (*task.Tas
 	}
 	scheduleToMetadata(st.Metadata, h.Schedule)
 
-	if err := s.engine.Register(ctx, *st); err != nil {
+	if err = s.engine.Register(ctx, *st); err != nil {
 		return nil, mapError(err)
 	}
 
@@ -151,7 +151,7 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *task.Task) 
 	}
 	scheduleToMetadata(st.Metadata, h.Schedule)
 
-	if err := s.engine.Update(ctx, *st); err != nil {
+	if err = s.engine.Update(ctx, *st); err != nil {
 		return nil, mapError(err)
 	}
 
@@ -400,16 +400,7 @@ func clampPaging(page, size int) (int, int) {
 // pageWindow returns the [start, end) slice indices for the given page and
 // size within a collection of total length.
 func pageWindow(page, size, total int) (int, int) {
-	start := (page - 1) * size
-	if start < 0 {
-		start = 0
-	}
-	if start > total {
-		start = total
-	}
-	end := start + size
-	if end > total {
-		end = total
-	}
+	start := min(max((page-1)*size, 0), total)
+	end := min(start+size, total)
 	return start, end
 }

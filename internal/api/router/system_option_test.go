@@ -60,7 +60,7 @@ var _ system.Service = (*fakeSystemService)(nil)
 
 // newFakeSystemService returns a fakeSystemService seeded with values that
 // are distinguishable from the in-memory defaults (which use Version="dev"
-// and BuildTags="standalone").
+// and BuildTags="").
 func newFakeSystemService() *fakeSystemService {
 	return &fakeSystemService{
 		info: &system.Info{

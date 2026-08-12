@@ -90,7 +90,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, id int64, req *chann
 	m := channelHandlerToModel(req)
 	m.ID = existing.ID
 	m.CreatedAt = existing.CreatedAt
-	if err := s.store.Update(ctx, m); err != nil {
+	if err = s.store.Update(ctx, m); err != nil {
 		return nil, mapChannelStoreError(err)
 	}
 	s.reloadChannels(ctx)

@@ -333,7 +333,7 @@ func RegisterRoutes(
 		missing = append(missing, "asset handler")
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("router: missing required service injections: %s",
+		return fmt.Errorf("router: missing required services: %s",
 			strings.Join(missing, ", "))
 	}
 

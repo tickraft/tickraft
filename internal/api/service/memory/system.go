@@ -62,7 +62,7 @@ func (s *memorySystemService) GetInfo(_ context.Context) (*system.Info, error) {
 
 	return &system.Info{
 		Version:   "dev",
-		BuildTags: "standalone",
+		BuildTags: "",
 		StartTime: s.startAt,
 		Uptime:    time.Since(s.startAt).Round(time.Second).String(),
 	}, nil
