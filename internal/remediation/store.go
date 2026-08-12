@@ -65,12 +65,12 @@ type Store interface {
 // database through a *gorm.DB and is safe for concurrent use because
 // *gorm.DB is.
 type store struct {
-	db *gorm.DB
+	dbc *gorm.DB
 }
 
 // NewStore creates a Store backed by the given *gorm.DB.
-func NewStore(db *gorm.DB) Store {
-	return &store{db: db}
+func NewStore(dbc *gorm.DB) Store {
+	return &store{dbc: dbc}
 }
 
 // Migrate creates or updates the remediation database tables
@@ -79,8 +79,8 @@ func NewStore(db *gorm.DB) Store {
 // the core auth tables. Keeping this function separate from db.AutoMigrate
 // ensures pkg/db remains free of internal/ dependencies and importable by
 // downstream repositories.
-func Migrate(ctx context.Context, db *gorm.DB) error {
-	if err := db.WithContext(ctx).AutoMigrate(&Rule{}, &Record{}); err != nil {
+func Migrate(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).AutoMigrate(&Rule{}, &Record{}); err != nil {
 		return fmt.Errorf("remediation: auto migrate: %w", err)
 	}
 	return nil
@@ -92,7 +92,7 @@ func (s *store) CreateRule(ctx context.Context, rule *Rule) error {
 	if rule == nil {
 		return fmt.Errorf("remediation: create rule: nil model")
 	}
-	if err := s.db.WithContext(ctx).Create(rule).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Create(rule).Error; err != nil {
 		return fmt.Errorf("remediation: create rule: %w", err)
 	}
 	return nil
@@ -113,10 +113,10 @@ func (s *store) UpdateRule(ctx context.Context, rule *Rule) error {
 		return fmt.Errorf("remediation: update rule: id is required")
 	}
 	var existing Rule
-	if err := s.db.WithContext(ctx).Select("id").First(&existing, rule.ID).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Select("id").First(&existing, rule.ID).Error; err != nil {
 		return fmt.Errorf("remediation: update rule: %w", err)
 	}
-	if err := s.db.WithContext(ctx).Save(rule).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Save(rule).Error; err != nil {
 		return fmt.Errorf("remediation: update rule: %w", err)
 	}
 	return nil
@@ -125,7 +125,7 @@ func (s *store) UpdateRule(ctx context.Context, rule *Rule) error {
 // DeleteRule permanently removes a rule by its ID. Returns
 // gorm.ErrRecordNotFound when no rule with the given ID exists.
 func (s *store) DeleteRule(ctx context.Context, id int64) error {
-	result := s.db.WithContext(ctx).Delete(&Rule{}, id)
+	result := s.dbc.WithContext(ctx).Delete(&Rule{}, id)
 	if result.Error != nil {
 		return fmt.Errorf("remediation: delete rule: %w", result.Error)
 	}
@@ -139,7 +139,7 @@ func (s *store) DeleteRule(ctx context.Context, id int64) error {
 // no rule with the given ID exists.
 func (s *store) GetRule(ctx context.Context, id int64) (*Rule, error) {
 	var rule Rule
-	if err := s.db.WithContext(ctx).First(&rule, id).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).First(&rule, id).Error; err != nil {
 		return nil, fmt.Errorf("remediation: get rule: %w", err)
 	}
 	return &rule, nil
@@ -150,11 +150,11 @@ func (s *store) GetRule(ctx context.Context, id int64) (*Rule, error) {
 // them before calling.
 func (s *store) ListRules(ctx context.Context, limit, offset int) ([]*Rule, int64, error) {
 	var total int64
-	if err := s.db.WithContext(ctx).Model(&Rule{}).Count(&total).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Model(&Rule{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("remediation: list rules: %w", err)
 	}
 	var rules []*Rule
-	if err := s.db.WithContext(ctx).
+	if err := s.dbc.WithContext(ctx).
 		Order("id DESC").
 		Offset(offset).
 		Limit(limit).
@@ -168,7 +168,7 @@ func (s *store) ListRules(ctx context.Context, limit, offset int) ([]*Rule, int6
 // ID. The Manager uses this on startup to load the active rule set.
 func (s *store) ListEnabledRules(ctx context.Context) ([]*Rule, error) {
 	var rules []*Rule
-	if err := s.db.WithContext(ctx).
+	if err := s.dbc.WithContext(ctx).
 		Where("enabled = ?", true).
 		Order("id ASC").
 		Find(&rules).Error; err != nil {
@@ -183,7 +183,7 @@ func (s *store) CreateRecord(ctx context.Context, record *Record) error {
 	if record == nil {
 		return fmt.Errorf("remediation: create record: nil model")
 	}
-	if err := s.db.WithContext(ctx).Create(record).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Create(record).Error; err != nil {
 		return fmt.Errorf("remediation: create record: %w", err)
 	}
 	return nil
@@ -204,10 +204,10 @@ func (s *store) UpdateRecord(ctx context.Context, record *Record) error {
 		return fmt.Errorf("remediation: update record: id is required")
 	}
 	var existing Record
-	if err := s.db.WithContext(ctx).Select("id").First(&existing, record.ID).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Select("id").First(&existing, record.ID).Error; err != nil {
 		return fmt.Errorf("remediation: update record: %w", err)
 	}
-	if err := s.db.WithContext(ctx).Save(record).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Save(record).Error; err != nil {
 		return fmt.Errorf("remediation: update record: %w", err)
 	}
 	return nil
@@ -217,7 +217,7 @@ func (s *store) UpdateRecord(ctx context.Context, record *Record) error {
 // gorm.ErrRecordNotFound when no record with the given ID exists.
 func (s *store) GetRecord(ctx context.Context, id int64) (*Record, error) {
 	var record Record
-	if err := s.db.WithContext(ctx).First(&record, id).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).First(&record, id).Error; err != nil {
 		return nil, fmt.Errorf("remediation: get record: %w", err)
 	}
 	return &record, nil
@@ -227,11 +227,11 @@ func (s *store) GetRecord(ctx context.Context, id int64) (*Record, error) {
 // plus the total count.
 func (s *store) ListRecords(ctx context.Context, limit, offset int) ([]*Record, int64, error) {
 	var total int64
-	if err := s.db.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("remediation: list records: %w", err)
 	}
 	var records []*Record
-	if err := s.db.WithContext(ctx).
+	if err := s.dbc.WithContext(ctx).
 		Order("id DESC").
 		Offset(offset).
 		Limit(limit).
@@ -247,7 +247,7 @@ func (s *store) ListRecords(ctx context.Context, limit, offset int) ([]*Record, 
 // empty, records for all assets are returned.
 func (s *store) ListRecentRecords(ctx context.Context, ruleID int64, assetKey string, since time.Time) ([]*Record, error) {
 	var records []*Record
-	q := s.db.WithContext(ctx).
+	q := s.dbc.WithContext(ctx).
 		Where("rule_id = ?", ruleID).
 		Where("created_at >= ?", since)
 	if assetKey != "" {

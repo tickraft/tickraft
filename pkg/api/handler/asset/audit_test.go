@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/route"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -29,6 +30,8 @@ import (
 // logger, and the observed core is returned for inspection.
 func newAssetTestEngineWithLogger(t *testing.T) (*route.Engine, assetstore.Store, *observer.ObservedLogs) {
 	t.Helper()
+	quota.SetProvider(testProvider{})
+	t.Cleanup(func() { quota.SetProvider(nil) })
 	dbc, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -750,6 +753,9 @@ func TestAuditLogAssetStatusUpdateInvalidStatus(t *testing.T) {
 // TestAuditLogNilLoggerNoPanic verifies the handler does not panic when
 // constructed with a nil logger (the nop fallback path).
 func TestAuditLogNilLoggerNoPanic(t *testing.T) {
+	quota.SetProvider(testProvider{})
+	t.Cleanup(func() { quota.SetProvider(nil) })
+
 	dbc, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)

@@ -30,9 +30,11 @@ import (
 	"encoding/json"
 	"io"
 	nethttp "net/http"
+	"sync"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
@@ -58,6 +60,39 @@ const (
 // webhookListenerType is the Type() identifier for the webhook HTTPListener.
 const webhookListenerType = "webhook"
 
+// DailyEventCounter tracks telemetry event ingestion per UTC day for quota
+// enforcement. When the UTC day changes the counter resets so the daily
+// ceiling applies to a rolling UTC calendar day.
+type DailyEventCounter struct {
+	mu    sync.Mutex
+	count int
+	day   int
+	year  int
+}
+
+// Allow increments the counter and returns true when the event is within the
+// daily ceiling. When ceiling is 0 or negative the quota is treated as
+// unlimited and Allow always returns true. On a new UTC day the counter
+// resets before evaluating the ceiling.
+func (c *DailyEventCounter) Allow(ceiling int) bool {
+	if ceiling <= 0 {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().UTC()
+	if now.Year() != c.year || now.YearDay() != c.day {
+		c.year = now.Year()
+		c.day = now.YearDay()
+		c.count = 0
+	}
+	if c.count >= ceiling {
+		return false
+	}
+	c.count++
+	return true
+}
+
 // Listener is the webhook listener. It parses HTTP POST requests
 // on the unified telemetry endpoint and forwards the resulting Telemetry to
 // the ingest callback, which is typically wired to telemetry.Collector.Submit
@@ -79,10 +114,11 @@ const webhookListenerType = "webhook"
 //
 // Implementations must be safe for concurrent use.
 type Listener struct {
-	secret string
-	store  asset.Store
-	ingest func(context.Context, *telemetry.Telemetry)
-	logger *zap.Logger
+	secret  string
+	store   asset.Store
+	ingest  func(context.Context, *telemetry.Telemetry)
+	logger  *zap.Logger
+	counter *DailyEventCounter
 }
 
 // Option configures a Listener.
@@ -115,7 +151,8 @@ func WithLogger(logger *zap.Logger) Option {
 // New creates a new Listener with the given options.
 func New(opts ...Option) *Listener {
 	h := &Listener{
-		logger: zap.NewNop(),
+		logger:  zap.NewNop(),
+		counter: &DailyEventCounter{},
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -193,6 +230,12 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 		report, status, ok := h.resolveTelemetry(r.Context(), &req.reportRequest, body, r.RemoteAddr)
 		if !ok {
 			nethttp.Error(w, "asset not found", status)
+			return
+		}
+
+		ceiling := quota.Ceiling(quota.TypeDailyEvents)
+		if !h.counter.Allow(ceiling) {
+			nethttp.Error(w, "daily event quota exceeded", nethttp.StatusTooManyRequests)
 			return
 		}
 

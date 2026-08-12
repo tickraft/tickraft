@@ -138,16 +138,16 @@ func WriteToDir(opts Options, outputDir string) (certPath, keyPath string, err e
 		return "", "", err
 	}
 
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err = os.MkdirAll(outputDir, 0o755); err != nil {
 		return "", "", fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
 
 	certPath = filepath.Join(outputDir, opts.Domain+".crt")
 	keyPath = filepath.Join(outputDir, opts.Domain+".key")
-	if err := writePEM(certPath, result.CertPEM, 0o644); err != nil {
+	if err = writePEM(certPath, result.CertPEM, 0o644); err != nil {
 		return "", "", fmt.Errorf("write certificate: %w", err)
 	}
-	if err := writePEM(keyPath, result.KeyPEM, 0o600); err != nil {
+	if err = writePEM(keyPath, result.KeyPEM, 0o600); err != nil {
 		return "", "", fmt.Errorf("write private key: %w", err)
 	}
 	return certPath, keyPath, nil

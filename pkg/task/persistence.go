@@ -7,8 +7,10 @@ package task
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/tickraft/tickraft/pkg/cron"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"go.uber.org/zap"
 )
 
@@ -60,6 +62,15 @@ func (m *Service) Restore(ctx context.Context) error {
 	scheduled := 0
 	for _, task := range tasks {
 		scheduleType, cronExpr, interval := extractScheduleConfig(*task)
+		if err := checkMinInterval(scheduleType, interval); err != nil {
+			m.logger.Warn("skip restoring task with interval below minimum",
+				zap.Int64("task_id", task.ID),
+				zap.Duration("interval", interval),
+				zap.Duration("min_interval", time.Duration(quota.Ceiling(quota.TypeScheduledTaskInterval))*time.Second),
+				zap.Error(err),
+			)
+			continue
+		}
 		sched, err := parseSchedule(scheduleType, cronExpr, interval)
 		if err != nil {
 			m.logger.Warn("skip restoring task with invalid schedule",

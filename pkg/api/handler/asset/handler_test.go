@@ -18,6 +18,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -27,11 +28,37 @@ import (
 // asset management API.
 const assetBasePath = "/api/v1/assets"
 
+// testProvider is a quota.Provider that returns generous ceilings so tests
+// are not constrained by the open-source defaults (e.g. DefaultHost = 0).
+type testProvider struct{}
+
+func (testProvider) Ceiling(t quota.Type) int {
+	if t == quota.TypeHost {
+		return 1000
+	}
+	// Return CE-equivalent values for known types so the test provider
+	// behaves like the real DefaultProvider without importing internal/quota.
+	switch t {
+	case quota.TypeDevice, quota.TypeProber, quota.TypeScheduledTask:
+		return 20
+	case quota.TypeRemediation:
+		return 5
+	case quota.TypeProbeInterval, quota.TypeScheduledTaskInterval:
+		return 60
+	case quota.TypeDailyEvents:
+		return 100000
+	default:
+		return 0
+	}
+}
+
 // newAssetTestEngine creates a fresh route.Engine with the asset CRUD
 // routes wired to a Handler backed by an in-memory SQLite database.
 // It returns the engine and the underlying Store for direct seeding.
 func newAssetTestEngine(t *testing.T) (*route.Engine, assetstore.Store) {
 	t.Helper()
+	quota.SetProvider(testProvider{})
+	t.Cleanup(func() { quota.SetProvider(nil) })
 	dbc, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)

@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gorm.io/gorm"
 
+	"github.com/tickraft/tickraft/internal/quota"
 	"github.com/tickraft/tickraft/internal/remediation"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
@@ -181,6 +182,10 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 	// zap-recommended shutdown pattern.
 	defer func() { _ = logger.Sync() }()
 	zap.ReplaceGlobals(logger)
+
+	// Register the CE default quota Provider before any component that
+	// may query quota ceilings is initialized.
+	quota.Register()
 
 	// Resolve the database configuration via ResolveDBConfig so both the DSN
 	// path (database.dsn) and the direct-fields path (database.driver,

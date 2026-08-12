@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
@@ -442,6 +444,79 @@ func (s *memoryService) GetTask(_ context.Context, id int64) (*Task, error) {
 	return &cp, nil
 }
 
+// countActiveProbers returns the number of stored tasks whose Mode is
+// "active" (case-insensitive). The caller must hold s.mu.
+func (s *memoryService) countActiveProbers() int {
+	count := 0
+	for _, t := range s.tasks {
+		if strings.EqualFold(t.Mode, "active") {
+			count++
+		}
+	}
+	return count
+}
+
+// checkProberQuotaForCreate returns an error when creating a task whose
+// Mode is "active" would exceed the TypeProber ceiling. The caller must
+// hold s.mu so the count is consistent with the subsequent store.
+func (s *memoryService) checkProberQuotaForCreate(mode string) error {
+	if !strings.EqualFold(mode, "active") {
+		return nil
+	}
+	ceiling := quota.Ceiling(quota.TypeProber)
+	if ceiling <= 0 {
+		return nil
+	}
+	if s.countActiveProbers() >= ceiling {
+		return fmt.Errorf("prober quota exceeded: maximum %d active probers", ceiling)
+	}
+	return nil
+}
+
+// checkProberQuotaForUpdate returns an error when the mode transitions to
+// "active" and the new active count would exceed the TypeProber ceiling.
+// The caller must hold s.mu.
+func (s *memoryService) checkProberQuotaForUpdate(oldMode, newMode string) error {
+	if !strings.EqualFold(newMode, "active") {
+		return nil
+	}
+	if strings.EqualFold(oldMode, "active") {
+		return nil
+	}
+	ceiling := quota.Ceiling(quota.TypeProber)
+	if ceiling <= 0 {
+		return nil
+	}
+	if s.countActiveProbers() >= ceiling {
+		return fmt.Errorf("prober quota exceeded: maximum %d active probers", ceiling)
+	}
+	return nil
+}
+
+// checkHTTPIntervalQuota validates the schedule of an active HTTP prober
+// against the minimum HTTP probe interval quota (TypeHTTPInterval, in
+// seconds). It returns an error when the parsed interval is shorter than
+// the minimum. A ceiling of 0 means "no minimum". An unparseable schedule
+// is left to other validation layers.
+func checkHTTPIntervalQuota(mode, typ, schedule string) error {
+	if !strings.EqualFold(mode, "active") || !strings.EqualFold(typ, "http") {
+		return nil
+	}
+	ceiling := quota.Ceiling(quota.TypeHTTPInterval)
+	if ceiling <= 0 {
+		return nil
+	}
+	interval, err := time.ParseDuration(schedule)
+	if err != nil {
+		return nil
+	}
+	minInterval := time.Duration(ceiling) * time.Second
+	if interval < minInterval {
+		return fmt.Errorf("HTTP probe interval %s is below minimum %s", interval, minInterval)
+	}
+	return nil
+}
+
 // CreateTask assigns an auto-incremented ID and timestamps, stores
 // the task, and returns the created entity. A nil request yields
 // ErrInvalidRequest.
@@ -451,6 +526,12 @@ func (s *memoryService) CreateTask(_ context.Context, req *Task) (*Task, error) 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.checkProberQuotaForCreate(req.Mode); err != nil {
+		return nil, err
+	}
+	if err := checkHTTPIntervalQuota(req.Mode, req.Type, req.Schedule); err != nil {
+		return nil, err
+	}
 	s.nextID++
 	now := time.Now()
 	t := *req
@@ -474,6 +555,12 @@ func (s *memoryService) UpdateTask(_ context.Context, id int64, req *Task) (*Tas
 	existing, ok := s.tasks[id]
 	if !ok {
 		return nil, ErrTelemetryTaskNotFound
+	}
+	if err := s.checkProberQuotaForUpdate(existing.Mode, req.Mode); err != nil {
+		return nil, err
+	}
+	if err := checkHTTPIntervalQuota(req.Mode, req.Type, req.Schedule); err != nil {
+		return nil, err
 	}
 	existing.Name = req.Name
 	existing.Description = req.Description

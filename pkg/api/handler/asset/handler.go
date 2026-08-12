@@ -17,14 +17,13 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
-// maxDeviceQuota is the default monitoring-asset quota. It mirrors
-// internal/quota.DefaultQuotaMonitoringAsset to avoid a direct dependency on
-// internal/quota from the handler package, and to keep the device-creation
-// enforcement path independent of the quota package's evolution. Update both
-// values together if the quota changes.
+// maxDeviceQuota is retained as a fallback for logging only. The actual
+// enforcement uses quota.Ceiling(quota.TypeDevice) which supports dynamic
+// provider-based overrides (e.g. subscription plans).
 const maxDeviceQuota = 20
 
 // Handler exposes asset CRUD endpoints for the telemetry module.
@@ -73,18 +72,24 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 		a.Status = types.AssetStatusUnknown
 	}
 
-	// Enforce the device quota before persisting. The check
-	// counts existing device assets for the current tenant and rejects
-	// the request with 409 Conflict when the cap (maxDeviceQuota, which
-	// mirrors internal/quota.DefaultQuotaMonitoringAsset) is reached. Non-device
-	// asset types are not subject to this quota.
+	// Enforce device and host quotas before persisting. The check
+	// counts existing assets of the same type and rejects with 409
+	// Conflict when the ceiling (from quota.Ceiling, which delegates to
+	// the active Provider) is reached. A ceiling of 0 means the resource
+	// type is not allowed in the current plan.
 	//
-	// The runtime is single-tenant: the tenant ID passed to
-	// CountByType is fixed to 0. The callers may override this
-	// handler to supply the actual tenant ID from the request context.
-	if a.AssetType == types.AssetTypeDevice {
+	// The runtime is single-tenant: the tenant ID passed to CountByType
+	// is fixed to 0.
+	var ceiling int
+	switch a.AssetType {
+	case types.AssetTypeDevice:
+		ceiling = quota.Ceiling(quota.TypeDevice)
+	case types.AssetTypeHost:
+		ceiling = quota.Ceiling(quota.TypeHost)
+	}
+	if ceiling > 0 || a.AssetType == types.AssetTypeHost {
 		const tenantID = 0
-		count, err := h.store.CountByType(ctx, tenantID, types.AssetTypeDevice)
+		count, err := h.store.CountByType(ctx, tenantID, a.AssetType)
 		if err != nil {
 			h.logger.Error("asset create quota check failed",
 				zap.String("operation", "asset.create"),
@@ -95,14 +100,14 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 			api.Fail(arc, err)
 			return
 		}
-		if count >= maxDeviceQuota {
-			h.logger.Warn("asset create rejected: device quota exceeded",
+		if count >= int64(ceiling) {
+			h.logger.Warn("asset create rejected: quota exceeded",
 				zap.String("operation", "asset.create"),
 				zap.String("outcome", "quota_exceeded"),
 				zap.String("asset_key", a.AssetKey),
 				zap.String("asset_type", string(a.AssetType)),
 				zap.Int64("current_count", count),
-				zap.Int("quota", maxDeviceQuota),
+				zap.Int("quota", ceiling),
 			)
 			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota_exceeded")
 			return

@@ -190,7 +190,7 @@ func TestSchedulerTaskService(t *testing.T) {
 		created, err := svc.CreateTask(ctx, &task.Task{
 			Name:     "interval-task",
 			Executor: "http",
-			Schedule: "45s",
+			Schedule: "90s",
 			Enabled:  true,
 		})
 		if err != nil {
@@ -200,8 +200,8 @@ func TestSchedulerTaskService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetTask failed: %v", err)
 		}
-		if got.Schedule != "45s" {
-			t.Errorf("Schedule = %q, want %q", got.Schedule, "45s")
+		if got.Schedule != "90s" {
+			t.Errorf("Schedule = %q, want %q", got.Schedule, "90s")
 		}
 	})
 

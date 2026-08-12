@@ -16,6 +16,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"go.uber.org/zap"
 )
 
@@ -103,10 +104,10 @@ type Registry interface {
 const statusNormal = "normal"
 
 // defaultQuotaRemediation is the maximum number of remediation records
-// permitted within the quota window. It mirrors
-// internal/quota.DefaultQuotaRemediation; the literal is duplicated here
-// because internal/remediation cannot import internal/quota (internal packages
-// are not importable across the pkg/ -> internal/ boundary).
+// permitted within the quota window. It mirrors internal/quota.CeilingRemediation;
+// the literal is duplicated here because internal/remediation cannot import
+// internal/quota (internal packages are not importable across the pkg/ ->
+// internal/ boundary).
 const defaultQuotaRemediation = 5
 
 // defaultDispatchTimeout is the maximum duration allowed for a single
@@ -322,7 +323,7 @@ func (m *Manager) subscribe() error {
 	ctx := m.ctx
 	subs := make([]event.Subscription, 0, 4)
 
-	sub, err := event.Subscribe[event.StatusChangePayload](m.bus, event.TypeAssetStatusChanged,
+	sub, err := event.Subscribe(m.bus, event.TypeAssetStatusChanged,
 		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
 			assetKey := ev.Payload.AssetKey
 			if assetKey == "" {
@@ -343,7 +344,7 @@ func (m *Manager) subscribe() error {
 	}
 	subs = append(subs, sub)
 
-	sub, err = event.Subscribe[event.FaultPayload](m.bus, event.TypeAssetFaultDetected,
+	sub, err = event.Subscribe(m.bus, event.TypeAssetFaultDetected,
 		func(_ context.Context, ev event.Event[event.FaultPayload]) error {
 			m.handleSourceEvent(ctx, sourceEvent{
 				eventType:     event.TypeAssetFaultDetected,
@@ -361,7 +362,7 @@ func (m *Manager) subscribe() error {
 	}
 	subs = append(subs, sub)
 
-	sub, err = event.Subscribe[event.MetricExceededPayload](m.bus, event.TypeTelemetryMetricExceeded,
+	sub, err = event.Subscribe(m.bus, event.TypeTelemetryMetricExceeded,
 		func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
 			m.handleSourceEvent(ctx, sourceEvent{
 				eventType:     event.TypeTelemetryMetricExceeded,
@@ -379,7 +380,7 @@ func (m *Manager) subscribe() error {
 	}
 	subs = append(subs, sub)
 
-	sub, err = event.Subscribe[event.LogMatchedPayload](m.bus, event.TypeTelemetryLogMatched,
+	sub, err = event.Subscribe(m.bus, event.TypeTelemetryLogMatched,
 		func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
 			m.handleSourceEvent(ctx, sourceEvent{
 				eventType:     event.TypeTelemetryLogMatched,
@@ -569,7 +570,7 @@ func (m *Manager) dispatchRule(ctx context.Context, rule *Rule, src sourceEvent)
 	remediationID := newID()
 	runID := newID()
 
-	if err := m.publishTriggered(ctx, rule, src, remediationID, runID); err != nil {
+	if err = m.publishTriggered(ctx, rule, src, remediationID, runID); err != nil {
 		m.logger.Warn("failed to publish remediation triggered event",
 			zap.Int64("rule_id", rule.ID),
 			zap.Error(err),
@@ -583,7 +584,7 @@ func (m *Manager) dispatchRule(ctx context.Context, rule *Rule, src sourceEvent)
 		SourceEventID: src.sourceEventID,
 		Status:        StatusTriggered,
 	}
-	if err := m.store.CreateRecord(ctx, record); err != nil {
+	if err = m.store.CreateRecord(ctx, record); err != nil {
 		m.logger.Error("failed to persist triggered record",
 			zap.Int64("rule_id", rule.ID),
 			zap.Error(err),
@@ -614,7 +615,7 @@ func (m *Manager) executeAndFinalize(
 	}
 
 	startedAt := time.Now()
-	if err := m.publishStarted(ctx, rule, src, remediationID, startedAt); err != nil {
+	if err = m.publishStarted(ctx, rule, src, remediationID, startedAt); err != nil {
 		m.logger.Warn("failed to publish remediation started event",
 			zap.Int64("rule_id", rule.ID),
 			zap.Error(err),
@@ -623,7 +624,7 @@ func (m *Manager) executeAndFinalize(
 	if record.ID != 0 {
 		record.Status = StatusStarted
 		record.StartedAt = startedAt
-		if err := m.store.UpdateRecord(ctx, record); err != nil {
+		if err = m.store.UpdateRecord(ctx, record); err != nil {
 			m.logger.Warn("failed to update record to started",
 				zap.Int64("rule_id", rule.ID),
 				zap.Error(err),
@@ -660,8 +661,7 @@ func (m *Manager) executeAndFinalize(
 
 	// Executor returned no error. Inspect the result status to decide
 	// whether the dispatch genuinely succeeded.
-	status := "success"
-	errMsg := ""
+	status, errMsg := "success", ""
 	if result != nil && result.Status != statusNormal {
 		status = "failure"
 		errMsg = result.ErrorMsg
@@ -675,7 +675,7 @@ func (m *Manager) executeAndFinalize(
 		breaker.RecordFailure()
 	}
 
-	if err := m.publishCompleted(ctx, rule, src, remediationID, status, errMsg, startedAt, finishedAt); err != nil {
+	if err = m.publishCompleted(ctx, rule, src, remediationID, status, errMsg, startedAt, finishedAt); err != nil {
 		m.logger.Warn("failed to publish remediation completed event",
 			zap.Int64("rule_id", rule.ID),
 			zap.Error(err),
@@ -693,7 +693,7 @@ func (m *Manager) executeAndFinalize(
 		if result != nil {
 			record.TaskID = strconv.Itoa(result.StatusCode)
 		}
-		if err := m.store.UpdateRecord(ctx, record); err != nil {
+		if err = m.store.UpdateRecord(ctx, record); err != nil {
 			m.logger.Warn("failed to update record to completed",
 				zap.Int64("rule_id", rule.ID),
 				zap.Error(err),
@@ -877,11 +877,18 @@ func (m *Manager) getOrCreateBreaker(ruleID int64) *circuitbreaker.CircuitBreake
 // the records are ordered by descending ID, fetching the first
 // quota+1 records is sufficient to detect a ceiling breach.
 func (m *Manager) checkQuota(ctx context.Context) (bool, error) {
-	if m.quota <= 0 {
+	// Query the active Provider so dynamic plan changes take effect.
+	q := quota.Ceiling(quota.TypeRemediation)
+	if q <= 0 {
+		// Fall back to the configured local quota when the Provider
+		// returns 0 (disabled).
+		q = m.quota
+	}
+	if q <= 0 {
 		return true, nil
 	}
 	since := time.Now().Add(-quotaWindow)
-	limit := m.quota + 1
+	limit := q + 1
 	if limit <= 0 {
 		return true, nil
 	}
@@ -898,7 +905,7 @@ func (m *Manager) checkQuota(ctx context.Context) (bool, error) {
 			count++
 		}
 	}
-	return count < m.quota, nil
+	return count < q, nil
 }
 
 // publishTriggered publishes a TypeRemediationTriggered event. The

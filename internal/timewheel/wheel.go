@@ -125,7 +125,7 @@ func newHierarchicalWheel(cfg config) (*hierarchicalWheel, error) {
 		runCtx:    runCtx,
 		cancelRun: cancelRun,
 	}
-	for i := 0; i < wheelSize; i++ {
+	for i := range wheelSize {
 		w.seconds[i] = make(map[EntryID]*Entry)
 		w.minutes[i] = make(map[EntryID]*Entry)
 	}
@@ -183,10 +183,7 @@ func (w *hierarchicalWheel) AddAt(fireAt time.Time, cb Callback) EntryID {
 	defer w.mu.Unlock()
 
 	delay := fireAt.Sub(now)
-	totalSeconds := int(delay.Seconds())
-	if totalSeconds < 1 {
-		totalSeconds = 1
-	}
+	totalSeconds := max(int(delay.Seconds()), 1)
 
 	if totalSeconds < secondsPerMin {
 		slot := (w.secPtr + totalSeconds) % wheelSize

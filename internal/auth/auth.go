@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	authcore "github.com/tickraft/tickraft/pkg/auth"
+	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
@@ -19,7 +19,7 @@ import (
 type Authenticator interface {
 	// Login authenticates a user and returns a login result containing the
 	// token pair plus policy flags (e.g. MustChangePassword).
-	Login(ctx context.Context, username, password string) (*authcore.LoginResult, error)
+	Login(ctx context.Context, username, password string) (*auth.LoginResult, error)
 	// Verify validates a JWT token and returns the user.
 	Verify(ctx context.Context, token string) (*user.User, error)
 }
@@ -47,32 +47,32 @@ type Policy interface {
 // jwtAuthenticator implements Authenticator using JWT for token operations.
 type jwtAuthenticator struct {
 	users      user.Store
-	blacklist  authcore.BlacklistStore
-	jwtMgr     *jwt.JWT
+	blacklist  auth.BlacklistStore
+	jwt        *jwt.JWT
 	bcryptCost int
 }
 
 // NewAuthenticator creates a new Authenticator backed by the given stores
 // and JWT manager. bcryptCost of 0 means bcrypt.DefaultCost will be used.
-func NewAuthenticator(users user.Store, blacklist authcore.BlacklistStore, jwtMgr *jwt.JWT, bcryptCost int) Authenticator {
+func NewAuthenticator(users user.Store, blacklist auth.BlacklistStore, jwtMgr *jwt.JWT, bcryptCost int) Authenticator {
 	return &jwtAuthenticator{
 		users:      users,
 		blacklist:  blacklist,
-		jwtMgr:     jwtMgr,
+		jwt:        jwtMgr,
 		bcryptCost: bcryptCost,
 	}
 }
 
 // Login authenticates a user by username and password, returning a login
 // result containing the token pair and policy flags on success.
-func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*authcore.LoginResult, error) {
+func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*auth.LoginResult, error) {
 	user, err := a.users.GetByUsername(ctx, username)
 	if err != nil {
-		return nil, authcore.ErrUnauthorized
+		return nil, auth.ErrUnauthorized
 	}
 
-	if err := password.Verify(user.PasswordHash, pwd); err != nil {
-		return nil, authcore.ErrUnauthorized
+	if err = password.Verify(user.PasswordHash, pwd); err != nil {
+		return nil, auth.ErrUnauthorized
 	}
 
 	// Build jwt.UserClaims from user data.
@@ -80,18 +80,18 @@ func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*au
 	// The runtime is single-tenant; TenantID is left as the zero
 	// value. The extended User model embeds user.User and
 	// populates TenantID from its own augmented user type before issuing tokens.
-	jwtClaims := jwt.UserClaims{
+	claims := jwt.UserClaims{
 		UID:      user.ID,
 		Username: user.Username,
 		Role:     user.Role,
 	}
 
-	tokenPair, err := a.jwtMgr.GenerateTokenPair(jwtClaims)
+	tokenPair, err := a.jwt.GenerateTokenPair(claims)
 	if err != nil {
 		return nil, fmt.Errorf("auth: generate token pair: %w", err)
 	}
 
-	return &authcore.LoginResult{
+	return &auth.LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
 		MustChangePassword: user.MustChangePassword,
 	}, nil
@@ -99,14 +99,14 @@ func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*au
 
 // Verify validates a JWT token and returns the associated user.
 func (a *jwtAuthenticator) Verify(ctx context.Context, token string) (*user.User, error) {
-	claims, err := a.jwtMgr.ValidateToken(token, authcore.TokenTypeAccess)
+	claims, err := a.jwt.ValidateToken(token, auth.TokenTypeAccess)
 	if err != nil {
-		return nil, authcore.ErrUnauthorized
+		return nil, auth.ErrUnauthorized
 	}
 
 	user, err := a.users.GetByID(ctx, claims.UID)
 	if err != nil {
-		return nil, authcore.ErrUnauthorized
+		return nil, auth.ErrUnauthorized
 	}
 
 	return user, nil
@@ -130,9 +130,8 @@ func NewRegistrar(users user.Store, bcryptCost int) Registrar {
 // Register creates a new user.
 func (r *userRegistrar) Register(ctx context.Context, username, pwd, email string) (*user.User, error) {
 	// Check if username already exists
-	_, err := r.users.GetByUsername(ctx, username)
-	if err == nil {
-		return nil, authcore.ErrUserExists
+	if _, err := r.users.GetByUsername(ctx, username); err == nil {
+		return nil, auth.ErrUserExists
 	}
 
 	// Hash the password
@@ -143,7 +142,7 @@ func (r *userRegistrar) Register(ctx context.Context, username, pwd, email strin
 
 	// Create the user record
 	now := time.Now()
-	id, err := r.users.Create(ctx, username, hashedPwd, email, authcore.RoleDeveloper)
+	id, err := r.users.Create(ctx, username, hashedPwd, email, auth.RoleDeveloper)
 	if err != nil {
 		return nil, fmt.Errorf("auth: create user: %w", err)
 	}
@@ -152,7 +151,7 @@ func (r *userRegistrar) Register(ctx context.Context, username, pwd, email strin
 		ID:           id,
 		Username:     username,
 		PasswordHash: hashedPwd,
-		Role:         authcore.RoleDeveloper,
+		Role:         auth.RoleDeveloper,
 		Email:        email,
 		CreatedAt:    now,
 	}, nil
@@ -169,35 +168,35 @@ type rbacPolicy struct {
 
 // newRBACPolicy creates the default RBAC policy.
 func newRBACPolicy() *rbacPolicy {
-	p := &rbacPolicy{
+	rbac := &rbacPolicy{
 		rules: make(map[int]map[string]map[string]bool),
 	}
 
 	// Admin: full access
-	p.rules[authcore.RoleAdmin] = map[string]map[string]bool{
-		"*": {authcore.ActionRead: true, authcore.ActionWrite: true, authcore.ActionDelete: true},
+	rbac.rules[auth.RoleAdmin] = map[string]map[string]bool{
+		"*": {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: true},
 	}
 
 	// Developer: manage tasks, devices, alerts; read others
 	devResources := map[string]map[string]bool{
-		"task":   {authcore.ActionRead: true, authcore.ActionWrite: true, authcore.ActionDelete: true},
-		"device": {authcore.ActionRead: true, authcore.ActionWrite: true, authcore.ActionDelete: false},
-		"alert":  {authcore.ActionRead: true, authcore.ActionWrite: true, authcore.ActionDelete: false},
-		"*":      {authcore.ActionRead: true, authcore.ActionWrite: false, authcore.ActionDelete: false},
+		"task":   {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: true},
+		"device": {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: false},
+		"alert":  {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: false},
+		"*":      {auth.ActionRead: true, auth.ActionWrite: false, auth.ActionDelete: false},
 	}
-	p.rules[authcore.RoleDeveloper] = devResources
+	rbac.rules[auth.RoleDeveloper] = devResources
 
 	// Visitor: read-only
-	p.rules[authcore.RoleVisitor] = map[string]map[string]bool{
-		"*": {authcore.ActionRead: true, authcore.ActionWrite: false, authcore.ActionDelete: false},
+	rbac.rules[auth.RoleVisitor] = map[string]map[string]bool{
+		"*": {auth.ActionRead: true, auth.ActionWrite: false, auth.ActionDelete: false},
 	}
 
-	return p
+	return rbac
 }
 
 // Check returns whether the given role is allowed to perform the action on the asset type.
-func (p *rbacPolicy) Check(role int, action string, assetType string) bool {
-	resourceRules, ok := p.rules[role]
+func (rbac *rbacPolicy) Check(role int, action string, assetType string) bool {
+	resourceRules, ok := rbac.rules[role]
 	if !ok {
 		return false
 	}

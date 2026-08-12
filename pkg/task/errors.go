@@ -28,4 +28,9 @@ var (
 	// want to surface the condition to API clients (e.g. translate to
 	// HTTP 422/409) can match against this sentinel via errors.Is.
 	ErrDependencyNotMet = errors.New("task: dependency not met")
+	// ErrIntervalTooSmall is returned when an interval-based schedule has
+	// an interval shorter than the configured minimum. Callers (API layer,
+	// worker bootstrap) can match against this sentinel via errors.Is to
+	// translate it into an appropriate HTTP error (e.g. 400 Bad Request).
+	ErrIntervalTooSmall = errors.New("task: schedule interval is smaller than the minimum allowed")
 )
