@@ -6,6 +6,7 @@ package user
 
 import (
 	"context"
+	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/cache"
@@ -212,7 +213,10 @@ func (s *apiKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 	return &ak, nil
 }
 
-// Revoke marks an API key as revoked by setting revoked_at to the current time.
+// Revoke marks an API key as revoked by setting revoked_at and flipping
+// status to disabled. Both fields are written together: the auth middleware
+// validates the status field, so updating only revoked_at would leave the
+// key authenticating indefinitely.
 func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 	var ak APIKey
 	if err := s.dbc.WithContext(ctx).First(&ak, id).Error; err != nil {
@@ -220,7 +224,11 @@ func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 	}
 
 	now := time.Now()
-	if err := s.dbc.WithContext(ctx).Model(&APIKey{}).Where("id = ?", id).Update("revoked_at", now).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Model(&APIKey{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"revoked_at": now,
+			"status":     apikey.StatusRevoked,
+		}).Error; err != nil {
 		return errmap.MapError(err)
 	}
 	return nil

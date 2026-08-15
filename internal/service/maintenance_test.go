@@ -44,6 +44,12 @@ func (m *mockExecutionStore) Save(context.Context, *task.Execution) error {
 func (m *mockExecutionStore) List(context.Context, int64, int) ([]*task.Execution, error) {
 	return nil, nil
 }
+func (m *mockExecutionStore) Query(_ context.Context, _ task.ExecutionQuery, _, _ int) ([]*task.Execution, int64, error) {
+	return nil, 0, nil
+}
+func (m *mockExecutionStore) Get(_ context.Context, _ int64) (*task.Execution, error) {
+	return nil, task.ErrExecutionNotFound
+}
 func (m *mockExecutionStore) DeleteExecutionsOlderThan(_ context.Context, before time.Time) error {
 	m.deleteCalled = true
 	m.deleteBefore = before

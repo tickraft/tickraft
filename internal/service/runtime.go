@@ -25,7 +25,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/internal/quota"
-	"github.com/tickraft/tickraft/internal/remediation"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -116,6 +115,18 @@ type runtime struct {
 	// started (e.g. isolated tests).
 	telemetryCollector telemetry.Collector
 
+	// metricStore and logStore persist collected metrics and logs. They are
+	// created by startWorkerEngines and consumed by startAPIServer to wire
+	// the telemetry handler's history/logs endpoints.
+	metricStore telemetry.MetricStore
+	logStore    telemetry.LogStore
+
+	// proberSvc coordinates active probing. It is created by
+	// startWorkerEngines and consumed by startAPIServer to wire
+	// register/unregister hooks into the telemetry CRUD service so that
+	// active monitoring points are scheduled in real time.
+	proberSvc *telemetry.ProberService
+
 	// implicitAccount is the in-memory account that backs the built-in admin
 	// user. It is never persisted to the database: the runtime has a single
 	// admin user who is treated as the owner of an implicit personal account
@@ -132,9 +143,18 @@ func (r *runtime) ImplicitAccount() *account {
 }
 
 // eventBus returns the shared event bus, creating it lazily on first use.
+// The bus is configured with a GORM-backed FailedEventStore so events that
+// exhaust all retries are persisted to the database for audit and replay.
 func (r *runtime) eventBus() event.Bus {
 	if r.bus == nil {
-		r.bus = event.NewBus()
+		failedStore := event.NewFailedEventStore(r.dbc)
+		if err := failedStore.Migrate(context.Background()); err != nil {
+			r.logger.Error("migrate failed event store", zap.Error(err))
+		}
+		r.bus = event.NewBus(
+			event.WithFailedEventStore(failedStore),
+			event.WithLogger(r.logger),
+		)
 	}
 	return r.bus
 }
@@ -208,11 +228,6 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err = remediation.Migrate(ctx, dbc); err != nil {
-		closeRuntimeDB(dbc, cacheInst)
-		return nil, fmt.Errorf("migrate remediation: %w", err)
-	}
-
 	// Ensure the built-in admin user exists.
 	adminPassword, err := db.EnsureAdminUser(ctx, dbc, cfg.Auth.AdminUsername, cfg.Auth.AdminPassword)
 	if err != nil {
@@ -220,9 +235,15 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 		return nil, fmt.Errorf("ensure admin user: %w", err)
 	}
 	if adminPassword != "" {
-		logger.Warn("generated random admin password; please change it after first login",
+		// Print the initial password to stderr so the operator can
+		// see it in the terminal or systemd journal without it being
+		// persisted in structured log files.
+		fmt.Fprintf(os.Stderr,
+			"[security] Generated random admin password for user %q: %s\n",
+			cfg.Auth.AdminUsername, adminPassword)
+		fmt.Fprintln(os.Stderr, "[security] Please change it immediately after first login.")
+		logger.Warn("generated random admin password; change it after first login",
 			zap.String("username", cfg.Auth.AdminUsername),
-			zap.String("password", adminPassword),
 		)
 	}
 

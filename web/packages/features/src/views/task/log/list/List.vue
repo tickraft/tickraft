@@ -3,12 +3,12 @@
 // Dual-licensed — see LICENSE for details.
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Refresh, Download, Search } from '@element-plus/icons-vue'
-import { FeatureGuard, DataTable } from '@tickraft/core'
+import { Refresh, Search } from '@element-plus/icons-vue'
+import { DataTable } from '@tickraft/core'
 import { formatDuration, formatDate } from '@tickraft/core'
 import type { LogModel, ExecutorType } from '../../../../types/task'
 import { getLogs } from '../../../../api/task'
@@ -22,45 +22,10 @@ const pageSize = ref(15)
 const total = ref(0)
 const tableData = ref<LogModel[]>([])
 
-/**
- * Full execution log dataset fetched from the backend. The backend
- * ListExecutions endpoint only supports page/size — no task name, executor
- * type, or status filtering — so we fetch a large page and apply filters
- * client-side before rendering the current page slice.
- */
-const allLogs = ref<LogModel[]>([])
-
+/** Server-side filters forwarded to GET /tasks/0/executions. */
 const filterTaskName = ref('')
 const filterExecutor = ref<ExecutorType | ''>('')
 const filterStatus = ref('')
-
-/** Client-side filtered view of allLogs. */
-const filteredLogs = computed(() => {
-  let items = allLogs.value
-  const taskName = filterTaskName.value.trim().toLowerCase()
-  if (taskName) {
-    items = items.filter((l) => (l.taskName ?? '').toLowerCase().includes(taskName))
-  }
-  if (filterExecutor.value) {
-    items = items.filter((l) => l.executorType === filterExecutor.value)
-  }
-  if (filterStatus.value) {
-    items = items.filter((l) => l.status === filterStatus.value)
-  }
-  return items
-})
-
-/** Recompute the paginated table slice whenever filters or page change. */
-watch(
-  [filteredLogs, currentPage, pageSize],
-  () => {
-    const items = filteredLogs.value
-    total.value = items.length
-    const start = (currentPage.value - 1) * pageSize.value
-    tableData.value = items.slice(start, start + pageSize.value)
-  },
-  { immediate: true },
-)
 
 /** Log table columns */
 const logColumns = computed(() => [
@@ -110,20 +75,24 @@ const executorOptions = computed(() => [
 const statusOptions = computed(() => [
   { label: t('common.status.success'), value: 'success' },
   { label: t('common.status.failed'), value: 'failed' },
-  { label: t('common.status.timeout'), value: 'timeout' },
   { label: t('common.status.running'), value: 'running' },
 ])
 
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
-    // Fetch a large page — the backend ListExecutions endpoint only supports
-    // page/size pagination, so task name / executor type / status filtering
-    // is applied client-side via the filteredLogs computed above.
-    const res = await getLogs(0, { page: 1, pageSize: 1000 })
-    allLogs.value = res.items || []
+    const res = await getLogs(0, {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      taskName: filterTaskName.value.trim() || undefined,
+      executor: filterExecutor.value || undefined,
+      status: filterStatus.value || undefined,
+    })
+    tableData.value = res.items || []
+    total.value = res.total || 0
   } catch {
-    allLogs.value = []
+    tableData.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -143,7 +112,12 @@ function handleReset(): void {
 }
 
 function handlePageChange(payload: { current: number; pageSize: number }): void {
+  const sizeChanged = payload.pageSize !== pageSize.value
   currentPage.value = payload.current
+  pageSize.value = payload.pageSize
+  if (sizeChanged) {
+    currentPage.value = 1
+  }
   void fetchData()
 }
 
@@ -154,10 +128,6 @@ function handleRefresh(): void {
 
 function handleDetail(row: LogModel): void {
   router.push(`/task/log/detail/${row.taskId}/${row.id}`)
-}
-
-function handleExport(): void {
-  ElMessage.info(t('common.feature.locked'))
 }
 
 onMounted(() => { void fetchData() })
@@ -176,9 +146,6 @@ onMounted(() => { void fetchData() })
       </div>
       <div class="tk-log-list__actions">
         <el-button @click="handleRefresh"><el-icon><Refresh /></el-icon>{{ t('common.app.refresh') }}</el-button>
-        <FeatureGuard feature="log_export">
-          <el-button @click="handleExport"><el-icon><Download /></el-icon>{{ t('task.log.list.export') }}</el-button>
-        </FeatureGuard>
       </div>
     </div>
 

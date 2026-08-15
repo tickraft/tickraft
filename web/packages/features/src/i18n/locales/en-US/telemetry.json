@@ -179,7 +179,10 @@
       "builtinNo": "No",
       "updatedAt": "Updated At",
       "deleteConfirm": "Are you sure to delete template \"{name}\"?",
-      "deleteSuccess": "Template deleted"
+      "deleteSuccess": "Template deleted",
+      "apply": "Apply",
+      "applyConfirm": "Apply template \"{name}\"? A new monitor point will be created from it.",
+      "applySuccess": "Template applied, monitor created"
     }
   },
   "prober": {

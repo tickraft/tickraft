@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	domaintask "github.com/tickraft/tickraft/pkg/task"
+	"github.com/tickraft/tickraft/pkg/task"
 )
 
 // converter.go provides bidirectional conversion functions between the
@@ -60,7 +60,7 @@ const (
 // Task struct.
 //
 // A nil input returns nil.
-func DomainTaskToHandler(t *domaintask.Task) *Task {
+func DomainTaskToHandler(t *task.Task) *Task {
 	if t == nil {
 		return nil
 	}
@@ -94,11 +94,11 @@ func DomainTaskToHandler(t *domaintask.Task) *Task {
 // HandlerToDomainTask converts a handler-layer Task into a task domain Task.
 //
 // A nil input returns nil.
-func HandlerToDomainTask(t *Task) *domaintask.Task {
+func HandlerToDomainTask(t *Task) *task.Task {
 	if t == nil {
 		return nil
 	}
-	s := &domaintask.Task{
+	s := &task.Task{
 		ID:           t.ID,
 		ExecutorName: t.Executor,
 		Group:        t.Group,
@@ -157,7 +157,7 @@ func isDomainConfigKey(k string) bool {
 	return false
 }
 
-func writeDomainFieldsToConfig(h *Task, t *domaintask.Task) {
+func writeDomainFieldsToConfig(h *Task, t *task.Task) {
 	if t.TenantID == 0 && t.AssetID == 0 && t.Timeout == 0 &&
 		t.Priority == 0 && t.DependsOn == 0 {
 		return

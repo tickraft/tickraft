@@ -50,6 +50,11 @@ type Config struct {
 	RuleConfig rule.Config
 	// AssetStore is used by the rule MetricMatcher for asset enrichment.
 	AssetStore asset.Store
+	// RemediationOperators registers additional remediation action
+	// operators (beyond the default LocalOperator) with the remediation
+	// engine started by NewFromConfig. Each operator's Name must match a
+	// Rule.ExecutorType value accepted by the remediation rule API.
+	RemediationOperators []remediation.Operator
 }
 
 // NewFromConfig creates a fully wired prism Engine from the given Config.
@@ -166,6 +171,22 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	engine.channelStore = channelStore
 	engine.remediationStore = remediationStore
 	engine.ruleEngine = ruleEng
+
+	// Create the remediation engine. It subscribes to the same telemetry
+	// and asset events as the alert pipeline and dispatches matching
+	// remediation rules to their operators, persisting each run to the
+	// remediation record store. Started and stopped with the Engine.
+	remediationMgr, err := remediation.New(
+		remediation.WithEventBus(cfg.Bus),
+		remediation.WithStore(remediationStore),
+		remediation.WithRecordStore(remediationStore),
+		remediation.WithLogger(logger),
+		remediation.WithOperators(cfg.RemediationOperators...),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("prism: create remediation engine: %w", err)
+	}
+	engine.remediationMgr = remediationMgr
 	if ruleEng != nil {
 		engine.ruleEngineStopFn = func(stopCtx context.Context) error {
 			return ruleEng.Stop(stopCtx)

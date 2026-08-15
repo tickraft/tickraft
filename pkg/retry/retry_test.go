@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/timewheel"
+	"github.com/tickraft/tickraft/pkg/timewheel"
 )
 
 func TestFixedInterval(t *testing.T) {

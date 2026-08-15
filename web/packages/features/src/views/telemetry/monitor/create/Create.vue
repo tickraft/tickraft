@@ -274,7 +274,7 @@ function handleCancel(): void {
 async function fetchAssets(): Promise<void> {
   assetLoading.value = true
   try {
-    const res = await getAssets({ page: 1, pageSize: 1000 })
+    const res = await getAssets({ page: 1, pageSize: 100 })
     assets.value = res.items
   } catch {
     assets.value = []

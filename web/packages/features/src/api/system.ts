@@ -37,6 +37,8 @@ export interface GlobalStats {
   totalDevices: number
   todayExecutions: number
   todaySuccessRate: number
+  /** Asset counts grouped by status (normal/abnormal/offline/unknown) */
+  assetStatusCounts?: Record<string, number>
 }
 
 /** User profile (aligned with backend UserProfile) */

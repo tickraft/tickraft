@@ -49,4 +49,42 @@ type Service interface {
 	UpdateRule(ctx context.Context, id int64, req *Rule) (*Rule, error)
 	// DeleteRule deletes a remediation rule by ID.
 	DeleteRule(ctx context.Context, id int64) error
+	// ListRecords returns a page of remediation dispatch records and the
+	// total count, optionally filtered by lifecycle status.
+	ListRecords(ctx context.Context, page, size int, status string) ([]Record, int64, error)
+}
+
+// Record represents a single remediation dispatch lifecycle record. One
+// record is persisted per run and updated as the dispatch progresses
+// through the triggered -> started -> completed/failed states. Skipped
+// dispatches (cooldown, circuit breaker, missing operator) persist a record
+// with status "skipped".
+type Record struct {
+	// ID is the record identifier.
+	ID int64 `json:"id"`
+	// RuleID references the remediation rule that produced this record.
+	RuleID int64 `json:"rule_id"`
+	// RuleName is the rule name snapshot at trigger time.
+	RuleName string `json:"rule_name"`
+	// AssetID is the numeric asset identifier of the triggering event.
+	AssetID int64 `json:"asset_id"`
+	// AssetKey is the asset key of the triggering event, when available.
+	AssetKey string `json:"asset_key,omitempty"`
+	// RunID is the unique identifier of this remediation run.
+	RunID string `json:"run_id"`
+	// Trigger is the trigger type that activated the rule: metric, log,
+	// or status_change.
+	Trigger string `json:"trigger"`
+	// Status is the dispatch lifecycle state: triggered, started,
+	// completed, skipped, or failed.
+	Status string `json:"status"`
+	// Error captures the failure or skip message when the dispatch did
+	// not complete successfully.
+	Error string `json:"error,omitempty"`
+	// StartedAt is the time the operator started the dispatch.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	// FinishedAt is the time the dispatch finished.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// CreatedAt records when the record was created.
+	CreatedAt time.Time `json:"created_at"`
 }

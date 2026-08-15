@@ -73,9 +73,9 @@ function formToPayload(form: AssetFormData): Partial<Asset> {
 /**
  * Get asset list (paginated).
  *
- * The backend ListAssets only reads page/size; keyword/type/status filtering
- * is not yet supported server-side. The caller should apply client-side
- * filtering until the backend adds query parameter support.
+ * Server-side pagination (page/pageSize, snake-cased to page_size by the
+ * request interceptor) and keyword/assetType/status filtering are applied
+ * by the backend.
  */
 export function getAssets(params: AssetListQuery): Promise<PageData<Asset>> {
   return request<PageData<Asset>>({

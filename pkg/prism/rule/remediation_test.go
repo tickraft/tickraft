@@ -428,8 +428,8 @@ func TestCompile_RemediationScene(t *testing.T) {
 
 	// Invalid: references fields from another scene's Env contract.
 	invalid := []string{
-		`task.priority > 5`,        // Task is not in RemediationMatchEnv
-		`alert.metrics["cpu"] > 0`, // Alert is not in RemediationMatchEnv
+		`task.priority > 5`,         // Task is not in RemediationMatchEnv
+		`alert.metrics["cpu"] > 0`,  // Alert is not in RemediationMatchEnv
 		`report.log_content == "x"`, // Report is not in RemediationMatchEnv
 		`Remediation.NonExistent > 0`,
 	}

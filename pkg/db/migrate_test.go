@@ -354,10 +354,10 @@ func TestEnsureAdminUser_UsernameValidation(t *testing.T) {
 
 	// Invalid usernames must be rejected before any row is created.
 	invalidNames := []string{
-		"ad",                  // too short (< 3 chars)
-		"admin-user",          // hyphen not allowed
-		"admin.user",          // dot not allowed
-		"admin user",          // space not allowed
+		"ad",                    // too short (< 3 chars)
+		"admin-user",            // hyphen not allowed
+		"admin.user",            // dot not allowed
+		"admin user",            // space not allowed
 		strings.Repeat("a", 65), // 65 chars, too long (> 64)
 	}
 	for _, name := range invalidNames {

@@ -26,6 +26,17 @@ const mockRuntimeInfo = {
   uptime: '2d 4h 32m',
 }
 
+/** Current user profile (aligned with backend auth.UserProfile) */
+const mockProfile = {
+  id: 1,
+  username: 'admin',
+  nickname: 'Administrator',
+  email: 'admin@tickraft.io',
+  role: 2,
+  language: 'zh-Hans',
+  alert_format_style: 'default',
+}
+
 export default [
   {
     url: '/api/v1/system/config',
@@ -58,16 +69,48 @@ export default [
     }),
   },
   {
-    url: '/api/v1/health',
+    url: '/api/v1/system/stats',
     method: 'get',
     response: () => ({
       code: 0,
       message: 'success',
       data: {
-        status: 'ok',
-        version: mockRuntimeInfo.version,
-        uptime: 186_720,
+        total_tasks: 22,
+        total_devices: 15,
+        today_executions: 342,
+        today_success_rate: 96.2,
+        asset_status_counts: { normal: 12, abnormal: 2, offline: 1, unknown: 0 },
       },
+    }),
+  },
+  {
+    url: '/api/v1/system/profile',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: { ...mockProfile },
+    }),
+  },
+  {
+    url: '/api/v1/system/profile',
+    method: 'put',
+    response: ({ body }: { body: Record<string, unknown> }) => {
+      Object.assign(mockProfile, body)
+      return {
+        code: 0,
+        message: 'success',
+        data: { ...mockProfile },
+      }
+    },
+  },
+  {
+    url: '/api/v1/healthz',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: { status: 'ok' },
     }),
   },
 ] as MockMethod[]

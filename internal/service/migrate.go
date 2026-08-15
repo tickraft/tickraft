@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tickraft/tickraft/internal/remediation"
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -34,10 +33,6 @@ func RunMigrate(ctx context.Context, dbCfg db.Config, displayDSN string) error {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err = remediation.Migrate(ctx, dbc); err != nil {
-		return fmt.Errorf("migrate remediation: %w", err)
-	}
-
 	if err = rule.NewStore(dbc, rule.NewCompiler()).Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate rule table: %w", err)
 	}
@@ -47,7 +42,7 @@ func RunMigrate(ctx context.Context, dbCfg db.Config, displayDSN string) error {
 	}
 
 	zap.L().Info("database migration completed successfully",
-		zap.String("dsn", displayDSN),
+		zap.String("dsn", db.Redact(displayDSN)),
 	)
 	return nil
 }

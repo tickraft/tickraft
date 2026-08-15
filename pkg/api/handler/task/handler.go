@@ -217,14 +217,22 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 	api.Success(arc, stats)
 }
 
-// ListExecutions handles GET /api/v1/tasks/:id/executions.
+// ListExecutions handles GET /api/v1/tasks/:id/executions. Supported query
+// parameters: page, page_size, status (pending/running/success/failed),
+// executor (executor type) and task_name (substring match). A task id of 0
+// lists executions across all tasks.
 func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 	taskID, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
 	page, size := httputil.ParsePaging(arc)
-	items, total, err := h.svc.ListExecutions(ctx, taskID, page, size)
+	filter := ExecutionFilter{
+		Status:       storedStatus(arc.Query("status")),
+		ExecutorType: arc.Query("executor"),
+		TaskName:     arc.Query("task_name"),
+	}
+	items, total, err := h.svc.ListExecutions(ctx, taskID, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)
 		return
@@ -234,16 +242,36 @@ func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 
 // GetExecution handles GET /api/v1/tasks/:id/executions/:execId.
 func (h *Handler) GetExecution(ctx context.Context, arc *app.RequestContext) {
+	taskID, ok := httputil.ParseID(arc)
+	if !ok {
+		return
+	}
 	execIDStr := arc.Param("execId")
 	execID, err := strconv.ParseInt(execIDStr, 10, 64)
 	if err != nil {
 		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid execution id parameter")
 		return
 	}
-	execution, err := h.svc.GetExecution(ctx, execID)
+	execution, err := h.svc.GetExecution(ctx, taskID, execID)
 	if err != nil {
 		api.Fail(arc, err)
 		return
 	}
 	api.Success(arc, execution)
+}
+
+// storedStatus maps an execution lifecycle status from the API contract
+// (pending/running/success/failed) to the persisted status value. Unknown
+// values pass through so callers filtering by raw stored values keep working.
+func storedStatus(lifecycle string) string {
+	switch lifecycle {
+	case "success":
+		return "normal"
+	case "failed":
+		return "abnormal"
+	case "running":
+		return "triggered"
+	default:
+		return lifecycle
+	}
 }

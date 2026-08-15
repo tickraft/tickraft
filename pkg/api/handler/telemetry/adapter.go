@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	nethttp "net/http"
+	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
@@ -37,7 +37,7 @@ import (
 // asset key, remote address, body size) so telemetry ingestion is traceable
 // for operational forensics and abuse investigation.
 type netHTTPHandlerAdapter struct {
-	handler nethttp.Handler
+	handler http.Handler
 	logger  *zap.Logger
 }
 
@@ -54,7 +54,7 @@ var _ ReportHandler = (*netHTTPHandlerAdapter)(nil)
 //
 // A nil logger falls back to a no-op logger so the adapter is safe to use in
 // tests without explicit logging configuration.
-func NewTelemetryReportHandlerAdapter(h nethttp.Handler, logger *zap.Logger) ReportHandler {
+func NewTelemetryReportHandlerAdapter(h http.Handler, logger *zap.Logger) ReportHandler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -102,7 +102,7 @@ func (a *netHTTPHandlerAdapter) Report(ctx context.Context, arc *app.RequestCont
 		remoteAddr = ra.String()
 	}
 
-	req, err := nethttp.NewRequestWithContext(ctx, method, path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, path, bodyReader)
 	if err != nil {
 		// Unreachable in practice: NewRequestWithContext only fails on
 		// invalid method or URL, both of which come from a well-formed
@@ -117,7 +117,7 @@ func (a *netHTTPHandlerAdapter) Report(ctx context.Context, arc *app.RequestCont
 			zap.String("remote_addr", remoteAddr),
 			zap.Error(err),
 		)
-		arc.AbortWithStatus(nethttp.StatusInternalServerError)
+		arc.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (a *netHTTPHandlerAdapter) Report(ctx context.Context, arc *app.RequestCont
 // captures the status code, headers, and body written by a net/http.Handler.
 // It is NOT safe for concurrent use; each request allocates its own instance.
 type responseRecorder struct {
-	header     nethttp.Header
+	header     http.Header
 	statusCode int
 	body       []byte
 }
@@ -189,14 +189,14 @@ type responseRecorder struct {
 // 200 OK status with an empty header map and body.
 func newResponseRecorder() *responseRecorder {
 	return &responseRecorder{
-		header:     nethttp.Header{},
-		statusCode: nethttp.StatusOK,
+		header:     http.Header{},
+		statusCode: http.StatusOK,
 	}
 }
 
 // Header returns the response header map. The handler may set headers on it
 // before WriteHeader or Write is called.
-func (r *responseRecorder) Header() nethttp.Header {
+func (r *responseRecorder) Header() http.Header {
 	return r.header
 }
 
@@ -215,4 +215,4 @@ func (r *responseRecorder) Write(p []byte) (int, error) {
 
 // Compile-time assertion that responseRecorder satisfies
 // net/http.ResponseWriter.
-var _ nethttp.ResponseWriter = (*responseRecorder)(nil)
+var _ http.ResponseWriter = (*responseRecorder)(nil)

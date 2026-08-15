@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tickraft/tickraft/internal/cert"
+	"github.com/tickraft/tickraft/pkg/cert"
 )
 
 // newSelfSignCmd creates the "selfsign" subcommand that generates a self-signed

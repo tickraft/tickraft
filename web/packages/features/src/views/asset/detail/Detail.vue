@@ -13,13 +13,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { StatusTag } from '@tickraft/core'
+import { StatusTag, usePermission } from '@tickraft/core'
 import { getAsset, deleteAsset, parseMetadata } from '../../../api/asset'
 import type { Asset, AssetMetadata } from '../../../types/asset'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const deleting = ref(false)
@@ -115,6 +116,7 @@ onMounted(() => {
           {{ t('asset.detail.edit') }}
         </el-button>
         <el-button
+          v-if="canDelete('device')"
           type="danger"
           :loading="deleting"
           @click="handleDelete"

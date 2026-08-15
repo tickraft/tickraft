@@ -32,46 +32,68 @@ type builtinTemplateFile struct {
 	Config       json.RawMessage `json:"config"`
 }
 
-// builtinTemplateNames lists the built-in template JSON files in a fixed
-// order. The order determines the insertion sequence when seeding the
-// database for the first time.
+// builtinTemplateNames lists the built-in template JSON files seeded by the
+// CE kernel. Only prober types the CE runtime actually supports are
+// included; the pro-edition templates are listed separately in
+// proBuiltinTemplateNames for callers (tickraft-x) that support them.
 var builtinTemplateNames = []string{
 	"icmp-ping.json",
 	"http-homepage.json",
 	"https-api.json",
 	"tcp-database.json",
+}
+
+// proBuiltinTemplateNames lists built-in template JSON files whose prober
+// types (dns, ssl, redis, mysql) are only available in the pro edition.
+// They remain embedded in the shared binary but are not seeded by CE.
+var proBuiltinTemplateNames = []string{
 	"dns-resolution.json",
 	"ssl-certificate.json",
 	"redis-connect.json",
 	"mysql-connect.json",
 }
 
-// readBuiltinTemplates reads and parses the embedded built-in template JSON
-// files, returning them sorted by the predefined name order. A malformed
-// file causes the function to return an error so startup fails loudly
-// rather than silently seeding a partial template set.
-func readBuiltinTemplates() ([]builtinTemplateFile, error) {
-	templates := make([]builtinTemplateFile, 0, len(builtinTemplateNames))
-	for _, name := range builtinTemplateNames {
-		data, err := builtinTemplateFS.ReadFile("templates/" + name)
-		if err != nil {
-			return nil, fmt.Errorf("telemetry: read builtin template %q: %w", name, err)
-		}
-		var t builtinTemplateFile
-		if err := json.Unmarshal(data, &t); err != nil {
-			return nil, fmt.Errorf("telemetry: parse builtin template %q: %w", name, err)
-		}
-		templates = append(templates, t)
+// LoadBuiltinTemplates loads the CE built-in templates into the database if
+// they do not already exist. It is idempotent: templates that already exist
+// (by name) are skipped, so it is safe to call on every startup. The
+// function also runs AutoMigrate for the template table to ensure the schema
+// exists before inserting, and removes any previously seeded pro-edition
+// builtin templates so the CE UI only shows templates the CE runtime can
+// actually execute.
+func LoadBuiltinTemplates(dbc *gorm.DB) error {
+	if err := loadTemplates(dbc, builtinTemplateNames); err != nil {
+		return err
 	}
-	return templates, nil
+
+	// Drop pro-edition builtin templates seeded by older builds; CE cannot
+	// run their prober types.
+	var proNames []string
+	for _, name := range proBuiltinTemplateNames {
+		t, err := readBuiltinTemplate(name)
+		if err != nil {
+			return err
+		}
+		proNames = append(proNames, t.Name)
+	}
+	if len(proNames) > 0 {
+		if err := dbc.Where("is_builtin = ? AND name IN ?", true, proNames).
+			Delete(&Template{}).Error; err != nil {
+			return fmt.Errorf("telemetry: remove pro builtin templates: %w", err)
+		}
+	}
+	return nil
 }
 
-// LoadBuiltinTemplates loads built-in templates into the database if they
-// do not already exist. It is idempotent: templates that already exist (by
-// name) are skipped, so it is safe to call on every startup. The function
-// also runs AutoMigrate for the template table to ensure the schema exists
-// before inserting.
-func LoadBuiltinTemplates(dbc *gorm.DB) error {
+// LoadAllBuiltinTemplates loads both the CE and the pro-edition built-in
+// templates. It is intended for pro-edition runtimes that support the
+// dns/ssl/redis/mysql prober types.
+func LoadAllBuiltinTemplates(dbc *gorm.DB) error {
+	return loadTemplates(dbc, append(append([]string{}, builtinTemplateNames...), proBuiltinTemplateNames...))
+}
+
+// loadTemplates seeds the given template files. Templates that already
+// exist (by name) are skipped.
+func loadTemplates(dbc *gorm.DB, names []string) error {
 	if dbc == nil {
 		return fmt.Errorf("telemetry: load builtin templates: db is nil")
 	}
@@ -80,9 +102,13 @@ func LoadBuiltinTemplates(dbc *gorm.DB) error {
 		return fmt.Errorf("telemetry: migrate template table: %w", err)
 	}
 
-	templates, err := readBuiltinTemplates()
-	if err != nil {
-		return err
+	templates := make([]builtinTemplateFile, 0, len(names))
+	for _, name := range names {
+		t, err := readBuiltinTemplate(name)
+		if err != nil {
+			return err
+		}
+		templates = append(templates, t)
 	}
 
 	for _, t := range templates {
@@ -109,6 +135,19 @@ func LoadBuiltinTemplates(dbc *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// readBuiltinTemplate reads and parses a single embedded template file.
+func readBuiltinTemplate(name string) (builtinTemplateFile, error) {
+	data, err := builtinTemplateFS.ReadFile("templates/" + name)
+	if err != nil {
+		return builtinTemplateFile{}, fmt.Errorf("telemetry: read builtin template %q: %w", name, err)
+	}
+	var t builtinTemplateFile
+	if err := json.Unmarshal(data, &t); err != nil {
+		return builtinTemplateFile{}, fmt.Errorf("telemetry: parse builtin template %q: %w", name, err)
+	}
+	return t, nil
 }
 
 // ListEmbeddedTemplateFiles returns the names of the embedded template JSON

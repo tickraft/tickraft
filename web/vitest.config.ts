@@ -4,10 +4,16 @@
 
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+import Icons from 'unplugin-icons/vite'
 import { resolve } from 'node:path'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Feature api tests transitively import layout components whose
+    // <i-ep-*> components resolve through unplugin-icons.
+    Icons(),
+  ],
   resolve: {
     alias: {
       '@tickraft/core': resolve(__dirname, 'packages/core/src'),

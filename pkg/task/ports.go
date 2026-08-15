@@ -50,6 +50,23 @@ type ExecutionStatsResult struct {
 	AverageDurationMs float64 `json:"average_duration_ms"`
 }
 
+// ExecutionQuery holds optional filtering criteria for querying execution
+// history. A zero-value query matches all executions.
+type ExecutionQuery struct {
+	// TaskID restricts the result to a single task; values <= 0 match all
+	// tasks.
+	TaskID int64
+	// TaskIDs restricts the result to the given task IDs. When non-nil, an
+	// empty slice matches nothing (used when a task-name search yields no
+	// tasks). Ignored when nil.
+	TaskIDs []int64
+	// Status filters by the persisted execution status ("normal",
+	// "abnormal", "triggered", ...); empty matches all.
+	Status string
+	// ExecutorType filters by executor type; empty matches all.
+	ExecutorType string
+}
+
 // ExecutionStore persists task execution history.
 // Implementations must be safe for concurrent use.
 type ExecutionStore interface {
@@ -59,6 +76,11 @@ type ExecutionStore interface {
 	// most recent first, limited to at most limit records. A non-positive
 	// limit returns all records for the task.
 	List(ctx context.Context, taskID int64, limit int) ([]*Execution, error)
+	// Query returns a page of executions matching the filter, ordered by
+	// most recent first, along with the total count of matching rows.
+	Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error)
+	// Get retrieves a single execution record by its ID.
+	Get(ctx context.Context, id int64) (*Execution, error)
 	// DeleteExecutionsOlderThan removes all execution records whose
 	// created_at timestamp is strictly before the given time. This is used
 	// for retention-based cleanup of stale execution history.

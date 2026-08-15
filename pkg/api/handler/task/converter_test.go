@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	domaintask "github.com/tickraft/tickraft/pkg/task"
+	"github.com/tickraft/tickraft/pkg/task"
 )
 
 // configJSONEqual reports whether two map[string]any values are equivalent
@@ -169,7 +169,7 @@ func TestHandlerToDomainTask_ZeroTimestamps(t *testing.T) {
 func TestDomainTaskToHandler_FullFields(t *testing.T) {
 	created := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
 	updated := time.Date(2025, 1, 2, 3, 5, 0, 0, time.UTC)
-	src := &domaintask.Task{
+	src := &task.Task{
 		ID:           100,
 		TenantID:     8,
 		AssetID:      16,
@@ -233,7 +233,7 @@ func TestDomainTaskToHandler_FullFields(t *testing.T) {
 }
 
 func TestDomainTaskToHandler_MinimalFields(t *testing.T) {
-	src := &domaintask.Task{
+	src := &task.Task{
 		ID:           1,
 		ExecutorName: "http",
 	}
@@ -259,7 +259,7 @@ func TestDomainTaskToHandler_MinimalFields(t *testing.T) {
 }
 
 func TestDomainTaskToHandler_InvalidConfig(t *testing.T) {
-	src := &domaintask.Task{
+	src := &task.Task{
 		ID:           2,
 		ExecutorName: "script",
 		Config:       "{not-json",
@@ -276,7 +276,7 @@ func TestDomainTaskToHandler_InvalidConfig(t *testing.T) {
 }
 
 func TestDomainTaskToHandler_EmptyMetadata(t *testing.T) {
-	src := &domaintask.Task{
+	src := &task.Task{
 		ID:           3,
 		ExecutorName: "http",
 		Metadata:     map[string]string{},
@@ -357,7 +357,7 @@ func TestRoundTrip_HandlerToDomainToHandler(t *testing.T) {
 func TestRoundTrip_DomainToHandlerToDomain(t *testing.T) {
 	created := time.Date(2025, 3, 15, 8, 30, 0, 0, time.UTC)
 	updated := time.Date(2025, 3, 16, 8, 30, 0, 0, time.UTC)
-	original := &domaintask.Task{
+	original := &task.Task{
 		ID:           200,
 		TenantID:     50,
 		AssetID:      60,

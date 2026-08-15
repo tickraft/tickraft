@@ -189,6 +189,10 @@ jobs:
         run: |
           cd web
           pnpm run type-check
+      - name: Unit tests
+        run: |
+          cd web
+          pnpm test
       - name: Build
         run: |
           cd web

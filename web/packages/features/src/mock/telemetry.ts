@@ -373,6 +373,86 @@ export default [
       }
     },
   },
+  // Monitor point history (paginated)
+  {
+    url: '/api/v1/telemetry/monitors/:id/history',
+    method: 'get',
+    response: ({ url, query }: { url: string; query: Record<string, string> }) => {
+      const id = extractId(url)
+      const page = Number(query?.page) || 1
+      const size = Number(query?.page_size) || 20
+      const points = Array.from({ length: 24 }, (_, i) => ({
+        timestamp: ts(i),
+        value: Math.round((12 + Math.sin(i / 3) * 6) * 10) / 10,
+        status: i === 7 ? 'abnormal' : 'normal',
+      }))
+      const start = (page - 1) * size
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          items: points.slice(start, start + size),
+          total: points.length,
+          page,
+          page_size: size,
+          monitor_id: id,
+        },
+      }
+    },
+  },
+  // Monitor point logs (paginated)
+  {
+    url: '/api/v1/telemetry/monitors/:id/logs',
+    method: 'get',
+    response: ({ url, query }: { url: string; query: Record<string, string> }) => {
+      const id = extractId(url)
+      const monitor = mockMonitors.find((m) => m.id === id)
+      const page = Number(query?.page) || 1
+      const size = Number(query?.page_size) || 20
+      const logs = Array.from({ length: 18 }, (_, i) => ({
+        timestamp: ts(i),
+        level: i === 5 ? 'warning' : 'info',
+        message: `${monitor?.name ?? 'monitor'} probe completed`,
+      }))
+      const start = (page - 1) * size
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          items: logs.slice(start, start + size),
+          total: logs.length,
+          page,
+          page_size: size,
+        },
+      }
+    },
+  },
+  // Prober types (active monitoring point types supported by this runtime)
+  {
+    url: '/api/v1/telemetry/probers',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: [
+        { type: 'icmp', name: 'ICMP Ping', description: 'Measure connectivity and latency via ICMP echo' },
+        { type: 'tcp', name: 'TCP Port', description: 'Check TCP port connectivity' },
+        { type: 'http', name: 'HTTP', description: 'HTTP endpoint probe with status code validation' },
+      ],
+    }),
+  },
+  // Listener types (passive monitoring point types supported by this runtime)
+  {
+    url: '/api/v1/telemetry/listeners',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: [
+        { type: 'webhook', name: 'Webhook', description: 'Receive telemetry pushed from external systems via webhook' },
+      ],
+    }),
+  },
   // ---------------------------------------------------------------------------
   // Telemetry templates (pre-configured probe/monitor recipes)
   // Must be placed before /telemetry/:id to avoid :id shadowing.
@@ -380,23 +460,101 @@ export default [
   {
     url: '/api/v1/telemetry/templates',
     method: 'get',
-    response: ({ query }: { query: { page?: string; size?: string; category?: string } }) => {
-      const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 15
+    response: ({ query }: { query: { category?: string } }) => {
       let filtered = [...mockTemplates]
       if (query?.category) {
         filtered = filtered.filter((t) => t.category === query.category)
       }
-      return {
-        code: 0,
-        message: 'success',
-        data: {
-          items: filtered,
-          total: filtered.length,
-          page,
-          page_size: size,
-        },
+      // Backend ListTemplates returns a plain array (not paginated)
+      return { code: 0, message: 'success', data: filtered }
+    },
+  },
+  // Built-in templates only (must be before templates/:id so "builtin" is not matched as an ID)
+  {
+    url: '/api/v1/telemetry/templates/builtin',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: mockTemplates.filter((t) => t.is_builtin),
+    }),
+  },
+  // Apply a template — create a new monitor point from the recipe
+  // (must be before templates/:id so "apply" is not matched as an ID)
+  {
+    url: '/api/v1/telemetry/templates/:id/apply',
+    method: 'post',
+    response: ({ url, body }: { url: string; body: Record<string, unknown> }) => {
+      const id = extractId(url)
+      const tpl = mockTemplates.find((t) => t.id === id) || mockTemplates[0]
+      const now = new Date().toISOString()
+      const monitor = {
+        id: monitorNextId++,
+        name: (body.name as string) || `${tpl.name} (applied)`,
+        description: tpl.description,
+        asset_type: 'host',
+        mode: tpl.executor_type === 'webhook' ? 'passive' : 'active',
+        type: tpl.executor_type,
+        schedule: '60s',
+        enabled: true,
+        config: { ...tpl.config, ...(body.config as Record<string, unknown> | undefined) },
+        created_at: now,
+        updated_at: now,
       }
+      mockMonitors.push(monitor)
+      return { code: 0, message: 'success', data: monitor }
+    },
+  },
+  // Get single template
+  {
+    url: '/api/v1/telemetry/templates/:id',
+    method: 'get',
+    response: ({ url }: { url: string }) => {
+      const id = extractId(url)
+      const tpl = mockTemplates.find((t) => t.id === id)
+      return { code: 0, message: 'success', data: tpl || mockTemplates[0] }
+    },
+  },
+  // Create custom template (builtin templates cannot be created via this endpoint)
+  {
+    url: '/api/v1/telemetry/templates',
+    method: 'post',
+    response: ({ body }: { body: Record<string, unknown> }) => {
+      const now = new Date().toISOString()
+      const tpl = {
+        id: Math.max(...mockTemplates.map((t) => t.id)) + 1,
+        name: String(body.name ?? ''),
+        description: String(body.description ?? ''),
+        category: String(body.category ?? 'custom'),
+        executor_type: String(body.executor_type ?? 'http'),
+        config: (body.config as Record<string, unknown>) ?? {},
+        is_builtin: false,
+        created_at: now,
+        updated_at: now,
+      }
+      mockTemplates.push(tpl)
+      return { code: 0, message: 'success', data: tpl }
+    },
+  },
+  // Update custom template (builtin templates are read-only)
+  {
+    url: '/api/v1/telemetry/templates/:id',
+    method: 'put',
+    response: ({ url, body }: { url: string; body: Record<string, unknown> }) => {
+      const id = extractId(url)
+      const tpl = mockTemplates.find((t) => t.id === id)
+      if (!tpl || tpl.is_builtin) {
+        return { code: 40300, message: 'builtin template is read-only', data: null }
+      }
+      Object.assign(tpl, {
+        name: String(body.name ?? tpl.name),
+        description: String(body.description ?? tpl.description),
+        category: String(body.category ?? tpl.category),
+        executor_type: String(body.executor_type ?? tpl.executor_type),
+        config: (body.config as Record<string, unknown>) ?? tpl.config,
+        updated_at: new Date().toISOString(),
+      })
+      return { code: 0, message: 'success', data: tpl }
     },
   },
   {
@@ -405,7 +563,7 @@ export default [
     response: ({ url }: { url: string }) => {
       const id = extractId(url)
       const idx = mockTemplates.findIndex((t) => t.id === id)
-      if (idx >= 0) mockTemplates.splice(idx, 1)
+      if (idx >= 0 && !mockTemplates[idx].is_builtin) mockTemplates.splice(idx, 1)
       return { code: 0, message: 'success', data: null }
     },
   },

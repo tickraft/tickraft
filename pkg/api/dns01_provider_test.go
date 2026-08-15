@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/cert"
+	"github.com/tickraft/tickraft/pkg/cert"
 )
 
 // stubDNSProvider is a test double for cert.DNSProvider that records its

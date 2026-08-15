@@ -9,6 +9,9 @@ import "errors"
 var (
 	// ErrTaskNotFound is returned when the referenced task does not exist.
 	ErrTaskNotFound = errors.New("task: task not found")
+	// ErrExecutionNotFound is returned when the referenced execution record
+	// does not exist.
+	ErrExecutionNotFound = errors.New("task: execution not found")
 	// ErrTaskAlreadyPaused is returned when Pause is called on a task that
 	// is already paused (not scheduled on the time wheel).
 	ErrTaskAlreadyPaused = errors.New("task: task already paused")

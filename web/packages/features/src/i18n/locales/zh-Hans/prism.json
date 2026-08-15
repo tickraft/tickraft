@@ -21,6 +21,7 @@
       "actionFailed": "操作失败",
       "firing": "告警中",
       "resolved": "已恢复",
+      "acknowledged": "已确认",
       "searchAsset": "请输入资产名称",
       "allSeverity": "全部级别",
       "allStatus": "全部状态",
@@ -180,7 +181,7 @@
       "countLabel": "TOTAL SELF-HEALING",
       "ruleName": "规则名称",
       "alertName": "告警名称",
-      "actionType": "动作类型",
+      "actionType": "触发方式",
       "status": "状态",
       "startedAt": "开始时间",
       "allStatus": "全部状态",
@@ -188,7 +189,14 @@
       "statusFailed": "失败",
       "statusRunning": "执行中",
       "searchActionType": "请输入动作类型",
-      "emptyHint": "暂无自愈执行记录"
+      "emptyHint": "暂无自愈执行记录",
+      "statusTriggered": "已触发",
+      "statusStarted": "执行中",
+      "statusCompleted": "已完成",
+      "statusSkipped": "已跳过",
+      "asset": "关联资产",
+      "error": "错误信息",
+      "finishedAt": "完成时间"
     },
     "rule": {
       "title": "自愈规则",
@@ -236,7 +244,7 @@
         "triggerEventTypePlaceholder": "请选择触发事件类型",
         "conditionExpr": "条件表达式",
         "conditionExprPlaceholder": "可选，如：severity == \"critical\"",
-        "conditionExprHelp": "使用表达式进一步过滤触发条件，留空表示始终触发",
+        "conditionExprHelp": "可选；expr 表达式，可用变量：metric_name/metric_value/threshold（指标）、level/keyword/content（日志）、prev_status/curr_status（状态）",
         "executorType": "执行器类型",
         "executorTypePlaceholder": "请选择执行器类型",
         "executorUrl": "请求 URL",
@@ -263,7 +271,12 @@
         "updatedToast": "规则已更新",
         "notFound": "未找到规则，将按新建处理",
         "validateError": "请修正表单错误后重试",
-        "invalidUrl": "请输入有效的 URL 地址（以 http:// 或 https:// 开头）"
+        "invalidUrl": "请输入有效的 URL 地址（以 http:// 或 https:// 开头）",
+        "executorCommand": "执行命令",
+        "executorCommandPlaceholder": "例如：/usr/local/bin/tickraft-fix.sh",
+        "executorCommandHelp": "在本机执行的命令；命令以退出码 0 表示成功",
+        "executorArgs": "命令参数",
+        "executorArgsPlaceholder": "每行一个参数，支持 $RULE_ID、$ASSET_ID 变量"
       },
       "field": {
         "name": "规则名称",
@@ -277,6 +290,9 @@
         "enabled": "启用状态"
       },
       "triggerType": {
+        "metric": "指标超限",
+        "log": "日志匹配",
+        "status_change": "状态变更",
         "alert": {
           "firing": "告警触发",
           "critical": "严重告警"
@@ -284,7 +300,8 @@
       },
       "executorType": {
         "webhook": "Webhook",
-        "http": "HTTP 请求"
+        "http": "HTTP 请求",
+        "local": "本地脚本"
       },
       "delete": {
         "title": "删除规则",

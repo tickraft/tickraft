@@ -341,7 +341,7 @@ func TestSchedulerTaskService(t *testing.T) {
 			t.Fatalf("TriggerTask failed: %v", err)
 		}
 		// Verify an execution record was persisted.
-		items, total, err := svc.ListExecutions(ctx, taskID, 1, 20)
+		items, total, err := svc.ListExecutions(ctx, taskID, 1, 20, task.ExecutionFilter{})
 		if err != nil {
 			t.Fatalf("ListExecutions failed: %v", err)
 		}
@@ -354,8 +354,8 @@ func TestSchedulerTaskService(t *testing.T) {
 		if items[0].TaskID != taskID {
 			t.Errorf("TaskID = %d, want %d", items[0].TaskID, taskID)
 		}
-		if items[0].Status != "triggered" {
-			t.Errorf("Status = %q, want %q", items[0].Status, "triggered")
+		if items[0].Status != "running" {
+			t.Errorf("Status = %q, want %q", items[0].Status, "running")
 		}
 		if items[0].StartedAt.IsZero() {
 			t.Error("StartedAt is zero, want non-zero")
@@ -369,7 +369,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("ListExecutions returns empty for task without triggers", func(t *testing.T) {
 		// The cron-task and interval-task have never been triggered.
-		items, total, err := svc.ListExecutions(ctx, taskID+1, 1, 20)
+		items, total, err := svc.ListExecutions(ctx, taskID+1, 1, 20, task.ExecutionFilter{})
 		if err != nil {
 			t.Fatalf("ListExecutions failed: %v", err)
 		}
@@ -379,7 +379,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("GetExecution returns ErrExecutionNotFound", func(t *testing.T) {
-		_, err := svc.GetExecution(ctx, 1)
+		_, err := svc.GetExecution(ctx, 0, 999999)
 		assertErrorCoder(t, err, handler.ErrExecutionNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 

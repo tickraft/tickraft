@@ -535,7 +535,7 @@ func TestEnv_ToAlertView(t *testing.T) {
 	evt := a.Event{
 		Type:      a.TypeMetric,
 		AssetID:   42,
-		TenantID:   1,
+		TenantID:  1,
 		Timestamp: time.Unix(2000, 0),
 		Violations: []a.Violation{{
 			Kind:     a.ViolationKindMetric,

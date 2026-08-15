@@ -18,7 +18,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { DataTable, ConfirmDialog } from '@tickraft/core'
+import { DataTable, ConfirmDialog, usePermission } from '@tickraft/core'
 import type { MonitorMode, MonitorPoint } from '../../../../types/telemetry'
 import { getMonitors, deleteMonitor, enableMonitor, disableMonitor } from '../../../../api/telemetry'
 
@@ -26,6 +26,7 @@ type ModeFilter = '' | MonitorMode
 
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const currentPage = ref(1)
@@ -326,6 +327,7 @@ onMounted(() => {
                 {{ t('common.app.edit') }}
               </el-button>
               <el-button
+                v-if="canDelete('device')"
                 link
                 type="danger"
                 @click="handleDelete(row as MonitorPoint)"

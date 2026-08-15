@@ -36,28 +36,20 @@ type Registrar interface {
 	Register(ctx context.Context, username, password, email string) (*user.User, error)
 }
 
-// Policy defines the permission checking strategy.
-// The default implementation provides an RBAC policy.
-type Policy interface {
-	// Check returns whether the user with the given role is allowed to
-	// perform the specified action on the asset type.
-	Check(role int, action string, assetType string) bool
-}
-
 // jwtAuthenticator implements Authenticator using JWT for token operations.
 type jwtAuthenticator struct {
 	users      user.Store
-	blacklist  auth.BlacklistStore
 	jwt        *jwt.JWT
 	bcryptCost int
 }
 
 // NewAuthenticator creates a new Authenticator backed by the given stores
 // and JWT manager. bcryptCost of 0 means bcrypt.DefaultCost will be used.
-func NewAuthenticator(users user.Store, blacklist auth.BlacklistStore, jwtMgr *jwt.JWT, bcryptCost int) Authenticator {
+// The blacklist parameter is retained for API compatibility but is not
+// used because the JWT instance already has a blacklist checker wired in.
+func NewAuthenticator(users user.Store, _ auth.BlacklistStore, jwtMgr *jwt.JWT, bcryptCost int) Authenticator {
 	return &jwtAuthenticator{
 		users:      users,
-		blacklist:  blacklist,
 		jwt:        jwtMgr,
 		bcryptCost: bcryptCost,
 	}
@@ -157,66 +149,9 @@ func (r *userRegistrar) Register(ctx context.Context, username, pwd, email strin
 	}, nil
 }
 
-// rbacPolicy implements Policy with a role-based access control strategy.
-// admin: full access to all resources.
-// developer: read/write on tasks, devices, alerts; read on others.
-// visitor: read-only on all resources.
-type rbacPolicy struct {
-	// rules maps role -> assetType -> set of allowed actions.
-	rules map[int]map[string]map[string]bool
-}
-
-// newRBACPolicy creates the default RBAC policy.
-func newRBACPolicy() *rbacPolicy {
-	rbac := &rbacPolicy{
-		rules: make(map[int]map[string]map[string]bool),
-	}
-
-	// Admin: full access
-	rbac.rules[auth.RoleAdmin] = map[string]map[string]bool{
-		"*": {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: true},
-	}
-
-	// Developer: manage tasks, devices, alerts; read others
-	devResources := map[string]map[string]bool{
-		"task":   {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: true},
-		"device": {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: false},
-		"alert":  {auth.ActionRead: true, auth.ActionWrite: true, auth.ActionDelete: false},
-		"*":      {auth.ActionRead: true, auth.ActionWrite: false, auth.ActionDelete: false},
-	}
-	rbac.rules[auth.RoleDeveloper] = devResources
-
-	// Visitor: read-only
-	rbac.rules[auth.RoleVisitor] = map[string]map[string]bool{
-		"*": {auth.ActionRead: true, auth.ActionWrite: false, auth.ActionDelete: false},
-	}
-
-	return rbac
-}
-
-// Check returns whether the given role is allowed to perform the action on the asset type.
-func (rbac *rbacPolicy) Check(role int, action string, assetType string) bool {
-	resourceRules, ok := rbac.rules[role]
-	if !ok {
-		return false
-	}
-
-	// Check asset-specific rules first
-	if actions, found := resourceRules[assetType]; found {
-		return actions[action]
-	}
-
-	// Fall back to wildcard rules
-	if actions, found := resourceRules["*"]; found {
-		return actions[action]
-	}
-
-	return false
-}
-
 // rbacAuthorizer implements Authorizer using the built-in RBAC policy.
 type rbacAuthorizer struct {
-	policy Policy
+	policy auth.Policy
 }
 
 // NewAuthorizer creates a new Authorizer backed by the built-in RBAC policy.
@@ -224,7 +159,7 @@ type rbacAuthorizer struct {
 // permission checks are resolved by the default RBAC rules.
 func NewAuthorizer() Authorizer {
 	return &rbacAuthorizer{
-		policy: newRBACPolicy(),
+		policy: auth.DefaultPolicy(),
 	}
 }
 
@@ -235,9 +170,4 @@ func (a *rbacAuthorizer) Can(ctx context.Context, user *user.User, action string
 	}
 
 	return a.policy.Check(user.Role, action, assetType), nil
-}
-
-// DefaultPolicy returns the default RBAC policy.
-func DefaultPolicy() Policy {
-	return newRBACPolicy()
 }

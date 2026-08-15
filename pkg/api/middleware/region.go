@@ -49,17 +49,11 @@ const (
 // Cookie verification failure does not block the request; the middleware falls
 // back to GeoIP lookup. If geoipLookup is nil, the default region "global" is
 // used when falling back to GeoIP.
-//
-// The jwtSecret parameter is reserved for JWT-based region fallback in the
-// extension and is not used by the implementation.
 func NewRegionMiddleware(
-	jwtSecret []byte,
 	cookieSecret []byte,
 	keyRotator *region.KeyRotator,
 	geoipLookup func(ip string) string,
 ) app.HandlerFunc {
-	_ = jwtSecret // reserved for extended JWT region fallback
-
 	return func(ctx context.Context, arc *app.RequestContext) {
 		resolved := resolveRegion(arc, cookieSecret, keyRotator, geoipLookup)
 

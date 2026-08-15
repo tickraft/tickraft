@@ -44,6 +44,10 @@ func newMockStore() *mockStore {
 	return store
 }
 
+func (s *mockStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
+}
+
 func (s *mockStore) Create(_ context.Context, r *asset.Asset) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,7 +95,7 @@ func (s *mockStore) UpdateStatus(_ context.Context, id int64, status types.Asset
 
 func (s *mockStore) Migrate(_ context.Context) error { return nil }
 
-func (s *mockStore) List(_ context.Context, page, size int) ([]*asset.Asset, int64, error) {
+func (s *mockStore) List(_ context.Context, page, size int, _ asset.ListFilter) ([]*asset.Asset, int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := int64(len(s.assets))

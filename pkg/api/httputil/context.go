@@ -7,7 +7,6 @@ package httputil
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -94,9 +93,12 @@ func SetClientIP(c *app.RequestContext, ip string) {
 //  1. A value previously stored via SetClientIP (e.g. by the
 //     trusted-proxy middleware). This takes precedence so that explicit
 //     proxy-aware resolution wins over raw header inspection.
-//  2. The X-Forwarded-For header (first IP in the chain).
-//  3. The X-Real-IP header.
-//  4. RemoteAddr.
+//  2. RemoteAddr.
+//
+// X-Forwarded-For and X-Real-IP headers are intentionally NOT trusted
+// directly: they can be spoofed by clients. Operators who run behind a
+// reverse proxy must configure TrustedProxies so the trusted-proxy
+// middleware can securely resolve the real client IP.
 func GetClientIP(c *app.RequestContext) string {
 	// 1. Authoritative value set by trusted-proxy middleware.
 	if val, ok := c.Get(clientIPKey); ok {
@@ -104,20 +106,7 @@ func GetClientIP(c *app.RequestContext) string {
 			return s
 		}
 	}
-	// 2. Check X-Forwarded-For header (may contain multiple IPs, first is client)
-	if xff := c.GetHeader("X-Forwarded-For"); len(xff) > 0 {
-		ips := strings.SplitN(string(xff), ",", 2)
-		if ip := strings.TrimSpace(ips[0]); ip != "" {
-			return ip
-		}
-	}
-	// 3. Check X-Real-IP header
-	if xri := c.GetHeader("X-Real-IP"); len(xri) > 0 {
-		if ip := strings.TrimSpace(string(xri)); ip != "" {
-			return ip
-		}
-	}
-	// 4. Fall back to RemoteAddr
+	// 2. Fall back to RemoteAddr
 	return c.RemoteAddr().String()
 }
 

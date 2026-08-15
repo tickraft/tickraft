@@ -10,7 +10,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/timewheel"
+	"github.com/tickraft/tickraft/pkg/timewheel"
 )
 
 // Backoff computes the wait duration before the next retry attempt.

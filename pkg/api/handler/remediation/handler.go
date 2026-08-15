@@ -117,3 +117,17 @@ func (h *Handler) DeleteRemediationRule(ctx context.Context, arc *app.RequestCon
 	}
 	api.Success(arc, nil)
 }
+
+// ListRemediationRecords handles GET /api/v1/prism/remediation/records.
+// Supported query parameters: page, page_size, status (lifecycle status
+// filter: triggered/started/completed/skipped/failed).
+func (h *Handler) ListRemediationRecords(ctx context.Context, arc *app.RequestContext) {
+	page, size := httputil.ParsePaging(arc)
+	status := string(arc.Query("status"))
+	items, total, err := h.svc.ListRecords(ctx, page, size, status)
+	if err != nil {
+		api.Fail(arc, err)
+		return
+	}
+	api.SuccessPage(arc, items, total, page, size)
+}

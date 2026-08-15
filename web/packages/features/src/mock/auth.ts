@@ -146,11 +146,21 @@ export default [
   {
     url: '/api/v1/auth/apikeys',
     method: 'get',
-    response: () => ({
-      code: 0,
-      message: 'success',
-      data: mockApiKeys.map((k) => ({ ...k })),
-    }),
+    response: ({ query }: { query: Record<string, string> }) => {
+      const page = Number(query?.page) || 1
+      const size = Number(query?.page_size) || 20
+      const start = (page - 1) * size
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          items: mockApiKeys.slice(start, start + size).map((k) => ({ ...k })),
+          total: mockApiKeys.length,
+          page,
+          page_size: size,
+        },
+      }
+    },
   },
   {
     url: '/api/v1/auth/apikeys',

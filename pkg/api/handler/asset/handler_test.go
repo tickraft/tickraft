@@ -322,7 +322,7 @@ func TestAssetHandlerListWithItems(t *testing.T) {
 		}
 	}
 
-	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&size=10", nil)
+	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&page_size=10", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}

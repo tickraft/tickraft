@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/timewheel"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pagination"
+	"github.com/tickraft/tickraft/pkg/timewheel"
 	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 )
@@ -29,6 +29,10 @@ type mgrMockStore struct {
 
 func newMgrMockStore() *mgrMockStore {
 	return &mgrMockStore{assets: make(map[int64]*asset.Asset)}
+}
+
+func (s *mgrMockStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
 }
 
 func (s *mgrMockStore) Create(_ context.Context, r *asset.Asset) error {
@@ -78,7 +82,7 @@ func (s *mgrMockStore) UpdateStatus(_ context.Context, id int64, status types.As
 
 func (s *mgrMockStore) Migrate(_ context.Context) error { return nil }
 
-func (s *mgrMockStore) List(_ context.Context, page, size int) ([]*asset.Asset, int64, error) {
+func (s *mgrMockStore) List(_ context.Context, page, size int, _ asset.ListFilter) ([]*asset.Asset, int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := int64(len(s.assets))

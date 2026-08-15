@@ -30,7 +30,7 @@ const assetKeyHeader = "X-Tickraft-Asset-Key"
 //     (CodeAssetKeyInvalid).
 //   - Header valid: the request proceeds to the next handler.
 //   - Internal error from getter: 500 with code 50000 (CodeInternal).
-func NewAssetKeyMiddleware(getter func(key string) (bool, error)) app.HandlerFunc {
+func NewAssetKeyMiddleware(getter func(ctx context.Context, key string) (bool, error)) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		key := string(arc.GetHeader(assetKeyHeader))
 		if key == "" {
@@ -39,7 +39,7 @@ func NewAssetKeyMiddleware(getter func(key string) (bool, error)) app.HandlerFun
 			return
 		}
 
-		valid, err := getter(key)
+		valid, err := getter(ctx, key)
 		if err != nil {
 			httputil.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal, "asset key validation error")
 			arc.Abort()

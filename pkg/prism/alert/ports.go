@@ -4,7 +4,23 @@
 
 package alert
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// RecordFilter holds optional server-side filtering criteria for listing
+// alert records. A zero-value filter matches all records.
+type RecordFilter struct {
+	// Severity filters by an exact severity match (info/warning/critical).
+	Severity string
+	// Status filters by an exact status match (firing/acknowledged/resolved).
+	Status string
+	// From restricts the result to records triggered at or after this time.
+	From time.Time
+	// To restricts the result to records triggered at or before this time.
+	To time.Time
+}
 
 // RecordStore defines the persistence operations for alert records.
 // Implementations must be safe for concurrent use.
@@ -22,9 +38,10 @@ type RecordStore interface {
 	// GetByID retrieves an alert record by its ID. Returns errdefs.ErrNotFound
 	// when no record with the given ID exists.
 	GetByID(ctx context.Context, id int64) (*Record, error)
-	// List returns a page of alert records ordered by descending ID, plus
-	// the total count. page starts at 1; size is the maximum number of items.
-	List(ctx context.Context, page, size int) ([]*Record, int64, error)
+	// List returns a page of alert records matching the filter, ordered by
+	// descending ID, plus the total count. page starts at 1; size is the
+	// maximum number of items. A zero-value filter returns all records.
+	List(ctx context.Context, page, size int, filter RecordFilter) ([]*Record, int64, error)
 	// Acknowledge transitions the alert record identified by id to the
 	// "acknowledged" status and sets acknowledged_at to the current time.
 	// It returns the updated record. Returns errdefs.ErrNotFound when no

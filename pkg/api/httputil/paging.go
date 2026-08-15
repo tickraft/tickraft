@@ -45,17 +45,17 @@ func ParseID(arc *app.RequestContext) (int64, bool) {
 	return id, true
 }
 
-// ParsePaging extracts the page and size query parameters with sensible
-// defaults and an enforced upper bound. page defaults to 1 and size to 20 when
-// missing or non-positive. size is clamped to maxPageSize (100); when a client
-// requests more than the cap, the value is reduced and a warning is logged so
-// the truncation is observable by operators.
+// ParsePaging extracts the page and page_size query parameters with sensible
+// defaults and an enforced upper bound. page defaults to 1 and page_size to 20
+// when missing or non-positive. page_size is clamped to maxPageSize (100); when
+// a client requests more than the cap, the value is reduced and a warning is
+// logged so the truncation is observable by operators.
 func ParsePaging(arc *app.RequestContext) (int, int) {
 	page, _ := strconv.Atoi(arc.Query("page"))
 	if page <= 0 {
 		page = 1
 	}
-	size, _ := strconv.Atoi(arc.Query("size"))
+	size, _ := strconv.Atoi(arc.Query("page_size"))
 	if size <= 0 {
 		size = defaultPageSize
 	}

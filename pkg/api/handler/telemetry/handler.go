@@ -8,20 +8,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
-// Sentinel service errors used by the in-memory Service. Each wraps
+// Sentinel service errors used by Service implementations. Each wraps
 // the transport-agnostic errdefs sentinel so the response layer can map it to
 // the correct HTTP status and business code automatically (see
 // pkg/api/httputil/errors.go).
@@ -50,34 +46,33 @@ const (
 // Handler implements the telemetry monitoring point CRUD endpoints
 // (registered under /api/v1/telemetry/monitors) and the unified report
 // endpoint (POST /api/v1/telemetry) for the runtime. The CRUD
-// methods delegate to an injected Service; when no service is
-// injected, a memory stub is used so the handler is safe to construct in
-// tests. The monitoring points are unified via the Mode field
-// (active/passive), aligning with the telemetry.MonitorPoint model. The
-// Report method reads a Telemetry body, applies a differentiated payload
-// size limit based on Kind, and returns an Accepted response; concrete
-// report processing is provided by an injected ReportHandler
-// implementation (e.g. wrapping the collector HTTP listener).
+// methods delegate to an injected Service. The monitoring points are
+// unified via the Mode field (active/passive), aligning with the
+// telemetry.MonitorPoint model. The Report method reads a Telemetry body,
+// applies a differentiated payload size limit based on Kind, and returns an
+// Accepted response; concrete report processing is provided by an injected
+// ReportHandler implementation (e.g. wrapping the collector HTTP listener).
 type Handler struct {
-	svc Service
+	svc         Service
+	metricStore MetricStoreInjector
+	logStore    LogStoreInjector
 }
 
-// Compile-time assertions that Handler satisfies the
-// ReportHandler interface and that the memory service satisfies
-// Service.
-var (
-	_ ReportHandler = (*Handler)(nil)
-	_ Service       = (*memoryService)(nil)
-)
+// Compile-time assertion that Handler satisfies the ReportHandler interface.
+var _ ReportHandler = (*Handler)(nil)
 
-// NewHandler creates a Handler backed by the given service.
-// When svc is nil, an in-memory stub is used so the handler is always safe to
-// invoke; this mirrors the task/alert fallback pattern.
+// NewHandler creates a Handler backed by the given service. The service must
+// be non-nil; callers must inject a concrete database-backed implementation.
 func NewHandler(svc Service) *Handler {
-	if svc == nil {
-		svc = NewMemoryService()
-	}
 	return &Handler{svc: svc}
+}
+
+// SetDataStores injects the metric and log stores used by the history and
+// logs endpoints. Either store may be nil to disable the corresponding query
+// path.
+func (h *Handler) SetDataStores(metricStore MetricStoreInjector, logStore LogStoreInjector) {
+	h.metricStore = metricStore
+	h.logStore = logStore
 }
 
 // ListTelemetry handles GET /api/v1/telemetry/monitors. It returns a page
@@ -221,29 +216,46 @@ type monitorHistoryEntry struct {
 }
 
 // GetMonitorHistory handles GET /api/v1/telemetry/monitors/:id/history. It
-// returns historical data points for the monitoring task. The default
-// implementation returns an empty list since the in-memory stub does not
-// persist historical samples; the callers may override this to query
-// the time-series store.
+// returns historical metric data points for the monitoring task. When a
+// MetricStore is injected and the task has an AssetID, metrics are queried
+// from the persistent store; otherwise an empty list is returned.
 func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	// Verify the task exists.
-	if _, err := h.svc.GetTask(ctx, id); err != nil {
+	task, err := h.svc.GetTask(ctx, id)
+	if err != nil {
 		api.Fail(arc, err)
 		return
 	}
 	page, size := httputil.ParsePaging(arc)
 	history := make([]monitorHistoryEntry, 0)
-	api.SuccessPage(arc, history, 0, page, size)
+
+	if h.metricStore != nil && task.AssetID > 0 {
+		end := time.Now()
+		start := end.AddDate(0, 0, -7) // last 7 days
+		metrics, qErr := h.metricStore.QueryMetrics(ctx, 0, task.AssetID, "", start, end, size)
+		if qErr != nil {
+			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
+			return
+		}
+		for i := range metrics {
+			history = append(history, monitorHistoryEntry{
+				Timestamp: metrics[i].Timestamp,
+				Value:     metrics[i].MetricValue,
+				Status:    metrics[i].MetricName,
+			})
+		}
+	}
+
+	api.SuccessPage(arc, history, int64(len(history)), page, size)
 }
 
 // ProbeMonitor handles POST /api/v1/telemetry/monitors/:id/probe. It
-// triggers an immediate probe of the monitoring task. The default implementation
-// returns the task's current status; the callers dispatches a real
-// probe through the executor pipeline.
+// returns the monitoring task's current runtime status. A full on-demand
+// probe dispatch requires the executor pipeline and is provided by the
+// extended edition; the open-source runtime returns the persisted status.
 func (h *Handler) ProbeMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -274,22 +286,40 @@ type monitorLogEntry struct {
 }
 
 // GetMonitorLogs handles GET /api/v1/telemetry/monitors/:id/logs. It
-// returns log entries for the monitoring task. The default implementation
-// returns an empty list since the in-memory stub does not persist logs; the
-// callers may override this to query the log store.
+// returns log entries for the monitoring task. When a LogStore is injected
+// and the task has an AssetID, logs are queried from the persistent store;
+// otherwise an empty list is returned.
 func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	// Verify the task exists.
-	if _, err := h.svc.GetTask(ctx, id); err != nil {
+	task, err := h.svc.GetTask(ctx, id)
+	if err != nil {
 		api.Fail(arc, err)
 		return
 	}
 	page, size := httputil.ParsePaging(arc)
 	logs := make([]monitorLogEntry, 0)
-	api.SuccessPage(arc, logs, 0, page, size)
+
+	if h.logStore != nil && task.AssetID > 0 {
+		end := time.Now()
+		start := end.AddDate(0, 0, -7) // last 7 days
+		entries, qErr := h.logStore.QueryLogs(ctx, 0, task.AssetID, "", start, end, size)
+		if qErr != nil {
+			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
+			return
+		}
+		for i := range entries {
+			logs = append(logs, monitorLogEntry{
+				Timestamp: entries[i].Timestamp,
+				Level:     entries[i].Level,
+				Message:   entries[i].Content,
+			})
+		}
+	}
+
+	api.SuccessPage(arc, logs, int64(len(logs)), page, size)
 }
 
 // EnableMonitor handles PUT /api/v1/telemetry/monitors/:id/enable. It
@@ -386,205 +416,6 @@ func readLimitedBody(arc *app.RequestContext, maxSize int) bool {
 		return false
 	}
 	return true
-}
-
-// --- In-memory Service ---
-
-// memoryService is an in-memory Service implementation
-// used as the default when no concrete service is injected. It
-// is safe for concurrent use.
-type memoryService struct {
-	mu     sync.RWMutex
-	tasks  map[int64]*Task
-	nextID int64
-}
-
-// NewMemoryService creates an in-memory Service suitable
-// for the default and for tests.
-func NewMemoryService() Service {
-	return &memoryService{tasks: make(map[int64]*Task)}
-}
-
-// ListTasks returns a page of telemetry tasks ordered by ascending
-// ID, plus the total count. When filter.Mode is non-empty, only tasks whose
-// Mode matches are returned.
-func (s *memoryService) ListTasks(_ context.Context, page, size int, filter Filter) ([]Task, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	ids := make([]int64, 0, len(s.tasks))
-	for id, t := range s.tasks {
-		if filter.Mode != "" && t.Mode != filter.Mode {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	total := len(ids)
-	start, end := httputil.PageWindow(page, size, total)
-	result := make([]Task, 0, end-start)
-	for _, id := range ids[start:end] {
-		result = append(result, *s.tasks[id])
-	}
-	return result, int64(total), nil
-}
-
-// GetTask returns a single telemetry task by ID. It returns
-// ErrTelemetryTaskNotFound when the ID does not exist.
-func (s *memoryService) GetTask(_ context.Context, id int64) (*Task, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	t, ok := s.tasks[id]
-	if !ok {
-		return nil, ErrTelemetryTaskNotFound
-	}
-	cp := *t
-	return &cp, nil
-}
-
-// countActiveProbers returns the number of stored tasks whose Mode is
-// "active" (case-insensitive). The caller must hold s.mu.
-func (s *memoryService) countActiveProbers() int {
-	count := 0
-	for _, t := range s.tasks {
-		if strings.EqualFold(t.Mode, "active") {
-			count++
-		}
-	}
-	return count
-}
-
-// checkProberQuotaForCreate returns an error when creating a task whose
-// Mode is "active" would exceed the TypeProber ceiling. The caller must
-// hold s.mu so the count is consistent with the subsequent store.
-func (s *memoryService) checkProberQuotaForCreate(mode string) error {
-	if !strings.EqualFold(mode, "active") {
-		return nil
-	}
-	ceiling := quota.Ceiling(quota.TypeProber)
-	if ceiling <= 0 {
-		return nil
-	}
-	if s.countActiveProbers() >= ceiling {
-		return fmt.Errorf("prober quota exceeded: maximum %d active probers", ceiling)
-	}
-	return nil
-}
-
-// checkProberQuotaForUpdate returns an error when the mode transitions to
-// "active" and the new active count would exceed the TypeProber ceiling.
-// The caller must hold s.mu.
-func (s *memoryService) checkProberQuotaForUpdate(oldMode, newMode string) error {
-	if !strings.EqualFold(newMode, "active") {
-		return nil
-	}
-	if strings.EqualFold(oldMode, "active") {
-		return nil
-	}
-	ceiling := quota.Ceiling(quota.TypeProber)
-	if ceiling <= 0 {
-		return nil
-	}
-	if s.countActiveProbers() >= ceiling {
-		return fmt.Errorf("prober quota exceeded: maximum %d active probers", ceiling)
-	}
-	return nil
-}
-
-// checkHTTPIntervalQuota validates the schedule of an active HTTP prober
-// against the minimum HTTP probe interval quota (TypeHTTPInterval, in
-// seconds). It returns an error when the parsed interval is shorter than
-// the minimum. A ceiling of 0 means "no minimum". An unparseable schedule
-// is left to other validation layers.
-func checkHTTPIntervalQuota(mode, typ, schedule string) error {
-	if !strings.EqualFold(mode, "active") || !strings.EqualFold(typ, "http") {
-		return nil
-	}
-	ceiling := quota.Ceiling(quota.TypeHTTPInterval)
-	if ceiling <= 0 {
-		return nil
-	}
-	interval, err := time.ParseDuration(schedule)
-	if err != nil {
-		return nil
-	}
-	minInterval := time.Duration(ceiling) * time.Second
-	if interval < minInterval {
-		return fmt.Errorf("HTTP probe interval %s is below minimum %s", interval, minInterval)
-	}
-	return nil
-}
-
-// CreateTask assigns an auto-incremented ID and timestamps, stores
-// the task, and returns the created entity. A nil request yields
-// ErrInvalidRequest.
-func (s *memoryService) CreateTask(_ context.Context, req *Task) (*Task, error) {
-	if req == nil {
-		return nil, ErrInvalidRequest
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.checkProberQuotaForCreate(req.Mode); err != nil {
-		return nil, err
-	}
-	if err := checkHTTPIntervalQuota(req.Mode, req.Type, req.Schedule); err != nil {
-		return nil, err
-	}
-	s.nextID++
-	now := time.Now()
-	t := *req
-	t.ID = s.nextID
-	t.CreatedAt = now
-	t.UpdatedAt = now
-	s.tasks[t.ID] = &t
-	cp := t
-	return &cp, nil
-}
-
-// UpdateTask merges the request fields onto the existing task. The
-// ID and CreatedAt are preserved and UpdatedAt is refreshed. It returns
-// ErrTelemetryTaskNotFound when the ID does not exist.
-func (s *memoryService) UpdateTask(_ context.Context, id int64, req *Task) (*Task, error) {
-	if req == nil {
-		return nil, ErrInvalidRequest
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	existing, ok := s.tasks[id]
-	if !ok {
-		return nil, ErrTelemetryTaskNotFound
-	}
-	if err := s.checkProberQuotaForUpdate(existing.Mode, req.Mode); err != nil {
-		return nil, err
-	}
-	if err := checkHTTPIntervalQuota(req.Mode, req.Type, req.Schedule); err != nil {
-		return nil, err
-	}
-	existing.Name = req.Name
-	existing.Description = req.Description
-	existing.AssetType = req.AssetType
-	existing.Mode = req.Mode
-	existing.Type = req.Type
-	existing.Schedule = req.Schedule
-	existing.Enabled = req.Enabled
-	existing.Config = req.Config
-	existing.UpdatedAt = time.Now()
-	cp := *existing
-	return &cp, nil
-}
-
-// DeleteTask removes a telemetry task by ID. It returns
-// ErrTelemetryTaskNotFound when the ID does not exist.
-func (s *memoryService) DeleteTask(_ context.Context, id int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tasks[id]; !ok {
-		return ErrTelemetryTaskNotFound
-	}
-	delete(s.tasks, id)
-	return nil
 }
 
 // --- Monitor point type metadata ---

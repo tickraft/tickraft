@@ -17,8 +17,11 @@ import type { AlertSeverity } from '../../../../api/prism'
 const router = useRouter()
 const { t } = useI18n()
 
-/** Local mutable copy of the preset catalog (supports demo delete) */
-const templates = ref<AlertTemplate[]>(TEMPLATES.map((tpl) => ({ ...tpl })))
+/**
+ * Read-only preset catalog. Templates are builtin presets — there is no
+ * server-side template CRUD, so the page never mutates this list.
+ */
+const templates = TEMPLATES
 
 /** Filter state */
 const filter = reactive({
@@ -30,22 +33,17 @@ const filter = reactive({
 /** Pagination state */
 const pagination = reactive({ current: 1, size: 9 })
 
-/** Delete confirmation dialog state */
-const deleteVisible = ref(false)
-const deleteTarget = ref<AlertTemplate | null>(null)
-const deleting = ref(false)
-
 /** Apply (derive rule) confirmation dialog state */
 const applyVisible = ref(false)
 const applyTarget = ref<AlertTemplate | null>(null)
 
-/** Total count for the header badge (full local catalog) */
-const totalCount = computed(() => templates.value.length)
+/** Total count for the header badge (full preset catalog) */
+const totalCount = computed(() => templates.length)
 
-/** Per-severity counts for the summary chips (full local catalog) */
+/** Per-severity counts for the summary chips (full preset catalog) */
 const severityCounts = computed(() => {
   const counts: Record<AlertSeverity, number> = { critical: 0, warning: 0, info: 0 }
-  for (const tpl of templates.value) {
+  for (const tpl of templates) {
     counts[tpl.severity] += 1
   }
   return counts
@@ -54,7 +52,7 @@ const severityCounts = computed(() => {
 /** Filtered templates (by name/key, monitor type, severity) */
 const filtered = computed(() => {
   const q = filter.name.trim().toLowerCase()
-  return templates.value.filter((tpl) => {
+  return templates.filter((tpl) => {
     if (q && !t(tpl.nameKey).toLowerCase().includes(q) && !tpl.key.toLowerCase().includes(q)) return false
     if (filter.monitorType && tpl.monitorType !== filter.monitorType) return false
     if (filter.severity && tpl.severity !== filter.severity) return false
@@ -117,29 +115,6 @@ async function handleCopyKey(tpl: AlertTemplate): Promise<void> {
   }
 }
 
-/** Click delete — open confirmation */
-function handleDeleteClick(tpl: AlertTemplate): void {
-  deleteTarget.value = tpl
-  deleteVisible.value = true
-}
-
-/** Confirm deleting a template (removes from local catalog) */
-function handleDeleteConfirm(): void {
-  if (!deleteTarget.value) return
-  deleting.value = true
-  const target = deleteTarget.value
-  const idx = templates.value.findIndex((t) => t.id === target.id)
-  if (idx !== -1) templates.value.splice(idx, 1)
-  deleteVisible.value = false
-  deleting.value = false
-  ElMessage.success(t('prism.templates.deletedToast', { name: t(target.nameKey) }))
-}
-
-/** "Create template" placeholder (not yet available in open-source edition) */
-function handleCreate(): void {
-  ElMessage.info(t('prism.templates.createTip'))
-}
-
 /** Pagination change */
 function handlePageChange(current: number): void {
   pagination.current = current
@@ -159,14 +134,6 @@ function handleSizeChange(size: number): void {
       :count="totalCount"
       :count-label="t('prism.templates.countLabel')"
     >
-      <template #actions>
-        <el-button
-          type="primary"
-          @click="handleCreate"
-        >
-          + {{ t('prism.templates.create') }}
-        </el-button>
-      </template>
 
       <template #chips>
         <button
@@ -324,13 +291,6 @@ function handleSizeChange(size: number): void {
             >
               {{ t('prism.templates.copy') }}
             </el-button>
-            <el-button
-              link
-              type="danger"
-              @click="handleDeleteClick(tpl)"
-            >
-              {{ t('prism.templates.delete') }}
-            </el-button>
           </div>
         </div>
       </article>
@@ -376,17 +336,6 @@ function handleSizeChange(size: number): void {
       :content="applyTarget ? t('prism.templates.applyContent', { name: t(applyTarget.nameKey) }) : ''"
       :confirm-text="t('prism.templates.applyConfirm')"
       @confirm="handleApplyConfirm"
-    />
-
-    <!-- Delete confirmation -->
-    <ConfirmDialog
-      v-model="deleteVisible"
-      :title="t('prism.templates.deleteTitle')"
-      :content="deleteTarget ? t('prism.templates.deleteContent', { name: t(deleteTarget.nameKey) }) : ''"
-      type="danger"
-      :loading="deleting"
-      :confirm-text="t('prism.templates.delete')"
-      @confirm="handleDeleteConfirm"
     />
   </div>
 </template>

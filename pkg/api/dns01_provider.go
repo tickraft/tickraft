@@ -3,46 +3,46 @@
 // Dual-licensed — see LICENSE for details.
 
 // This file implements the DNS-01 challenge provider adapter that bridges
-// internal/cert.DNSProvider to the ACMEProvider interface. The runtime does
+// pkg/cert.DNSProvider to the ACMEProvider interface. The runtime does
 // not ship a concrete DNS provider; callers may implement
-// internal/cert.DNSProvider (e.g. cloudflare, route53, alidns) and register it as
+// pkg/cert.DNSProvider (e.g. cloudflare, route53, alidns) and register it as
 // an ACMEProvider via NewDNS01Provider + SetACMEProvider, enabling ACME
 // DNS-01 challenge issuance without modifying the kernel source.
 //
 // The adapter exists so the ACMEManager (acme.go) can drive the RFC 8555
 // flow uniformly for both challenge types: it only interacts with
 // ACMEProvider, while the DNS-specific Present/CleanUp/Timeout contract lives
-// in internal/cert.DNSProvider and is shared with the cert.Manager self-sign path.
+// in pkg/cert.DNSProvider and is shared with the cert.Manager self-sign path.
 package api
 
 import (
 	"context"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/cert"
+	"github.com/tickraft/tickraft/pkg/cert"
 )
 
-// DNS01Provider adapts a internal/cert.DNSProvider to the ACMEProvider interface. It
+// DNS01Provider adapts a pkg/cert.DNSProvider to the ACMEProvider interface. It
 // is the integration point between the ACME manager (which drives the RFC
 // 8555 order/authorize/finalize flow) and the DNS-01 challenge provider interface
 // (which publishes and removes the _acme-challenge TXT record).
 //
 // The runtime does not provide a concrete DNS provider; it only
-// ships this adapter and the NoopDNSProvider default from internal/cert. Extended
+// ships this adapter and the NoopDNSProvider default from pkg/cert. Extended
 // editions inject a real DNS provider by constructing a DNS01Provider around
 // their cert.DNSProvider implementation and registering it via
 // SetACMEProvider before the server starts:
 //
 //	api.SetACMEProvider(api.NewDNS01Provider(myDNSProvider))
 //
-// When the wrapped provider is internal/cert.NoopDNSProvider, Present returns
+// When the wrapped provider is pkg/cert.NoopDNSProvider, Present returns
 // cert.ErrDNSChallengeNotConfigured, so a misconfigured DNS-01 flow fails
 // fast with a clear error instead of silently succeeding.
 type DNS01Provider struct {
 	provider cert.DNSProvider
 }
 
-// NewDNS01Provider wraps a internal/cert.DNSProvider and returns an ACMEProvider
+// NewDNS01Provider wraps a pkg/cert.DNSProvider and returns an ACMEProvider
 // for the DNS-01 challenge type. The returned provider delegates
 // FulfillChallenge to Present and the returned cleanup function to CleanUp,
 // matching the contract documented on cert.DNSProvider.

@@ -26,15 +26,15 @@ import (
 // contend. Load and Reload acquire a write lock to swap the snapshots
 // atomically.
 type Engine struct {
-	mu              sync.RWMutex
-	taskRules       []Rule
-	probeRules      []Rule
-	metricRules     []Rule
+	mu               sync.RWMutex
+	taskRules        []Rule
+	probeRules       []Rule
+	metricRules      []Rule
 	remediationRules []Rule
-	programs        map[int64]*vm.Program
-	compiler        *Compiler
-	extractor       *ViolationExtractor
-	logger          *zap.Logger
+	programs         map[int64]*vm.Program
+	compiler         *Compiler
+	extractor        *ViolationExtractor
+	logger           *zap.Logger
 
 	// reloadCancel cancels the context that governs the background
 	// reload loop launched by Register. It is nil when no reload loop
@@ -126,28 +126,28 @@ func (e *Engine) Reload(ctx context.Context, store Lister) error {
 // the cache, fails to evaluate, or yields a non-bool result is logged
 // and skipped without affecting sibling rules.
 func (e *Engine) MatchTask(ctx context.Context, env TaskMatchEnv) []int64 {
-	return e.match(ctx, SceneTask, e.taskRules, env)
+	return e.match(ctx, SceneTask, env)
 }
 
 // MatchProbe evaluates the probe-scene rules against env and returns
 // the IDs of all matching rules. See MatchTask for error-handling
 // semantics.
 func (e *Engine) MatchProbe(ctx context.Context, env ProbeMatchEnv) []int64 {
-	return e.match(ctx, SceneProbe, e.probeRules, env)
+	return e.match(ctx, SceneProbe, env)
 }
 
 // MatchMetric evaluates the metric-scene rules against env and
 // returns the IDs of all matching rules. See MatchTask for
 // error-handling semantics.
 func (e *Engine) MatchMetric(ctx context.Context, env MetricMatchEnv) []int64 {
-	return e.match(ctx, SceneMetric, e.metricRules, env)
+	return e.match(ctx, SceneMetric, env)
 }
 
 // MatchRemediation evaluates the remediation-scene rules against env
 // and returns the IDs of all matching rules. See MatchTask for
 // error-handling semantics.
 func (e *Engine) MatchRemediation(ctx context.Context, env RemediationMatchEnv) []int64 {
-	return e.match(ctx, SceneRemediation, e.remediationRules, env)
+	return e.match(ctx, SceneRemediation, env)
 }
 
 // HasMetricRules reports whether any metric-scene rule is currently
@@ -241,17 +241,27 @@ func (e *Engine) MatchMetricWithViolations(ctx context.Context, env MetricMatchE
 	return violations
 }
 
-// match is the shared evaluation loop. It snapshots the rule slice
-// and program map under the read lock, then evaluates each rule
-// outside the lock. ctx is currently reserved for future
+// match is the shared evaluation loop. It snapshots the scene's rule
+// slice and the program map under the read lock, then evaluates each
+// rule outside the lock. ctx is currently reserved for future
 // deadline-aware evaluation; expr.Run itself is synchronous and does
 // not consult ctx.
-func (e *Engine) match(ctx context.Context, scene Scene, rules []Rule, env any) []int64 {
+func (e *Engine) match(ctx context.Context, scene Scene, env any) []int64 {
 	_ = ctx
 
 	e.mu.RLock()
+	var rulesSnapshot []Rule
+	switch scene {
+	case SceneTask:
+		rulesSnapshot = e.taskRules
+	case SceneProbe:
+		rulesSnapshot = e.probeRules
+	case SceneMetric:
+		rulesSnapshot = e.metricRules
+	case SceneRemediation:
+		rulesSnapshot = e.remediationRules
+	}
 	programs := e.programs
-	rulesSnapshot := rules
 	e.mu.RUnlock()
 
 	var matched []int64

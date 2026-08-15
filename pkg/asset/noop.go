@@ -47,7 +47,7 @@ func (NoopStore) UpdateStatus(_ context.Context, _ int64, _ types.AssetStatus, _
 }
 
 // List always returns an empty page because no assets are persisted.
-func (NoopStore) List(_ context.Context, _, _ int) ([]*Asset, int64, error) {
+func (NoopStore) List(_ context.Context, _, _ int, _ ListFilter) ([]*Asset, int64, error) {
 	return nil, 0, nil
 }
 
@@ -62,6 +62,10 @@ func (NoopStore) Delete(_ context.Context, _ int64) error {
 }
 
 // CountByType always returns 0 because no assets are persisted.
+func (NoopStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
+}
+
 func (NoopStore) CountByType(_ context.Context, _ int64, _ types.AssetType) (int64, error) {
 	return 0, nil
 }

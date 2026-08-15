@@ -35,7 +35,7 @@ func newAssetKeyTestEngine(mw app.HandlerFunc) (*route.Engine, *bool) {
 // is present and the getter returns (true, nil), the request proceeds to
 // the downstream handler with HTTP 200.
 func TestAssetKeyalid(t *testing.T) {
-	getter := func(key string) (bool, error) {
+	getter := func(_ context.Context, key string) (bool, error) {
 		if key != "valid-key" {
 			t.Errorf("getter received key %q, want %q", key, "valid-key")
 		}
@@ -58,7 +58,7 @@ func TestAssetKeyalid(t *testing.T) {
 // header is absent, the middleware returns 401 with business code
 // CodeAssetKeyMissing and does NOT invoke the downstream handler.
 func TestAssetKeyissing(t *testing.T) {
-	getter := func(key string) (bool, error) {
+	getter := func(_ context.Context, key string) (bool, error) {
 		t.Error("getter should not be called when header is missing")
 		return false, nil
 	}
@@ -85,7 +85,7 @@ func TestAssetKeyissing(t *testing.T) {
 // for a present header, the middleware returns 403 with business code
 // CodeAssetKeyInvalid and does NOT invoke the downstream handler.
 func TestAssetKeynvalid(t *testing.T) {
-	getter := func(key string) (bool, error) {
+	getter := func(_ context.Context, key string) (bool, error) {
 		return false, nil
 	}
 	engine, called := newAssetKeyTestEngine(NewAssetKeyMiddleware(getter))
@@ -112,7 +112,7 @@ func TestAssetKeynvalid(t *testing.T) {
 // (false, err) for a present header, the middleware returns 500 with
 // business code CodeInternal and does NOT invoke the downstream handler.
 func TestAssetKeyetterError(t *testing.T) {
-	getter := func(key string) (bool, error) {
+	getter := func(_ context.Context, key string) (bool, error) {
 		return false, errors.New("database down")
 	}
 	engine, called := newAssetKeyTestEngine(NewAssetKeyMiddleware(getter))
@@ -139,7 +139,7 @@ func TestAssetKeyetterError(t *testing.T) {
 // TestAssetKeymptyHeaderValue verifies that an empty header value is
 // treated the same as a missing header: 401 with CodeAssetKeyMissing.
 func TestAssetKeymptyHeaderValue(t *testing.T) {
-	getter := func(key string) (bool, error) {
+	getter := func(_ context.Context, key string) (bool, error) {
 		t.Error("getter should not be called for an empty header value")
 		return false, nil
 	}

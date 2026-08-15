@@ -306,7 +306,9 @@ func (m *ACMEManager) resolveChallengeType() ACMEChallenge {
 
 // certStoreOrMemory returns the configured CertStore or a fresh
 // MemoryACMECertStore when none is configured. The fallback is per-call, so
-// callers that want persistence across calls must inject a store.
+// callers that want persistence across calls must inject a store. In the
+// production startup path the runtime injects a FileACMECertStore so
+// certificates and account keys survive restarts.
 func (m *ACMEManager) certStoreOrMemory() ACMECertStore {
 	if m.CertStore != nil {
 		return m.CertStore

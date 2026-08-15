@@ -21,6 +21,7 @@
       "actionFailed": "Action failed",
       "firing": "Firing",
       "resolved": "Resolved",
+      "acknowledged": "Acknowledged",
       "searchAsset": "Enter asset name",
       "allSeverity": "All Severities",
       "allStatus": "All Status",
@@ -185,7 +186,7 @@
       "countLabel": "TOTAL SELF-HEALING",
       "ruleName": "Rule Name",
       "alertName": "Alert Name",
-      "actionType": "Action Type",
+      "actionType": "Trigger",
       "status": "Status",
       "startedAt": "Started At",
       "allStatus": "All Status",
@@ -193,7 +194,14 @@
       "statusFailed": "Failed",
       "statusRunning": "Running",
       "searchActionType": "Enter action type",
-      "emptyHint": "No self-healing execution records yet"
+      "emptyHint": "No self-healing execution records yet",
+      "statusTriggered": "Triggered",
+      "statusStarted": "Started",
+      "statusCompleted": "Completed",
+      "statusSkipped": "Skipped",
+      "asset": "Asset",
+      "error": "Error",
+      "finishedAt": "Finished At"
     },
     "rule": {
       "title": "Self-healing Rules",
@@ -241,7 +249,7 @@
         "triggerEventTypePlaceholder": "Select trigger event type",
         "conditionExpr": "Condition Expression",
         "conditionExprPlaceholder": "e.g. severity == \"critical\"",
-        "conditionExprHelp": "Further filter the trigger condition with an expression; leave empty to always trigger",
+        "conditionExprHelp": "Optional expr expression. Variables: metric_name/metric_value/threshold (metric), level/keyword/content (log), prev_status/curr_status (status change)",
         "executorType": "Executor Type",
         "executorTypePlaceholder": "Select executor type",
         "executorUrl": "Request URL",
@@ -268,7 +276,12 @@
         "updatedToast": "Rule updated",
         "notFound": "Rule not found, switching to create mode",
         "validateError": "Please fix form errors and retry",
-        "invalidUrl": "Please enter a valid URL (starting with http:// or https://)"
+        "invalidUrl": "Please enter a valid URL (starting with http:// or https://)",
+        "executorCommand": "Command",
+        "executorCommandPlaceholder": "e.g. /usr/local/bin/tickraft-fix.sh",
+        "executorCommandHelp": "Command executed on the host; exit code 0 means success",
+        "executorArgs": "Arguments",
+        "executorArgsPlaceholder": "One argument per line; supports $RULE_ID and $ASSET_ID variables"
       },
       "field": {
         "name": "Rule Name",
@@ -282,6 +295,9 @@
         "enabled": "Enabled"
       },
       "triggerType": {
+        "metric": "Metric threshold exceeded",
+        "log": "Log keyword match",
+        "status_change": "Asset status change",
         "alert": {
           "firing": "Alert Firing",
           "critical": "Critical Alert"
@@ -289,7 +305,8 @@
       },
       "executorType": {
         "webhook": "Webhook",
-        "http": "HTTP Request"
+        "http": "HTTP Request",
+        "local": "Local script"
       },
       "delete": {
         "title": "Delete Rule",

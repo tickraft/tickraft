@@ -124,6 +124,16 @@ type MonitorPoint struct {
 	TenantID int64 `gorm:"index;not null" json:"tenant_id"`
 	// Name is the human-readable display name of the monitoring point.
 	Name string `gorm:"size:255;not null" json:"name"`
+	// Description is an optional human-readable description of the monitoring
+	// point.
+	Description string `gorm:"size:1024" json:"description,omitempty"`
+	// AssetType is the category of the monitored asset (e.g. host, service,
+	// website, device).
+	AssetType string `gorm:"size:32" json:"asset_type,omitempty"`
+	// AssetID optionally links this monitoring point to an asset row. When
+	// non-zero, metric history and log entries for the linked asset are
+	// surfaced via the history/logs API endpoints.
+	AssetID int64 `gorm:"index" json:"asset_id,omitempty"`
 	// Mode distinguishes active probing (ModeActive) from passive receiving
 	// (ModePassive). See the Mode type in point.go.
 	Mode Mode `gorm:"size:16;not null;index" json:"mode"`
@@ -134,6 +144,10 @@ type MonitorPoint struct {
 	// Status is the derived runtime status of the monitoring point
 	// (active, inactive, error). See MonitorStatus constants in point.go.
 	Status string `gorm:"size:32;not null;default:inactive" json:"status"`
+	// Schedule is the probe schedule expression: a Go duration string
+	// (e.g. "60s") for interval-based probing or a cron expression. Empty
+	// means use Interval.
+	Schedule string `gorm:"size:64" json:"schedule,omitempty"`
 	// Interval is the probe interval in seconds for active points.
 	// Ignored for passive points (interval=0).
 	Interval int `gorm:"not null;default:60" json:"interval"`

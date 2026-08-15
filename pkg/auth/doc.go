@@ -20,10 +20,13 @@
 //
 // # Internal Interfaces
 //
-// The Authenticator, Authorizer, Registrar, and Policy interfaces and
-// their constructors (NewAuthenticator, NewAuthorizer, NewRegistrar,
-// DefaultPolicy) live in internal/auth. They are internal
-// abstractions not consumed by the extended repository.
+// The Authenticator, Authorizer, and Registrar interfaces and
+// their constructors (NewAuthenticator, NewAuthorizer, NewRegistrar)
+// live in internal/auth. They are internal abstractions not consumed
+// by the extended repository. The Policy interface and DefaultPolicy
+// constructor are exported from this package (pkg/auth) so they can
+// be consumed by both the internal composition root and downstream
+// editions.
 //
 // # Subpackages
 //

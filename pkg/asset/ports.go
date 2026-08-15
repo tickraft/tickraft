@@ -12,6 +12,18 @@ import (
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
+// ListFilter holds optional server-side filtering criteria for listing
+// assets. A zero-value filter matches all assets.
+type ListFilter struct {
+	// Keyword matches assets whose name or asset_key contains the
+	// (case-insensitive) substring. Empty matches all.
+	Keyword string
+	// AssetType filters by an exact asset type match. Empty matches all.
+	AssetType string
+	// Status filters by an exact status match. Empty matches all.
+	Status string
+}
+
 // Store persists and queries Asset entities.
 //
 // This is the persistence port for the asset domain. The GORM-backed
@@ -37,9 +49,10 @@ type Store interface {
 	GetByKey(ctx context.Context, tenantID int64, key string) (*Asset, error)
 	// UpdateStatus updates the asset status and last active time.
 	UpdateStatus(ctx context.Context, id int64, status types.AssetStatus, activeAt time.Time) error
-	// List returns a page of assets ordered by descending ID, plus the
-	// total count. page starts at 1; size is the maximum number of items.
-	List(ctx context.Context, page, size int) ([]*Asset, int64, error)
+	// List returns a page of assets matching the filter, ordered by
+	// descending ID, plus the total count. page starts at 1; size is the
+	// maximum number of items. A zero-value filter returns all assets.
+	List(ctx context.Context, page, size int, filter ListFilter) ([]*Asset, int64, error)
 	// ListKeyset returns a page of assets using keyset (cursor-based)
 	// pagination, which avoids the O(N) cost of OFFSET on deep pages.
 	// The opaque next-page cursor is returned in the result; pass it as
@@ -51,6 +64,9 @@ type Store interface {
 	// CountByType returns the number of assets of the given type for a
 	// specific tenant. It is used to enforce default quotas.
 	CountByType(ctx context.Context, tenantID int64, assetType types.AssetType) (int64, error)
+	// CountByStatus returns the number of assets grouped by status. It is
+	// used by the dashboard's asset status distribution.
+	CountByStatus(ctx context.Context) (map[string]int64, error)
 	// ExistsByKey returns true when an asset with the given key exists in
 	// any tenant. It is used by the asset-key middleware to validate the
 	// X-Tickraft-Asset-Key header without requiring a tenant context.

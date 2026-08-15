@@ -32,13 +32,75 @@ func NewStore(dbc *gorm.DB) *Store {
 	return &Store{dbc: dbc}
 }
 
-// Migrate runs AutoMigrate for the Rule table. It is intended to be
-// invoked from the application's migration phase at startup.
+// Migrate runs AutoMigrate for the Rule and Record tables. It is intended
+// to be invoked from the application's migration phase at startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	if err := s.dbc.WithContext(ctx).AutoMigrate(&Rule{}); err != nil {
-		return fmt.Errorf("remediation: migrate rule table: %w", err)
+	if err := s.dbc.WithContext(ctx).AutoMigrate(&Rule{}, &Record{}); err != nil {
+		return fmt.Errorf("remediation: migrate rule/record tables: %w", err)
 	}
 	return nil
+}
+
+// Compile-time assertion that *Store satisfies RecordStore.
+var _ RecordStore = (*Store)(nil)
+
+// UpsertRecord inserts the record when no row with the same RunID exists,
+// or updates the existing row's lifecycle fields (status, error,
+// started_at, finished_at) otherwise. The Manager calls this at each
+// lifecycle transition of a dispatch.
+func (s *Store) UpsertRecord(ctx context.Context, record *Record) error {
+	if record == nil {
+		return fmt.Errorf("remediation: upsert record: nil model")
+	}
+	if record.RunID == "" {
+		return fmt.Errorf("remediation: upsert record: run_id is required")
+	}
+	updates := map[string]any{
+		"status":      record.Status,
+		"error":       record.Error,
+		"started_at":  record.StartedAt,
+		"finished_at": record.FinishedAt,
+	}
+	result := s.dbc.WithContext(ctx).
+		Model(&Record{}).
+		Where("run_id = ?", record.RunID).
+		Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("remediation: upsert record: %w", errmap.MapError(result.Error))
+	}
+	if result.RowsAffected == 0 {
+		if err := s.dbc.WithContext(ctx).Create(record).Error; err != nil {
+			return fmt.Errorf("remediation: create record: %w", errmap.MapError(err))
+		}
+	}
+	return nil
+}
+
+// ListRecords returns a page of dispatch records ordered by descending ID,
+// plus the total count. A non-empty status filters by exact lifecycle
+// status match. limit and offset control the page; callers should clamp
+// them before calling.
+func (s *Store) ListRecords(ctx context.Context, limit, offset int, status string) ([]*Record, int64, error) {
+	q := s.dbc.WithContext(ctx).Model(&Record{})
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("remediation: count records: %w", errmap.MapError(err))
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+	var records []*Record
+	if err := q.
+		Order("id DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&records).Error; err != nil {
+		return nil, 0, fmt.Errorf("remediation: list records: %w", errmap.MapError(err))
+	}
+	return records, total, nil
 }
 
 // Create inserts a new remediation rule record. The ID, CreatedAt, and

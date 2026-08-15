@@ -206,7 +206,7 @@ const mockRemediationRules = [
     name: 'Auto-Restart Web Service on 5xx Spike',
     description: 'When HTTP 5xx error rate fires, trigger a webhook to restart the web service',
     asset_id: 4,
-    trigger_event_type: 'alert.firing',
+    trigger_event_type: 'metric',
     condition_expr: 'severity == "critical" && metric == "http_5xx_rate"',
     executor_type: 'webhook',
     executor_config: JSON.stringify({
@@ -228,7 +228,7 @@ const mockRemediationRules = [
     name: 'Scale Out on High CPU',
     description: 'When host CPU usage reaches critical threshold, call HTTP API to scale out',
     asset_id: 3,
-    trigger_event_type: 'alert.critical',
+    trigger_event_type: 'log',
     condition_expr: 'metric == "cpu_usage" && current_value > 85',
     executor_type: 'http',
     executor_config: JSON.stringify({
@@ -251,7 +251,7 @@ const mockRemediationRules = [
     name: 'Clear Cache on Memory Pressure',
     description: 'When memory usage fires, trigger a webhook to flush Redis cache',
     asset_id: 3,
-    trigger_event_type: 'alert.firing',
+    trigger_event_type: 'status_change',
     condition_expr: 'metric == "mem_usage"',
     executor_type: 'webhook',
     executor_config: JSON.stringify({
@@ -287,13 +287,12 @@ function parseTs(value: string): number {
   return new Date(value.length === 10 ? `${value}T00:00:00` : value.replace(' ', 'T')).getTime()
 }
 
-/** Filter alert records */
+/** Filter alert records (severity/status/from/to, aligned with the API contract) */
 function filterRecords(query: Record<string, string>) {
-  const { asset_name, severity, status, date_from, date_to } = query
-  const fromTs = date_from ? parseTs(date_from) : 0
-  const toTs = date_to ? parseTs(date_to) + 86399999 : 0
+  const { severity, status, from, to } = query
+  const fromTs = from ? parseTs(from) : 0
+  const toTs = to ? parseTs(to) : 0
   return records.filter((r) => {
-    if (asset_name && !r.asset_name.toLowerCase().includes(asset_name.toLowerCase())) return false
     if (severity && r.severity !== severity) return false
     if (status && r.status !== status) return false
     const firedTs = parseTs(r.fired_at)
@@ -303,7 +302,37 @@ function filterRecords(query: Record<string, string>) {
   })
 }
 
+/** Mock remediation execution records (aligned with backend remediation Record DTO) */
+const remediationRecords = [
+  { id: 1, rule_id: 1, rule_name: 'Auto-Restart Web Service on 5xx Spike', asset_id: 4, asset_key: 'payment-api', run_id: 'run-20260701-1430-a1b2', trigger: 'telemetry.metric_exceeded', status: 'completed', error: '', started_at: '2026-07-01 14:30:05', finished_at: '2026-07-01 14:30:08', created_at: '2026-07-01 14:30:05' },
+  { id: 2, rule_id: 2, rule_name: 'Scale Out on High CPU', asset_id: 3, asset_key: 'prod-api-03', run_id: 'run-20260702-0915-c3d4', trigger: 'telemetry.log_matched', status: 'failed', error: 'executor returned HTTP 502', started_at: '2026-07-02 09:15:10', finished_at: '2026-07-02 09:15:26', created_at: '2026-07-02 09:15:10' },
+  { id: 3, rule_id: 1, rule_name: 'Auto-Restart Web Service on 5xx Spike', asset_id: 4, asset_key: 'payment-api', run_id: 'run-20260703-0801-e5f6', trigger: 'telemetry.metric_exceeded', status: 'started', error: '', started_at: '2026-07-03 08:01:00', finished_at: '', created_at: '2026-07-03 08:01:00' },
+  { id: 4, rule_id: 3, rule_name: 'Clear Cache on Memory Pressure', asset_id: 3, asset_key: 'prod-api-03', run_id: 'run-20260703-1102-a7b8', trigger: 'asset.status_changed', status: 'skipped', error: '', started_at: '', finished_at: '', created_at: '2026-07-03 11:02:00' },
+]
+
 export default [
+  // ── Remediation records ──
+  {
+    url: '/api/v1/prism/remediation/records',
+    method: 'get',
+    response: ({ query }: { query: Record<string, string> }) => {
+      const page = Number(query.page) || 1
+      const size = Number(query.page_size) || 10
+      const status = query.status || ''
+      const filtered = status ? remediationRecords.filter((r) => r.status === status) : remediationRecords
+      const start = (page - 1) * size
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          items: filtered.slice(start, start + size),
+          total: filtered.length,
+          page,
+          page_size: size,
+        },
+      }
+    },
+  },
   // ── Alert records ──
   {
     url: '/api/v1/prism/alert/records',
@@ -347,6 +376,19 @@ export default [
       if (record && record.status === 'firing') {
         record.status = 'resolved'
         record.resolved_at = new Date().toISOString().replace('T', ' ').substring(0, 19)
+      }
+      return { code: 0, message: 'success', data: record ?? records[0] }
+    },
+  },
+  {
+    url: '/api/v1/prism/alert/records/:id/acknowledge',
+    method: 'put',
+    response: ({ url }: { url: string }) => {
+      const id = extractId(url)
+      const record = records.find((r) => r.id === id)
+      if (record && record.status === 'firing') {
+        record.status = 'acknowledged'
+        ;(record as Record<string, unknown>).acknowledged_at = new Date().toISOString().replace('T', ' ').substring(0, 19)
       }
       return { code: 0, message: 'success', data: record ?? records[0] }
     },
@@ -576,7 +618,7 @@ export default [
         name: String(body.name ?? ''),
         description: String(body.description ?? ''),
         asset_id: Number(body.asset_id ?? 0),
-        trigger_event_type: String(body.trigger_event_type ?? 'alert.firing'),
+        trigger_event_type: String(body.trigger_event_type ?? 'metric'),
         condition_expr: String(body.condition_expr ?? ''),
         executor_type: String(body.executor_type ?? 'webhook'),
         executor_config: String(body.executor_config ?? '{}'),

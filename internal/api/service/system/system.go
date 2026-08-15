@@ -170,11 +170,17 @@ func (s *Service) GetGlobalStats(ctx context.Context) (*system.GlobalStats, erro
 
 	// Total devices (assets) from the asset store.
 	if s.assetStore != nil {
-		_, total, err := s.assetStore.List(ctx, 1, 1)
+		_, total, err := s.assetStore.List(ctx, 1, 1, asset.ListFilter{})
 		if err != nil {
 			s.logger.Warn("system stats: list assets", zap.Error(err))
 		} else {
 			stats.TotalDevices = total
+		}
+		statusCounts, err := s.assetStore.CountByStatus(ctx)
+		if err != nil {
+			s.logger.Warn("system stats: count assets by status", zap.Error(err))
+		} else {
+			stats.AssetStatusCounts = statusCounts
 		}
 	}
 

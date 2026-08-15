@@ -138,6 +138,8 @@ type UserClaims struct {
 	JTI string
 	// Region is the deployment region of the token (cn, global, private).
 	Region string
+	// ExpiresAt is the token expiration time, used for blacklist TTL.
+	ExpiresAt time.Time
 }
 
 // BlacklistChecker reports whether a JTI is in the token blacklist.
@@ -223,14 +225,33 @@ func (jwt *JWT) ValidateToken(tokenStr string, tokenType string) (*UserClaims, e
 		}
 	}
 
-	return &UserClaims{
+	userClaims := &UserClaims{
 		UID:      claims.UserID,
 		Username: claims.Username,
 		Role:     claims.Role,
 		TenantID: claims.TenantID,
 		JTI:      claims.JTI(),
 		Region:   claims.Region,
-	}, nil
+	}
+	if claims.ExpiresAt != nil {
+		userClaims.ExpiresAt = claims.ExpiresAt.Time
+	}
+	return userClaims, nil
+}
+
+// ParseForRevocation parses a token and returns its JTI and expiry without
+// enforcing token type or blacklist checks. This is used by logout flows
+// where the token needs to be added to the blacklist.
+func (jwt *JWT) ParseForRevocation(tokenStr string) (jti string, expireAt time.Time, err error) {
+	claims, err := Parse(tokenStr, jwt.config.Secret)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	jti = claims.JTI()
+	if claims.ExpiresAt != nil {
+		expireAt = claims.ExpiresAt.Time
+	}
+	return jti, expireAt, nil
 }
 
 // RefreshToken validates a refresh token and generates a new token pair.

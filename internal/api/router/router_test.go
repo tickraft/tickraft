@@ -121,7 +121,7 @@ func TestRegisterRoutesMissingServices(t *testing.T) {
 	if err == nil {
 		t.Fatal("RegisterRoutes without services returned nil error, want non-nil")
 	}
-	if !strings.Contains(err.Error(), "missing required service injections") {
-		t.Errorf("err = %q, want to contain %q", err.Error(), "missing required service injections")
+	if !strings.Contains(err.Error(), "missing required services") {
+		t.Errorf("err = %q, want to contain %q", err.Error(), "missing required services")
 	}
 }

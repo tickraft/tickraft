@@ -65,14 +65,31 @@ function buildAlertTrend(records: AlertRecord[]): { date: string; critical: numb
 }
 
 /**
- * Build asset status distribution donut chart data from global stats.
- * The backend GlobalStats does not break down status, so we show a
- * single "total" segment when no detailed breakdown is available.
+ * Build asset status distribution donut chart data from the
+ * /system/stats asset_status_counts aggregate.
  */
 function buildStatusDist(stats: GlobalStats | null): { status: string; count: number }[] {
-  const total = stats?.totalDevices ?? 0
-  if (total === 0) return []
-  return [{ status: 'normal', count: total }]
+  const counts = stats?.assetStatusCounts
+  if (!counts) return []
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => ({ status, count }))
+}
+
+/** Resolve the RFC3339 range start for the active time range */
+function rangeStart(range: 'today' | '7d' | '30d'): string {
+  const now = new Date()
+  switch (range) {
+    case '7d':
+      now.setDate(now.getDate() - 7)
+      break
+    case '30d':
+      now.setDate(now.getDate() - 30)
+      break
+    default:
+      now.setHours(0, 0, 0, 0)
+  }
+  return now.toISOString()
 }
 
 /** Fetch all dashboard data from backend APIs */
@@ -82,7 +99,12 @@ async function fetchDashboardData(): Promise<void> {
     const [stats, info, alerts] = await Promise.all([
       getGlobalStats(),
       getRuntimeInfo(),
-      getAlertRecords({ page: 1, pageSize: 50 }),
+      getAlertRecords({
+        page: 1,
+        pageSize: 50,
+        from: rangeStart(activeRange.value),
+        to: new Date().toISOString(),
+      }),
     ])
     globalStats.value = stats
     runtimeInfo.value = info

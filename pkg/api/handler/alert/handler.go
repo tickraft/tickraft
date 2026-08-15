@@ -7,6 +7,7 @@ package alert
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -118,10 +119,31 @@ func (h *Handler) DeleteAlertRule(ctx context.Context, arc *app.RequestContext) 
 	api.Success(arc, nil)
 }
 
-// ListAlertRecords handles GET /api/v1/prism/alert/records.
+// ListAlertRecords handles GET /api/v1/prism/alert/records. Supported query
+// parameters: page, page_size, severity, status, from and to (RFC3339).
 func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext) {
 	page, size := httputil.ParsePaging(arc)
-	items, total, err := h.svc.ListRecords(ctx, page, size)
+	filter := RecordFilter{
+		Severity: arc.Query("severity"),
+		Status:   arc.Query("status"),
+	}
+	if v := arc.Query("from"); v != "" {
+		parsed, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'from' timestamp, expected RFC3339 format")
+			return
+		}
+		filter.From = parsed
+	}
+	if v := arc.Query("to"); v != "" {
+		parsed, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'to' timestamp, expected RFC3339 format")
+			return
+		}
+		filter.To = parsed
+	}
+	items, total, err := h.svc.ListRecords(ctx, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)
 		return

@@ -29,6 +29,10 @@ func newProcMockStore() *procMockStore {
 	return &procMockStore{assets: make(map[int64]*asset.Asset)}
 }
 
+func (s *procMockStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
+}
+
 func (s *procMockStore) Create(_ context.Context, r *asset.Asset) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -76,7 +80,7 @@ func (s *procMockStore) UpdateStatus(_ context.Context, id int64, status types.A
 
 func (s *procMockStore) Migrate(_ context.Context) error { return nil }
 
-func (s *procMockStore) List(_ context.Context, page, size int) ([]*asset.Asset, int64, error) {
+func (s *procMockStore) List(_ context.Context, page, size int, _ asset.ListFilter) ([]*asset.Asset, int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := int64(len(s.assets))

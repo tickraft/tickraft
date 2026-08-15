@@ -88,9 +88,10 @@ func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetSt
 	return nil
 }
 
-// List returns a page of assets ordered by descending ID, plus the total
-// count. page starts at 1; size is clamped between 1 and 100.
-func (s *store) List(ctx context.Context, page, size int) ([]*Asset, int64, error) {
+// List returns a page of assets matching the filter, ordered by descending
+// ID, plus the total count. page starts at 1; size is clamped between 1 and
+// 100. A zero-value filter returns all assets.
+func (s *store) List(ctx context.Context, page, size int, filter ListFilter) ([]*Asset, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -101,14 +102,26 @@ func (s *store) List(ctx context.Context, page, size int) ([]*Asset, int64, erro
 		size = 100
 	}
 
+	query := s.dbc.WithContext(ctx).Model(&Asset{})
+	if filter.Keyword != "" {
+		like := "%" + filter.Keyword + "%"
+		query = query.Where("name LIKE ? OR asset_key LIKE ?", like, like)
+	}
+	if filter.AssetType != "" {
+		query = query.Where("asset_type = ?", filter.AssetType)
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+
 	var total int64
-	if err := s.dbc.WithContext(ctx).Model(&Asset{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("asset: list: %w", errmap.MapError(err))
 	}
 
 	var assets []*Asset
 	offset := (page - 1) * size
-	if err := s.dbc.WithContext(ctx).
+	if err := query.
 		Order("id DESC").
 		Offset(offset).
 		Limit(size).
@@ -187,6 +200,27 @@ func (s *store) CountByType(ctx context.Context, tenantID int64, assetType types
 		return 0, fmt.Errorf("asset: count by type: %w", errmap.MapError(err))
 	}
 	return count, nil
+}
+
+// CountByStatus returns the number of assets grouped by status. It is
+// used by the dashboard's asset status distribution.
+func (s *store) CountByStatus(ctx context.Context) (map[string]int64, error) {
+	var rows []struct {
+		Status string
+		Count  int64
+	}
+	if err := s.dbc.WithContext(ctx).
+		Model(&Asset{}).
+		Select("status, COUNT(*) AS count").
+		Group("status").
+		Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("asset: count by status: %w", errmap.MapError(err))
+	}
+	result := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		result[r.Status] = r.Count
+	}
+	return result, nil
 }
 
 // ExistsByKey returns true when an asset with the given key exists in any

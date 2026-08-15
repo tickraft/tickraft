@@ -39,6 +39,7 @@ const defaultExecutionPoolSize = 4
 type Manager struct {
 	bus       event.Bus
 	store     RuleStore
+	records   RecordStore
 	logger    *zap.Logger
 	operators map[string]Operator
 
@@ -75,6 +76,7 @@ type Option interface {
 type options struct {
 	bus       event.Bus
 	store     RuleStore
+	records   RecordStore
 	logger    *zap.Logger
 	operators []Operator
 	poolSize  int
@@ -93,6 +95,13 @@ func WithEventBus(bus event.Bus) Option {
 // WithStore sets the rule store used to load and update remediation rules.
 func WithStore(store RuleStore) Option {
 	return funcOption(func(o *options) { o.store = store })
+}
+
+// WithRecordStore sets the store used to persist remediation dispatch
+// records. When set, every dispatch lifecycle transition (triggered,
+// started, completed, failed, skipped) is persisted for the records API.
+func WithRecordStore(store RecordStore) Option {
+	return funcOption(func(o *options) { o.records = store })
 }
 
 // WithLogger sets the structured logger.
@@ -141,6 +150,7 @@ func New(opts ...Option) (*Manager, error) {
 	m := &Manager{
 		bus:        o.bus,
 		store:      o.store,
+		records:    o.records,
 		logger:     o.logger,
 		operators:  map[string]Operator{},
 		matchCache: map[string]*vm.Program{},
@@ -230,6 +240,17 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.subs = append(m.subs, sub)
 
+	// Asset status transitions -> status_change trigger.
+	sub, err = event.Subscribe[event.StatusChangePayload](m.bus, event.TypeAssetStatusChanged, func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
+		m.handle(runCtx, statusPayloadToContext(ev))
+		return nil
+	})
+	if err != nil {
+		m.started = false
+		return fmt.Errorf("remediation: subscribe to status change events: %w", err)
+	}
+	m.subs = append(m.subs, sub)
+
 	m.logger.Info("prism remediation engine started",
 		zap.Int("operators", len(m.operators)),
 	)
@@ -292,6 +313,48 @@ func (m *Manager) handle(ctx context.Context, ec EventContext) {
 	}
 }
 
+// saveRecord persists a dispatch lifecycle transition. Persistence failures
+// are logged but never block the engine: an unrecorded transition must not
+// suppress a remediation execution.
+func (m *Manager) saveRecord(rec *Record) {
+	if m.records == nil || rec == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := m.records.UpsertRecord(ctx, rec); err != nil {
+		m.logger.Warn("remediation: persist record failed",
+			zap.String("run_id", rec.RunID),
+			zap.String("status", rec.Status),
+			zap.Error(err),
+		)
+	}
+}
+
+// newRecord builds the base Record for a dispatch run at its first
+// (triggered) transition.
+func newRecord(r *Rule, ec EventContext, runID string) *Record {
+	return &Record{
+		RuleID:   r.ID,
+		RuleName: r.Name,
+		AssetID:  ec.AssetID,
+		AssetKey: ec.AssetKey,
+		RunID:    runID,
+		Trigger:  ec.Type,
+		Status:   RecordStatusTriggered,
+	}
+}
+
+// recordSkip persists a skipped dispatch with the given reason and publishes
+// the corresponding RemediationSkipped event.
+func (m *Manager) recordSkip(ctx context.Context, r *Rule, ec EventContext, reason string) {
+	m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, reason))
+	rec := newRecord(r, ec, newRunID())
+	rec.Status = RecordStatusSkipped
+	rec.Error = reason
+	m.saveRecord(rec)
+}
+
 // checkGates evaluates the idempotency, cooldown, and circuit-breaker gates
 // for a rule. It returns true when the rule should be skipped (and records
 // the skip reason via a RemediationSkipped event).
@@ -302,7 +365,7 @@ func (m *Manager) checkGates(ctx context.Context, r *Rule, ec EventContext) (ski
 	m.inFlightMu.Lock()
 	if _, ok := m.inFlight[key]; ok {
 		m.inFlightMu.Unlock()
-		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "idempotency: execution in flight"))
+		m.recordSkip(ctx, r, ec, "idempotency: execution in flight")
 		return true
 	}
 	m.inFlightMu.Unlock()
@@ -311,7 +374,7 @@ func (m *Manager) checkGates(ctx context.Context, r *Rule, ec EventContext) (ski
 	if r.LastRunAt != nil && r.Cooldown > 0 {
 		elapsed := time.Since(*r.LastRunAt)
 		if elapsed < time.Duration(r.Cooldown)*time.Second {
-			m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "cooldown"))
+			m.recordSkip(ctx, r, ec, "cooldown")
 			return true
 		}
 	}
@@ -329,7 +392,7 @@ func (m *Manager) checkGates(ctx context.Context, r *Rule, ec EventContext) (ski
 				)
 			}
 		}
-		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "circuit breaker tripped"))
+		m.recordSkip(ctx, r, ec, "circuit breaker tripped")
 		return true
 	}
 	return false
@@ -355,7 +418,7 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 			zap.String("executor_type", r.ExecutorType),
 			zap.Int64("rule_id", r.ID),
 		)
-		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "operator not registered"))
+		m.recordSkip(ctx, r, ec, "operator not registered: "+r.ExecutorType)
 		return
 	}
 	key := inFlightKey(r.ID, ec.AssetID)
@@ -366,12 +429,19 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 	m.inFlightMu.Unlock()
 
 	m.publish(ctx, event.TypeRemediationTriggered, newPayload(r, ec, runID))
+	m.saveRecord(newRecord(r, ec, runID))
 
 	m.wg.Add(1)
 	job := pool.Lambda(func(jobCtx context.Context) error {
 		defer m.wg.Done()
 		defer m.releaseInFlight(key)
 		m.publish(jobCtx, event.TypeRemediationStarted, newPayload(r, ec, runID))
+
+		startedAt := time.Now()
+		startedRec := newRecord(r, ec, runID)
+		startedRec.Status = RecordStatusStarted
+		startedRec.StartedAt = &startedAt
+		m.saveRecord(startedRec)
 
 		res, err := op.Execute(jobCtx, ExecutionRequest{
 			RuleID:   r.ID,
@@ -400,6 +470,17 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 			completed.ErrorMsg = err.Error()
 		}
 		m.publish(jobCtx, event.TypeRemediationCompleted, completed)
+
+		finishedRec := newRecord(r, ec, runID)
+		finishedRec.StartedAt = &startedAt
+		finishedRec.FinishedAt = &now
+		if completed.Success {
+			finishedRec.Status = RecordStatusCompleted
+		} else {
+			finishedRec.Status = RecordStatusFailed
+			finishedRec.Error = completed.ErrorMsg
+		}
+		m.saveRecord(finishedRec)
 		return nil
 	})
 	if err := m.execPool.Submit(ctx, job); err != nil {
@@ -410,6 +491,10 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 			zap.Error(err),
 		)
 		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "execution pool full"))
+		droppedRec := newRecord(r, ec, runID)
+		droppedRec.Status = RecordStatusSkipped
+		droppedRec.Error = "execution pool full"
+		m.saveRecord(droppedRec)
 	}
 }
 
@@ -639,5 +724,21 @@ func logPayloadToContext(ev event.Event[event.LogMatchedPayload]) EventContext {
 		Keyword:  p.Keyword,
 		Content:  p.Content,
 		SourceIP: p.SourceIP,
+	}
+}
+
+// statusPayloadToContext converts an asset status-change event payload into
+// an EventContext for rule evaluation.
+func statusPayloadToContext(ev event.Event[event.StatusChangePayload]) EventContext {
+	p := ev.Payload
+	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
+	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
+	return EventContext{
+		Type:       string(TriggerStatusChange),
+		AssetID:    assetID,
+		AssetKey:   p.AssetKey,
+		TenantID:   tenantID,
+		PrevStatus: p.PrevStatus,
+		CurrStatus: p.CurrStatus,
 	}
 }

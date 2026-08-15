@@ -44,7 +44,7 @@ export default defineConfig({
       // via the vite proxy below. Set enable: true to use mock data for
       // standalone frontend development when the backend is unavailable.
       mockPath: '../packages/features/src/mock',
-      enable: true,
+      enable: false,
       logger: true,
     }),
     legacy({

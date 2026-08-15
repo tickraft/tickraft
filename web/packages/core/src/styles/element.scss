@@ -3,9 +3,24 @@
 // Dual-licensed — see LICENSE for details.
 
 // Element Plus theme variable bridge
-// Maps tk- design variables to Element Plus --el variables
-// Must be wrapped under .tk-app to avoid global pollution
-.tk-app {
+// Maps tk- design variables to Element Plus --el variables.
+// Scoped to .tk-app to avoid global pollution, plus [data-theme] body to
+// cover EP layers teleported OUTSIDE the app root (el-select dropdowns,
+// tooltips, dialogs, messages append to body by default), which would
+// otherwise fall back to Element Plus's light :root values and render
+// white in dark mode.
+//
+// html[data-theme] is load-bearing: EP declares derived vars on :root that
+// REFERENCE other vars (e.g. --el-disabled-bg-color: var(--el-fill-color-light)),
+// and a var() reference resolves where it is DECLARED, i.e. on the html
+// element. Overriding --el-fill-color-light on .tk-app/body alone never
+// reaches those, so disabled pagination buttons, disabled inputs etc. kept
+// EP's light :root values in dark mode. html[data-theme] (0,1,1) beats EP's
+// :root (0,1,0) regardless of stylesheet load order, and covers everything
+// below html including teleported layers.
+.tk-app,
+[data-theme] body,
+html[data-theme] {
   // Primary color
   --el-color-primary: var(--tk-primary-color);
   --el-color-primary-light-3: var(--tk-primary-color-light-3);
@@ -47,7 +62,10 @@
   --el-bg-color-overlay: var(--tk-bg-color-overlay);
   --el-bg-color-page: var(--tk-bg-color-page);
 
-  // Fill colors (aligned with the v4 neutral gradient, light to dark)
+  // Fill colors (aligned with the v4 neutral gradient, light to dark).
+  // In dark mode the neutral ramp itself is flipped (see themes/dark.scss),
+  // so these resolve to the dark surface ramp — without that flip, table
+  // headers, plain buttons and disabled fills stay pure white.
   --el-fill-color: var(--tk-neutral-100);
   --el-fill-color-light: var(--tk-neutral-50);
   --el-fill-color-lighter: var(--tk-neutral-50);

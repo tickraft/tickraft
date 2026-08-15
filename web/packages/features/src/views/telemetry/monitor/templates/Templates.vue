@@ -20,12 +20,13 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { DataTable, SearchForm, formatDate } from '@tickraft/core'
+import { DataTable, SearchForm, formatDate, usePermission } from '@tickraft/core'
 import { getTelemetryTemplates, deleteTelemetryTemplate, applyTemplate } from '../../../../api/telemetry'
 import type { TelemetryTemplate } from '../../../../types/telemetry'
 
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const allTemplates = ref<TelemetryTemplate[]>([])
@@ -333,7 +334,7 @@ onMounted(() => {
               {{ t('telemetry.monitor.templates.apply') }}
             </el-button>
             <el-button
-              v-if="!row.isBuiltin"
+              v-if="!row.isBuiltin && canDelete('*')"
               type="danger"
               size="small"
               link

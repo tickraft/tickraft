@@ -337,15 +337,83 @@ export default [
     method: 'post',
     response: () => ({ code: 0, message: 'success', data: null }),
   },
-  // Toggle task enabled status
+  // Pause task (remove from scheduling wheel, config preserved)
   {
-    url: '/api/v1/tasks/:id/toggle',
+    url: '/api/v1/tasks/:id/pause',
     method: 'post',
     response: ({ url }: { url: string }) => {
       const id = extractId(url)
       const task = mockTasks.find((t) => t.id === id)
-      if (task) task.enabled = !task.enabled
-      return { code: 0, message: 'success', data: { enabled: task?.enabled } }
+      if (task) {
+        task.enabled = false
+        task.next_run = ''
+      }
+      return { code: 0, message: 'success', data: null }
+    },
+  },
+  // Resume a paused task
+  {
+    url: '/api/v1/tasks/:id/resume',
+    method: 'post',
+    response: ({ url }: { url: string }) => {
+      const id = extractId(url)
+      const task = mockTasks.find((t) => t.id === id)
+      if (task) task.enabled = true
+      return { code: 0, message: 'success', data: null }
+    },
+  },
+  // Copy a task (clone configuration into a new task)
+  {
+    url: '/api/v1/tasks/:id/copy',
+    method: 'post',
+    response: ({ url, body }: { url: string; body: Record<string, unknown> }) => {
+      const id = extractId(url)
+      const source = mockTasks.find((t) => t.id === id) || mockTasks[0]
+      const now = new Date().toISOString()
+      const clone = {
+        ...source,
+        id: Math.max(...mockTasks.map((t) => t.id)) + 1,
+        name: (body.name as string) || `${source.name} (copy)`,
+        enabled: false,
+        last_run: '',
+        next_run: '',
+        created_at: now,
+        updated_at: now,
+      }
+      mockTasks.push(clone)
+      return { code: 0, message: 'success', data: clone }
+    },
+  },
+  // Execution stats for an optional time range
+  {
+    url: '/api/v1/tasks/stats',
+    method: 'get',
+    response: ({ query }: { query: Record<string, string> }) => {
+      const fromTs = query?.from ? new Date(query.from).getTime() : 0
+      const toTs = query?.to ? new Date(query.to).getTime() : 0
+      const inRange = mockLogs.filter((l) => {
+        const ts = new Date(l.started_at.replace(' ', 'T')).getTime()
+        if (fromTs && ts < fromTs) return false
+        if (toTs && ts > toTs) return false
+        return true
+      })
+      const success = inRange.filter((l) => l.status === 'success').length
+      const failed = inRange.filter((l) => l.status === 'failed').length
+      const total = inRange.length
+      const avgDuration = total
+        ? Math.round(inRange.reduce((sum, l) => sum + (l.duration || 0), 0) / total)
+        : 0
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          total_executions: total,
+          success_count: success,
+          failure_count: failed,
+          success_rate: total ? Math.round((success / total) * 10000) / 100 : 0,
+          average_duration_ms: avgDuration,
+        },
+      }
     },
   },
   // Asset list is handled by telemetry mock (/api/v1/assets)
@@ -365,17 +433,17 @@ export default [
       if (query?.task_name) {
         filtered = filtered.filter((l) => (l.task_name || '').includes(query.task_name))
       }
-      if (query?.executor_type) {
-        filtered = filtered.filter((l) => l.executor_type === query.executor_type)
+      if (query?.executor) {
+        filtered = filtered.filter((l) => l.executor_type === query.executor)
       }
       if (query?.status) {
         filtered = filtered.filter((l) => l.status === query.status)
       }
-      if (query?.start_from) {
-        filtered = filtered.filter((l) => l.started_at >= `${query.start_from} 00:00:00`)
+      if (query?.from) {
+        filtered = filtered.filter((l) => l.started_at >= query.from.replace('T', ' ').substring(0, 19))
       }
-      if (query?.start_to) {
-        filtered = filtered.filter((l) => l.started_at <= `${query.start_to} 23:59:59`)
+      if (query?.to) {
+        filtered = filtered.filter((l) => l.started_at <= query.to.replace('T', ' ').substring(0, 19))
       }
       const total = filtered.length
       const start = (page - 1) * size

@@ -135,29 +135,30 @@ function handleUpgrade() {
   justify-content: center;
   cursor: pointer;
 
-  /* Use gray-10 semi-transparent, applies to both light/dark themes */
-  // Fallback for browsers without color-mix support (#0f172a is --tk-gray-10)
-  background: rgba(15, 23, 42, 0.6);
-  background: color-mix(in srgb, var(--tk-gray-10) 60%, transparent);
+  /* Use the themed mask token — a dark scrim in both light and dark themes,
+     so the light overlay text below stays readable either way */
+  // Fallback for browsers without custom-property support
+  background: rgba(10 14 26 / 55%);
+  background: var(--tk-bg-mask);
   border-radius: inherit;
   transition: background var(--tk-transition-base);
 }
 
 .tk-feature-guard__overlay:hover {
-  // Fallback for browsers without color-mix support (#0f172a is --tk-gray-10)
-  background: rgba(15, 23, 42, 0.7);
-  background: color-mix(in srgb, var(--tk-gray-10) 70%, transparent);
+  // Slightly darker scrim on hover (mix 8% black into the mask color)
+  background: color-mix(in srgb, var(--tk-bg-mask) 92%, black);
 }
 
 .tk-feature-guard__lock-icon {
   font-size: 28px;
-  color: var(--tk-neutral-0);
+  // White in both themes — it sits on the dark mask scrim above
+  color: var(--tk-text-on-primary);
 }
 
 .tk-feature-guard__lock-text {
   font-size: var(--tk-font-size-sm);
   font-weight: var(--tk-font-weight-semibold);
-  color: var(--tk-neutral-0);
+  color: var(--tk-text-on-primary);
   letter-spacing: 0.02em;
 }
 
@@ -173,7 +174,8 @@ function handleUpgrade() {
   font-size: 10px;
   font-weight: var(--tk-font-weight-medium);
   line-height: 1.4;
-  color: var(--tk-neutral-0);
+  // White in both themes: tier badges sit on saturated accent/primary chips
+  color: var(--tk-text-on-accent);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   border-radius: var(--tk-radius-sm);

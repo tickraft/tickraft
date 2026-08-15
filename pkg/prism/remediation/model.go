@@ -111,6 +111,10 @@ type EventContext struct {
 	Type string `expr:"type"`
 	// AssetID is the asset associated with the event.
 	AssetID int64 `expr:"asset_id"`
+	// AssetKey is the tenant-unique asset key, populated for status_change
+	// triggers whose payload carries one. Empty for metric and log
+	// triggers, which only carry the numeric asset ID.
+	AssetKey string `expr:"asset_key"`
 	// TenantID is the owning tenant (0 in the runtime).
 	TenantID int64 `expr:"tenant_id"`
 	// MetricName is the metric that breached a threshold (metric trigger).

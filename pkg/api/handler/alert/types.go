@@ -37,6 +37,21 @@ type Record struct {
 	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
 }
 
+// RecordFilter holds optional server-side filtering criteria for listing
+// alert records. A zero-value filter matches all records.
+type RecordFilter struct {
+	// Severity filters by an exact severity match (info/warning/critical).
+	Severity string
+	// Status filters by an exact status match (firing/acknowledged/resolved).
+	Status string
+	// From restricts the result to records fired at or after this RFC3339
+	// time.
+	From time.Time
+	// To restricts the result to records fired at or before this RFC3339
+	// time.
+	To time.Time
+}
+
 // Service defines the operations for managing alert rules and records.
 type Service interface {
 	// ListRules returns a page of alert rules and the total count.
@@ -49,8 +64,9 @@ type Service interface {
 	UpdateRule(ctx context.Context, id int64, req *Rule) (*Rule, error)
 	// DeleteRule deletes an alert rule by ID.
 	DeleteRule(ctx context.Context, id int64) error
-	// ListRecords returns a page of alert records and the total count.
-	ListRecords(ctx context.Context, page, size int) ([]Record, int64, error)
+	// ListRecords returns a page of alert records matching the filter and
+	// the total count.
+	ListRecords(ctx context.Context, page, size int, filter RecordFilter) ([]Record, int64, error)
 	// GetRecord returns a single alert record by ID.
 	GetRecord(ctx context.Context, id int64) (*Record, error)
 	// AcknowledgeRecord transitions the alert record identified by ID to the

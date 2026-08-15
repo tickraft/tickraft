@@ -219,10 +219,10 @@ func TestRenderer_RenderMetricEnglish(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     42,
-		Timestamp:   time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+		Type:       alert.TypeMetric,
+		AssetID:    42,
+		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -260,10 +260,10 @@ func TestRenderer_RenderMetricChinese(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     42,
-		Timestamp:   time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+		Type:       alert.TypeMetric,
+		AssetID:    42,
+		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -288,10 +288,10 @@ func TestRenderer_RenderLocaleFallback(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     1,
-		Timestamp:   time.Now(),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 
 	// ja is not in the template; should fall back to en-US.
@@ -327,10 +327,10 @@ func TestRenderer_RenderLanguageOnlyFallback(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     1,
-		Timestamp:   time.Now(),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 
 	// zh-Hans should fall back to zh.
@@ -405,10 +405,10 @@ func TestRenderer_RenderDefaultOptions(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     1,
-		Timestamp:   time.Now(),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 	// Empty Locale and Style should default to i18n.DefaultLocale and "detailed".
 	msg, err := r.Render(context.Background(), alert, RenderOptions{TemplateID: "cpu_high"})
@@ -433,10 +433,10 @@ func TestRenderer_RenderWithRegistry(t *testing.T) {
 	r := NewRenderer(lib, reg, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     42,
-		Timestamp:   time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+		Type:       alert.TypeMetric,
+		AssetID:    42,
+		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
 		TemplateID: "cpu_high",
@@ -468,10 +468,10 @@ func TestRenderer_RenderRTLDirection(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     1,
-		Timestamp:   time.Now(),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
 		TemplateID: "cpu_high",
@@ -510,9 +510,9 @@ func TestRenderer_RenderLogAlert(t *testing.T) {
 	r := NewRenderer(lib, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeLog,
-		AssetID:   10,
-		Timestamp: time.Now(),
+		Type:       alert.TypeLog,
+		AssetID:    10,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -536,10 +536,10 @@ func TestRenderer_RenderEmptyFrontendBaseURL(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
 	alert := alert.Event{
-		Type:        alert.TypeMetric,
-		AssetID:     1,
-		Timestamp:   time.Now(),
-	Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
+		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
 		TemplateID: "cpu_high",

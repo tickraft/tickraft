@@ -11,30 +11,33 @@
 // avoid overriding the light-mode defaults.
 [data-theme='dark'] {
   // ===== Surfaces (Observatory Dark — indigo-tinted) =====
-  --tk-bg-canvas: #080b14;
-  --tk-bg-page: #080b14;
-  --tk-bg-surface: #141a26;
-  --tk-bg-surface-hover: #1a2030;
-  --tk-bg-surface-active: #202838;
-  --tk-bg-overlay: #141a26;
-  --tk-bg-sidebar: #080b14;
+  // Canvas lifted off pitch-black: a near-#000 base next to bright accents is
+  // the main source of glare. A gentler base narrows the luminance gap
+  // between page and surface while keeping the indigo tint.
+  --tk-bg-canvas: #0b0e16;
+  --tk-bg-page: #0b0e16;
+  --tk-bg-surface: #151b27;
+  --tk-bg-surface-hover: #1b2231;
+  --tk-bg-surface-active: #212939;
+  --tk-bg-overlay: #151b27;
+  --tk-bg-sidebar: #0b0e16;
   --tk-bg-sidebar-hover: rgb(255 255 255 / 5%);
-  --tk-bg-sidebar-active: rgb(91 123 240 / 22%);
-  --tk-bg-topbar: #0c1018;
-  --tk-bg-input: #0c1018;
-  --tk-bg-fill: #1a2030;
-  --tk-bg-fill-light: #141a26;
-  --tk-bg-fill-blank: #0c1018;
+  --tk-bg-sidebar-active: rgb(106 134 221 / 20%);
+  --tk-bg-topbar: #0e121b;
+  --tk-bg-input: #0e121b;
+  --tk-bg-fill: #1b2231;
+  --tk-bg-fill-light: #151b27;
+  --tk-bg-fill-blank: #0e121b;
   --tk-bg-mask: rgb(2 4 12 / 78%);
-  --tk-bg-tooltip: #1a2236;
+  --tk-bg-tooltip: #1c2438;
 
   // App-specific surface extensions
-  --tk-bg-surface-elevated: #1a2030;
-  --tk-bg-surface-overlay: #202838;
+  --tk-bg-surface-elevated: #1b2231;
+  --tk-bg-surface-overlay: #212939;
   --tk-bg-sidebar-section: rgb(255 255 255 / 2%);
   --tk-bg-hover: rgb(255 255 255 / 5%);
   --tk-bg-active: rgb(255 255 255 / 7%);
-  --tk-bg-selected: rgb(91 123 240 / 16%);
+  --tk-bg-selected: rgb(106 134 221 / 15%);
   --tk-bg-stripe: rgb(255 255 255 / 2%);
   --tk-bg-color: var(--tk-bg-surface);
   --tk-bg-color-overlay: var(--tk-bg-surface-elevated);
@@ -42,21 +45,23 @@
   --tk-bg-color-sidebar: var(--tk-bg-sidebar);
 
   // ===== Text =====
-  --tk-text-primary: #e6edf3;
-  --tk-text-regular: #c9d1d9;
-  --tk-text-secondary: #8b949e;
-  --tk-text-placeholder: #6e7681;
-  --tk-text-disabled: #484f58;
+  // Primary softened a step from near-white (less halo around glyphs);
+  // secondary lifted so muted labels stay comfortably readable on #151b27.
+  --tk-text-primary: #e4eaf2;
+  --tk-text-regular: #c6cedb;
+  --tk-text-secondary: #99a3b4;
+  --tk-text-placeholder: #78828f;
+  --tk-text-disabled: #4d5563;
   --tk-text-on-primary: #fff;
-  --tk-text-on-sidebar: #8b949e;
+  --tk-text-on-sidebar: #99a3b4;
   --tk-text-on-sidebar-active: #fff;
-  --tk-text-on-sidebar-hover: #e6edf3;
-  --tk-text-link: #5b7bf0;
-  --tk-text-link-hover: #7c95f5;
+  --tk-text-on-sidebar-hover: #dde4ee;
+  --tk-text-link: #8ba1ef;
+  --tk-text-link-hover: #a5b5f4;
   --tk-text-tooltip: #f1f5f9;
 
   // App-specific text extensions
-  --tk-text-tertiary: #8b949e;
+  --tk-text-tertiary: #99a3b4;
   --tk-text-inverse: #0f172a;
   --tk-text-on-accent: #fff;
   --tk-text-sidebar: var(--tk-text-on-sidebar);
@@ -72,145 +77,172 @@
   --tk-border-color-lighter: rgb(240 246 252 / 5%);
   --tk-border-color-extra-light: rgb(240 246 252 / 3%);
   --tk-border-color-dark: rgb(240 246 252 / 16%);
-  --tk-border-primary: 1px solid rgb(91 123 240 / 45%);
+  --tk-border-primary: 1px solid rgb(106 134 221 / 38%);
   --tk-border-sidebar: 1px solid rgb(255 255 255 / 6%);
 
-  // ===== Primary (brighter variant for dark AA) =====
-  --tk-primary-color: #5b7bf0;
-  --tk-primary-color-hover: #7c95f5;
-  --tk-primary-color-active: #4263eb;
-  --tk-primary-color-bg: rgb(91 123 240 / 16%);
-  --tk-primary-color-bg-hover: rgb(91 123 240 / 26%);
-  --tk-primary-color-border: rgb(91 123 240 / 42%);
+  // ===== Neutral scale (flipped for dark) =====
+  // The :root neutral ramp in tokens/_color.scss is light-only. Low indices
+  // act as fills/backgrounds, high indices as muted text — the ROLES stay
+  // the same here but the values invert: fills go dark, muted text goes
+  // light. This is what feeds the Element Plus fill-color bridge in
+  // element.scss; without it, table headers, plain buttons, disabled fills
+  // and every --tk-gray-* consumer render light/white in dark mode.
+  --tk-neutral-0: #0e121b;
+  --tk-neutral-50: #151b27;
+  --tk-neutral-100: #1b2231;
+  --tk-neutral-200: #212939;
+  --tk-neutral-300: #2a3346;
+  --tk-neutral-400: #78828f;
+  --tk-neutral-500: #99a3b4;
+  --tk-neutral-600: #c6cedb;
+  --tk-neutral-700: #e4eaf2;
+  --tk-neutral-800: #eef2f8;
+  --tk-neutral-900: #f5f8fc;
+  --tk-neutral-950: #fff;
+  --tk-neutral-color: #99a3b4;
+
+  // ===== Primary (calmer indigo for dark — desaturated, keeps AA) =====
+  // The old #5b7bf0 was ~85% saturated and glowed against near-black.
+  // #5a76d8 trades a little chroma for comfortable viewing while its
+  // contrast with white button text stays close to 4:1.
+  --tk-primary-color: #5a76d8;
+  --tk-primary-color-hover: #7089e3;
+  --tk-primary-color-active: #4860c4;
+  --tk-primary-color-bg: rgb(106 134 221 / 14%);
+  --tk-primary-color-bg-hover: rgb(106 134 221 / 24%);
+  --tk-primary-color-border: rgb(106 134 221 / 36%);
   --tk-primary-color-text: #fff;
 
   // Element Plus bridge color scale (darkened in dark mode, referencing the
   // primary dark scale)
-  --tk-primary-color-light-3: #3b51c9;
-  --tk-primary-color-light-5: #3141a3;
-  --tk-primary-color-light-7: #283380;
-  --tk-primary-color-light-8: #1f2763;
-  --tk-primary-color-light-9: #181f4f;
-  --tk-primary-color-dark-2: #5b7bf0;
+  --tk-primary-color-light-3: #4660c0;
+  --tk-primary-color-light-5: #3a4fa0;
+  --tk-primary-color-light-7: #2e3d7e;
+  --tk-primary-color-light-8: #263265;
+  --tk-primary-color-light-9: #1e2751;
+  --tk-primary-color-dark-2: #6a82dd;
 
   // ===== Accent (warmer amber for dark, instrument pop) =====
-  --tk-accent-color: #fbbf24;
-  --tk-accent-color-hover: #fcd34d;
-  --tk-accent-color-active: #f59e0b;
-  --tk-accent-color-bg: rgb(251 191 36 / 14%);
-  --tk-accent-color-bg-hover: rgb(251 191 36 / 22%);
-  --tk-accent-color-border: rgb(251 191 36 / 38%);
-  --tk-accent-color-text: #fbbf24;
+  // Softened from neon #fbbf24 to a waxier gold that reads as text too.
+  --tk-accent-color: #e3b341;
+  --tk-accent-color-hover: #efc65c;
+  --tk-accent-color-active: #d29922;
+  --tk-accent-color-bg: rgb(227 179 65 / 13%);
+  --tk-accent-color-bg-hover: rgb(227 179 65 / 20%);
+  --tk-accent-color-border: rgb(227 179 65 / 34%);
+  --tk-accent-color-text: #e3b341;
 
-  // ===== Semantic status (desaturated for dark bg, AA on #141a26) =====
-  --tk-success-color: #3fb950;
-  --tk-success-color-hover: #46c75a;
-  --tk-success-color-bg: rgb(63 185 80 / 14%);
-  --tk-success-color-bg-hover: rgb(63 185 80 / 22%);
-  --tk-success-color-border: rgb(63 185 80 / 34%);
-  --tk-success-color-text: #3fb950;
-  --tk-success-color-light: rgb(63 185 80 / 18%);
-  --tk-success-color-light-7: rgb(63 185 80 / 26%);
-  --tk-success-color-light-9: rgb(63 185 80 / 18%);
+  // ===== Semantic status (desaturated for dark bg, AA on #151b27) =====
+  --tk-success-color: #46b45e;
+  --tk-success-color-hover: #56c26c;
+  --tk-success-color-bg: rgb(70 180 94 / 13%);
+  --tk-success-color-bg-hover: rgb(70 180 94 / 20%);
+  --tk-success-color-border: rgb(70 180 94 / 32%);
+  --tk-success-color-text: #46b45e;
+  --tk-success-color-light: rgb(70 180 94 / 16%);
+  --tk-success-color-light-7: rgb(70 180 94 / 24%);
+  --tk-success-color-light-9: rgb(70 180 94 / 16%);
   --tk-success-color-dark: var(--tk-success-color-text);
   --tk-warning-color: #d29922;
   --tk-warning-color-hover: #e3b341;
-  --tk-warning-color-bg: rgb(210 153 34 / 14%);
-  --tk-warning-color-bg-hover: rgb(210 153 34 / 22%);
-  --tk-warning-color-border: rgb(210 153 34 / 34%);
+  --tk-warning-color-bg: rgb(210 153 34 / 13%);
+  --tk-warning-color-bg-hover: rgb(210 153 34 / 20%);
+  --tk-warning-color-border: rgb(210 153 34 / 32%);
   --tk-warning-color-text: #e3b341;
-  --tk-warning-color-light: rgb(210 153 34 / 18%);
-  --tk-warning-color-light-7: rgb(210 153 34 / 26%);
-  --tk-warning-color-light-9: rgb(210 153 34 / 18%);
+  --tk-warning-color-light: rgb(210 153 34 / 16%);
+  --tk-warning-color-light-7: rgb(210 153 34 / 24%);
+  --tk-warning-color-light-9: rgb(210 153 34 / 16%);
   --tk-warning-color-dark: var(--tk-warning-color-text);
-  --tk-danger-color: #f85149;
-  --tk-danger-color-hover: #ff6b63;
-  --tk-danger-color-bg: rgb(248 81 73 / 14%);
-  --tk-danger-color-bg-hover: rgb(248 81 73 / 22%);
-  --tk-danger-color-border: rgb(248 81 73 / 34%);
-  --tk-danger-color-text: #f85149;
-  --tk-danger-color-light: rgb(248 81 73 / 18%);
-  --tk-danger-color-light-7: rgb(248 81 73 / 26%);
-  --tk-danger-color-light-9: rgb(248 81 73 / 18%);
+  --tk-danger-color: #e5534b;
+  --tk-danger-color-hover: #ef6a60;
+  --tk-danger-color-bg: rgb(229 83 75 / 13%);
+  --tk-danger-color-bg-hover: rgb(229 83 75 / 20%);
+  --tk-danger-color-border: rgb(229 83 75 / 32%);
+  --tk-danger-color-text: #e5534b;
+  --tk-danger-color-light: rgb(229 83 75 / 16%);
+  --tk-danger-color-light-7: rgb(229 83 75 / 24%);
+  --tk-danger-color-light-9: rgb(229 83 75 / 16%);
   --tk-danger-color-dark: var(--tk-danger-color-text);
-  --tk-error-color: #f85149;
-  --tk-error-color-hover: #ff6b63;
-  --tk-error-color-bg: rgb(248 81 73 / 14%);
-  --tk-error-color-border: rgb(248 81 73 / 34%);
-  --tk-error-color-text: #f85149;
-  --tk-info-color: #58a6ff;
-  --tk-info-color-hover: #79b8ff;
-  --tk-info-color-bg: rgb(88 166 255 / 14%);
-  --tk-info-color-border: rgb(88 166 255 / 34%);
-  --tk-info-color-text: #58a6ff;
-  --tk-info-color-light: rgb(88 166 255 / 18%);
-  --tk-info-color-light-7: rgb(88 166 255 / 26%);
-  --tk-info-color-light-9: rgb(88 166 255 / 18%);
+  --tk-error-color: #e5534b;
+  --tk-error-color-hover: #ef6a60;
+  --tk-error-color-bg: rgb(229 83 75 / 13%);
+  --tk-error-color-border: rgb(229 83 75 / 32%);
+  --tk-error-color-text: #e5534b;
+  --tk-info-color: #6aa5f5;
+  --tk-info-color-hover: #85b6f8;
+  --tk-info-color-bg: rgb(106 165 245 / 13%);
+  --tk-info-color-border: rgb(106 165 245 / 32%);
+  --tk-info-color-text: #6aa5f5;
+  --tk-info-color-light: rgb(106 165 245 / 16%);
+  --tk-info-color-light-7: rgb(106 165 245 / 24%);
+  --tk-info-color-light-9: rgb(106 165 245 / 16%);
   --tk-info-color-dark: var(--tk-info-color-text);
 
   // ===== Extended status (monitoring palette) =====
-  --tk-status-online: #3fb950;
-  --tk-status-offline: #6e7681;
+  --tk-status-online: #46b45e;
+  --tk-status-offline: #78828f;
   --tk-status-warning: #d29922;
-  --tk-status-critical: #f85149;
-  --tk-status-unknown: #8b949e;
+  --tk-status-critical: #e5534b;
+  --tk-status-unknown: #99a3b4;
   --tk-status-maintenance: #a371f7;
-  --tk-status-firing: #f85149;
-  --tk-status-resolved: #3fb950;
+  --tk-status-firing: #e5534b;
+  --tk-status-resolved: #46b45e;
   --tk-status-pending: #d29922;
-  --tk-status-running: #5b7bf0;
-  --tk-status-success: #3fb950;
-  --tk-status-failed: #f85149;
-  --tk-status-skipped: #8b949e;
+  --tk-status-running: #6a82dd;
+  --tk-status-success: #46b45e;
+  --tk-status-failed: #e5534b;
+  --tk-status-skipped: #99a3b4;
   --tk-status-timeout: #d29922;
 
-  // ===== Shadows (deeper, true floating depth) =====
-  --tk-shadow-xs: 0 1px 2px rgb(0 0 0 / 40%);
-  --tk-shadow-sm: 0 1px 3px rgb(0 0 0 / 45%), 0 1px 2px rgb(0 0 0 / 30%);
-  --tk-shadow-md: 0 4px 8px rgb(0 0 0 / 50%), 0 2px 4px rgb(0 0 0 / 30%);
-  --tk-shadow-lg: 0 10px 18px rgb(0 0 0 / 55%), 0 4px 8px rgb(0 0 0 / 30%);
-  --tk-shadow-xl: 0 20px 30px rgb(0 0 0 / 60%),
-    0 10px 14px rgb(0 0 0 / 35%);
-  --tk-shadow-2xl: 0 30px 60px rgb(0 0 0 / 70%);
-  --tk-shadow-inner: inset 0 2px 4px rgb(0 0 0 / 30%);
-  --tk-shadow-focus: 0 0 0 3px rgb(91 123 240 / 40%);
-  --tk-shadow-danger-focus: 0 0 0 3px rgb(248 81 73 / 35%);
+  // ===== Shadows (deeper, true floating depth — eased slightly so
+  // overlays don't read as hard black cutouts) =====
+  --tk-shadow-xs: 0 1px 2px rgb(0 0 0 / 35%);
+  --tk-shadow-sm: 0 1px 3px rgb(0 0 0 / 38%), 0 1px 2px rgb(0 0 0 / 26%);
+  --tk-shadow-md: 0 4px 8px rgb(0 0 0 / 44%), 0 2px 4px rgb(0 0 0 / 28%);
+  --tk-shadow-lg: 0 10px 18px rgb(0 0 0 / 50%), 0 4px 8px rgb(0 0 0 / 28%);
+  --tk-shadow-xl: 0 20px 30px rgb(0 0 0 / 55%),
+    0 10px 14px rgb(0 0 0 / 32%);
+  --tk-shadow-2xl: 0 30px 60px rgb(0 0 0 / 65%);
+  --tk-shadow-inner: inset 0 2px 4px rgb(0 0 0 / 28%);
+  --tk-shadow-focus: 0 0 0 3px rgb(106 134 221 / 32%);
+  --tk-shadow-danger-focus: 0 0 0 3px rgb(229 83 75 / 28%);
 
   // ===== Gradients (dark-tuned, atmospheric) =====
-  --tk-gradient-sidebar: linear-gradient(180deg, #080b14 0%, #0c1018 100%);
-  --tk-gradient-hero: linear-gradient(135deg, rgb(91 123 240 / 18%) 0%, rgb(251 191 36 / 5%) 50%, rgb(163 113 247 / 10%) 100%);
-  --tk-gradient-primary: linear-gradient(135deg, #5b7bf0 0%, #4263eb 60%, #3b51c9 100%);
-  --tk-gradient-accent: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  --tk-gradient-sidebar: linear-gradient(180deg, #0b0e16 0%, #0e121b 100%);
+  --tk-gradient-hero: linear-gradient(135deg, rgb(106 134 221 / 12%) 0%, rgb(227 179 65 / 4%) 50%, rgb(163 113 247 / 8%) 100%);
+  --tk-gradient-primary: linear-gradient(135deg, #6a82dd 0%, #5a76d8 60%, #4860c4 100%);
+  --tk-gradient-accent: linear-gradient(135deg, #e3b341 0%, #d29922 100%);
 
-  // ===== Glow (brighter for dark contrast) =====
-  --tk-glow-primary: 0 0 28px rgb(91 123 240 / 50%);
-  --tk-glow-accent: 0 0 22px rgb(251 191 36 / 45%);
-  --tk-glow-success: 0 0 24px rgb(63 185 80 / 40%);
-  --tk-glow-danger: 0 0 24px rgb(248 81 73 / 40%);
+  // ===== Glow (halo accents, halved so they read as a soft bloom
+  // instead of a neon glare) =====
+  --tk-glow-primary: 0 0 24px rgb(106 134 221 / 28%);
+  --tk-glow-accent: 0 0 20px rgb(227 179 65 / 24%);
+  --tk-glow-success: 0 0 24px rgb(70 180 94 / 22%);
+  --tk-glow-danger: 0 0 24px rgb(229 83 75 / 22%);
 
   // ===== App-specific dark extensions =====
 
   // Charts
-  --tk-chart-grid: rgb(255 255 255 / 6%);
-  --tk-chart-text: #8b949e;
+  --tk-chart-grid: rgb(255 255 255 / 5%);
+  --tk-chart-text: #99a3b4;
 
   // Glass
-  --tk-glass-bg: rgb(20 26 38 / 85%);
+  --tk-glass-bg: rgb(21 27 39 / 85%);
   --tk-glass-border: rgb(255 255 255 / 8%);
 
   // Brand gradient (login page)
   --tk-gradient-brand: linear-gradient(
     155deg,
-    #080b14 0%,
-    #0f1225 35%,
-    #1a1d40 65%,
-    #0f1225 100%
+    #0b0e16 0%,
+    #10132a 35%,
+    #191d3e 65%,
+    #10132a 100%
   );
 
   // Focus ring
   --tk-focus-ring: 0 0 0 2px var(--tk-bg-surface),
     0 0 0 4px var(--tk-primary-color);
-  --tk-focus-ring-color: rgb(91 123 240 / 40%);
+  --tk-focus-ring-color: rgb(106 134 221 / 32%);
 
   // Derived colors
   --tk-link-color: var(--tk-text-link);
@@ -271,12 +303,12 @@
 // ===== Selection color =====
 [data-theme='dark'] ::selection {
   color: #fff;
-  background: rgb(79 110 248 / 32%);
+  background: rgb(106 134 221 / 26%);
 }
 
 [data-theme='dark'] ::selection {
   color: #fff;
-  background: rgb(79 110 248 / 32%);
+  background: rgb(106 134 221 / 26%);
 }
 
 // ===== Dark-specific component adjustments =====
@@ -288,8 +320,8 @@
 
 // Topbar glass: dark translucent wash
 [data-theme='dark'] .tk-topbar {
-  background: rgb(13 17 23 / 82%);
-  backdrop-filter: saturate(180%) blur(12px);
+  background: rgb(14 18 27 / 85%);
+  backdrop-filter: saturate(160%) blur(12px);
 }
 
 // Code block: matches GitHub dark code surface
@@ -329,4 +361,70 @@
 // Tables: subtle stripe uses surface-hover instead of grey
 [data-theme='dark'] .tk-table--striped tbody tr:nth-of-type(odd) {
   background-color: rgb(255 255 255 / 1.5%);
+}
+
+// Element Plus empty-state illustration ("No Data"): the built-in SVG fills
+// reference --el-empty-fill-color-0..9, which default to a light ramp with
+// fill-color-0 = pure --el-color-white. Remap onto the dark surface ramp.
+// (0,2,0) specificity beats .el-empty's own block vars regardless of the
+// order in which EP component styles load.
+[data-theme='dark'] .el-empty {
+  --el-empty-fill-color-0: #161c29;
+  --el-empty-fill-color-1: #1a2130;
+  --el-empty-fill-color-2: #1d2534;
+  --el-empty-fill-color-3: #202839;
+  --el-empty-fill-color-4: #232c3f;
+  --el-empty-fill-color-5: #263044;
+  --el-empty-fill-color-6: #2a3448;
+  --el-empty-fill-color-7: #2e3850;
+  --el-empty-fill-color-8: #333e5a;
+  --el-empty-fill-color-9: #3a4665;
+}
+
+// Element Plus v-loading masks default to near-white (--el-mask-color
+// #ffffffe6). Declare on body so every mask inside the page inherits the
+// dark scrim, independent of stylesheet order against EP's :root defaults.
+[data-theme='dark'] body {
+  --el-mask-color: rgb(2 4 12 / 68%);
+  --el-mask-color-extra-light: rgb(2 4 12 / 38%);
+}
+
+// Element Plus semantic light-N scales. EP only ships these for primary in
+// a themable form; the success/warning/danger/info ramps are hard-coded
+// light mixes at :root. el-tag backgrounds/borders (--el-tag-bg-color =
+// var(--el-color-<type>-light-9)), plain-button hovers and alert badges all
+// read them, so without dark values those "tinted" cell badges render as
+// near-white blocks in dark mode. Values are the dark semantic bases
+// (#46b45e/#d29922/#e5534b/#6aa5f5) mixed towards the #141a26 surface —
+// the same 30/50/70/80/90% steps EP uses, re-based for dark. The html
+// prefix lifts specificity (0,1,1) above EP's :root (0,1,0) so load order
+// cannot regress it.
+html[data-theme='dark'] {
+  --el-color-success-light-3: #37864d;
+  --el-color-success-light-5: #2d6742;
+  --el-color-success-light-7: #234837;
+  --el-color-success-light-8: #1e3931;
+  --el-color-success-light-9: #19292c;
+  --el-color-success-dark-2: #6bc37e;
+
+  --el-color-warning-light-3: #997323;
+  --el-color-warning-light-5: #735a24;
+  --el-color-warning-light-7: #4d4025;
+  --el-color-warning-light-8: #3a3325;
+  --el-color-warning-light-9: #272726;
+  --el-color-warning-dark-2: #dbad4e;
+
+  --el-color-danger-light-3: #a64240;
+  --el-color-danger-light-5: #7d3739;
+  --el-color-danger-light-7: #532b31;
+  --el-color-danger-light-8: #3e252d;
+  --el-color-danger-light-9: #29202a;
+  --el-color-danger-dark-2: #ea756f;
+
+  --el-color-info-light-3: #507bb7;
+  --el-color-info-light-5: #3f608e;
+  --el-color-info-light-7: #2e4464;
+  --el-color-info-light-8: #25364f;
+  --el-color-info-light-9: #1d283b;
+  --el-color-info-dark-2: #88b7f7;
 }

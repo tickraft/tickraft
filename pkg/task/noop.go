@@ -58,6 +58,16 @@ func (NoopExecutionStore) List(_ context.Context, _ int64, _ int) ([]*Execution,
 	return nil, nil
 }
 
+// Query always returns an empty slice and zero total.
+func (NoopExecutionStore) Query(_ context.Context, _ ExecutionQuery, _, _ int) ([]*Execution, int64, error) {
+	return nil, 0, nil
+}
+
+// Get always returns nil, ErrExecutionNotFound.
+func (NoopExecutionStore) Get(_ context.Context, _ int64) (*Execution, error) {
+	return nil, ErrExecutionNotFound
+}
+
 // DeleteExecutionsOlderThan is a no-op and always returns nil.
 func (NoopExecutionStore) DeleteExecutionsOlderThan(_ context.Context, _ time.Time) error {
 	return nil

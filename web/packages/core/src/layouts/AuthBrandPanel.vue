@@ -168,7 +168,7 @@ const features = computed<Required<BrandFeature>[]>(() => {
       <circle cx="540" cy="250" r="5" fill="#22d3ee" stroke="none" opacity="0.85" />
       <circle cx="250" cy="500" r="5" fill="#a78bfa" stroke="none" opacity="0.75" />
       <circle cx="520" cy="540" r="4" fill="#34d399" stroke="none" opacity="0.7" />
-      <circle cx="220" cy="260" r="3" fill="#fbbf24" stroke="none" opacity="0.7" />
+      <circle cx="220" cy="260" r="3" fill="#e3b341" stroke="none" opacity="0.7" />
     </svg>
 
     <!-- Brand top: logo + wordmark + edition badge -->
@@ -243,12 +243,12 @@ const features = computed<Required<BrandFeature>[]>(() => {
   padding: clamp(36px, 4vw, 48px) clamp(40px, 5vw, 64px);
   overflow: hidden;
   color: #e2e8f0;
-  background-color: #080b14;
+  background-color: #0b0e16;
   background-image:
-    radial-gradient(circle at 22% 24%, rgb(66 99 235 / 22%) 0%, transparent 46%),
-    radial-gradient(circle at 78% 82%, rgb(245 158 11 / 6%) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgb(139 92 246 / 10%) 0%, transparent 60%),
-    linear-gradient(180deg, #080b14 0%, #0c1018 100%);
+    radial-gradient(circle at 22% 24%, rgb(66 99 235 / 18%) 0%, transparent 46%),
+    radial-gradient(circle at 78% 82%, rgb(227 179 65 / 5%) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgb(139 92 246 / 9%) 0%, transparent 60%),
+    linear-gradient(180deg, #0b0e16 0%, #0e121b 100%);
 
   // Background layer 1: subtle grid overlay
   &::before {
@@ -416,11 +416,16 @@ const features = computed<Required<BrandFeature>[]>(() => {
 
 .tk-blank-layout__brand-headline-accent {
   // Force the gradient accent onto its own line so it is never split mid-text
-  // when the headline wraps.
+  // when the headline wraps, and never wrap within itself either. width:
+  // max-content grows the box to the full text so the clipped-to-text gradient
+  // background stays under every glyph (overflowing glyphs would render
+  // transparent because the background stops at the element box).
   display: block;
+  width: max-content;
+  white-space: nowrap;
   font-style: normal;
   color: transparent;
-  background: linear-gradient(135deg, #7c95f5 0%, #fbbf24 100%);
+  background: linear-gradient(135deg, #8ba1ef 0%, #e3b341 100%);
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }

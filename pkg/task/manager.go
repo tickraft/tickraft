@@ -294,6 +294,15 @@ func (m *Service) Pause(taskID int64) error {
 
 	m.unscheduleInternal(taskID)
 
+	// Drop the in-memory schedule registration. unscheduleInternal only
+	// removes the task from the engine wheel; without this delete the
+	// scheds entry survives and Resume's onWheel guard rejects every
+	// resume with ErrTaskNotPaused.
+	m.mu.Lock()
+	delete(m.scheds, taskID)
+	delete(m.scheduleTypes, taskID)
+	m.mu.Unlock()
+
 	if task.Metadata == nil {
 		task.Metadata = make(map[string]string)
 	}

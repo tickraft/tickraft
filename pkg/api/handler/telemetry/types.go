@@ -13,6 +13,19 @@ import (
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
+// MetricStoreInjector is the interface a metric store must satisfy for
+// injection via WithTelemetryDataStores. It mirrors telemetry.MetricStore's
+// query method.
+type MetricStoreInjector interface {
+	QueryMetrics(ctx context.Context, tenantID, assetID int64, metricName string, start, end time.Time, limit int) ([]telemetry.CollectMetric, error)
+}
+
+// LogStoreInjector is the interface a log store must satisfy for injection
+// via WithTelemetryDataStores. It mirrors telemetry.LogStore's query method.
+type LogStoreInjector interface {
+	QueryLogs(ctx context.Context, tenantID, assetID int64, level string, start, end time.Time, limit int) ([]telemetry.CollectLog, error)
+}
+
 // Task represents a telemetry collection task definition. Each task
 // describes how a specific asset is observed (probe schedule, target
 // configuration, enabled state). The concrete persistence is provided by the
@@ -28,6 +41,7 @@ type Task struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	AssetType   string         `json:"asset_type"`
+	AssetID     int64          `json:"asset_id,omitempty"`
 	Mode        string         `json:"mode"`
 	Type        string         `json:"type"`
 	Schedule    string         `json:"schedule"`

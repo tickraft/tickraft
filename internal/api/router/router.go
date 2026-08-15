@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/api"
@@ -28,11 +29,19 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 	"github.com/tickraft/tickraft/pkg/auth"
+	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/user"
 )
+
+// apiKeyCacheEntry is a cached API key lookup result with its expiry.
+type apiKeyCacheEntry struct {
+	info      *apikey.Info
+	expiresAt time.Time
+}
 
 // serviceAdapter wraps *auth.Service to satisfy the authapi.Service
 // interface. It converts jwt.TokenPair to authapi.TokenPair so that
@@ -63,9 +72,9 @@ func (a *serviceAdapter) Login(ctx context.Context, username, password string) (
 	}, nil
 }
 
-// Logout adds tokens to the blacklist.
-func (a *serviceAdapter) Logout(ctx context.Context, accessJTI, refreshJTI string, accessExpireAt, refreshExpireAt time.Time) error {
-	return a.service.Logout(ctx, accessJTI, refreshJTI, accessExpireAt, refreshExpireAt)
+// Logout blacklists the access token and optionally the refresh token.
+func (a *serviceAdapter) Logout(ctx context.Context, accessJTI string, accessExpireAt time.Time, refreshToken string) error {
+	return a.service.Logout(ctx, accessJTI, accessExpireAt, refreshToken)
 }
 
 // RefreshToken validates a refresh token and returns a handler-local TokenPair.
@@ -141,7 +150,7 @@ func userToProfile(u *user.User) *authapi.UserProfile {
 // denyAllAssetKeys is a fail-closed asset key getter used when no
 // concrete getter is provided. It rejects all asset keys so that
 // telemetry report endpoints cannot be accessed without proper configuration.
-func denyAllAssetKeys(_ string) (bool, error) {
+func denyAllAssetKeys(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }
 
@@ -159,11 +168,15 @@ type registerConfig struct {
 	systemSvc              system.Service
 	telemetrySvc           telemetry.Service
 	telemetryReportHandler telemetry.ReportHandler
+	telemetryMetricStore   telemetry.MetricStoreInjector
+	telemetryLogStore      telemetry.LogStoreInjector
 	assetHandler           *asset.Handler
+	templateHandler        *telemetry.TemplateHandler
 	healthzHandler         *healthz.Handler
 	readyzHandler          *readyz.Handler
 	certificateHandler     *certificates.Handler
 	i18nHandler            *i18n.Handler
+	wsHandler              *wsapi.Handler
 }
 
 // WithTaskService provides the task.Service implementation for task
@@ -225,6 +238,22 @@ func WithTelemetryReportHandler(h telemetry.ReportHandler) RegisterOption {
 	return func(c *registerConfig) { c.telemetryReportHandler = h }
 }
 
+// WithTelemetryDataStores provides the MetricStore and LogStore used by the
+// telemetry handler's history/logs endpoints. Both stores may be nil.
+func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector, logStore telemetry.LogStoreInjector) RegisterOption {
+	return func(c *registerConfig) {
+		c.telemetryMetricStore = metricStore
+		c.telemetryLogStore = logStore
+	}
+}
+
+// WithTemplateHandler provides the TemplateHandler for the telemetry
+// template management API at /api/v1/telemetry/templates. When omitted, the
+// template route group is not registered.
+func WithTemplateHandler(h *telemetry.TemplateHandler) RegisterOption {
+	return func(c *registerConfig) { c.templateHandler = h }
+}
+
 // WithHealthzHandler provides the HealthzHandler for the /healthz endpoint.
 // When omitted, a default stub returning 200 without dependency checks is
 // used.
@@ -251,6 +280,12 @@ func WithCertificateHandler(h *certificates.Handler) RegisterOption {
 // WithI18nHandler provides the I18nHandler for the locale listing API
 // at /api/v1/i18n/locales. When omitted, the i18n route group is not
 // registered.
+// WithWSHandler provides the WebSocket handler for the /ws realtime
+// push endpoint. When omitted, the route is not registered.
+func WithWSHandler(h *wsapi.Handler) RegisterOption {
+	return func(c *registerConfig) { c.wsHandler = h }
+}
+
 func WithI18nHandler(h *i18n.Handler) RegisterOption {
 	return func(c *registerConfig) { c.i18nHandler = h }
 }
@@ -271,7 +306,7 @@ func RegisterRoutes(
 	server *api.Server,
 	jwtMgr *jwt.JWT,
 	service *auth.Service,
-	assetKeyGetter func(string) (bool, error),
+	assetKeyGetter func(ctx context.Context, key string) (bool, error),
 	opts ...RegisterOption,
 ) error {
 	if server == nil {
@@ -289,8 +324,50 @@ func RegisterRoutes(
 		getter = denyAllAssetKeys
 	}
 
+	// Build API key keyGetter for combined auth middleware. A short-TTL
+	// cache fronts the per-request DB lookup: API key metadata changes
+	// rarely, and the lookup sits on every authenticated request with an
+	// API key. Revocations take effect within the TTL window.
+	const apiKeyCacheTTL = 30 * time.Second
+	var (
+		apiKeyCacheMu sync.Mutex
+		apiKeyCache   = make(map[string]apiKeyCacheEntry)
+	)
+	keyGetter := func(ctx context.Context, keyHash string) (*apikey.Info, error) {
+		now := time.Now()
+		apiKeyCacheMu.Lock()
+		if e, ok := apiKeyCache[keyHash]; ok && now.Before(e.expiresAt) {
+			apiKeyCacheMu.Unlock()
+			return e.info, nil
+		}
+		apiKeyCacheMu.Unlock()
+
+		stored, err := service.GetAPIKeyByHash(ctx, keyHash)
+		if err != nil {
+			return nil, err
+		}
+		info := &apikey.Info{
+			ID:        stored.ID,
+			Name:      stored.Name,
+			KeyPrefix: stored.KeyPrefix,
+			KeyHash:   stored.KeyHash,
+			Status:    stored.Status,
+			CreatedAt: stored.CreatedAt,
+			ExpiredAt: stored.ExpiredAt,
+		}
+
+		apiKeyCacheMu.Lock()
+		// Bound the cache to avoid unbounded growth under key churn.
+		if len(apiKeyCache) >= 1024 {
+			apiKeyCache = make(map[string]apiKeyCacheEntry)
+		}
+		apiKeyCache[keyHash] = apiKeyCacheEntry{info: info, expiresAt: now.Add(apiKeyCacheTTL)}
+		apiKeyCacheMu.Unlock()
+		return info, nil
+	}
+
 	// Build middleware instances using the auth/jwt packages.
-	jwtMW := middleware.NewJWTAuth(jwtMgr, "")
+	authMW := middleware.NewAnyAuth(jwtMgr, keyGetter)
 	assetKeyMW := middleware.NewAssetKeyMiddleware(getter)
 
 	// Wrap *auth.Service in the adapter to satisfy authapi.Service.
@@ -341,7 +418,7 @@ func RegisterRoutes(
 	// non-nil. Genuinely optional handlers (healthz, readyz, certificates,
 	// i18n) remain conditional.
 	handlerOpts := []handler.RouteOption{
-		handler.WithJWTAuth(jwtMW),
+		handler.WithJWTAuth(authMW),
 		handler.WithAssetKeyAuth(assetKeyMW),
 		handler.WithAuthService(adapter),
 		handler.WithTaskService(rc.taskSvc),
@@ -351,6 +428,7 @@ func RegisterRoutes(
 		handler.WithSystemService(rc.systemSvc),
 		handler.WithTelemetryService(rc.telemetrySvc),
 		handler.WithTelemetryReportHandler(rc.telemetryReportHandler),
+		handler.WithTelemetryDataStores(rc.telemetryMetricStore, rc.telemetryLogStore),
 		handler.WithAssetHandler(rc.assetHandler),
 	}
 	if rc.healthzHandler != nil {
@@ -362,8 +440,14 @@ func RegisterRoutes(
 	if rc.certificateHandler != nil {
 		handlerOpts = append(handlerOpts, handler.WithCertificateHandler(rc.certificateHandler))
 	}
+	if rc.templateHandler != nil {
+		handlerOpts = append(handlerOpts, handler.WithTemplateHandler(rc.templateHandler))
+	}
 	if rc.i18nHandler != nil {
 		handlerOpts = append(handlerOpts, handler.WithI18nHandler(rc.i18nHandler))
+	}
+	if rc.wsHandler != nil {
+		handlerOpts = append(handlerOpts, handler.WithWSHandler(rc.wsHandler))
 	}
 
 	// Register all routes via the handler package with injected middleware.

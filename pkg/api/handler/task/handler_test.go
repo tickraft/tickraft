@@ -262,11 +262,11 @@ func (s *memoryTaskService) ResumeTask(_ context.Context, id int64) error {
 	return nil
 }
 
-func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int) ([]Execution, int64, error) {
+func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int, _ ExecutionFilter) ([]Execution, int64, error) {
 	return []Execution{}, 0, nil
 }
 
-func (s *memoryTaskService) GetExecution(_ context.Context, id int64) (*Execution, error) {
+func (s *memoryTaskService) GetExecution(_ context.Context, _, _ int64) (*Execution, error) {
 	return nil, errNotFound()
 }
 
@@ -313,7 +313,7 @@ type handlerError struct {
 	msg    string
 }
 
-func (e handlerError) Error() string  { return e.msg }
+func (e handlerError) Error() string   { return e.msg }
 func (e handlerError) HTTPStatus() int { return e.status }
 func (e handlerError) Code() int       { return e.code }
 

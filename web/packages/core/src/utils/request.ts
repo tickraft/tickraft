@@ -4,7 +4,13 @@
 
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
-import { getStorage, removeStorage, setStorage } from './storage'
+import {
+  getStorage,
+  getSessionStorage,
+  removeStorage,
+  setStorage,
+  setSessionStorage,
+} from './storage'
 import { camelizeKeys, snakeizeKeys } from './naming'
 
 /** Token storage key */
@@ -52,17 +58,19 @@ export function setToken(token: string): void {
 }
 
 /**
- * Get refresh token
+ * Get refresh token. Stored in session storage so the long-lived
+ * credential is cleared when the tab closes instead of persisting in
+ * local storage where XSS could exfiltrate it.
  */
 export function getRefreshToken(): string {
-  return getStorage<string>(REFRESH_TOKEN_KEY) || ''
+  return getSessionStorage<string>(REFRESH_TOKEN_KEY) || ''
 }
 
 /**
  * Set refresh token
  */
 export function setRefreshToken(token: string): void {
-  setStorage(REFRESH_TOKEN_KEY, token)
+  setSessionStorage(REFRESH_TOKEN_KEY, token)
 }
 
 /**
@@ -82,8 +90,11 @@ async function refreshToken(): Promise<string> {
     throw new Error('No refresh token available')
   }
 
+  // Send snake_case explicitly: this call bypasses the service instance
+  // (to avoid the 401 interceptor loop), so the naming interceptor does
+  // not apply here. The backend expects `refresh_token`.
   const { data } = await axios.post('/api/v1/auth/refresh', {
-    refreshToken: refreshTokenValue,
+    refresh_token: refreshTokenValue,
   })
 
   if (data.code === 0) {
@@ -139,6 +150,7 @@ function redirectToLogin(): void {
   if (isRedirecting) return
   isRedirecting = true
   clearAuth()
+  removeStorage('tk-user-info')
   // Clear pending requests so they don't hang forever
   pendingRequests = []
   isRefreshing = false

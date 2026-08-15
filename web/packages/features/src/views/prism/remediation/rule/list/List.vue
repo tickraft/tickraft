@@ -7,12 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import {
-  DataTable,
-  ConfirmDialog,
-  useTable,
-  formatDate,
-} from '@tickraft/core'
+import { DataTable, ConfirmDialog, useTable, formatDate, usePermission } from '@tickraft/core'
 import {
   getRemediationRules,
   deleteRemediationRule,
@@ -22,6 +17,7 @@ import PrismPageHeader from '../../../components/PrismPageHeader.vue'
 
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 /** Delete confirmation dialog state */
 const deleteVisible = ref(false)
@@ -210,6 +206,7 @@ onMounted(() => {
               {{ t('prism.remediation.rule.list.edit') }}
             </el-button>
             <el-button
+              v-if="canDelete('*')"
               link
               type="danger"
               @click="handleDeleteClick(row as RemediationRule)"

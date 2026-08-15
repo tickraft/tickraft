@@ -18,6 +18,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	"github.com/tickraft/tickraft/pkg/api/middleware"
 )
 
 // RegisterRoutes registers all routes on the given server.
@@ -61,6 +62,9 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	if cfg.telemetrySvc == nil {
 		missing = append(missing, "telemetry service")
 	}
+	if cfg.jwtMiddleware == nil {
+		missing = append(missing, "jwt middleware")
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("handler: required services not injected: %s", strings.Join(missing, ", "))
 	}
@@ -73,6 +77,7 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	remediationH := remediation.NewHandler(cfg.remediationRuleSvc)
 	systemH := system.NewHandler(cfg.systemSvc, cfg.authService)
 	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
+	telemetryH.SetDataStores(cfg.telemetryMetricStore, cfg.telemetryLogStore)
 
 	// --- Health probes (standalone, no auth) ---
 
@@ -104,60 +109,50 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 
 	// --- Auth module (JWT required) ---
 	authJWT := server.Group("/api/v1/auth")
-	if cfg.jwtMiddleware != nil {
-		authJWT.Use(cfg.jwtMiddleware)
-	}
+	authJWT.Use(cfg.jwtMiddleware)
 	authJWT.POST("/logout", authH.Logout)
 	authJWT.PUT("/password", authH.ChangePassword)
-	authJWT.GET("/apikeys", authH.ListAPIKeys)
-	authJWT.POST("/apikeys", authH.CreateAPIKey)
-	authJWT.DELETE("/apikeys/:id", authH.RevokeAPIKey)
+	authJWT.GET("/apikeys", middleware.RequirePermission(middleware.ActionRead, "*"), authH.ListAPIKeys)
+	authJWT.POST("/apikeys", middleware.RequirePermission(middleware.ActionWrite, "*"), authH.CreateAPIKey)
+	authJWT.DELETE("/apikeys/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), authH.RevokeAPIKey)
 
 	// --- Task module (JWT required) ---
 	taskGroup := server.Group("/api/v1/tasks")
-	if cfg.jwtMiddleware != nil {
-		taskGroup.Use(cfg.jwtMiddleware)
-	}
-	taskGroup.GET("", taskH.ListTasks)
-	taskGroup.GET("/:id", taskH.GetTask)
-	taskGroup.POST("", taskH.CreateTask)
-	taskGroup.PUT("/:id", taskH.UpdateTask)
-	taskGroup.DELETE("/:id", taskH.DeleteTask)
-	taskGroup.POST("/:id/trigger", taskH.TriggerTask)
-	taskGroup.POST("/:id/copy", taskH.CopyTask)
-	taskGroup.POST("/:id/pause", taskH.PauseTask)
-	taskGroup.POST("/:id/resume", taskH.ResumeTask)
+	taskGroup.Use(cfg.jwtMiddleware)
+	taskGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.ListTasks)
+	taskGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetTask)
+	taskGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.CreateTask)
+	taskGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.UpdateTask)
+	taskGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "task"), taskH.DeleteTask)
+	taskGroup.POST("/:id/trigger", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.TriggerTask)
+	taskGroup.POST("/:id/copy", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.CopyTask)
+	taskGroup.POST("/:id/pause", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.PauseTask)
+	taskGroup.POST("/:id/resume", middleware.RequirePermission(middleware.ActionWrite, "task"), taskH.ResumeTask)
 
 	// --- Task execution records (JWT required) ---
-	taskGroup.GET("/:id/executions", taskH.ListExecutions)
-	taskGroup.GET("/:id/executions/:execId", taskH.GetExecution)
+	taskGroup.GET("/:id/executions", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.ListExecutions)
+	taskGroup.GET("/:id/executions/:execId", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetExecution)
 
 	// --- Task statistics (JWT required) ---
 	taskStatsGroup := server.Group("/api/v1/tasks")
-	if cfg.jwtMiddleware != nil {
-		taskStatsGroup.Use(cfg.jwtMiddleware)
-	}
-	taskStatsGroup.GET("/stats", taskH.GetExecutionStats)
+	taskStatsGroup.Use(cfg.jwtMiddleware)
+	taskStatsGroup.GET("/stats", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetExecutionStats)
 
 	// --- Alert module (JWT required) ---
 	alertRuleGroup := server.Group("/api/v1/prism/alert/rules")
-	if cfg.jwtMiddleware != nil {
-		alertRuleGroup.Use(cfg.jwtMiddleware)
-	}
-	alertRuleGroup.GET("", alertH.ListAlertRules)
-	alertRuleGroup.GET("/:id", alertH.GetAlertRule)
-	alertRuleGroup.POST("", alertH.CreateAlertRule)
-	alertRuleGroup.PUT("/:id", alertH.UpdateAlertRule)
-	alertRuleGroup.DELETE("/:id", alertH.DeleteAlertRule)
+	alertRuleGroup.Use(cfg.jwtMiddleware)
+	alertRuleGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.ListAlertRules)
+	alertRuleGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.GetAlertRule)
+	alertRuleGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.CreateAlertRule)
+	alertRuleGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.UpdateAlertRule)
+	alertRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "alert"), alertH.DeleteAlertRule)
 
 	alertRecordGroup := server.Group("/api/v1/prism/alert/records")
-	if cfg.jwtMiddleware != nil {
-		alertRecordGroup.Use(cfg.jwtMiddleware)
-	}
-	alertRecordGroup.GET("", alertH.ListAlertRecords)
-	alertRecordGroup.GET("/:id", alertH.GetAlertRecord)
-	alertRecordGroup.PUT("/:id/acknowledge", alertH.AcknowledgeAlertRecord)
-	alertRecordGroup.PUT("/:id/resolve", alertH.ResolveAlertRecord)
+	alertRecordGroup.Use(cfg.jwtMiddleware)
+	alertRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.ListAlertRecords)
+	alertRecordGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.GetAlertRecord)
+	alertRecordGroup.PUT("/:id/acknowledge", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.AcknowledgeAlertRecord)
+	alertRecordGroup.PUT("/:id/resolve", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.ResolveAlertRecord)
 
 	// --- Notification channel module (JWT required) ---
 	// Only registered when a ChannelService is injected. This follows the
@@ -166,15 +161,13 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	// may provide its own implementation).
 	if cfg.channelSvc != nil {
 		channelGroup := server.Group("/api/v1/prism/channels")
-		if cfg.jwtMiddleware != nil {
-			channelGroup.Use(cfg.jwtMiddleware)
-		}
-		channelGroup.GET("", channelH.ListChannels)
-		channelGroup.GET("/:id", channelH.GetChannel)
-		channelGroup.POST("", channelH.CreateChannel)
-		channelGroup.PUT("/:id", channelH.UpdateChannel)
-		channelGroup.DELETE("/:id", channelH.DeleteChannel)
-		channelGroup.POST("/:id/test", channelH.TestChannel)
+		channelGroup.Use(cfg.jwtMiddleware)
+		channelGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), channelH.ListChannels)
+		channelGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "*"), channelH.GetChannel)
+		channelGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.CreateChannel)
+		channelGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.UpdateChannel)
+		channelGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), channelH.DeleteChannel)
+		channelGroup.POST("/:id/test", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.TestChannel)
 	}
 
 	// --- Remediation rule module (JWT required) ---
@@ -182,84 +175,82 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	// channel module comment above for the rationale.
 	if cfg.remediationRuleSvc != nil {
 		remediationRuleGroup := server.Group("/api/v1/prism/remediation/rules")
-		if cfg.jwtMiddleware != nil {
-			remediationRuleGroup.Use(cfg.jwtMiddleware)
-		}
-		remediationRuleGroup.GET("", remediationH.ListRemediationRules)
-		remediationRuleGroup.GET("/:id", remediationH.GetRemediationRule)
-		remediationRuleGroup.POST("", remediationH.CreateRemediationRule)
-		remediationRuleGroup.PUT("/:id", remediationH.UpdateRemediationRule)
-		remediationRuleGroup.DELETE("/:id", remediationH.DeleteRemediationRule)
+		remediationRuleGroup.Use(cfg.jwtMiddleware)
+		remediationRuleGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.ListRemediationRules)
+		remediationRuleGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.GetRemediationRule)
+		remediationRuleGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"), remediationH.CreateRemediationRule)
+		remediationRuleGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), remediationH.UpdateRemediationRule)
+		remediationRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), remediationH.DeleteRemediationRule)
+
+		// Remediation dispatch records. Registered alongside the rule
+		// routes because both are injected via the remediation rule
+		// service option; the path is a sibling of /rules to avoid
+		// conflicting with the /rules/:id wildcard.
+		remediationRecordGroup := server.Group("/api/v1/prism/remediation/records")
+		remediationRecordGroup.Use(cfg.jwtMiddleware)
+		remediationRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.ListRemediationRecords)
 	}
 
 	// --- System module (JWT required) ---
 	systemGroup := server.Group("/api/v1/system")
-	if cfg.jwtMiddleware != nil {
-		systemGroup.Use(cfg.jwtMiddleware)
-	}
-	systemGroup.GET("/config", systemH.GetSystemConfig)
-	systemGroup.PUT("/config", systemH.UpdateSystemConfig)
-	systemGroup.GET("/info", systemH.GetSystemInfo)
-	systemGroup.GET("/stats", systemH.GetGlobalStats)
-	systemGroup.GET("/profile", systemH.GetProfile)
-	systemGroup.PUT("/profile", systemH.UpdateProfile)
+	systemGroup.Use(cfg.jwtMiddleware)
+	systemGroup.GET("/config", middleware.RequirePermission(middleware.ActionRead, "*"), systemH.GetSystemConfig)
+	systemGroup.PUT("/config", middleware.RequirePermission(middleware.ActionWrite, "*"), systemH.UpdateSystemConfig)
+	systemGroup.GET("/info", middleware.RequirePermission(middleware.ActionRead, "*"), systemH.GetSystemInfo)
+	systemGroup.GET("/stats", middleware.RequirePermission(middleware.ActionRead, "*"), systemH.GetGlobalStats)
+	systemGroup.GET("/profile", middleware.RequirePermission(middleware.ActionRead, "*"), systemH.GetProfile)
+	systemGroup.PUT("/profile", middleware.RequirePermission(middleware.ActionWrite, "*"), systemH.UpdateProfile)
 
 	// --- Certificate management (JWT required, optional injection) ---
 	if cfg.certificateHandler != nil {
-		systemGroup.POST("/certificates/reload", cfg.certificateHandler.Reload)
+		systemGroup.POST("/certificates/reload", middleware.RequirePermission(middleware.ActionWrite, "*"), cfg.certificateHandler.Reload)
 	}
 
 	// --- Asset management (JWT required) ---
 	if cfg.assetHandler != nil {
 		assetGroup := server.Group("/api/v1/assets")
-		if cfg.jwtMiddleware != nil {
-			assetGroup.Use(cfg.jwtMiddleware)
-		}
-		assetGroup.GET("", cfg.assetHandler.ListAssets)
-		assetGroup.GET("/:id", cfg.assetHandler.GetAsset)
-		assetGroup.POST("", cfg.assetHandler.CreateAsset)
-		assetGroup.PUT("/:id", cfg.assetHandler.UpdateAsset)
-		assetGroup.DELETE("/:id", cfg.assetHandler.DeleteAsset)
-		assetGroup.PUT("/:id/status", cfg.assetHandler.UpdateAssetStatus)
-		assetGroup.POST("/:id/probe", cfg.assetHandler.ProbeAsset)
+		assetGroup.Use(cfg.jwtMiddleware)
+		assetGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "device"), cfg.assetHandler.ListAssets)
+		assetGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "device"), cfg.assetHandler.GetAsset)
+		assetGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.CreateAsset)
+		assetGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.UpdateAsset)
+		assetGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "device"), cfg.assetHandler.DeleteAsset)
+		assetGroup.PUT("/:id/status", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.UpdateAssetStatus)
+		assetGroup.POST("/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.ProbeAsset)
 	}
 
 	// --- Telemetry prober/listener type metadata (JWT required) ---
 	telemetryMetaGroup := server.Group("/api/v1/telemetry")
-	if cfg.jwtMiddleware != nil {
-		telemetryMetaGroup.Use(cfg.jwtMiddleware)
-	}
-	telemetryMetaGroup.GET("/probers", telemetryH.ListProbers)
-	telemetryMetaGroup.GET("/listeners", telemetryH.ListListeners)
+	telemetryMetaGroup.Use(cfg.jwtMiddleware)
+	telemetryMetaGroup.GET("/probers", middleware.RequirePermission(middleware.ActionRead, "*"), telemetryH.ListProbers)
+	telemetryMetaGroup.GET("/listeners", middleware.RequirePermission(middleware.ActionRead, "*"), telemetryH.ListListeners)
 
 	// --- Telemetry monitor CRUD and templates (JWT required) ---
 	if cfg.telemetrySvc != nil || cfg.templateHandler != nil {
 		telemetryGroup := server.Group("/api/v1/telemetry")
-		if cfg.jwtMiddleware != nil {
-			telemetryGroup.Use(cfg.jwtMiddleware)
-		}
+		telemetryGroup.Use(cfg.jwtMiddleware)
 		if cfg.telemetrySvc != nil {
-			telemetryGroup.GET("/monitors", telemetryH.ListTelemetry)
-			telemetryGroup.GET("/monitors/:id", telemetryH.GetTelemetry)
-			telemetryGroup.POST("/monitors", telemetryH.CreateTelemetry)
-			telemetryGroup.PUT("/monitors/:id", telemetryH.UpdateTelemetry)
-			telemetryGroup.DELETE("/monitors/:id", telemetryH.DeleteTelemetry)
-			telemetryGroup.GET("/monitors/:id/status", telemetryH.GetMonitorStatus)
-			telemetryGroup.GET("/monitors/:id/history", telemetryH.GetMonitorHistory)
-			telemetryGroup.POST("/monitors/:id/probe", telemetryH.ProbeMonitor)
-			telemetryGroup.GET("/monitors/:id/logs", telemetryH.GetMonitorLogs)
-			telemetryGroup.PUT("/monitors/:id/enable", telemetryH.EnableMonitor)
-			telemetryGroup.PUT("/monitors/:id/disable", telemetryH.DisableMonitor)
+			telemetryGroup.GET("/monitors", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.ListTelemetry)
+			telemetryGroup.GET("/monitors/:id", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetTelemetry)
+			telemetryGroup.POST("/monitors", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.CreateTelemetry)
+			telemetryGroup.PUT("/monitors/:id", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.UpdateTelemetry)
+			telemetryGroup.DELETE("/monitors/:id", middleware.RequirePermission(middleware.ActionDelete, "device"), telemetryH.DeleteTelemetry)
+			telemetryGroup.GET("/monitors/:id/status", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorStatus)
+			telemetryGroup.GET("/monitors/:id/history", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorHistory)
+			telemetryGroup.POST("/monitors/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.ProbeMonitor)
+			telemetryGroup.GET("/monitors/:id/logs", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorLogs)
+			telemetryGroup.PUT("/monitors/:id/enable", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.EnableMonitor)
+			telemetryGroup.PUT("/monitors/:id/disable", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.DisableMonitor)
 		}
 		if cfg.templateHandler != nil {
 			th := cfg.templateHandler
-			telemetryGroup.GET("/templates", th.ListTemplates)
-			telemetryGroup.GET("/templates/builtin", th.ListBuiltinTemplates)
-			telemetryGroup.GET("/templates/:id", th.GetTemplate)
-			telemetryGroup.POST("/templates", th.CreateTemplate)
-			telemetryGroup.PUT("/templates/:id", th.UpdateTemplate)
-			telemetryGroup.DELETE("/templates/:id", th.DeleteTemplate)
-			telemetryGroup.POST("/templates/:id/apply", th.ApplyTemplate)
+			telemetryGroup.GET("/templates", middleware.RequirePermission(middleware.ActionRead, "*"), th.ListTemplates)
+			telemetryGroup.GET("/templates/builtin", middleware.RequirePermission(middleware.ActionRead, "*"), th.ListBuiltinTemplates)
+			telemetryGroup.GET("/templates/:id", middleware.RequirePermission(middleware.ActionRead, "*"), th.GetTemplate)
+			telemetryGroup.POST("/templates", middleware.RequirePermission(middleware.ActionWrite, "*"), th.CreateTemplate)
+			telemetryGroup.PUT("/templates/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), th.UpdateTemplate)
+			telemetryGroup.DELETE("/templates/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), th.DeleteTemplate)
+			telemetryGroup.POST("/templates/:id/apply", middleware.RequirePermission(middleware.ActionWrite, "*"), th.ApplyTemplate)
 		}
 	}
 
@@ -270,6 +261,11 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 			reportGroup.Use(cfg.assetKeyMiddleware)
 		}
 		reportGroup.POST("", cfg.telemetryReportHandler.Report)
+	}
+
+	// --- WebSocket realtime push (query-token auth) ---
+	if cfg.wsHandler != nil {
+		root.GET("/ws", cfg.wsHandler.ServeHTTP)
 	}
 
 	// --- i18n locale listing (public, no auth) ---

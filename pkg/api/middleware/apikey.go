@@ -21,7 +21,7 @@ import (
 // X-Tickraft-API-Key header. The keyGetter function looks up the key information by its
 // SHA-256 hash. If permission is non-empty, the middleware also checks that
 // permission via the default RBAC policy.
-func NewAPIKeyAuth(keyGetter func(keyHash string) (*apikey.Info, error), permission string) app.HandlerFunc {
+func NewAPIKeyAuth(keyGetter func(ctx context.Context, keyHash string) (*apikey.Info, error), permission string) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		rawKey := string(arc.GetHeader(httputil.HeaderAPIKey))
 		if rawKey == "" {
@@ -35,7 +35,7 @@ func NewAPIKeyAuth(keyGetter func(keyHash string) (*apikey.Info, error), permiss
 		keyHash := hex.EncodeToString(h[:])
 
 		// Look up the key in storage.
-		info, err := keyGetter(keyHash)
+		info, err := keyGetter(ctx, keyHash)
 		if err != nil {
 			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "invalid api key")
 			arc.Abort()
@@ -43,7 +43,7 @@ func NewAPIKeyAuth(keyGetter func(keyHash string) (*apikey.Info, error), permiss
 		}
 
 		// Basic validation (hash match, status, expiry).
-		if err := apikey.ValidateAPIKey(rawKey, info.KeyHash, info.Status, info.ExpiredAt); err != nil {
+		if err = apikey.ValidateAPIKey(rawKey, info.KeyHash, info.Status, info.ExpiredAt); err != nil {
 			switch {
 			case errors.Is(err, apikey.ErrAPIKeyRevoked):
 				httputil.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "api key revoked")

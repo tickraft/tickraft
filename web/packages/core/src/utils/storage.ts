@@ -25,6 +25,17 @@ export function setStorage<T>(key: string, value: T): void {
 }
 
 /**
+ * Set a session storage value. Session storage is scoped to the tab and
+ * cleared when it closes, so it is used for sensitive short-lived values
+ * (e.g. the refresh token) to reduce the blast radius of XSS.
+ */
+export function setSessionStorage<T>(key: string, value: T): void {
+  const prefixedKey = getPrefixedKey(key)
+  const serialized = JSON.stringify(value)
+  sessionStorage.setItem(prefixedKey, serialized)
+}
+
+/**
  * Get a local storage value
  */
 export function getStorage<T = unknown>(key: string): T | null {
@@ -41,11 +52,29 @@ export function getStorage<T = unknown>(key: string): T | null {
 }
 
 /**
- * Remove a local storage value
+ * Get a session storage value. Falls back to local storage so values
+ * written before this split remain readable until replaced.
+ */
+export function getSessionStorage<T = unknown>(key: string): T | null {
+  const prefixedKey = getPrefixedKey(key)
+  const item = sessionStorage.getItem(prefixedKey)
+  if (item !== null) {
+    try {
+      return JSON.parse(item) as T
+    } catch {
+      return null
+    }
+  }
+  return getStorage<T>(key)
+}
+
+/**
+ * Remove a value from both local and session storage.
  */
 export function removeStorage(key: string): void {
   const prefixedKey = getPrefixedKey(key)
   localStorage.removeItem(prefixedKey)
+  sessionStorage.removeItem(prefixedKey)
 }
 
 /**

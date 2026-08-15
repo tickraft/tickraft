@@ -34,8 +34,9 @@ type TokenPair struct {
 type Service interface {
 	// Login authenticates a user and returns a token pair.
 	Login(ctx context.Context, username, password string) (*TokenPair, error)
-	// Logout adds tokens to the blacklist.
-	Logout(ctx context.Context, accessJTI, refreshJTI string, accessExpireAt, refreshExpireAt time.Time) error
+	// Logout blacklists the access token (by JTI and expiry) and optionally
+	// parses and blacklists the given refresh token string.
+	Logout(ctx context.Context, accessJTI string, accessExpireAt time.Time, refreshToken string) error
 	// RefreshToken validates a refresh token and returns a new token pair.
 	RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error)
 	// ChangePassword changes the user's password. currentJTI identifies the

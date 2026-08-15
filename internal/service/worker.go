@@ -196,15 +196,31 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 		return nil, fmt.Errorf("register processors: %w", err)
 	}
 
+	metricStore := telemetry.NewMetricStore(rt.dbc)
+	logStore := telemetry.NewLogStore(rt.dbc)
+
+	// ProberService: coordinates active probing by scheduling MonitorPoints
+	// (Mode=ModeActive) through the shared task.Manager. Created before
+	// telemetry.New so it can be injected via WithProberService; the
+	// Manager.Start calls proberSvc.Start which loads and registers all
+	// active, enabled points from the DB.
+	monitorStore := telemetry.NewMonitorStore(rt.dbc)
+	proberSvc := telemetry.NewProberService(
+		sched, reg, nil, rt.logger,
+		telemetry.WithProberMonitorStore(monitorStore),
+	)
+	rt.proberSvc = proberSvc
+
 	collector, err = telemetry.New(
 		telemetry.WithProcessorRegistry(procReg),
 		telemetry.WithAssetStore(rt.assetStore),
 		telemetry.WithEventBus(bus),
 		telemetry.WithDB(rt.dbc),
 		telemetry.WithLogger(rt.logger),
-		telemetry.WithMetricStore(telemetry.NewMetricStore(rt.dbc)),
-		telemetry.WithLogStore(telemetry.NewLogStore(rt.dbc)),
+		telemetry.WithMetricStore(metricStore),
+		telemetry.WithLogStore(logStore),
 		telemetry.WithAggregationWindow(time.Minute),
+		telemetry.WithProberService(proberSvc),
 	)
 	if err != nil {
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
@@ -219,6 +235,10 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 	// This enables POST /api/v1/telemetry to forward received telemetry
 	// into the processing pipeline.
 	rt.telemetryCollector = collector
+	// Store the metric/log stores so startAPIServer can wire the telemetry
+	// handler's history/logs endpoints to real persistent data.
+	rt.metricStore = metricStore
+	rt.logStore = logStore
 	rt.logger.Info("telemetry started")
 
 	return func(ctx context.Context) error {

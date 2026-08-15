@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/timewheel"
 	"github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/timewheel"
 	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 	"gorm.io/gorm"

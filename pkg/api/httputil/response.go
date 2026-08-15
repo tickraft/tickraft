@@ -12,17 +12,17 @@ import (
 
 // Response is the unified API response structure.
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
 // PageData is the data structure for paginated responses.
 type PageData struct {
-	Items interface{} `json:"items"`
-	Total int64       `json:"total"`
-	Page  int         `json:"page"`
-	Size  int         `json:"size"`
+	Items    any   `json:"items"`
+	Total    int64 `json:"total"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
 }
 
 // CursorPageData is the data structure for cursor-based (keyset) paginated
@@ -31,10 +31,10 @@ type PageData struct {
 // pages. Clients pass NextCursor as the ?cursor= query parameter to fetch
 // the next page; an empty NextCursor means no more rows.
 type CursorPageData struct {
-	Items      interface{} `json:"items"`
-	Total      int64       `json:"total"`
-	NextCursor string      `json:"next_cursor"`
-	Size       int         `json:"size"`
+	Items      any    `json:"items"`
+	Total      int64  `json:"total"`
+	NextCursor string `json:"next_cursor"`
+	PageSize   int    `json:"page_size"`
 }
 
 // Success writes a successful response with code=0.
@@ -81,10 +81,10 @@ func SuccessPage(c *app.RequestContext, items interface{}, total int64, page int
 		Code:    0,
 		Message: "ok",
 		Data: PageData{
-			Items: items,
-			Total: total,
-			Page:  page,
-			Size:  size,
+			Items:    items,
+			Total:    total,
+			Page:     page,
+			PageSize: size,
 		},
 	})
 }
@@ -100,7 +100,7 @@ func SuccessPageCursor(c *app.RequestContext, items interface{}, total int64, ne
 			Items:      items,
 			Total:      total,
 			NextCursor: nextCursor,
-			Size:       size,
+			PageSize:   size,
 		},
 	})
 }

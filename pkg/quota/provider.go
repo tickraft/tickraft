@@ -4,7 +4,10 @@
 
 package quota
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // Layer classifies a quota type into one of the three architectural layers.
 type Layer int
@@ -107,6 +110,36 @@ type ProviderWithSpec interface {
 	Provider
 	// Spec returns the complete quota specification for the given type.
 	Spec(t Type) Spec
+}
+
+// UsageProvider extends [Provider] with usage tracking capabilities.
+// It allows querying current usage, calculating usage rates, and checking
+// if quota limits are being approached for proactive alerting.
+type UsageProvider interface {
+	Provider
+	// CurrentUsage returns the current usage count for the given type.
+	// Returns error if usage tracking is not available.
+	CurrentUsage(ctx context.Context, t Type) (used int, err error)
+
+	// UsageRate calculates the usage rate as a float between 0.0 and 1.0.
+	// A rate of 1.0 means the quota is at its ceiling.
+	// Returns error if usage tracking is not available.
+	UsageRate(ctx context.Context, t Type) (rate float64, err error)
+
+	// IsNearLimit checks if the quota is approaching its limit.
+	// The threshold parameter defines what "near" means (e.g., 0.9 for 90%).
+	// If threshold <= 0, a default of 0.9 is used.
+	// Returns (near, used, ceiling, error).
+	IsNearLimit(ctx context.Context, t Type, threshold float64) (near bool, used int, ceiling int, err error)
+}
+
+// UsageSnapshot captures a point-in-time view of quota usage.
+type UsageSnapshot struct {
+	Type     Type   `json:"type"`
+	Used     int    `json:"used"`
+	Ceiling  int    `json:"ceiling"`
+	Rate     float64 `json:"rate"`
+	NearLimit bool   `json:"near_limit"`
 }
 
 // zeroProvider is a no-op Provider that returns 0 for every type,

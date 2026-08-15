@@ -7,6 +7,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,6 +31,10 @@ type store struct {
 func NewStore(dbc *gorm.DB) *store {
 	return &store{dbc: dbc}
 }
+
+// defaultExecutionListLimit caps execution history queries when the caller
+// does not specify a limit.
+const defaultExecutionListLimit = 200
 
 // Migrate creates or updates the sys_schedule_task table schema.
 func (s *store) Migrate(ctx context.Context) error {
@@ -265,15 +270,18 @@ func (s *executionStore) Save(ctx context.Context, exec *Execution) error {
 
 // List returns execution history for the given task ID, ordered by most
 // recent first (descending ID). If limit is positive, at most limit records
-// are returned; otherwise all records for the task are returned.
+// are returned; otherwise at most defaultExecutionListLimit records are
+// returned. Execution history grows without bound, so callers can never
+// fetch the full table by passing a zero limit.
 func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*Execution, error) {
+	if limit <= 0 {
+		limit = defaultExecutionListLimit
+	}
 	var models []ScheduleLog
 	query := s.dbc.WithContext(ctx).
 		Where("task_id = ?", taskID).
-		Order("id DESC")
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
+		Order("id DESC").
+		Limit(limit)
 	if err := query.Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("task: list executions: %w", errmap.MapError(err))
 	}
@@ -283,6 +291,70 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 		result = append(result, &exec)
 	}
 	return result, nil
+}
+
+// Query returns a page of executions matching the filter, ordered by most
+// recent first (descending ID), along with the total count of matching rows.
+// page starts at 1; size is normalized via ClampPaging semantics (defaults
+// and the max-page-size cap are applied by the caller).
+func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if size <= 0 {
+		size = defaultExecutionListLimit
+	}
+
+	query := s.dbc.WithContext(ctx).Model(&ScheduleLog{})
+	if q.TaskID > 0 {
+		query = query.Where("task_id = ?", q.TaskID)
+	}
+	if q.TaskIDs != nil {
+		if len(q.TaskIDs) == 0 {
+			return []*Execution{}, 0, nil
+		}
+		query = query.Where("task_id IN ?", q.TaskIDs)
+	}
+	if q.Status != "" {
+		query = query.Where("status = ?", q.Status)
+	}
+	if q.ExecutorType != "" {
+		query = query.Where("executor_type = ?", q.ExecutorType)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
+	}
+
+	var models []ScheduleLog
+	if err := query.
+		Order("id DESC").
+		Offset((page - 1) * size).
+		Limit(size).
+		Find(&models).Error; err != nil {
+		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
+	}
+	result := make([]*Execution, 0, len(models))
+	for i := range models {
+		exec := models[i].ToExecution()
+		result = append(result, &exec)
+	}
+	return result, total, nil
+}
+
+// Get retrieves a single execution record by its ID. It returns
+// ErrExecutionNotFound when no record with the given ID exists.
+func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) {
+	var m ScheduleLog
+	if err := s.dbc.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrExecutionNotFound
+		}
+		return nil, fmt.Errorf("task: get execution: %w", errmap.MapError(err))
+	}
+	exec := m.ToExecution()
+	return &exec, nil
 }
 
 // DeleteExecutionsOlderThan removes all execution records whose created_at

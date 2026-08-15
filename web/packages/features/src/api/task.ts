@@ -19,8 +19,15 @@ export interface TaskListParams extends PageParams {
   tags?: string
 }
 
-/** Execution log list query parameters (backend only reads page/size) */
-export type LogListParams = PageParams
+/** Execution log list query parameters (server-side filtering) */
+export interface LogListParams extends PageParams {
+  /** Case-insensitive substring match on the task name */
+  taskName?: string
+  /** Executor type filter (http/tcp/icmp/local/webhook) */
+  executor?: string
+  /** Lifecycle status filter (success/failed/running) */
+  status?: string
+}
 
 /** Execution stats query parameters */
 export interface ExecutionStatsParams {

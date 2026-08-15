@@ -28,8 +28,8 @@ const defaultTimeout = 300 * time.Second
 // Executor executes commands on the host machine via os/exec.
 // It is safe for concurrent use.
 type Executor struct {
-	timeout    time.Duration
-	logger     *zap.Logger
+	timeout     time.Duration
+	logger      *zap.Logger
 	allowedCmds []string // empty = allow all
 }
 

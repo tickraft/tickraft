@@ -10,12 +10,12 @@
  * tickraft-x storyboard), keyword search, type / status filters, and standard
  * CRUD actions. Backed by /api/v1/assets via the api/asset.ts layer.
  */
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { SearchForm, DataTable, ConfirmDialog, StatusTag } from '@tickraft/core'
-import type { Asset, AssetStatus, AssetMetadata } from '../../../types/asset'
+import { SearchForm, DataTable, ConfirmDialog, StatusTag, usePermission } from '@tickraft/core'
+import type { Asset, AssetStatus, AssetMetadata, AssetListQuery } from '../../../types/asset'
 import {
   ASSET_TYPES,
   ASSET_STATUSES,
@@ -23,9 +23,11 @@ import {
   deleteAsset,
   parseMetadata,
 } from '../../../api/asset'
+import { getGlobalStats } from '../../../api/system'
 
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const currentPage = ref(1)
@@ -33,43 +35,14 @@ const pageSize = ref(20)
 const total = ref(0)
 const tableData = ref<Asset[]>([])
 
-/**
- * Full dataset fetched from the backend. The backend ListAssets endpoint only
- * supports page/size pagination — no keyword/type/status filtering — so we
- * fetch the complete dataset (CE caps at 20 items) and apply filters
- * client-side before rendering the current page slice.
- */
-const allAssets = ref<Asset[]>([])
-
-/** Client-side filtered + paginated view of allAssets for the table. */
-const filteredAssets = computed(() => {
-  let items = allAssets.value
-  const kw = searchValues.keyword.trim().toLowerCase()
-  if (kw) {
-    items = items.filter(
-      (a) =>
-        a.name.toLowerCase().includes(kw) ||
-        a.assetKey.toLowerCase().includes(kw),
-    )
-  }
-  if (searchValues.type) {
-    items = items.filter((a) => a.assetType === searchValues.type)
-  }
-  if (searchValues.status) {
-    items = items.filter((a) => a.status === searchValues.status)
-  }
-  return items
-})
-
 const deleteVisible = ref(false)
 const deleteLoading = ref(false)
 const deleteTarget = ref<Asset | null>(null)
 
 /**
- * Unfiltered status counts for the summary cards. Fetched independently of the
- * table query so the cards always reflect the whole dataset regardless of the
- * current search / type / status filter. The open-source quota caps the asset
- * dataset at 20 items, so a single large-page request is sufficient.
+ * Unfiltered status counts for the summary cards, sourced from the
+ * /system/stats asset_status_counts aggregate so the cards always reflect the
+ * whole dataset regardless of the current table filters.
  */
 const summaryCounts = reactive<Record<AssetStatus | 'total', number>>({
   total: 0,
@@ -114,18 +87,6 @@ const searchFields = computed(() => [
   },
 ])
 
-/** Recompute the paginated table slice whenever filters or page change. */
-watch(
-  [filteredAssets, currentPage, pageSize],
-  () => {
-    const items = filteredAssets.value
-    total.value = items.length
-    const start = (currentPage.value - 1) * pageSize.value
-    tableData.value = items.slice(start, start + pageSize.value)
-  },
-  { immediate: true },
-)
-
 const summaryCards = computed(() => [
   { key: '', label: t('asset.summary.total'), value: summaryCounts.total, tone: 'primary' as const, active: searchValues.status === '' },
   { key: 'normal', label: t('asset.status.normal'), value: summaryCounts.normal, tone: 'success' as const, active: searchValues.status === 'normal' },
@@ -144,33 +105,43 @@ const columns = computed(() => [
 ])
 
 /**
- * Fetch all assets from the backend (CE dataset is small) and apply
- * client-side keyword / type / status filtering before paginating.
+ * Fetch the current page from the backend with server-side keyword / type /
+ * status filtering, and refresh the unfiltered summary counts from
+ * /system/stats.
  */
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
-    // Fetch the full dataset once; filtering is done client-side because
-    // the backend ListAssets endpoint does not support keyword/type/status
-    // query parameters.
-    const res = await getAssets({ page: 1, pageSize: 1000 })
-    allAssets.value = res.items || []
+    const res = await getAssets({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: searchValues.keyword.trim() || undefined,
+      assetType: (searchValues.type || undefined) as AssetListQuery['assetType'],
+      status: (searchValues.status || undefined) as AssetListQuery['status'],
+    })
+    tableData.value = res.items || []
+    total.value = res.total || 0
 
-    // Also populate summary counts from the unfiltered dataset
-    summaryCounts.total = allAssets.value.length
-    summaryCounts.normal = 0
-    summaryCounts.abnormal = 0
-    summaryCounts.offline = 0
-    summaryCounts.unknown = 0
-    for (const item of allAssets.value) {
-      if (item.status in summaryCounts) {
-        summaryCounts[item.status] += 1
-      }
-    }
+    await refreshSummaryCounts()
   } catch {
-    allAssets.value = []
+    tableData.value = []
+    total.value = 0
   } finally {
     loading.value = false
+  }
+}
+
+/** Refresh the summary card counts from the system stats aggregate. */
+async function refreshSummaryCounts(): Promise<void> {
+  try {
+    const stats = await getGlobalStats()
+    summaryCounts.total = stats.totalDevices || 0
+    summaryCounts.normal = stats.assetStatusCounts?.normal || 0
+    summaryCounts.abnormal = stats.assetStatusCounts?.abnormal || 0
+    summaryCounts.offline = stats.assetStatusCounts?.offline || 0
+    summaryCounts.unknown = stats.assetStatusCounts?.unknown || 0
+  } catch {
+    // Summary cards degrade to zeros; the table remains functional.
   }
 }
 
@@ -416,6 +387,7 @@ onMounted(() => {
                 {{ t('common.app.edit') }}
               </el-button>
               <el-button
+                v-if="canDelete('device')"
                 link
                 type="danger"
                 @click="handleDelete(row as Asset)"

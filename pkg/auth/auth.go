@@ -6,6 +6,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -169,27 +170,65 @@ func (s *Service) IssueTokens(ctx context.Context, user *user.User) (*LoginResul
 	}, nil
 }
 
-// Logout adds tokens to the blacklist.
-func (s *Service) Logout(ctx context.Context, accessJTI, refreshJTI string, accessExpireAt, refreshExpireAt time.Time) error {
-	if accessJTI != "" {
+// Logout blacklists the access token (identified by JTI and expiry) and,
+// if a refresh token string is provided, parses and blacklists it too.
+func (s *Service) Logout(ctx context.Context, accessJTI string, accessExpireAt time.Time, refreshToken string) error {
+	if accessJTI != "" && !accessExpireAt.IsZero() {
 		if err := s.blacklist.Add(ctx, accessJTI, accessExpireAt); err != nil {
 			return fmt.Errorf("blacklist access token: %w", err)
 		}
 	}
-	if refreshJTI != "" {
-		if err := s.blacklist.Add(ctx, refreshJTI, refreshExpireAt); err != nil {
-			return fmt.Errorf("blacklist refresh token: %w", err)
+	if refreshToken != "" {
+		jti, expireAt, err := s.jwt.ParseForRevocation(refreshToken)
+		if err != nil {
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				// Token already expired; nothing to blacklist.
+				return nil
+			}
+			return fmt.Errorf("parse refresh token for revocation: %w", err)
+		}
+		if jti != "" && !expireAt.IsZero() {
+			if err := s.blacklist.Add(ctx, jti, expireAt); err != nil {
+				return fmt.Errorf("blacklist refresh token: %w", err)
+			}
 		}
 	}
 	return nil
 }
 
-// RefreshToken validates a refresh token and returns a new token pair.
+// RefreshToken validates a refresh token, rejects it if its JTI has been
+// blacklisted (revoked or already redeemed), issues a new token pair, and
+// blacklists the old refresh token's JTI so it cannot be replayed. This
+// implements refresh token rotation: each refresh token is redeemable
+// exactly once.
 func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwt.TokenPair, error) {
+	jti, expireAt, err := s.jwt.ParseForRevocation(refreshToken)
+	if err == nil && jti != "" {
+		revoked, rerr := s.blacklist.Exists(ctx, jti)
+		if rerr != nil {
+			return nil, fmt.Errorf("check refresh token blacklist: %w", rerr)
+		}
+		if revoked {
+			return nil, fmt.Errorf("refresh token: %w", ErrUnauthorized)
+		}
+	}
+
 	tokenPair, err := s.jwt.RefreshToken(refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("refresh token: %w", err)
 	}
+
+	// Redeem the old refresh token: blacklist its JTI until its original
+	// expiry so the same token cannot be exchanged twice.
+	if jti != "" && !expireAt.IsZero() {
+		if err := s.blacklist.Add(ctx, jti, expireAt); err != nil {
+			zap.L().Warn("auth: blacklist redeemed refresh token failed",
+				zap.String("jti", jti),
+				zap.Error(err),
+			)
+		}
+	}
+
 	return &jwt.TokenPair{
 		AccessToken:  tokenPair.AccessToken,
 		RefreshToken: tokenPair.RefreshToken,
@@ -274,6 +313,13 @@ func (s *Service) RevokeAPIKey(ctx context.Context, id int64) error {
 	return s.apiKeys.Revoke(ctx, id)
 }
 
+// GetAPIKeyByHash looks up an API key by its SHA-256 hash. It is used
+// by the API key authentication middleware to resolve a key from its
+// hash without exposing the raw key store.
+func (s *Service) GetAPIKeyByHash(ctx context.Context, hash string) (*user.APIKey, error) {
+	return s.apiKeys.GetByHash(ctx, hash)
+}
+
 // ValidateAPIKey validates a raw API key against the store.
 func (s *Service) ValidateAPIKey(ctx context.Context, rawKey string) (*user.APIKey, error) {
 	hash := apikey.HashAPIKey(rawKey)
@@ -356,21 +402,28 @@ func (s *Service) checkRateLimit(username string) error {
 	return nil
 }
 
-// recordLoginFailure increments the failure counter and sets lockout if threshold reached.
+// recordLoginFailure increments the failure counter and sets lockout if
+// threshold reached. Failures older than failWindow reset the counter so
+// only failures within the window accumulate toward the lockout threshold.
 func (s *Service) recordLoginFailure(username string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	now := time.Now()
 
 	rec, exists := s.loginFails[username]
 	if !exists {
 		rec = &loginFailRecord{}
 		s.loginFails[username] = rec
+	} else if rec.count > 0 && now.Sub(rec.lastFailedAt) > failWindow {
+		// Previous failures fell outside the window; start counting fresh.
+		rec.count = 0
 	}
 
 	rec.count++
-	rec.lastFailedAt = time.Now()
+	rec.lastFailedAt = now
 	if rec.count >= maxLoginFails {
-		rec.lockedUntil = time.Now().Add(lockoutDuration)
+		rec.lockedUntil = now.Add(lockoutDuration)
 	}
 }
 

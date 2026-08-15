@@ -7,26 +7,24 @@ import { reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DataTable, SearchForm, StatusTag, useTable, formatDate } from '@tickraft/core'
 import PrismPageHeader from '../../components/PrismPageHeader.vue'
+import { getRemediationRecords } from '../../../../api/prism'
+import type { RemediationRecord } from '../../../../api/prism'
 
 const { t } = useI18n()
-
-/** Remediation record type */
-interface RemediationRecord {
-  id: number
-  ruleName: string
-  alertName: string
-  status: string
-  actionType: string
-  startedAt: string
-  finishedAt: string | null
-  error: string
-}
 
 /** Search form */
 const searchModel = reactive<Record<string, unknown>>({
   status: '',
-  actionType: '',
 })
+
+/** Lifecycle status options aligned with backend record statuses */
+const statusOptions = computed(() => [
+  { label: t('prism.remediation.list.statusCompleted'), value: 'completed' },
+  { label: t('prism.remediation.list.statusFailed'), value: 'failed' },
+  { label: t('prism.remediation.list.statusStarted'), value: 'started' },
+  { label: t('prism.remediation.list.statusTriggered'), value: 'triggered' },
+  { label: t('prism.remediation.list.statusSkipped'), value: 'skipped' },
+])
 
 const searchFields = computed(() => [
   {
@@ -35,28 +33,19 @@ const searchFields = computed(() => [
     type: 'select' as const,
     placeholder: t('prism.remediation.list.allStatus'),
     span: 8,
-    options: [
-      { label: t('prism.remediation.list.statusSuccess'), value: 'success' },
-      { label: t('prism.remediation.list.statusFailed'), value: 'failed' },
-      { label: t('prism.remediation.list.statusRunning'), value: 'running' },
-    ],
-  },
-  {
-    prop: 'actionType',
-    label: t('prism.remediation.list.actionType'),
-    type: 'input' as const,
-    placeholder: t('prism.remediation.list.searchActionType'),
-    span: 8,
+    options: statusOptions.value,
   },
 ])
 
 /** Table columns */
 const columns = computed(() => [
   { prop: 'ruleName', label: t('prism.remediation.list.ruleName'), minWidth: 160 },
-  { prop: 'alertName', label: t('prism.remediation.list.alertName'), minWidth: 160 },
-  { prop: 'actionType', label: t('prism.remediation.list.actionType'), width: 120, align: 'center' as const },
+  { prop: 'trigger', label: t('prism.remediation.list.actionType'), width: 140, slot: 'trigger' },
+  { prop: 'assetKey', label: t('prism.remediation.list.asset'), minWidth: 140, slot: 'asset' },
   { prop: 'status', label: t('prism.remediation.list.status'), width: 120, slot: 'status' },
+  { prop: 'error', label: t('prism.remediation.list.error'), minWidth: 180, slot: 'error' },
   { prop: 'startedAt', label: t('prism.remediation.list.startedAt'), width: 180, slot: 'startedAt' },
+  { prop: 'finishedAt', label: t('prism.remediation.list.finishedAt'), width: 180, slot: 'finishedAt' },
 ])
 
 const {
@@ -71,12 +60,13 @@ const {
   changePageSize,
 } = useTable<RemediationRecord>({
   defaultPageSize: 15,
-  // The backend does not yet expose a remediation records list endpoint.
-  // Return an empty result set so the page renders gracefully instead of
-  // hitting a 404. When the backend adds GET /prism/remediation/records,
-  // replace this stub with a real request<T> call.
-  fetchFn: async () => {
-    return { items: [], total: 0 }
+  fetchFn: async (params) => {
+    const status = (params.status as string) || ''
+    return getRemediationRecords({
+      page: Number(params.page) || 1,
+      pageSize: Number(params.size) || 15,
+      ...(status ? { status } : {}),
+    })
   },
 })
 
@@ -84,7 +74,6 @@ const {
 function handleSearch(values: Record<string, unknown>): void {
   immediateSearch({
     status: (values.status as string) || '',
-    actionType: (values.actionType as string) || '',
   })
 }
 
@@ -100,6 +89,18 @@ function handlePageChange(payload: { current: number; pageSize: number }): void 
   } else {
     changePage(payload.current)
   }
+}
+
+/** Display label for a record's trigger type */
+function triggerLabel(trigger: string): string {
+  const key = `prism.remediation.rule.triggerType.${trigger}`
+  const label = t(key)
+  return label === key ? trigger : label
+}
+
+/** Resolve the asset display value: asset key when present, else numeric ID */
+function assetLabel(row: RemediationRecord): string {
+  return row.assetKey || (row.assetId ? `#${row.assetId}` : '-')
 }
 
 onMounted(() => {
@@ -137,6 +138,12 @@ onMounted(() => {
       row-key="id"
       @page-change="handlePageChange"
     >
+      <template #trigger="{ row }">
+        {{ triggerLabel((row as RemediationRecord).trigger) }}
+      </template>
+      <template #asset="{ row }">
+        {{ assetLabel(row as RemediationRecord) }}
+      </template>
       <template #status="{ row }">
         <StatusTag
           category="log"
@@ -146,8 +153,16 @@ onMounted(() => {
           {{ t(`prism.remediation.list.status${(row as RemediationRecord).status.charAt(0).toUpperCase() + (row as RemediationRecord).status.slice(1)}`) }}
         </StatusTag>
       </template>
+      <template #error="{ row }">
+        <span class="tk-prism-remediation-list__error">
+          {{ (row as RemediationRecord).error || '-' }}
+        </span>
+      </template>
       <template #startedAt="{ row }">
-        {{ formatDate((row as RemediationRecord).startedAt) }}
+        {{ (row as RemediationRecord).startedAt ? formatDate((row as RemediationRecord).startedAt as string) : '-' }}
+      </template>
+      <template #finishedAt="{ row }">
+        {{ (row as RemediationRecord).finishedAt ? formatDate((row as RemediationRecord).finishedAt as string) : '-' }}
       </template>
     </DataTable>
   </div>
@@ -155,4 +170,7 @@ onMounted(() => {
 
 <style scoped lang="scss">
 /* PrismPageHeader provides the page header structure */
+.tk-prism-remediation-list__error {
+  color: var(--tk-text-secondary);
+}
 </style>

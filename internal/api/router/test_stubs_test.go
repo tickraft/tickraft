@@ -47,10 +47,10 @@ func (stubTaskService) DeleteTask(_ context.Context, _ int64) error  { return ni
 func (stubTaskService) TriggerTask(_ context.Context, _ int64) error { return nil }
 func (stubTaskService) PauseTask(_ context.Context, _ int64) error   { return nil }
 func (stubTaskService) ResumeTask(_ context.Context, _ int64) error  { return nil }
-func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int) ([]task.Execution, int64, error) {
+func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int, _ task.ExecutionFilter) ([]task.Execution, int64, error) {
 	return nil, 0, nil
 }
-func (stubTaskService) GetExecution(_ context.Context, _ int64) (*task.Execution, error) {
+func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*task.Execution, error) {
 	return nil, nil
 }
 func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*task.Task, error) {
@@ -76,7 +76,7 @@ func (stubAlertService) UpdateRule(_ context.Context, _ int64, _ *alert.Rule) (*
 	return &alert.Rule{}, nil
 }
 func (stubAlertService) DeleteRule(_ context.Context, _ int64) error { return nil }
-func (stubAlertService) ListRecords(_ context.Context, _, _ int) ([]alert.Record, int64, error) {
+func (stubAlertService) ListRecords(_ context.Context, _, _ int, _ alert.RecordFilter) ([]alert.Record, int64, error) {
 	return nil, 0, nil
 }
 func (stubAlertService) GetRecord(_ context.Context, _ int64) (*alert.Record, error) {
@@ -127,6 +127,9 @@ func (stubRemediationService) UpdateRule(_ context.Context, _ int64, _ *remediat
 	return &remediation.Rule{}, nil
 }
 func (stubRemediationService) DeleteRule(_ context.Context, _ int64) error { return nil }
+func (stubRemediationService) ListRecords(_ context.Context, _, _ int, _ string) ([]remediation.Record, int64, error) {
+	return nil, 0, nil
+}
 
 var _ remediation.Service = (*stubRemediationService)(nil)
 
@@ -137,8 +140,31 @@ func (stubReportHandler) Report(_ context.Context, _ *app.RequestContext) {}
 
 var _ telemetry.ReportHandler = (*stubReportHandler)(nil)
 
+// stubTelemetryService implements telemetry.Service.
+type stubTelemetryService struct{}
+
+func (stubTelemetryService) ListTasks(_ context.Context, _, _ int, _ telemetry.Filter) ([]telemetry.Task, int64, error) {
+	return nil, 0, nil
+}
+func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetry.Task, error) {
+	return nil, nil
+}
+func (stubTelemetryService) CreateTask(_ context.Context, _ *telemetry.Task) (*telemetry.Task, error) {
+	return &telemetry.Task{}, nil
+}
+func (stubTelemetryService) UpdateTask(_ context.Context, _ int64, _ *telemetry.Task) (*telemetry.Task, error) {
+	return &telemetry.Task{}, nil
+}
+func (stubTelemetryService) DeleteTask(_ context.Context, _ int64) error { return nil }
+
+var _ telemetry.Service = (*stubTelemetryService)(nil)
+
 // stubAssetStore implements assetstore.Store for route-registration tests.
 type stubAssetStore struct{}
+
+func (stubAssetStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
+}
 
 func (stubAssetStore) Migrate(_ context.Context) error { return nil }
 func (stubAssetStore) Create(_ context.Context, _ *assetstore.Asset) error {
@@ -156,7 +182,7 @@ func (stubAssetStore) GetByKey(_ context.Context, _ int64, _ string) (*assetstor
 func (stubAssetStore) UpdateStatus(_ context.Context, _ int64, _ types.AssetStatus, _ time.Time) error {
 	return nil
 }
-func (stubAssetStore) List(_ context.Context, _, _ int) ([]*assetstore.Asset, int64, error) {
+func (stubAssetStore) List(_ context.Context, _, _ int, _ assetstore.ListFilter) ([]*assetstore.Asset, int64, error) {
 	return nil, 0, nil
 }
 func (stubAssetStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*assetstore.Asset], error) {
@@ -183,7 +209,7 @@ func allRequiredRegisterOptions() []RegisterOption {
 		WithChannelService(stubChannelService{}),
 		WithRemediationRuleService(stubRemediationService{}),
 		WithSystemService(newFakeSystemService()),
-		WithTelemetryService(telemetry.NewMemoryService()),
+		WithTelemetryService(stubTelemetryService{}),
 		WithTelemetryReportHandler(stubReportHandler{}),
 		WithAssetHandler(asset.NewHandler(stubAssetStore{}, zap.NewNop())),
 	}

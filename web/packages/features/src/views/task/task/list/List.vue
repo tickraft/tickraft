@@ -7,7 +7,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { SearchForm, DataTable, FeatureGuard } from '@tickraft/core'
+import { SearchForm, DataTable } from '@tickraft/core'
 import { formatDate } from '@tickraft/core'
 import type { TaskModel } from '../../../../types/task'
 import { getTasks, getExecutionStats, triggerTask, deleteTask, pauseTask, resumeTask, copyTask } from '../../../../api/task'
@@ -370,16 +370,6 @@ onMounted(() => {
         </template>
       </DataTable>
     </div>
-
-    <!-- Feature-guarded dependency graph placeholder -->
-    <FeatureGuard
-      feature="distributed_cluster"
-      class="tk-task-list__dep-graph"
-    >
-      <span class="tk-task-list__dep-graph-text">
-        {{ t('task.task.list.dependGraphPlaceholder') }}
-      </span>
-    </FeatureGuard>
   </div>
 </template>
 
@@ -496,16 +486,6 @@ export default { name: 'TaskList' }
   &__group {
     font-size: var(--tk-font-size-sm);
     color: var(--tk-text-regular);
-  }
-
-  &__dep-graph {
-    padding: var(--tk-spacing-sm) var(--tk-spacing-md);
-    margin-top: var(--tk-spacing-md);
-
-    &-text {
-      font-size: var(--tk-font-size-sm);
-      color: var(--tk-text-secondary);
-    }
   }
 }
 

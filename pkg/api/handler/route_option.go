@@ -19,6 +19,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	"github.com/tickraft/tickraft/pkg/api/handler/ws"
 )
 
 // RouteOption configures route registration with middleware and services.
@@ -31,7 +32,6 @@ type RouteOption func(*routeConfig)
 // (e.g. auth.Service, task.Service) so each domain is self-contained.
 type routeConfig struct {
 	jwtMiddleware          app.HandlerFunc
-	apiKeyMiddleware       app.HandlerFunc
 	assetKeyMiddleware     app.HandlerFunc
 	authService            auth.Service
 	taskSvc                task.Service
@@ -41,12 +41,15 @@ type routeConfig struct {
 	systemSvc              system.Service
 	telemetrySvc           telemetry.Service
 	telemetryReportHandler telemetry.ReportHandler
+	telemetryMetricStore   telemetry.MetricStoreInjector
+	telemetryLogStore      telemetry.LogStoreInjector
 	assetHandler           *asset.Handler
 	healthzHandler         *healthz.Handler
 	readyzHandler          *readyz.Handler
 	certificateHandler     *certificates.Handler
 	templateHandler        *telemetry.TemplateHandler
 	i18nHandler            *i18n.Handler
+	wsHandler              *ws.Handler
 }
 
 // WithJWTAuth provides the JWT authentication middleware.
@@ -54,11 +57,6 @@ type routeConfig struct {
 // passes the resulting app.HandlerFunc here.
 func WithJWTAuth(mw app.HandlerFunc) RouteOption {
 	return func(c *routeConfig) { c.jwtMiddleware = mw }
-}
-
-// WithAPIKeyAuth provides the API key authentication middleware.
-func WithAPIKeyAuth(mw app.HandlerFunc) RouteOption {
-	return func(c *routeConfig) { c.apiKeyMiddleware = mw }
 }
 
 // WithAssetKeyAuth provides the asset key authentication middleware
@@ -122,6 +120,16 @@ func WithTelemetryReportHandler(h telemetry.ReportHandler) RouteOption {
 	return func(c *routeConfig) { c.telemetryReportHandler = h }
 }
 
+// WithTelemetryDataStores provides the MetricStore and LogStore used by the
+// telemetry handler's history/logs endpoints. Both stores may be nil to
+// disable the corresponding query path.
+func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector, logStore telemetry.LogStoreInjector) RouteOption {
+	return func(c *routeConfig) {
+		c.telemetryMetricStore = metricStore
+		c.telemetryLogStore = logStore
+	}
+}
+
 // WithHealthzHandler provides the HealthzHandler for the /healthz endpoint.
 // When not provided, a default handler returning 200 with {"status":"ok"}
 // is used (no dependency checks).
@@ -155,4 +163,10 @@ func WithTemplateHandler(h *telemetry.TemplateHandler) RouteOption {
 // registered.
 func WithI18nHandler(h *i18n.Handler) RouteOption {
 	return func(c *routeConfig) { c.i18nHandler = h }
+}
+
+// WithWSHandler provides the WebSocket handler for the /ws realtime
+// push endpoint. When omitted, the route is not registered.
+func WithWSHandler(h *ws.Handler) RouteOption {
+	return func(c *routeConfig) { c.wsHandler = h }
 }

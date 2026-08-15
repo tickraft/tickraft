@@ -59,7 +59,7 @@ func (s *mockAlertRecordStore) GetByID(_ context.Context, _ int64) (*alert.Recor
 	return nil, nil
 }
 
-func (s *mockAlertRecordStore) List(_ context.Context, _, _ int) ([]*alert.Record, int64, error) {
+func (s *mockAlertRecordStore) List(_ context.Context, _, _ int, _ alert.RecordFilter) ([]*alert.Record, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]*alert.Record, len(s.records))

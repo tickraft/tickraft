@@ -7,11 +7,12 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { WarningFilled, Search, Refresh, Plus, Key, Check, Close, CopyDocument } from '@element-plus/icons-vue'
-import { DataTable, ConfirmDialog } from '@tickraft/core'
+import { DataTable, ConfirmDialog, formatDate, usePermission } from '@tickraft/core'
 import { getApiKeys, createApiKey, revokeApiKey, isApiKeyActive } from '../../../../api/auth'
 import type { ApiKey, ApiKeyCreateParams, ApiKeyCreateResult } from '../../../../api/auth'
 
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const tableData = ref<ApiKey[]>([])
@@ -51,7 +52,7 @@ const rangeText = computed(() => {
 const columns = computed(() => [
   { prop: 'name', label: t('system.apiKeys.name'), minWidth: 200, slot: 'name', align: 'left' as const },
   { prop: 'keyPrefix', label: t('system.apiKeys.prefix'), minWidth: 160, slot: 'prefix', align: 'left' as const },
-  { prop: 'createdAt', label: t('system.apiKeys.createdAt'), minWidth: 170, align: 'center' as const },
+  { prop: 'createdAt', label: t('system.apiKeys.createdAt'), minWidth: 170, slot: 'createdAt', align: 'center' as const },
   { prop: 'expiredAt', label: t('system.apiKeys.expiresAt'), minWidth: 170, slot: 'expiresAt' },
   { prop: 'status', label: t('system.apiKeys.status'), width: 100, slot: 'status' },
 ])
@@ -282,11 +283,14 @@ onMounted(() => {
             <code class="tk-key-cell__text">{{ maskPrefix((row as ApiKey).keyPrefix) }}</code>
           </span>
         </template>
+        <template #createdAt="{ row }">
+          <span class="tk-time-cell">{{ formatDate((row as ApiKey).createdAt) }}</span>
+        </template>
         <template #expiresAt="{ row }">
           <span
             v-if="(row as ApiKey).expiredAt"
             class="tk-time-cell"
-          >{{ (row as ApiKey).expiredAt }}</span>
+          >{{ formatDate((row as ApiKey).expiredAt as string) }}</span>
           <span
             v-else
             class="tk-time-cell tk-time-cell--muted"
@@ -312,7 +316,7 @@ onMounted(() => {
           >
             <template #default="{ row }">
               <el-button
-                v-if="isApiKeyActive(row as ApiKey)"
+                v-if="canDelete('*') && isApiKeyActive(row as ApiKey)"
                 link
                 type="danger"
                 size="small"

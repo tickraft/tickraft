@@ -42,13 +42,34 @@ type Filter struct {
 
 // Execution represents a single execution record of a task.
 type Execution struct {
-	ID         int64      `json:"id"`
-	TaskID     int64      `json:"task_id"`
-	Status     string     `json:"status"` // pending, running, success, failed
-	Output     string     `json:"output"`
-	Error      string     `json:"error,omitempty"`
+	ID        int64      `json:"id"`
+	TaskID    int64      `json:"task_id"`
+	TaskName  string     `json:"task_name,omitempty"`
+	// ExecutorType is the executor that produced the record
+	// (http, tcp, local, webhook, icmp).
+	ExecutorType string `json:"executor_type,omitempty"`
+	Status       string `json:"status"` // pending, running, success, failed
+	Output       string `json:"output"`
+	Error        string `json:"error,omitempty"`
+	// StatusCode is the protocol-specific status code (e.g. HTTP status).
+	StatusCode int `json:"status_code,omitempty"`
+	// Duration is the execution duration in milliseconds.
+	Duration   int64      `json:"duration,omitempty"`
+	RetryCount int        `json:"retry_count,omitempty"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+}
+
+// ExecutionFilter holds optional server-side filtering criteria for listing
+// executions. A zero-value filter matches all executions.
+type ExecutionFilter struct {
+	// Status filters by the execution lifecycle status
+	// (pending, running, success, failed).
+	Status string
+	// ExecutorType filters by executor type (http, tcp, ...).
+	ExecutorType string
+	// TaskName filters by a case-insensitive substring match on the task name.
+	TaskName string
 }
 
 // ExecutionStats holds aggregated execution statistics for a time range.
@@ -82,10 +103,12 @@ type Service interface {
 	PauseTask(ctx context.Context, id int64) error
 	// ResumeTask resumes a paused task by re-adding it to the scheduling wheel.
 	ResumeTask(ctx context.Context, id int64) error
-	// ListExecutions returns a page of executions for a task and the total count.
-	ListExecutions(ctx context.Context, taskID int64, page, size int) ([]Execution, int64, error)
-	// GetExecution returns a single execution record by ID.
-	GetExecution(ctx context.Context, id int64) (*Execution, error)
+	// ListExecutions returns a page of executions matching the filter and the
+	// total count. taskID <= 0 matches executions of all tasks.
+	ListExecutions(ctx context.Context, taskID int64, page, size int, filter ExecutionFilter) ([]Execution, int64, error)
+	// GetExecution returns a single execution record by ID. A positive taskID
+	// additionally requires the record to belong to that task.
+	GetExecution(ctx context.Context, taskID, id int64) (*Execution, error)
 	// CopyTask creates a new task by cloning the configuration of an existing
 	// task identified by id. The new task is assigned a fresh ID and the given
 	// name; an empty name defaults to "<source name> (copy)". The source task

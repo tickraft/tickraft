@@ -65,13 +65,13 @@ type CompilerConfig struct {
 // must not be used directly; construct via NewCompiler or
 // NewCompilerWithConfig.
 type Compiler struct {
-	taskEnv         TaskMatchEnv
-	probeEnv        ProbeMatchEnv
-	metricEnv       MetricMatchEnv
-	remediationEnv  RemediationMatchEnv
-	functions       []expr.Option
-	maxNodes        int
-	maxComparisons  int
+	taskEnv        TaskMatchEnv
+	probeEnv       ProbeMatchEnv
+	metricEnv      MetricMatchEnv
+	remediationEnv RemediationMatchEnv
+	functions      []expr.Option
+	maxNodes       int
+	maxComparisons int
 }
 
 // NewCompiler creates a Compiler with the four built-in custom

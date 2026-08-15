@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -236,27 +237,71 @@ func (s *TaskService) ResumeTask(_ context.Context, id int64) error {
 	return nil
 }
 
-// ListExecutions returns a page of executions for a task and the total count.
-func (s *TaskService) ListExecutions(ctx context.Context, taskID int64, page, size int) ([]task.Execution, int64, error) {
-	all, err := s.execs.List(ctx, taskID, 0)
+// ListExecutions returns a page of executions matching the filter and the
+// total count. A taskID <= 0 lists executions across all tasks. Results are
+// enriched with the owning task's name, resolved from the task store.
+func (s *TaskService) ListExecutions(ctx context.Context, taskID int64, page, size int, filter task.ExecutionFilter) ([]task.Execution, int64, error) {
+	var taskIDs []int64
+	nameOf := func(id int64) string { return "" }
+	if filter.TaskName != "" || taskID <= 0 {
+		all, err := s.tasks.List(ctx, schedtask.ListOptions{})
+		if err != nil {
+			return nil, 0, mapError(err)
+		}
+		names := make(map[int64]string, len(all))
+		needle := strings.ToLower(filter.TaskName)
+		taskIDs = make([]int64, 0, len(all))
+		for _, t := range all {
+			names[t.ID] = t.Metadata["name"]
+			if needle != "" && !strings.Contains(strings.ToLower(names[t.ID]), needle) {
+				continue
+			}
+			taskIDs = append(taskIDs, t.ID)
+		}
+		if needle != "" && len(taskIDs) == 0 {
+			return []task.Execution{}, 0, nil
+		}
+		nameOf = func(id int64) string { return names[id] }
+	}
+
+	page, size = clampPaging(page, size)
+	q := schedtask.ExecutionQuery{
+		TaskID:       taskID,
+		TaskIDs:      taskIDs,
+		Status:       filter.Status,
+		ExecutorType: filter.ExecutorType,
+	}
+	execs, total, err := s.execs.Query(ctx, q, page, size)
 	if err != nil {
 		return nil, 0, mapError(err)
 	}
-
-	total := len(all)
-	page, size = clampPaging(page, size)
-	start, end := pageWindow(page, size, total)
-
-	result := make([]task.Execution, 0, end-start)
-	for _, e := range all[start:end] {
-		result = append(result, executionToHandler(e))
+	result := make([]task.Execution, 0, len(execs))
+	for _, e := range execs {
+		h := executionToHandler(e)
+		h.TaskName = nameOf(e.TaskID)
+		result = append(result, h)
 	}
-	return result, int64(total), nil
+	return result, total, nil
 }
 
-// GetExecution returns a single execution record by ID.
-func (s *TaskService) GetExecution(_ context.Context, _ int64) (*task.Execution, error) {
-	return nil, handler.ErrExecutionNotFound
+// GetExecution returns a single execution record by ID. A positive taskID
+// additionally requires the record to belong to that task.
+func (s *TaskService) GetExecution(ctx context.Context, taskID, id int64) (*task.Execution, error) {
+	e, err := s.execs.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, schedtask.ErrExecutionNotFound) {
+			return nil, handler.ErrExecutionNotFound
+		}
+		return nil, mapError(err)
+	}
+	if taskID > 0 && e.TaskID != taskID {
+		return nil, handler.ErrExecutionNotFound
+	}
+	h := executionToHandler(e)
+	if t, err := s.tasks.Get(ctx, e.TaskID); err == nil {
+		h.TaskName = t.Metadata["name"]
+	}
+	return &h, nil
 }
 
 // CopyTask creates a new task by cloning the configuration of an existing
@@ -394,24 +439,45 @@ func validateScheduleInterval(schedule string) error {
 }
 
 // executionToHandler converts a scheduler domain Execution into a handler
-// Execution DTO. A nil input returns the zero value.
+// Execution DTO, normalizing the persisted status ("normal"/"abnormal"/
+// "triggered") into the API lifecycle status (success/failed/running). A nil
+// input returns the zero value.
 func executionToHandler(e *schedtask.Execution) task.Execution {
 	if e == nil {
 		return task.Execution{}
 	}
 	h := task.Execution{
-		ID:        e.ID,
-		TaskID:    e.TaskID,
-		Status:    e.Status,
-		Output:    e.Output,
-		Error:     e.Error,
-		StartedAt: e.StartedAt,
+		ID:           e.ID,
+		TaskID:       e.TaskID,
+		ExecutorType: e.ExecutorName,
+		Status:       lifecycleStatus(e.Status),
+		Output:       e.Output,
+		Error:        e.Error,
+		StatusCode:   e.StatusCode,
+		Duration:     e.Duration,
+		RetryCount:   e.RetryCount,
+		StartedAt:    e.StartedAt,
 	}
 	if !e.FinishedAt.IsZero() {
 		fa := e.FinishedAt
 		h.FinishedAt = &fa
 	}
 	return h
+}
+
+// lifecycleStatus maps a persisted execution status to the API contract
+// lifecycle status (pending/running/success/failed).
+func lifecycleStatus(stored string) string {
+	switch stored {
+	case "normal":
+		return "success"
+	case "abnormal", "unknown":
+		return "failed"
+	case "triggered":
+		return "running"
+	default:
+		return stored
+	}
 }
 
 // mapError translates scheduler and store errors into handler-level service

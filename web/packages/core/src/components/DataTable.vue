@@ -655,7 +655,9 @@ defineExpose({ clearSelection, doLayout, clearSort })
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
-    background-color: var(--tk-gray-2);
+    // gray-3 (neutral-100): one step above the row surface in BOTH themes —
+    // in dark the flipped ramp keeps the header distinct from body rows
+    background-color: var(--tk-gray-3);
 
     // All headers center-aligned for visual consistency (common pattern
     // in Ant Design, Element Plus admin panels). Body cells follow their
@@ -712,7 +714,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
 
   :deep(.el-table) {
     --el-table-border-color: var(--tk-border-color-base);
-    --el-table-header-bg-color: var(--tk-gray-2);
+    --el-table-header-bg-color: var(--tk-gray-3);
     --el-table-row-hover-bg-color: var(--tk-bg-hover);
     --el-table-text-color: var(--tk-text-secondary);
     --el-table-header-text-color: var(--tk-text-tertiary);
@@ -750,7 +752,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
   // Header fixed cells: keep the header background opaque
   :deep(th.el-table__cell.el-table-fixed-column--right),
   :deep(th.el-table__cell.el-table-fixed-column--left) {
-    background-color: var(--tk-gray-2) !important;
+    background-color: var(--tk-gray-3) !important;
   }
 
   // Striped fixed cells: opaque base + semi-transparent stripe overlay

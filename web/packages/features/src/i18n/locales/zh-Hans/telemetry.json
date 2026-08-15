@@ -179,7 +179,10 @@
       "builtinNo": "否",
       "updatedAt": "更新时间",
       "deleteConfirm": "确定删除模板「{name}」吗？",
-      "deleteSuccess": "模板已删除"
+      "deleteSuccess": "模板已删除",
+      "apply": "应用",
+      "applyConfirm": "确定应用模板「{name}」吗？将据此创建一个新监测点。",
+      "applySuccess": "模板已应用，监测点已创建"
     }
   },
   "prober": {

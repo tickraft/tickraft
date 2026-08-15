@@ -538,11 +538,11 @@ func TestValidate_AdminUsernameValid(t *testing.T) {
 // bug where EnsureAdminUser succeeds but Service.Login rejects the same name.
 func TestValidate_AdminUsernameInvalid(t *testing.T) {
 	cases := []string{
-		"ad",                  // too short
-		"admin-user",          // hyphen
-		"admin.user",          // dot
-		"admin user",          // space
-		"",                    // empty
+		"ad",                    // too short
+		"admin-user",            // hyphen
+		"admin.user",            // dot
+		"admin user",            // space
+		"",                      // empty
 		strings.Repeat("a", 65), // too long
 	}
 	for _, name := range cases {

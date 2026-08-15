@@ -78,6 +78,7 @@ type Engine struct {
 	recordStore      alert.RecordStore
 	channelStore     *channel.Store
 	remediationStore *remediation.Store
+	remediationMgr   *remediation.Manager
 	ruleEngineStopFn func(context.Context) error
 }
 
@@ -305,6 +306,17 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.cancel = cancel
 	e.started = true
 
+	// Start the remediation engine first so it is draining events before
+	// the alert pipeline subscribes. On failure the partial start is
+	// rolled back so Start can be retried.
+	if e.remediationMgr != nil {
+		if err := e.remediationMgr.Start(runCtx); err != nil {
+			e.started = false
+			cancel()
+			return fmt.Errorf("prism: start remediation engine: %w", err)
+		}
+	}
+
 	// Subscribe to telemetry alert events. Each handler normalizes the
 	// typed payload into an Event and dispatches it through the
 	// rule engine and notification channels.
@@ -361,8 +373,14 @@ func (e *Engine) Stop(ctx context.Context) error {
 	}
 	e.startMu.Unlock()
 
-	// Stop the rule engine first so its reload loop is cancelled before
-	// the dispatch engine drains.
+	// Stop the remediation engine first so it stops accepting new
+	// dispatches, then the rule engine so its reload loop is cancelled
+	// before the dispatch engine drains.
+	if e.remediationMgr != nil {
+		if err := e.remediationMgr.Stop(ctx); err != nil {
+			e.logger.Warn("remediation engine stop returned error", zap.Error(err))
+		}
+	}
 	if e.ruleEngineStopFn != nil {
 		if err := e.ruleEngineStopFn(ctx); err != nil {
 			e.logger.Warn("rule engine stop returned error", zap.Error(err))

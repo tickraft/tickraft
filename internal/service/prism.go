@@ -7,10 +7,14 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
+	httpprober "github.com/tickraft/tickraft/pkg/executor/http"
+	"github.com/tickraft/tickraft/pkg/executor/webhook"
 	prismengine "github.com/tickraft/tickraft/pkg/prism"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
 )
 
@@ -36,6 +40,15 @@ func startPrismEngine(ctx context.Context, rt *runtime,
 			AssetStore: rt.assetStore,
 		},
 		AssetStore: rt.assetStore,
+		// Remediation actions reuse the built-in executors: webhook and
+		// http are wrapped as remediation operators, and "local" is
+		// registered by default inside the remediation engine. The
+		// operator names must match the executor_type values accepted by
+		// the remediation rule API.
+		RemediationOperators: []remediation.Operator{
+			remediation.NewExecutorOperator("webhook", webhook.New(webhook.WithLogger(rt.logger)), rt.logger),
+			remediation.NewExecutorOperator("http", httpprober.New(10*time.Second), rt.logger),
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start prism: %w", err)

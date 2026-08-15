@@ -62,6 +62,10 @@ type subscriber struct {
 type queueItem struct {
 	envelope *Envelope
 	seq      uint64
+	// ctx preserves the publisher's context so the consumer loop
+	// delivers the event with the publisher's deadline/cancellation
+	// rather than a detached context.Background().
+	ctx context.Context
 }
 
 // priorityQueue implements heap.Interface, ordering by Priority descending;
@@ -208,6 +212,7 @@ func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, o
 	heap.Push(&tq.pq, &queueItem{
 		envelope: env,
 		seq:      b.seq.Add(1),
+		ctx:      ctx,
 	})
 	tq.mu.Unlock()
 
@@ -349,7 +354,11 @@ func (b *channelBus) drainQueue(tq *typeQueue, eventType Type) {
 		tq.mu.Unlock()
 
 		env := item.envelope
-		b.dispatch(context.Background(), eventType, *env)
+		if item.ctx != nil {
+			b.dispatch(item.ctx, eventType, *env)
+		} else {
+			b.dispatch(context.Background(), eventType, *env)
+		}
 		releaseEnvelope(env)
 	}
 }

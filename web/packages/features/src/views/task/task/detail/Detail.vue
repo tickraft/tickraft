@@ -8,7 +8,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Edit, Delete, Lightning } from '@element-plus/icons-vue'
-import { StatusTag, PageEmpty, ConfirmDialog, DataTable } from '@tickraft/core'
+import { StatusTag, PageEmpty, ConfirmDialog, DataTable, usePermission } from '@tickraft/core'
 import { formatDate, formatDuration } from '@tickraft/core'
 import TrendTab from './TrendTab.vue'
 import type { TaskModel, LogModel } from '../../../../types/task'
@@ -18,6 +18,7 @@ import type { ExecutionStats } from '../../../../types/task'
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const taskId = Number(route.params.id)
 const loading = ref(false)
@@ -164,7 +165,7 @@ onMounted(() => { void fetchData() })
           <el-button type="primary" :loading="triggerLoading" @click="handleTrigger">
             <el-icon><Lightning /></el-icon>{{ t('task.task.detail.trigger') }}
           </el-button>
-          <el-button type="danger" @click="handleDelete"><el-icon><Delete /></el-icon>{{ t('task.task.detail.delete') }}</el-button>
+          <el-button v-if="canDelete('task')" type="danger" @click="handleDelete"><el-icon><Delete /></el-icon>{{ t('task.task.detail.delete') }}</el-button>
         </div>
       </div>
 

@@ -27,13 +27,15 @@ type Info struct {
 // GlobalStats holds system-wide aggregate statistics for the dashboard
 // overview. TotalDevices reflects the number of registered resources;
 // TodayExecutions and TodaySuccessRate are scoped to the current UTC day.
-// Implementations that lack access to a given data source return 0 for the
-// corresponding field.
+// AssetStatusCounts breaks the asset inventory down by status
+// (normal/abnormal/offline/unknown). Implementations that lack access to a
+// given data source return 0 for the corresponding field.
 type GlobalStats struct {
-	TotalTasks       int64   `json:"total_tasks"`
-	TotalDevices     int64   `json:"total_devices"`
-	TodayExecutions  int64   `json:"today_executions"`
-	TodaySuccessRate float64 `json:"today_success_rate"`
+	TotalTasks         int64            `json:"total_tasks"`
+	TotalDevices       int64            `json:"total_devices"`
+	TodayExecutions    int64            `json:"today_executions"`
+	TodaySuccessRate   float64          `json:"today_success_rate"`
+	AssetStatusCounts  map[string]int64 `json:"asset_status_counts"`
 }
 
 // Service defines the operations for system configuration and info.

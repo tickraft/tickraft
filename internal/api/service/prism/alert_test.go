@@ -195,17 +195,17 @@ func TestRecordAlert(t *testing.T) {
 		defer cleanup()
 
 		evt := prismalert.Event{
-			Type:      prismalert.TypeMetric,
-			AssetID:   7,
-			TenantID:  1,
-			Timestamp: time.Now(),
+			Type:       prismalert.TypeMetric,
+			AssetID:    7,
+			TenantID:   1,
+			Timestamp:  time.Now(),
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0}}},
 		}
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
-		records, total, err := recordStore.List(ctx, 1, 10)
+		records, total, err := recordStore.List(ctx, 1, 10, prismalert.RecordFilter{})
 		if err != nil {
 			t.Fatalf("list records: %v", err)
 		}
@@ -244,17 +244,17 @@ func TestRecordAlert(t *testing.T) {
 		defer cleanup()
 
 		evt := prismalert.Event{
-			Type:      prismalert.TypeMetric,
-			AssetID:   1,
-			TenantID:  1,
-			Timestamp: time.Now(),
+			Type:       prismalert.TypeMetric,
+			AssetID:    1,
+			TenantID:   1,
+			Timestamp:  time.Now(),
 			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "nonexistent"}}},
 		}
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
-		records, _, err := recordStore.List(ctx, 1, 10)
+		records, _, err := recordStore.List(ctx, 1, 10, prismalert.RecordFilter{})
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
@@ -292,7 +292,7 @@ func TestRecordAlert(t *testing.T) {
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
-		records, _, err := recordStore.List(ctx, 1, 10)
+		records, _, err := recordStore.List(ctx, 1, 10, prismalert.RecordFilter{})
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}

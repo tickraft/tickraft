@@ -55,9 +55,9 @@ func TestBuiltinLibrary_RenderCpuHigh_EN_Concise(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   42,
-		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Type:       alert.TypeMetric,
+		AssetID:    42,
+		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 
@@ -79,9 +79,9 @@ func TestBuiltinLibrary_RenderCpuHigh_ZH_Detailed(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   42,
-		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Type:       alert.TypeMetric,
+		AssetID:    42,
+		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 
@@ -106,9 +106,9 @@ func TestBuiltinLibrary_RenderMemoryHigh(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "memory_usage", Value: 95.0, Threshold: 85.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -129,9 +129,9 @@ func TestBuiltinLibrary_RenderDiskFull(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "disk_usage", Value: 98.0, Threshold: 90.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -174,9 +174,9 @@ func TestBuiltinLibrary_RenderLogKeywordMatched(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeLog,
-		AssetID:   10,
-		Timestamp: time.Now(),
+		Type:       alert.TypeLog,
+		AssetID:    10,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -222,9 +222,9 @@ func TestBuiltinLibrary_RenderHttpErrorRateHigh(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "http_5xx_rate", Value: 15.0, Threshold: 5.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -245,9 +245,9 @@ func TestBuiltinLibrary_RenderConnectionPoolExhausted(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "conn_pool_usage", Value: 99.0, Threshold: 85.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -290,9 +290,9 @@ func TestBuiltinLibrary_RenderCustomMetricThreshold(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "queue_depth", Value: 5000.0, Threshold: 1000.0}}},
 	}
 	msg, err := r.Render(context.Background(), alert, RenderOptions{
@@ -315,9 +315,9 @@ func TestBuiltinLibrary_RenderAllTemplates(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0}, Severity: "error", Log: &alert.LogContext{Keyword: "test", Content: "test content"}, Source: "10.0.0.1"}},
 	}
 
@@ -343,9 +343,9 @@ func TestBuiltinLibrary_RenderAllTemplates_ZH(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0}, Severity: "error", Log: &alert.LogContext{Keyword: "test", Content: "test content"}, Source: "10.0.0.1"}},
 	}
 
@@ -374,9 +374,9 @@ func TestBuiltinLibrary_RenderAllStyles(t *testing.T) {
 	r := NewRenderer(l, nil, zap.NewNop())
 
 	alert := alert.Event{
-		Type:      alert.TypeMetric,
-		AssetID:   1,
-		Timestamp: time.Now(),
+		Type:       alert.TypeMetric,
+		AssetID:    1,
+		Timestamp:  time.Now(),
 		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
 	}
 

@@ -38,7 +38,7 @@ func newRegionTestEngine(mw app.HandlerFunc) (*route.Engine, *string) {
 // TestRegionHeaderPriority verifies that the X-Tickraft-Region header takes
 // the highest priority and is used as the resolved region.
 func TestRegionHeaderPriority(t *testing.T) {
-	mw := NewRegionMiddleware(nil, []byte(testCookieSecret), nil, nil)
+	mw := NewRegionMiddleware([]byte(testCookieSecret), nil, nil)
 	engine, recorded := newRegionTestEngine(mw)
 
 	// Provide both a header and a valid cookie; header should win.
@@ -63,7 +63,7 @@ func TestRegionHeaderPriority(t *testing.T) {
 // HMAC-signed tk_region cookie is used as the resolved region.
 func TestRegionCookiePriority(t *testing.T) {
 	signed := region.SignCookie(testCookieRegion, testCookieTS, []byte(testCookieSecret))
-	mw := NewRegionMiddleware(nil, []byte(testCookieSecret), nil, func(ip string) string {
+	mw := NewRegionMiddleware([]byte(testCookieSecret), nil, func(ip string) string {
 		t.Error("geoipLookup should not be called when cookie is valid")
 		return "global"
 	})
@@ -94,7 +94,7 @@ func TestRegionCookieWithKeyRotator(t *testing.T) {
 		region.DefaultTransitionPeriod,
 	)
 	signed := kr.Sign(testCookieRegion, testCookieTS)
-	mw := NewRegionMiddleware(nil, nil, kr, nil)
+	mw := NewRegionMiddleware(nil, kr, nil)
 	engine, recorded := newRegionTestEngine(mw)
 
 	w := ut.PerformRequest(engine, "GET", "/", nil,
@@ -115,7 +115,7 @@ func TestRegionGeoIPFallback(t *testing.T) {
 	geoip := func(ip string) string {
 		return "eu-west"
 	}
-	mw := NewRegionMiddleware(nil, nil, nil, geoip)
+	mw := NewRegionMiddleware(nil, nil, geoip)
 	engine, recorded := newRegionTestEngine(mw)
 
 	w := ut.PerformRequest(engine, "GET", "/", nil)
@@ -137,7 +137,7 @@ func TestRegionCookieHMACFailure(t *testing.T) {
 	geoip := func(ip string) string {
 		return "global"
 	}
-	mw := NewRegionMiddleware(nil, []byte(testCookieSecret), nil, geoip)
+	mw := NewRegionMiddleware([]byte(testCookieSecret), nil, geoip)
 	engine, recorded := newRegionTestEngine(mw)
 
 	// Cookie with an invalid HMAC signature.
@@ -156,7 +156,7 @@ func TestRegionCookieHMACFailure(t *testing.T) {
 // TestRegionNoInfo verifies that when no header, no cookie, and no GeoIP lookup
 // are available, the default region "global" is used.
 func TestRegionNoInfo(t *testing.T) {
-	mw := NewRegionMiddleware(nil, nil, nil, nil)
+	mw := NewRegionMiddleware(nil, nil, nil)
 	engine, recorded := newRegionTestEngine(mw)
 
 	w := ut.PerformRequest(engine, "GET", "/", nil)

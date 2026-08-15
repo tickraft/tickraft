@@ -170,15 +170,14 @@ func TestLogout_Success(t *testing.T) {
 	accessJTI := claims.JTI()
 	accessExpire := claims.ExpiresAt.Time
 
-	// Parse refresh token.
+	// Parse refresh token to verify blacklisting later.
 	refreshClaims, err := jwt.Parse(tp.RefreshToken, testJWTSecret)
 	if err != nil {
 		t.Fatalf("Parse refresh token: %v", err)
 	}
 	refreshJTI := refreshClaims.JTI()
-	refreshExpire := refreshClaims.ExpiresAt.Time
 
-	err = svc.Logout(context.Background(), accessJTI, refreshJTI, accessExpire, refreshExpire)
+	err = svc.Logout(context.Background(), accessJTI, accessExpire, tp.RefreshToken)
 	if err != nil {
 		t.Fatalf("Logout() error = %v, want nil", err)
 	}

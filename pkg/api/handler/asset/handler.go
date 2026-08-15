@@ -15,7 +15,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
-	assetstore "github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -34,7 +34,7 @@ const maxDeviceQuota = 20
 // resource id, asset key/type) so the asset lifecycle is traceable end-to-end
 // for operational forensics and compliance review.
 type Handler struct {
-	store  assetstore.Store
+	store  asset.Store
 	logger *zap.Logger
 }
 
@@ -43,7 +43,7 @@ type Handler struct {
 // tests without explicit logging configuration; production wiring passes the
 // runtime zap logger so audit events flow through the same pipeline as the
 // rest of the application.
-func NewHandler(store assetstore.Store, logger *zap.Logger) *Handler {
+func NewHandler(store asset.Store, logger *zap.Logger) *Handler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -52,7 +52,7 @@ func NewHandler(store assetstore.Store, logger *zap.Logger) *Handler {
 
 // CreateAsset handles POST /api/v1/assets.
 func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
-	var a assetstore.Asset
+	var a asset.Asset
 	if !api.BindAndValidate(arc, &a) {
 		return
 	}
@@ -146,10 +146,17 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 	api.Success(arc, a)
 }
 
-// ListAssets handles GET /api/v1/assets.
+// ListAssets handles GET /api/v1/assets. Supported query parameters: page,
+// page_size, keyword (substring match on name/asset_key), asset_type and
+// status (exact match).
 func (h *Handler) ListAssets(ctx context.Context, arc *app.RequestContext) {
 	page, size := httputil.ParsePaging(arc)
-	items, total, err := h.store.List(ctx, page, size)
+	filter := asset.ListFilter{
+		Keyword:   arc.Query("keyword"),
+		AssetType: arc.Query("asset_type"),
+		Status:    arc.Query("status"),
+	}
+	items, total, err := h.store.List(ctx, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)
 		return

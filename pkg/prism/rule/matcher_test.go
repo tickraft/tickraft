@@ -13,8 +13,8 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
-	a "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/pagination"
+	a "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -26,7 +26,7 @@ import (
 // failure in addition to the package-level assertion.
 var (
 	_ telemetry.Processor = (*ProbeMatcher)(nil)
-	_ a.Matcher          = (*MetricMatcher)(nil)
+	_ a.Matcher           = (*MetricMatcher)(nil)
 )
 
 // stubAssetStore is a minimal asset.Store double. It records every
@@ -43,6 +43,10 @@ type stubAssetStore struct {
 	updatedStatus types.AssetStatus
 	updatedActive time.Time
 	updateErr     error
+}
+
+func (s *stubAssetStore) CountByStatus(_ context.Context) (map[string]int64, error) {
+	return map[string]int64{}, nil
 }
 
 func (s *stubAssetStore) Create(context.Context, *asset.Asset) error {
@@ -70,7 +74,7 @@ func (s *stubAssetStore) UpdateStatus(_ context.Context, id int64, status types.
 	return nil
 }
 func (s *stubAssetStore) Migrate(context.Context) error { return nil }
-func (s *stubAssetStore) List(context.Context, int, int) ([]*asset.Asset, int64, error) {
+func (s *stubAssetStore) List(context.Context, int, int, asset.ListFilter) ([]*asset.Asset, int64, error) {
 	return nil, 0, nil
 }
 func (s *stubAssetStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {

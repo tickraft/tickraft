@@ -6,13 +6,13 @@ package auth
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
+	authpkg "github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
@@ -46,6 +46,12 @@ type tokenData struct {
 // refreshRequest is the request body for the refresh endpoint.
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+// logoutRequest is the optional request body for the logout endpoint.
+// The client may include the refresh token so it can be revoked server-side.
+type logoutRequest struct {
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // changePasswordRequest is the request body for the change-password endpoint.
@@ -106,17 +112,12 @@ func (h *Handler) Logout(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// Extract access token JTI from the validated claims.
-	accessJTI := claims.JTI
-	var accessExpireAt time.Time
-	if accessJTI != "" {
-		accessExpireAt = time.Now().Add(2 * time.Hour)
-	}
+	// The request body is optional; the client may send the refresh token
+	// for server-side revocation.
+	var req logoutRequest
+	_ = c.Bind(&req)
 
-	var refreshJTI string
-	var refreshExpireAt time.Time
-
-	if err := h.svc.Logout(ctx, accessJTI, refreshJTI, accessExpireAt, refreshExpireAt); err != nil {
+	if err := h.svc.Logout(ctx, claims.JTI, claims.ExpiresAt, req.RefreshToken); err != nil {
 		api.Fail(c, err)
 		return
 	}
@@ -174,11 +175,17 @@ func (h *Handler) ChangePassword(ctx context.Context, c *app.RequestContext) {
 	api.Success(c, nil)
 }
 
-// CreateAPIKey handles POST /api/v1/auth/apikeys.
+// CreateAPIKey handles POST /api/v1/auth/apikeys. Only administrators may
+// create API keys; the route also carries an admin-level RequirePermission
+// middleware, this check defends in depth for other mount points.
 func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
 	claims, ok := api.GetUserClaims(c)
 	if !ok || claims == nil {
 		api.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
+		return
+	}
+	if claims.Role < authpkg.RoleAdmin {
+		api.FailWithCode(c, 403, errdefs.CodeForbidden, "admin role required")
 		return
 	}
 
@@ -191,14 +198,16 @@ func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
 		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "name is required")
 		return
 	}
+	if len(req.Name) > 100 {
+		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "name must be 100 characters or less")
+		return
+	}
 
 	rawKey, info, err := h.svc.CreateAPIKey(ctx, req.Name, req.ExpiredAt)
 	if err != nil {
 		api.Fail(c, err)
 		return
 	}
-
-	_ = claims
 
 	api.Success(c, apiKeyData{
 		RawKey:   rawKey,
@@ -225,15 +234,8 @@ func (h *Handler) ListAPIKeys(ctx context.Context, c *app.RequestContext) {
 
 // RevokeAPIKey handles DELETE /api/v1/auth/apikeys/:id.
 func (h *Handler) RevokeAPIKey(ctx context.Context, c *app.RequestContext) {
-	idStr := c.Param("id")
-	if idStr == "" {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "api key id is required")
-		return
-	}
-
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "invalid api key id")
+	id, ok := httputil.ParseID(c)
+	if !ok {
 		return
 	}
 

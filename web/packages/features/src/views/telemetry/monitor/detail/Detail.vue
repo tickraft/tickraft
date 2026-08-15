@@ -17,7 +17,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Edit, Delete, InfoFilled, Document, CopyDocument, VideoPause, Refresh } from '@element-plus/icons-vue'
-import { ConfirmDialog, PageEmpty, DataTable } from '@tickraft/core'
+import { ConfirmDialog, PageEmpty, DataTable, usePermission } from '@tickraft/core'
 import type { MonitorHistoryEntry, MonitorLog, MonitorPoint, MonitorStatus } from '../../../../types/telemetry'
 import { getMonitor, deleteMonitor, getMonitorStatus, probeMonitor, getMonitorHistory, getMonitorLogs } from '../../../../api/telemetry'
 import { formatDate } from '@tickraft/core'
@@ -25,6 +25,7 @@ import { formatDate } from '@tickraft/core'
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const loading = ref(false)
 const detail = ref<MonitorPoint | null>(null)
@@ -277,7 +278,7 @@ onMounted(() => {
             <el-icon><Edit /></el-icon>
             {{ t('common.app.edit') }}
           </el-button>
-          <el-button type="danger" @click="handleDelete">
+          <el-button v-if="canDelete('device')" type="danger" @click="handleDelete">
             <el-icon><Delete /></el-icon>
             {{ t('common.app.delete') }}
           </el-button>

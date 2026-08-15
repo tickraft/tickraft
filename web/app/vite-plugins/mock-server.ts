@@ -35,7 +35,7 @@ export function mockServerPlugin(options: {
   enable?: boolean
   logger?: boolean
 }): Plugin {
-  const { mockPath, enable = true, logger = true } = options
+  const { mockPath, enable = false, logger = true } = options
 
   let server: ViteDevServer
   let compiledRoutes: CompiledRoute[] = []

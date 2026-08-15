@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tickraft/tickraft/internal/timewheel"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
+	"github.com/tickraft/tickraft/pkg/timewheel"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

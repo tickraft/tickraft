@@ -78,13 +78,9 @@ type TemplateHandler struct {
 }
 
 // NewTemplateHandler creates a new TemplateHandler backed by the given
-// store. The Service is used by ApplyTemplate to create
-// monitoring points; when nil, an in-memory stub is used so the handler
-// is always safe to invoke.
+// store. The Service is used by ApplyTemplate to create monitoring points
+// and must be non-nil.
 func NewTemplateHandler(store *telemetry.TemplateStore, svc Service) *TemplateHandler {
-	if svc == nil {
-		svc = NewMemoryService()
-	}
 	return &TemplateHandler{store: store, svc: svc}
 }
 
@@ -181,11 +177,6 @@ func (h *TemplateHandler) UpdateTemplate(ctx context.Context, arc *app.RequestCo
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
-	if err := validateTemplateRequest(&req); err != nil {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
-		return
-	}
-
 	existing, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
@@ -195,8 +186,14 @@ func (h *TemplateHandler) UpdateTemplate(ctx context.Context, arc *app.RequestCo
 		api.Fail(arc, err)
 		return
 	}
+	// The read-only guard runs before request validation so a malformed
+	// body cannot mask the 403 contract for built-in templates.
 	if existing.IsBuiltin {
 		api.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates are read-only")
+		return
+	}
+	if err := validateTemplateRequest(&req); err != nil {
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 		return
 	}
 

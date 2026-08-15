@@ -74,6 +74,6 @@
 // The scheduler engine (pkg/scheduler) reuses this package's Schedule interface
 // and Parse function to compute next fire times, but does NOT use the Crontab
 // runner type. The engine drives dispatch through its own hierarchical time
-// wheel (internal/timewheel); Crontab is an independent coordination tool provided
+// wheel (pkg/timewheel); Crontab is an independent coordination tool provided
 // for standalone consumers that need a self-contained cron runner.
 package cron

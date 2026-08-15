@@ -7,7 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { DataTable, ConfirmDialog, useTable, formatDate } from '@tickraft/core'
+import { DataTable, ConfirmDialog, useTable, formatDate, usePermission } from '@tickraft/core'
 import {
   getAlertRules,
   getAlertRule,
@@ -20,6 +20,7 @@ import PrismPageHeader from '../../components/PrismPageHeader.vue'
 
 const router = useRouter()
 const { t } = useI18n()
+const { canDelete } = usePermission()
 
 const deleteVisible = ref(false)
 const deleteTarget = ref<AlertRule | null>(null)
@@ -229,6 +230,7 @@ onMounted(() => {
                 {{ t('prism.rule.list.edit') }}
               </el-button>
               <el-button
+                v-if="canDelete('alert')"
                 link
                 type="danger"
                 @click="handleDeleteClick(row as AlertRule)"

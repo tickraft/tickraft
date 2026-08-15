@@ -51,10 +51,13 @@ const modeLabel = computed(() =>
 const form = ref({
   name: '',
   description: '',
-  triggerEventType: 'alert.firing' as string,
+  triggerEventType: 'metric' as string,
   conditionExpr: '',
   executorType: 'webhook' as string,
-  // Executor config fields
+  // Local executor config fields
+  executorCommand: '',
+  executorArgs: '',
+  // Webhook/http executor config fields
   executorUrl: '',
   executorMethod: 'POST' as 'POST' | 'PUT' | 'GET',
   executorTimeout: 10,
@@ -66,14 +69,16 @@ const form = ref({
   enabled: true,
 })
 
-/** Trigger event type options (CE supports alert.firing / alert.critical) */
+/** Trigger event type options (must match backend trigger_event_type values) */
 const triggerTypeOptions = computed(() => [
-  { value: 'alert.firing', label: t('prism.remediation.rule.triggerType.alert.firing') },
-  { value: 'alert.critical', label: t('prism.remediation.rule.triggerType.alert.critical') },
+  { value: 'metric', label: t('prism.remediation.rule.triggerType.metric') },
+  { value: 'log', label: t('prism.remediation.rule.triggerType.log') },
+  { value: 'status_change', label: t('prism.remediation.rule.triggerType.status_change') },
 ])
 
-/** Executor type options (CE supports webhook / http) */
+/** Executor type options (must match the remediation engine operator registry) */
 const executorTypeOptions = computed(() => [
+  { value: 'local', label: t('prism.remediation.rule.executorType.local') },
   { value: 'webhook', label: t('prism.remediation.rule.executorType.webhook') },
   { value: 'http', label: t('prism.remediation.rule.executorType.http') },
 ])
@@ -87,6 +92,9 @@ const methodOptions = computed(() => [
 
 /** Whether the body field should be shown (only for http executor type) */
 const showBody = computed(() => form.value.executorType === 'http')
+
+/** Whether the local-script config fields apply (vs. webhook/http config) */
+const isLocalExecutor = computed(() => form.value.executorType === 'local')
 
 /** Form validation rules */
 const rules = computed<FormRules>(() => ({
@@ -102,12 +110,32 @@ const rules = computed<FormRules>(() => ({
   ],
   executorUrl: [
     {
-      required: true,
       validator: (_rule, value: string, callback) => {
+        if (isLocalExecutor.value) {
+          callback()
+          return
+        }
         if (!value) {
           callback(new Error(t('prism.remediation.rule.form.executorUrlPlaceholder')))
         } else if (!isValidUrl(value) || !/^https?:\/\//.test(value)) {
           callback(new Error(t('prism.remediation.rule.form.invalidUrl')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  executorCommand: [
+    {
+      required: true,
+      validator: (_rule, value: string, callback) => {
+        if (!isLocalExecutor.value) {
+          callback()
+          return
+        }
+        if (!value || !value.trim()) {
+          callback(new Error(t('prism.remediation.rule.form.executorCommandPlaceholder')))
         } else {
           callback()
         }
@@ -152,16 +180,29 @@ async function loadRule(): Promise<void> {
     form.value.circuitBreakerThreshold = rule.circuitBreakerThreshold
     form.value.enabled = rule.enabled
 
-    // Parse executor config from the JSON config string
+    // Parse executor config from the JSON config string. The shape depends
+    // on the executor type: local uses {command, args}, webhook/http use
+    // the RemediationExecutorConfig shape.
     try {
-      const cfg = JSON.parse(rule.executorConfig) as Partial<RemediationExecutorConfig>
-      form.value.executorUrl = cfg.url ?? ''
-      form.value.executorMethod = (cfg.method as 'POST' | 'PUT' | 'GET') ?? 'POST'
-      form.value.executorTimeout = parseTimeoutSeconds(cfg.timeout ?? '10s')
-      form.value.executorBody = cfg.body ?? ''
-      const headerEntries = Object.entries(cfg.headers ?? {})
-      form.value.headers = headerEntries.map(([key, value]) => ({ key, value: String(value) }))
+      if (rule.executorType === 'local') {
+        const cfg = JSON.parse(rule.executorConfig) as {
+          command?: string
+          args?: string[]
+        }
+        form.value.executorCommand = cfg.command ?? ''
+        form.value.executorArgs = (cfg.args ?? []).join('\n')
+      } else {
+        const cfg = JSON.parse(rule.executorConfig) as Partial<RemediationExecutorConfig>
+        form.value.executorUrl = cfg.url ?? ''
+        form.value.executorMethod = (cfg.method as 'POST' | 'PUT' | 'GET') ?? 'POST'
+        form.value.executorTimeout = parseTimeoutSeconds(cfg.timeout ?? '10s')
+        form.value.executorBody = cfg.body ?? ''
+        const headerEntries = Object.entries(cfg.headers ?? {})
+        form.value.headers = headerEntries.map(([key, value]) => ({ key, value: String(value) }))
+      }
     } catch {
+      form.value.executorCommand = ''
+      form.value.executorArgs = ''
       form.value.executorUrl = ''
       form.value.executorMethod = 'POST'
       form.value.executorTimeout = 10
@@ -181,9 +222,11 @@ function resetForm(): void {
   form.value = {
     name: '',
     description: '',
-    triggerEventType: 'alert.firing',
+    triggerEventType: 'metric',
     conditionExpr: '',
     executorType: 'webhook',
+    executorCommand: '',
+    executorArgs: '',
     executorUrl: '',
     executorMethod: 'POST',
     executorTimeout: 10,
@@ -208,6 +251,16 @@ function removeHeader(index: number): void {
 
 /** Build the executor config JSON string from form data */
 function buildExecutorConfig(): string {
+  if (isLocalExecutor.value) {
+    const args = form.value.executorArgs
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    return JSON.stringify({
+      command: form.value.executorCommand.trim(),
+      args,
+    })
+  }
   const headers: Record<string, string> = {}
   for (const row of form.value.headers) {
     const key = row.key.trim()
@@ -407,6 +460,32 @@ onMounted(() => {
               />
             </el-select>
           </el-form-item>
+          <!-- Local executor: command + args -->
+          <template v-if="isLocalExecutor">
+            <el-form-item
+              :label="t('prism.remediation.rule.form.executorCommand')"
+              prop="executorCommand"
+            >
+              <el-input
+                v-model="form.executorCommand"
+                :placeholder="t('prism.remediation.rule.form.executorCommandPlaceholder')"
+              />
+              <div class="tk-prism-remediation-rule-edit__help">
+                {{ t('prism.remediation.rule.form.executorCommandHelp') }}
+              </div>
+            </el-form-item>
+            <el-form-item :label="t('prism.remediation.rule.form.executorArgs')">
+              <el-input
+                v-model="form.executorArgs"
+                type="textarea"
+                :rows="3"
+                :placeholder="t('prism.remediation.rule.form.executorArgsPlaceholder')"
+              />
+            </el-form-item>
+          </template>
+
+          <!-- Webhook/http executor: URL / method / timeout / headers / body -->
+          <template v-else>
           <el-form-item
             :label="t('prism.remediation.rule.form.executorUrl')"
             prop="executorUrl"
@@ -499,6 +578,7 @@ onMounted(() => {
               {{ t('prism.remediation.rule.form.executorBodyHelp') }}
             </div>
           </el-form-item>
+          </template>
         </section>
 
         <!-- Section 04: Advanced -->

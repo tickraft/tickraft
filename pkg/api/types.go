@@ -109,6 +109,11 @@ type ServerConfig struct {
 	WriteTimeout time.Duration
 	// EnableCORS indicates whether to enable CORS middleware.
 	EnableCORS bool
+	// AllowedOrigins is the list of origin URLs permitted by CORS.
+	// When non-empty, only these origins receive Access-Control-Allow-Origin
+	// with credentials. When empty, CORS allows all origins (*) without
+	// credentials.
+	AllowedOrigins []string
 	// EnableLog indicates whether to enable access log middleware.
 	EnableLog bool
 	// MaxHeaderBytes is the maximum number of bytes the server will read

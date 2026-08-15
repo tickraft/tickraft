@@ -206,7 +206,7 @@ func (s *Server) applyMiddleware(h *server.Hertz) {
 	}
 	h.Use(middleware.Recovery())
 	if s.config.EnableCORS {
-		h.Use(middleware.CORS())
+		h.Use(middleware.CORS(s.config.AllowedOrigins))
 	}
 	if len(s.config.TrustedProxies) > 0 {
 		h.Use(middleware.NewTrustedProxyMiddleware(s.config.TrustedProxies))

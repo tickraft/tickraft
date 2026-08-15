@@ -3,11 +3,11 @@
 // Dual-licensed — see LICENSE for details.
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { DataTable, StatusTag, useTable, formatDate } from '@tickraft/core'
+import { DataTable, SearchForm, StatusTag, useTable, formatDate } from '@tickraft/core'
 import type { AlertStatus } from '@tickraft/core'
 import {
   getAlertRecords,
@@ -38,6 +38,39 @@ function severityLabel(severity: string | undefined): string {
   return t(`prism.severity.${severity}`)
 }
 
+/** Search form model (severity / status server-side filters) */
+const searchModel = reactive<Record<string, unknown>>({
+  severity: '',
+  status: '',
+})
+
+const searchFields = computed(() => [
+  {
+    prop: 'severity',
+    label: t('prism.record.list.severity'),
+    type: 'select' as const,
+    placeholder: t('prism.record.list.allSeverity'),
+    span: 8,
+    options: [
+      { label: t('prism.severity.critical'), value: 'critical' },
+      { label: t('prism.severity.warning'), value: 'warning' },
+      { label: t('prism.severity.info'), value: 'info' },
+    ],
+  },
+  {
+    prop: 'status',
+    label: t('prism.record.list.status'),
+    type: 'select' as const,
+    placeholder: t('prism.record.list.allStatus'),
+    span: 8,
+    options: [
+      { label: t('prism.record.list.firing'), value: 'firing' },
+      { label: t('prism.record.list.acknowledged') as string, value: 'acknowledged' },
+      { label: t('prism.record.list.resolved'), value: 'resolved' },
+    ],
+  },
+])
+
 /** Table column configuration */
 const columns = computed(() => [
   { prop: 'ruleName', label: t('prism.record.list.ruleName'), minWidth: '160' },
@@ -57,6 +90,7 @@ const {
   page,
   pageSize,
   immediateSearch,
+  resetSearch,
   changePage,
   changePageSize,
   refresh,
@@ -66,6 +100,8 @@ const {
     const res = await getAlertRecords({
       page: params.page,
       pageSize: params.size as number,
+      severity: (params.severity as string) || undefined,
+      status: (params.status as string) || undefined,
     })
     return { items: res.items, total: res.total }
   },
@@ -151,6 +187,21 @@ function handleExport(): void {
   ElMessage.info(t('prism.record.list.exportTip'))
 }
 
+/** Click search: trigger query with current filters */
+function handleSearch(values: Record<string, unknown>): void {
+  immediateSearch({
+    severity: (values.severity as string) || '',
+    status: (values.status as string) || '',
+  })
+}
+
+/** Reset search conditions */
+function handleResetSearch(): void {
+  searchModel.severity = ''
+  searchModel.status = ''
+  resetSearch()
+}
+
 onMounted(() => {
   immediateSearch()
 })
@@ -179,6 +230,15 @@ onMounted(() => {
           class="tk-prism-record-list__summary-chip"
         >
           <span class="tk-prism-record-list__summary-dot" />
+
+    <SearchForm
+      v-model="searchModel"
+      :fields="searchFields"
+      :loading="loading"
+      :show-collapse="false"
+      @search="handleSearch"
+      @reset="handleResetSearch"
+    />
           <span class="tk-prism-record-list__summary-label">
             {{ t('prism.record.list.summaryFiring') }}
           </span>

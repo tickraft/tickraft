@@ -19,7 +19,7 @@
 // # Dependencies
 //
 // This package imports pkg/event, pkg/asset, pkg/pool, pkg/retry, and
-// internal/timewheel. It does NOT import pkg/scheduler, avoiding circular
+// pkg/timewheel. It does NOT import pkg/scheduler, avoiding circular
 // dependencies.
 //
 // The TargetConfig and Result types are defined in this package and serve as

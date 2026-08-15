@@ -152,6 +152,11 @@ export interface UsePermissionReturn {
   features: ComputedRef<string[]>
   /** Whether the user has the admin role */
   isAdmin: ComputedRef<boolean>
+  /**
+   * Check whether the current role may delete the given resource type
+   * ('task' | 'device' | 'alert' | '*'). Mirrors the backend RBAC policy.
+   */
+  canDelete: ComputedRef<(resource: string) => boolean>
   /** Inject a paid-tier permission provider */
   installPermissionProvider: typeof installPermissionProvider
 }
@@ -240,12 +245,29 @@ export function usePermission(): UsePermissionReturn {
   /** Whether the user has the admin role */
   const isAdmin: ComputedRef<boolean> = computed(() => userStore.role === 'admin')
 
+  /**
+   * Check whether the current role may delete the given resource type.
+   *
+   * Mirrors the backend RBAC policy (admin deletes everything; developer
+   * deletes only tasks; viewer never deletes). Display-layer only — the
+   * backend enforces the final decision.
+   * @param resource - resource type: 'task' | 'device' | 'alert' | '*'
+   */
+  const canDelete: ComputedRef<(resource: string) => boolean> = computed(() => {
+    return (resource: string): boolean => {
+      if (userStore.role === 'admin') return true
+      if (userStore.role === 'developer') return resource === 'task'
+      return false
+    }
+  })
+
   return {
     hasFeature,
     hasAnyFeature,
     hasAllFeatures,
     features,
     isAdmin,
+    canDelete,
     installPermissionProvider,
   }
 }

@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// Policy defines the permission checking strategy.
+// The default implementation provides an RBAC policy via [DefaultPolicy].
+type Policy interface {
+	// Check returns whether the user with the given role is allowed to
+	// perform the specified action on the asset type.
+	Check(role int, action string, assetType string) bool
+}
+
 // BlacklistStore defines the persistence operations for the JWT token
 // blacklist. Implementations must be safe for concurrent use.
 //
