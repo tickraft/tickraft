@@ -133,7 +133,7 @@ func TestAuthLogoutBlacklist(t *testing.T) {
 		t.Fatalf("logout: expected HTTP 200, got %d code=%d", status, env.Code)
 	}
 
-	status, env = hs.do("GET", "/api/v1/system/info", nil, token)
+	status, _ = hs.do("GET", "/api/v1/system/info", nil, token)
 	if status != http.StatusUnauthorized {
 		t.Fatalf("token after logout: expected HTTP 401, got %d", status)
 	}
@@ -147,7 +147,7 @@ func TestChangePassword(t *testing.T) {
 	token := hs.login(adminUsername, adminPassword)
 	newPwd := "Rotated-Password-456"
 
-	status, env := hs.do("PUT", "/api/v1/auth/password", map[string]string{
+	status, _ := hs.do("PUT", "/api/v1/auth/password", map[string]string{
 		"old_password": "wrong-old-password",
 		"new_password": newPwd,
 	}, token)
@@ -158,7 +158,7 @@ func TestChangePassword(t *testing.T) {
 		t.Fatalf("change password with wrong old password: expected failure, got 200")
 	}
 
-	status, env = hs.do("PUT", "/api/v1/auth/password", map[string]string{
+	status, env := hs.do("PUT", "/api/v1/auth/password", map[string]string{
 		"old_password": adminPassword,
 		"new_password": newPwd,
 	}, token)

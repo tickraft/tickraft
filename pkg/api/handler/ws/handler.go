@@ -102,11 +102,10 @@ type Handler struct {
 
 	upgrader hws.HertzUpgrader
 
-	mu         sync.Mutex
-	clients    map[*clientConn]struct{}
-	connCount  int
-	subs       []event.Subscription
-	registerCh chan *clientConn
+	mu        sync.Mutex
+	clients   map[*clientConn]struct{}
+	connCount int
+	subs      []event.Subscription
 }
 
 // clientConn couples the WebSocket connection with its outbound queue.
@@ -292,7 +291,7 @@ func (h *Handler) broadcast(env event.Envelope) {
 // deadline and answers ping messages with pong, matching the frontend
 // useWebSocket protocol.
 func (h *Handler) readLoop(c *clientConn) {
-	defer c.conn.Close()
+	defer func() { _ = c.conn.Close() }()
 	_ = c.conn.SetReadDeadline(time.Now().Add(readWait))
 	for {
 		_, data, err := c.conn.ReadMessage()
@@ -318,7 +317,7 @@ func (h *Handler) readLoop(c *clientConn) {
 // connection fails; on exit it closes the connection so the blocked
 // readLoop unblocks too.
 func (h *Handler) writeLoop(c *clientConn, done <-chan struct{}) {
-	defer c.conn.Close()
+	defer func() { _ = c.conn.Close() }()
 	for {
 		select {
 		case <-done:
