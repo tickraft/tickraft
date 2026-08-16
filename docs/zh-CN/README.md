@@ -26,4 +26,4 @@
 
 ## 许可证
 
-Tickraft 采用 Apache License 2.0 与 MIT License 双重许可。详见 [LICENSE](../../LICENSE)。
+Tickraft 采用 AGPLv3 与 Tickraft Commercial License 双重许可。详见 [LICENSE](../../LICENSE)。

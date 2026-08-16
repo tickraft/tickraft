@@ -24,4 +24,4 @@ Welcome to the Tickraft documentation. The open-source edition ships as a single
 
 ## License
 
-Tickraft is dual-licensed under the Apache License 2.0 and the MIT License. See [LICENSE](../LICENSE) for details.
+Tickraft is dual-licensed under AGPLv3 and the Tickraft Commercial License. See [LICENSE](../LICENSE) for details.
