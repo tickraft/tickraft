@@ -82,6 +82,7 @@
         "http": "HTTP: Send HTTP request to check interface availability and response code",
         "webhook": "Webhook: Receive data from external systems via HTTP POST",
         "dns": "DNS: Probe DNS resolution availability and response time",
+        "udp": "UDP: Probe UDP port reachability and response",
         "ssl": "SSL: Check SSL certificate validity and status"
       },
       "targetHost": "Target Host",

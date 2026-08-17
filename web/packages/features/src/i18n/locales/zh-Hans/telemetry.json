@@ -82,6 +82,7 @@
         "http": "HTTP：发起 HTTP 请求检测接口可用性与响应码",
         "webhook": "Webhook：通过 HTTP POST 接收外部系统上报的数据",
         "dns": "DNS：探测 DNS 解析可用性与响应时间",
+        "udp": "UDP：探测目标 UDP 端口可达性与响应",
         "ssl": "SSL：检测 SSL 证书有效期与状态"
       },
       "targetHost": "目标主机",
