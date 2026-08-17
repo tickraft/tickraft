@@ -78,7 +78,7 @@ jobs:
 
       - name: Validate signing comment
         id: verify
-        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
             const { owner, repo } = context.repo
@@ -253,7 +253,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.verify.outputs.pr }}
           SIGNER_LOGIN: ${{ steps.verify.outputs.login }}
-        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
             const { owner, repo } = context.repo
@@ -272,7 +272,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.verify.outputs.pr }}
           SIGNER_LOGIN: ${{ steps.verify.outputs.login }}
-        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
             const { owner, repo } = context.repo
