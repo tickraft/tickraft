@@ -8,7 +8,6 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/tickraft/tickraft)](https://github.com/tickraft/tickraft/stargazers)
 [![GitHub contributors](https://img.shields.io/github/contributors/tickraft/tickraft)](https://github.com/tickraft/tickraft/graphs/contributors)
-[![GitHub last commit](https://img.shields.io/github/last-commit/tickraft/tickraft)](https://github.com/tickraft/tickraft/commits)
 [![GitHub issues](https://img.shields.io/github/issues/tickraft/tickraft)](https://github.com/tickraft/tickraft/issues)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
