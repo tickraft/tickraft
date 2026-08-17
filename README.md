@@ -5,7 +5,12 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Build Status](https://github.com/tickraft/tickraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/tickraft/tickraft/actions/workflows/ci.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/tickraft/tickraft)](https://goreportcard.com/report/github.com/tickraft/tickraft)
+
+[![GitHub stars](https://img.shields.io/github/stars/tickraft/tickraft)](https://github.com/tickraft/tickraft/stargazers)
+[![GitHub contributors](https://img.shields.io/github/contributors/tickraft/tickraft)](https://github.com/tickraft/tickraft/graphs/contributors)
+[![GitHub last commit](https://img.shields.io/github/last-commit/tickraft/tickraft)](https://github.com/tickraft/tickraft/commits)
+[![GitHub issues](https://img.shields.io/github/issues/tickraft/tickraft)](https://github.com/tickraft/tickraft/issues)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **English** | [简体中文](./README.zh-CN.md)
 
