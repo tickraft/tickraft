@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import type { InternalAxiosRequestConfig } from 'axios'
 import { setToken } from '@tickraft/core'
 import service from '@tickraft/core/utils/request'

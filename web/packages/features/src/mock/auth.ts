@@ -4,67 +4,81 @@
 
 import type { MockMethod } from './types'
 
-/** One day in milliseconds */
-const DAY_MS = 86_400_000
+/**
+ * API Key wire record (snake_case, aligned with backend user.APIKey JSON tags).
+ * The axios response interceptor camelizes keys so the frontend receives the
+ * ApiKey shape (keyPrefix / expiredAt / revokedAt / ...).
+ * Fields: id, name, key_prefix, status (1=active, 0=revoked),
+ * ip_whitelist?, permission_level?, created_at, expired_at?, revoked_at?
+ */
+interface MockApiKey {
+  id: number
+  name: string
+  key_prefix: string
+  status: number
+  ip_whitelist?: string
+  permission_level?: string
+  created_at: string
+  expired_at?: string
+  revoked_at?: string
+}
 
 /**
- * API Key list (6 items, aligned with prototype mock-data.js)
- * Fields: id, name, prefix, created_at, last_used_at, expires_at, status
+ * API Key list (6 items: 5 active + 1 revoked, aligned with prototype mock-data.js).
+ * All timestamps are RFC3339; expired_at is omitted for never-expiring keys.
  */
-const mockApiKeys = [
+const mockApiKeys: MockApiKey[] = [
   {
     id: 1,
     name: 'Default API Key',
-    prefix: 'tk_abc1',
-    created_at: '2026-06-01 10:00:00',
-    last_used_at: '2026-06-30 13:20:00',
-    expires_at: '2027-06-30 00:00:00',
-    status: 'active',
+    key_prefix: 'tk_abc1',
+    status: 1,
+    created_at: '2026-06-01T10:00:00+08:00',
+    expired_at: '2027-06-30T00:00:00+08:00',
   },
   {
     id: 2,
     name: 'Telemetry Report Key',
-    prefix: 'tk_def2',
-    created_at: '2026-06-02 10:00:00',
-    last_used_at: '2026-06-30 12:45:00',
-    expires_at: '2027-06-30 00:00:00',
-    status: 'active',
+    key_prefix: 'tk_def2',
+    status: 1,
+    ip_whitelist: '10.0.0.0/8,192.168.1.0/24',
+    permission_level: 'read',
+    created_at: '2026-06-02T10:00:00+08:00',
+    expired_at: '2027-06-30T00:00:00+08:00',
   },
   {
     id: 3,
     name: 'Admin Key',
-    prefix: 'tk_ghi3',
-    created_at: '2026-06-03 10:00:00',
-    last_used_at: '2026-06-28 09:10:00',
-    expires_at: '',
-    status: 'active',
+    key_prefix: 'tk_ghi3',
+    status: 1,
+    permission_level: 'admin',
+    created_at: '2026-06-03T10:00:00+08:00',
   },
   {
     id: 4,
     name: 'Third-Party Integration',
-    prefix: 'tk_jkl4',
-    created_at: '2026-05-15 10:00:00',
-    last_used_at: '2026-06-15 16:30:00',
-    expires_at: '2026-06-15 00:00:00',
-    status: 'revoked',
+    key_prefix: 'tk_jkl4',
+    status: 0,
+    ip_whitelist: '203.0.113.0/24',
+    created_at: '2026-05-15T10:00:00+08:00',
+    expired_at: '2026-06-15T00:00:00+08:00',
+    revoked_at: '2026-06-15T16:30:00+08:00',
   },
   {
     id: 5,
     name: 'Temporary Debug Key',
-    prefix: 'tk_mno5',
-    created_at: '2026-06-15 10:00:00',
-    last_used_at: '2026-06-20 14:00:00',
-    expires_at: '2026-07-15 00:00:00',
-    status: 'active',
+    key_prefix: 'tk_mno5',
+    status: 1,
+    ip_whitelist: '127.0.0.1',
+    created_at: '2026-06-15T10:00:00+08:00',
+    expired_at: '2026-09-15T00:00:00+08:00',
   },
   {
     id: 6,
     name: 'CI/CD Pipeline',
-    prefix: 'tk_pqr6',
-    created_at: '2026-06-20 10:00:00',
-    last_used_at: '2026-06-30 08:00:00',
-    expires_at: '',
-    status: 'active',
+    key_prefix: 'tk_pqr6',
+    status: 1,
+    created_at: '2026-06-20T10:00:00+08:00',
   },
 ]
 
@@ -81,10 +95,14 @@ function generateRandomString(length: number): string {
   return result
 }
 
-/** Format a Date to `YYYY-MM-DD HH:mm:ss` */
-function formatDateTime(date: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+/** Current time as an RFC3339 timestamp */
+function nowRfc3339(): string {
+  return new Date().toISOString()
+}
+
+/** Token expiry for login / refresh responses (2 hours ahead, RFC3339) */
+function tokenExpiresAt(): string {
+  return new Date(Date.now() + 2 * 3_600_000).toISOString()
 }
 
 /** Generate a raw key (only returned once on creation) */
@@ -108,6 +126,7 @@ export default [
       data: {
         access_token: 'mock-jwt-token-' + Date.now(),
         refresh_token: 'mock-refresh-token-' + Date.now(),
+        expires_at: tokenExpiresAt(),
         must_change_password: false,
       },
     }),
@@ -121,6 +140,7 @@ export default [
       data: {
         access_token: 'mock-jwt-token-refreshed-' + Date.now(),
         refresh_token: 'mock-refresh-token-refreshed-' + Date.now(),
+        expires_at: tokenExpiresAt(),
         must_change_password: false,
       },
     }),
@@ -167,27 +187,24 @@ export default [
     method: 'post',
     response: ({ body }: { body: Record<string, unknown> }) => {
       const name = String(body.name ?? '').trim()
-      const expiresInDays = Number(body.expires_in_days) || 0
+      // The request layer snakeizes the outgoing payload, so ApiKeyCreateParams.expiredAt
+      // (RFC3339 string, optional = never expires) arrives here as expired_at.
+      const expiredAt = typeof body.expired_at === 'string' && body.expired_at ? body.expired_at : undefined
       const rawKey = generateRawKey()
-      const now = formatDateTime(new Date())
-      const expiresAt =
-        expiresInDays > 0 ? formatDateTime(new Date(Date.now() + expiresInDays * DAY_MS)) : ''
       apiKeySeq += 1
-      const newKey = {
+      const newKey: MockApiKey = {
         id: apiKeySeq,
         name: name || 'Untitled Key',
-        prefix: rawKey.substring(0, 8),
-        created_at: now,
-        last_used_at: '',
-        expires_at: expiresAt,
-        status: 'active',
-        raw_key: rawKey,
+        key_prefix: rawKey.substring(0, 8),
+        status: 1,
+        created_at: nowRfc3339(),
+        expired_at: expiredAt,
       }
       mockApiKeys.unshift({ ...newKey })
       return {
         code: 0,
         message: 'success',
-        data: newKey,
+        data: { ...newKey, raw_key: rawKey },
       }
     },
   },
@@ -198,7 +215,9 @@ export default [
       const id = extractId(url)
       const key = mockApiKeys.find((k) => k.id === id)
       if (key) {
-        key.status = 'revoked'
+        // Soft revoke: flip the status flag and stamp the revocation time.
+        key.status = 0
+        key.revoked_at = nowRfc3339()
       }
       return {
         code: 0,

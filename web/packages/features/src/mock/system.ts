@@ -104,8 +104,10 @@ export default [
       }
     },
   },
+  // Health check — registered at the root level (no /api/v1 prefix) by the
+  // backend; the healthCheck api function sends baseURL '' + '/healthz'.
   {
-    url: '/api/v1/healthz',
+    url: '/healthz',
     method: 'get',
     response: () => ({
       code: 0,

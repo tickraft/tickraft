@@ -47,6 +47,9 @@ function extractId(url: string): number {
   return match ? Number(match[1]) : 0
 }
 
+/** Valid asset status values (aligned with ASSET_STATUSES in ../api/asset.ts). */
+const ASSET_STATUSES: readonly string[] = ['normal', 'abnormal', 'offline', 'unknown']
+
 export default [
   // List assets with pagination + filtering
   {
@@ -143,6 +146,41 @@ export default [
       }
       store[idx] = updated
       return { code: 0, message: 'success', data: updated }
+    },
+  },
+  // Update an asset's status (validated against the known status set)
+  {
+    url: '/api/v1/assets/:id/status',
+    method: 'put',
+    response: ({ url, body }: { url: string; body: Record<string, unknown> }) => {
+      const id = extractId(url)
+      const idx = store.findIndex((r) => r.id === id)
+      if (idx === -1) {
+        return { code: 404, message: 'asset not found', data: null }
+      }
+      const status = String(body?.status ?? '')
+      if (!ASSET_STATUSES.includes(status)) {
+        return { code: 400, message: `invalid status, must be one of: ${ASSET_STATUSES.join(', ')}`, data: null }
+      }
+      store[idx] = { ...store[idx], status, updated_at: ts(0) }
+      return { code: 0, message: 'success', data: null }
+    },
+  },
+  // Probe an asset and return its current status as a probe result
+  {
+    url: '/api/v1/assets/:id/probe',
+    method: 'post',
+    response: ({ url }: { url: string }) => {
+      const id = extractId(url)
+      const asset = store.find((r) => r.id === id)
+      if (!asset) {
+        return { code: 404, message: 'asset not found', data: null }
+      }
+      return {
+        code: 0,
+        message: 'success',
+        data: { asset_id: asset.id, status: asset.status },
+      }
     },
   },
   // Delete an asset

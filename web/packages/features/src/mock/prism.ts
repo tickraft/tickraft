@@ -4,138 +4,173 @@
 
 import type { MockMethod } from './types'
 
-/** Alert rules (8 items, covering 3 severity levels and 5 conditions, aligned with storyboard mock-data.js) */
-const mockAlertRules = [
+/** Alert rule seed (snake_case response shape of handler.AlertRule) */
+interface MockAlertRule {
+  id: number
+  name: string
+  description: string
+  scene: string
+  expression: string
+  priority: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Alert record seed (snake_case response shape of handler.AlertRecord) */
+interface MockAlertRecord {
+  id: number
+  rule_id: number
+  rule_name: string
+  severity: 'critical' | 'warning' | 'info'
+  /** Value at trigger time */
+  value: number
+  status: 'firing' | 'acknowledged' | 'resolved'
+  message: string
+  fired_at: string
+  acknowledged_at: string | null
+  resolved_at: string | null
+}
+
+/** Alert rules (8 items covering all 4 scenes: task / probe / metric / remediation) */
+const mockAlertRules: MockAlertRule[] = [
   {
     id: 1,
     name: 'HTTP 5xx Error Rate',
-    metric: 'http_5xx_rate',
-    condition: 'gt',
-    threshold: 5,
-    duration: 60,
-    severity: 'critical',
-    channels: ['webhook', 'email'],
+    description: 'Fires when the reported HTTP 5xx error rate exceeds 5%',
+    scene: 'metric',
+    expression: 'event.metrics["http_5xx_rate"] > 5',
+    priority: 100,
     enabled: true,
-    description: 'Triggered when HTTP 5xx error rate sustained above threshold',
     created_at: '2026-06-01 10:00:00',
+    updated_at: '2026-07-12 09:30:00',
   },
   {
     id: 2,
     name: 'Host CPU Usage',
-    metric: 'cpu_usage',
-    condition: 'gt',
-    threshold: 80,
-    duration: 300,
-    severity: 'warning',
-    channels: ['webhook'],
+    description: 'Fires when host CPU usage is sustained above 80%',
+    scene: 'metric',
+    expression: 'event.metrics["cpu_usage"] > 80',
+    priority: 60,
     enabled: true,
-    description: 'Triggered when host CPU usage sustained above threshold',
     created_at: '2026-06-02 10:00:00',
+    updated_at: '2026-06-20 15:10:00',
   },
   {
     id: 3,
     name: 'Host Memory Usage',
-    metric: 'mem_usage',
-    condition: 'gte',
-    threshold: 90,
-    duration: 180,
-    severity: 'critical',
-    channels: ['webhook', 'sms'],
+    description: 'Fires when host memory usage reaches 90%',
+    scene: 'metric',
+    expression: 'event.metrics["memory_usage"] >= 90',
+    priority: 90,
     enabled: true,
-    description: 'Triggered when host memory usage reaches threshold',
     created_at: '2026-06-03 10:00:00',
+    updated_at: '2026-06-25 11:40:00',
   },
   {
     id: 4,
     name: 'Disk Free Space',
-    metric: 'disk_free',
-    condition: 'lt',
-    threshold: 10,
-    duration: 600,
-    severity: 'warning',
-    channels: ['email'],
+    description: 'Fires when disk free space falls below 10%',
+    scene: 'metric',
+    expression: 'event.metrics["disk_free"] < 10',
+    priority: 50,
     enabled: true,
-    description: 'Triggered when disk free space falls below threshold',
     created_at: '2026-06-04 10:00:00',
+    updated_at: '2026-06-18 16:25:00',
   },
   {
     id: 5,
     name: 'TCP Port Connectivity',
-    metric: 'tcp_connect',
-    condition: 'eq',
-    threshold: 0,
-    duration: 60,
-    severity: 'critical',
-    channels: ['webhook', 'sms'],
+    description: 'Fires when a TCP probe fails or the asset turns abnormal',
+    scene: 'probe',
+    expression: 'event.metrics["tcp_connect"] == 0 || event.status == "abnormal"',
+    priority: 80,
     enabled: true,
-    description: 'Triggered when TCP port probe fails (returns 0)',
     created_at: '2026-06-05 10:00:00',
+    updated_at: '2026-07-01 08:55:00',
   },
   {
     id: 6,
     name: 'ICMP Packet Loss Rate',
-    metric: 'icmp_loss',
-    condition: 'gt',
-    threshold: 10,
-    duration: 120,
-    severity: 'warning',
-    channels: ['webhook'],
+    description: 'Fires when ICMP probe packet loss rate exceeds 10%',
+    scene: 'probe',
+    expression: 'event.metrics["icmp_loss"] > 10',
+    priority: 40,
     enabled: true,
-    description: 'Triggered when ICMP probe packet loss rate exceeds threshold',
     created_at: '2026-06-06 10:00:00',
+    updated_at: '2026-06-22 14:05:00',
   },
   {
     id: 7,
-    name: 'Task Failure Count',
-    metric: 'task_failed',
-    condition: 'gte',
-    threshold: 3,
-    duration: 3600,
-    severity: 'info',
-    channels: ['email'],
+    name: 'Task Failure Surge',
+    description: 'Fires when local-executor task failures reach 3 within a window (disabled)',
+    scene: 'task',
+    expression: 'event.metrics["task_failed"] >= 3 && event.executor_type == "local"',
+    priority: 20,
     enabled: false,
-    description: 'Triggered when task failure count reaches threshold (disabled)',
     created_at: '2026-06-07 10:00:00',
+    updated_at: '2026-07-08 10:20:00',
   },
   {
     id: 8,
-    name: 'HTTPS Certificate Days Remaining',
-    metric: 'cert_days',
-    condition: 'lte',
-    threshold: 14,
-    duration: 86400,
-    severity: 'info',
-    channels: ['email'],
+    name: 'Critical Alert Remediation Escalation',
+    description: 'Escalates to a human channel when a critical alert value stays above 80',
+    scene: 'remediation',
+    expression: 'event.metric_value > 80 && event.severity == "critical"',
+    priority: 120,
     enabled: true,
-    description: 'Triggered when HTTPS certificate days remaining falls below threshold',
     created_at: '2026-06-08 10:00:00',
+    updated_at: '2026-07-15 13:45:00',
   },
 ]
 
-/** Alert records (22 items, covering 3 severity levels and 2 statuses, aligned with storyboard mock-data.js) */
-const mockAlertRecords = [
-  { id: 1, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', asset_id: 4, asset_name: 'Payment Callback API', metric: 'http_5xx_rate', condition: 'gt', threshold: 5, current_value: 8.2, severity: 'critical', status: 'firing', message: '5xx error rate reached 8.2%, exceeding threshold 5%', fired_at: '2026-06-30 13:32:00', resolved_at: '' },
-  { id: 2, rule_id: 5, rule_name: 'TCP Port Connectivity', asset_id: 9, asset_name: 'prod-es-01', metric: 'tcp_connect', condition: 'eq', threshold: 0, current_value: 0, severity: 'critical', status: 'firing', message: 'ES 9200 port connection failed', fired_at: '2026-06-30 13:15:00', resolved_at: '' },
-  { id: 3, rule_id: 3, rule_name: 'Host Memory Usage', asset_id: 3, asset_name: 'prod-api-03', metric: 'mem_usage', condition: 'gte', threshold: 90, current_value: 92.5, severity: 'critical', status: 'firing', message: 'Memory usage 92.5%, exceeding threshold 90%', fired_at: '2026-06-30 12:45:00', resolved_at: '' },
-  { id: 4, rule_id: 2, rule_name: 'Host CPU Usage', asset_id: 3, asset_name: 'prod-api-03', metric: 'cpu_usage', condition: 'gt', threshold: 80, current_value: 85.3, severity: 'warning', status: 'firing', message: 'CPU usage 85.3%, exceeding threshold 80%', fired_at: '2026-06-30 11:20:00', resolved_at: '' },
-  { id: 5, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', asset_id: 10, asset_name: 'cdn-edge-01', metric: 'icmp_loss', condition: 'gt', threshold: 10, current_value: 15, severity: 'warning', status: 'firing', message: 'CDN node packet loss rate 15%, exceeding threshold 10%', fired_at: '2026-06-30 10:50:00', resolved_at: '' },
-  { id: 6, rule_id: 5, rule_name: 'TCP Port Connectivity', asset_id: 7, asset_name: 'prod-cache-01', metric: 'tcp_connect', condition: 'eq', threshold: 0, current_value: 0, severity: 'critical', status: 'firing', message: 'Redis 6379 port connection failed', fired_at: '2026-06-30 10:30:00', resolved_at: '' },
-  { id: 7, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', asset_id: 11, asset_name: 'www.tickraft.io', metric: 'http_5xx_rate', condition: 'gt', threshold: 5, current_value: 6.1, severity: 'critical', status: 'resolved', message: '5xx error rate recovered', fired_at: '2026-06-30 09:45:00', resolved_at: '2026-06-30 10:00:00' },
-  { id: 8, rule_id: 2, rule_name: 'Host CPU Usage', asset_id: 1, asset_name: 'prod-web-01', metric: 'cpu_usage', condition: 'gt', threshold: 80, current_value: 82, severity: 'warning', status: 'resolved', message: 'CPU usage recovered', fired_at: '2026-06-30 09:00:00', resolved_at: '2026-06-30 09:15:00' },
-  { id: 9, rule_id: 4, rule_name: 'Disk Free Space', asset_id: 15, asset_name: 'Backup Storage', metric: 'disk_free', condition: 'lt', threshold: 10, current_value: 8, severity: 'warning', status: 'firing', message: 'Disk free 8%, below threshold 10%', fired_at: '2026-06-30 08:30:00', resolved_at: '' },
-  { id: 10, rule_id: 3, rule_name: 'Host Memory Usage', asset_id: 2, asset_name: 'prod-web-02', metric: 'mem_usage', condition: 'gte', threshold: 90, current_value: 91, severity: 'critical', status: 'resolved', message: 'Memory usage recovered', fired_at: '2026-06-30 07:00:00', resolved_at: '2026-06-30 07:30:00' },
-  { id: 11, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', asset_id: 12, asset_name: 'Intranet Gateway', metric: 'icmp_loss', condition: 'gt', threshold: 10, current_value: 12, severity: 'warning', status: 'resolved', message: 'Packet loss rate recovered', fired_at: '2026-06-29 22:00:00', resolved_at: '2026-06-29 22:15:00' },
-  { id: 12, rule_id: 8, rule_name: 'HTTPS Certificate Days Remaining', asset_id: 11, asset_name: 'www.tickraft.io', metric: 'cert_days', condition: 'lte', threshold: 14, current_value: 12, severity: 'info', status: 'firing', message: 'HTTPS certificate has 12 days remaining', fired_at: '2026-06-29 09:00:00', resolved_at: '' },
-  { id: 13, rule_id: 5, rule_name: 'TCP Port Connectivity', asset_id: 9, asset_name: 'prod-es-01', metric: 'tcp_connect', condition: 'eq', threshold: 0, current_value: 0, severity: 'critical', status: 'firing', message: 'ES 9200 port connection failed', fired_at: '2026-06-29 09:00:00', resolved_at: '' },
-  { id: 14, rule_id: 2, rule_name: 'Host CPU Usage', asset_id: 6, asset_name: 'prod-db-03', metric: 'cpu_usage', condition: 'gt', threshold: 80, current_value: 81.5, severity: 'warning', status: 'resolved', message: 'CPU usage recovered', fired_at: '2026-06-29 18:00:00', resolved_at: '2026-06-29 18:30:00' },
-  { id: 15, rule_id: 7, rule_name: 'Task Failure Count', asset_id: 3, asset_name: 'prod-api-03', metric: 'task_failed', condition: 'gte', threshold: 3, current_value: 3, severity: 'info', status: 'resolved', message: 'Task failure count returned to normal', fired_at: '2026-06-29 15:00:00', resolved_at: '2026-06-29 16:00:00' },
-  { id: 16, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', asset_id: 4, asset_name: 'Payment Callback API', metric: 'http_5xx_rate', condition: 'gt', threshold: 5, current_value: 7.5, severity: 'critical', status: 'resolved', message: '5xx error rate recovered', fired_at: '2026-06-29 14:00:00', resolved_at: '2026-06-29 14:30:00' },
-  { id: 17, rule_id: 3, rule_name: 'Host Memory Usage', asset_id: 5, asset_name: 'prod-db-02', metric: 'mem_usage', condition: 'gte', threshold: 90, current_value: 93, severity: 'critical', status: 'resolved', message: 'Memory usage recovered', fired_at: '2026-06-29 10:00:00', resolved_at: '2026-06-29 10:30:00' },
-  { id: 18, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', asset_id: 1, asset_name: 'prod-web-01', metric: 'icmp_loss', condition: 'gt', threshold: 10, current_value: 11, severity: 'warning', status: 'resolved', message: 'Packet loss rate recovered', fired_at: '2026-06-29 08:00:00', resolved_at: '2026-06-29 08:30:00' },
-  { id: 19, rule_id: 4, rule_name: 'Disk Free Space', asset_id: 15, asset_name: 'Backup Storage', metric: 'disk_free', condition: 'lt', threshold: 10, current_value: 7, severity: 'warning', status: 'resolved', message: 'Disk free space recovered after cleanup', fired_at: '2026-06-28 22:00:00', resolved_at: '2026-06-28 23:00:00' },
-  { id: 20, rule_id: 2, rule_name: 'Host CPU Usage', asset_id: 14, asset_name: 'Monitoring Host', metric: 'cpu_usage', condition: 'gt', threshold: 80, current_value: 84, severity: 'warning', status: 'resolved', message: 'CPU usage recovered', fired_at: '2026-06-28 16:00:00', resolved_at: '2026-06-28 16:30:00' },
-  { id: 21, rule_id: 5, rule_name: 'TCP Port Connectivity', asset_id: 8, asset_name: 'prod-kafka-01', metric: 'tcp_connect', condition: 'eq', threshold: 0, current_value: 0, severity: 'critical', status: 'resolved', message: 'Kafka 9092 port recovered', fired_at: '2026-06-28 10:00:00', resolved_at: '2026-06-28 10:15:00' },
-  { id: 22, rule_id: 8, rule_name: 'HTTPS Certificate Days Remaining', asset_id: 10, asset_name: 'cdn-edge-01', metric: 'cert_days', condition: 'lte', threshold: 14, current_value: 8, severity: 'info', status: 'firing', message: 'CDN certificate has 8 days remaining', fired_at: '2026-06-28 09:00:00', resolved_at: '' },
+/** Build a `YYYY-MM-DD HH:mm:ss` string for N days ago at the given local time */
+function daysAgo(days: number, time: string): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`
+}
+
+/**
+ * Alert records (22 items spread across the last 12 days so the dashboard
+ * alert-trend chart shows a multi-day stacked area; mixed severities per day).
+ */
+const mockAlertRecords: MockAlertRecord[] = [
+  // Day 0 (today)
+  { id: 1, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 92.5, status: 'firing', message: 'Memory usage on prod-api-03 at 92.5%, threshold 90%', fired_at: daysAgo(0, '09:58:00'), acknowledged_at: null, resolved_at: null },
+  { id: 2, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-es-01:9200 unreachable (tcp_connect=0)', fired_at: daysAgo(0, '09:21:00'), acknowledged_at: null, resolved_at: null },
+  { id: 3, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 15.4, status: 'firing', message: 'ICMP packet loss to cdn-edge-01 reached 15.4%, threshold 10%', fired_at: daysAgo(0, '08:47:00'), acknowledged_at: null, resolved_at: null },
+  // Day 1
+  { id: 4, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 85.3, status: 'firing', message: 'CPU usage on prod-api-03 at 85.3%, threshold 80%', fired_at: daysAgo(1, '16:05:00'), acknowledged_at: null, resolved_at: null },
+  { id: 5, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 8.2, status: 'acknowledged', message: 'Disk free space on backup storage down to 8.2%, threshold 10%', fired_at: daysAgo(1, '11:30:00'), acknowledged_at: daysAgo(1, '12:02:00'), resolved_at: null },
+  // Day 2
+  { id: 6, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 8.2, status: 'firing', message: 'HTTP 5xx error rate on payment-api reached 8.2%, threshold 5%', fired_at: daysAgo(2, '14:18:00'), acknowledged_at: null, resolved_at: null },
+  { id: 7, rule_id: 8, rule_name: 'Critical Alert Remediation Escalation', severity: 'critical', value: 92, status: 'acknowledged', message: 'Escalating critical alert: trigger value 92 stays above 80', fired_at: daysAgo(2, '10:40:00'), acknowledged_at: daysAgo(2, '10:55:00'), resolved_at: null },
+  // Day 3
+  { id: 8, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-cache-01:6379 unreachable (tcp_connect=0)', fired_at: daysAgo(3, '22:10:00'), acknowledged_at: null, resolved_at: null },
+  { id: 9, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 82.7, status: 'resolved', message: 'CPU usage on prod-web-01 at 82.7%, threshold 80%', fired_at: daysAgo(3, '09:12:00'), acknowledged_at: daysAgo(3, '09:20:00'), resolved_at: daysAgo(3, '09:40:00') },
+  // Day 4
+  { id: 10, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 93.1, status: 'resolved', message: 'Memory usage on prod-web-02 at 93.1%, threshold 90%', fired_at: daysAgo(4, '18:26:00'), acknowledged_at: daysAgo(4, '18:40:00'), resolved_at: daysAgo(4, '19:00:00') },
+  { id: 11, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 3, status: 'firing', message: 'Local-executor task failures reached 3 within one hour', fired_at: daysAgo(4, '15:03:00'), acknowledged_at: null, resolved_at: null },
+  // Day 5
+  { id: 12, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 6.1, status: 'resolved', message: 'HTTP 5xx error rate on www.tickraft.io reached 6.1%, threshold 5%', fired_at: daysAgo(5, '13:45:00'), acknowledged_at: null, resolved_at: daysAgo(5, '14:10:00') },
+  { id: 13, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 11.2, status: 'resolved', message: 'ICMP packet loss on intranet gateway reached 11.2%, threshold 10%', fired_at: daysAgo(5, '08:20:00'), acknowledged_at: null, resolved_at: daysAgo(5, '08:50:00') },
+  // Day 6
+  { id: 14, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 9.1, status: 'acknowledged', message: 'Disk free space on prod-db-02 down to 9.1%, threshold 10%', fired_at: daysAgo(6, '20:32:00'), acknowledged_at: daysAgo(6, '21:00:00'), resolved_at: null },
+  { id: 15, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 81.5, status: 'resolved', message: 'CPU usage on prod-db-03 at 81.5%, threshold 80%', fired_at: daysAgo(6, '11:15:00'), acknowledged_at: null, resolved_at: daysAgo(6, '11:45:00') },
+  // Day 7
+  { id: 16, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 91.4, status: 'resolved', message: 'Memory usage on prod-db-02 at 91.4%, threshold 90%', fired_at: daysAgo(7, '17:08:00'), acknowledged_at: daysAgo(7, '17:20:00'), resolved_at: daysAgo(7, '17:35:00') },
+  { id: 17, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 4, status: 'resolved', message: 'Local-executor task failures reached 4 within one hour', fired_at: daysAgo(7, '10:26:00'), acknowledged_at: null, resolved_at: daysAgo(7, '11:00:00') },
+  // Day 8
+  { id: 18, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 12.6, status: 'resolved', message: 'ICMP packet loss on prod-web-01 reached 12.6%, threshold 10%', fired_at: daysAgo(8, '21:40:00'), acknowledged_at: null, resolved_at: daysAgo(8, '22:05:00') },
+  { id: 19, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'resolved', message: 'TCP probe failed: prod-kafka-01:9092 unreachable (tcp_connect=0)', fired_at: daysAgo(8, '09:35:00'), acknowledged_at: daysAgo(8, '09:42:00'), resolved_at: daysAgo(8, '09:50:00') },
+  // Day 9
+  { id: 20, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 84.9, status: 'resolved', message: 'CPU usage on monitoring host at 84.9%, threshold 80%', fired_at: daysAgo(9, '14:22:00'), acknowledged_at: null, resolved_at: daysAgo(9, '14:55:00') },
+  // Day 10
+  { id: 21, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 5, status: 'resolved', message: 'Local-executor task failures reached 5 within one hour', fired_at: daysAgo(10, '12:10:00'), acknowledged_at: null, resolved_at: daysAgo(10, '12:38:00') },
+  // Day 11
+  { id: 22, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 9.4, status: 'resolved', message: 'HTTP 5xx error rate on payment-api reached 9.4%, threshold 5%', fired_at: daysAgo(11, '15:52:00'), acknowledged_at: null, resolved_at: daysAgo(11, '16:20:00') },
 ]
 
 /** Mutable copy for demo of start/stop, delete, create, resolve and other write operations */
@@ -373,7 +408,7 @@ export default [
     response: ({ url }: { url: string }) => {
       const id = extractId(url)
       const record = records.find((r) => r.id === id)
-      if (record && record.status === 'firing') {
+      if (record && record.status !== 'resolved') {
         record.status = 'resolved'
         record.resolved_at = new Date().toISOString().replace('T', ' ').substring(0, 19)
       }
@@ -388,7 +423,7 @@ export default [
       const record = records.find((r) => r.id === id)
       if (record && record.status === 'firing') {
         record.status = 'acknowledged'
-        ;(record as Record<string, unknown>).acknowledged_at = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        record.acknowledged_at = new Date().toISOString().replace('T', ' ').substring(0, 19)
       }
       return { code: 0, message: 'success', data: record ?? records[0] }
     },
@@ -427,18 +462,17 @@ export default [
     method: 'post',
     response: ({ body }: { body: Record<string, unknown> }) => {
       ruleSeq += 1
-      const rule = {
+      const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
+      const rule: MockAlertRule = {
         id: ruleSeq,
         name: String(body.name ?? ''),
-        metric: String(body.metric ?? ''),
-        condition: (body.condition as string) ?? 'gt',
-        threshold: Number(body.threshold ?? 0),
-        duration: Number(body.duration ?? 60),
-        severity: (body.severity as string) ?? 'warning',
-        channels: (body.channels as string[]) ?? ['webhook'],
-        enabled: body.enabled !== false,
         description: String(body.description ?? ''),
-        created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        scene: String(body.scene ?? 'metric'),
+        expression: String(body.expression ?? ''),
+        priority: Number(body.priority ?? 0),
+        enabled: body.enabled !== false,
+        created_at: now,
+        updated_at: now,
       }
       rules.unshift(rule)
       return { code: 0, message: 'success', data: rule }
@@ -451,17 +485,16 @@ export default [
       const id = extractId(url)
       const idx = rules.findIndex((r) => r.id === id)
       if (idx !== -1) {
+        const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
         rules[idx] = {
           ...rules[idx],
           name: String(body.name ?? rules[idx].name),
-          metric: String(body.metric ?? rules[idx].metric),
-          condition: (body.condition as string) ?? rules[idx].condition,
-          threshold: Number(body.threshold ?? rules[idx].threshold),
-          duration: Number(body.duration ?? rules[idx].duration),
-          severity: (body.severity as string) ?? rules[idx].severity,
-          channels: (body.channels as string[]) ?? rules[idx].channels,
+          description: String(body.description ?? ''),
+          scene: String(body.scene ?? rules[idx].scene),
+          expression: String(body.expression ?? rules[idx].expression),
+          priority: Number(body.priority ?? rules[idx].priority),
           enabled: body.enabled !== undefined ? Boolean(body.enabled) : rules[idx].enabled,
-          description: String(body.description ?? rules[idx].description),
+          updated_at: now,
         }
         return { code: 0, message: 'success', data: rules[idx] }
       }
