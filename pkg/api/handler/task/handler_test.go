@@ -18,6 +18,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -133,7 +134,8 @@ func stubJWTAuth(ctx context.Context, arc *app.RequestContext) {
 	}
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "invalid authorization header format")
+		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized,
+			"invalid authorization header format")
 		arc.Abort()
 		return
 	}
@@ -173,9 +175,7 @@ func (s *memoryTaskService) ListTasks(_ context.Context, page, size int, filter 
 		return []Task{}, total, nil
 	}
 	end := start + size
-	if end > len(result) {
-		end = len(result)
-	}
+	end = min(end, len(result))
 	return result[start:end], total, nil
 }
 
@@ -262,7 +262,8 @@ func (s *memoryTaskService) ResumeTask(_ context.Context, id int64) error {
 	return nil
 }
 
-func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int, _ ExecutionFilter) ([]Execution, int64, error) {
+func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int,
+	_ ExecutionFilter) ([]Execution, int64, error) {
 	return []Execution{}, 0, nil
 }
 
@@ -323,10 +324,12 @@ func (e handlerError) Code() int       { return e.code }
 // updates configuration fields.
 func TestUpdateTaskConfigFields(t *testing.T) {
 	engine := newTaskTestEngine(t, nil)
-	created := createTaskViaAPI(t, engine, `{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+	created := createTaskViaAPI(t, engine,
+		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	w := doTaskRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID),
-		[]byte(`{"name":"task-1-updated","executor":"tcp","schedule":"*/5 * * * *","enabled":false,"description":"updated desc","group":"backup","tags":["critical"]}`))
+		[]byte(`{"name":"task-1-updated","executor":"tcp","schedule":"*/5 * * * *",`+
+			`"enabled":false,"description":"updated desc","group":"backup","tags":["critical"]}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusOK, w.Body.String())
 	}
@@ -390,7 +393,8 @@ func TestUpdateTaskInvalidID(t *testing.T) {
 // APIKey authentication is not accepted on this route.
 func TestUpdateTaskAPIKeyOnlyReturns401(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
-	created := createTaskViaAPI(t, engine, `{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+	created := createTaskViaAPI(t, engine,
+		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	body := []byte(`{"name":"task-1-updated","executor":"tcp"}`)
 	utBody := &ut.Body{Body: bytes.NewReader(body), Len: len(body)}
@@ -411,7 +415,8 @@ func TestUpdateTaskAPIKeyOnlyReturns401(t *testing.T) {
 // authentication credentials at all is rejected with 401.
 func TestUpdateTaskNoAuthReturns401(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
-	created := createTaskViaAPI(t, engine, `{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+	created := createTaskViaAPI(t, engine,
+		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	w := doTaskRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID),
 		[]byte(`{"name":"task-1-updated","executor":"tcp"}`))
@@ -428,7 +433,8 @@ func TestUpdateTaskNoAuthReturns401(t *testing.T) {
 // JWT token passes the JWT middleware and reaches the handler.
 func TestUpdateTaskWithJWTAccepted(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
-	created := createTaskViaAPI(t, engine, `{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+	created := createTaskViaAPI(t, engine,
+		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	body := []byte(`{"name":"task-1-updated","executor":"tcp"}`)
 	utBody := &ut.Body{Body: bytes.NewReader(body), Len: len(body)}

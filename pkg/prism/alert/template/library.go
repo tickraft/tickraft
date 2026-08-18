@@ -71,8 +71,8 @@ func (l *library) List() []Template {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	out := make([]Template, 0, len(l.templates))
-	for _, t := range l.templates {
-		out = append(out, t)
+	for id := range l.templates {
+		out = append(out, l.templates[id])
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].ID < out[j].ID
@@ -89,9 +89,11 @@ func NewBuiltinLibrary(logger *zap.Logger) Library {
 		logger = zap.NewNop()
 	}
 
-	//nolint:errcheck
-	l := NewLibrary(logger).(*library) // factory always returns *library
-	for _, t := range loadBuiltinTemplates(logger) {
+	//nolint:errcheck // factory always returns *library
+	l := NewLibrary(logger).(*library)
+	builtin := loadBuiltinTemplates(logger)
+	for i := range builtin {
+		t := builtin[i]
 		if err := Validate(t); err != nil {
 			l.logger.Warn("template library: skipping invalid built-in template",
 				zap.String("id", t.ID),

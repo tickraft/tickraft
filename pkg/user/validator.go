@@ -19,7 +19,8 @@ import (
 // errors.Is and returns 400 instead of falling back to 500.
 var (
 	// ErrInvalidUsername is returned when username validation fails.
-	ErrInvalidUsername = fmt.Errorf("username must be 3-64 characters, only letters, digits and underscores: %w", errdefs.ErrInvalidArgument)
+	ErrInvalidUsername = fmt.Errorf("username must be 3-64 characters, only letters, digits "+
+		"and underscores: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidPasswordHash is returned when password hash is empty.
 	ErrInvalidPasswordHash = fmt.Errorf("password hash must not be empty: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidEmail is returned when email format is invalid.

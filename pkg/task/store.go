@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
-	"github.com/tickraft/tickraft/pkg/executor"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/executor"
 )
 
 // store is the GORM-backed implementation of Store. It persists task
@@ -28,7 +29,7 @@ type store struct {
 }
 
 // NewStore creates a new Store backed by the given *gorm.DB.
-func NewStore(dbc *gorm.DB) *store {
+func NewStore(dbc *gorm.DB) *store { //nolint:revive // returning the unexported concrete type is intentional; consumers use the exported interface
 	return &store{dbc: dbc}
 }
 
@@ -150,9 +151,9 @@ var taskUpsertColumns = []string{
 	"name",
 	"executor_type",
 	"executor_config",
-	"schedule_type",
-	"cron_expr",
-	"interval",
+	metaKeyScheduleType,
+	metaKeyCronExpr,
+	string(ScheduleTypeInterval),
 	"timeout",
 	"priority",
 	"depends_on",
@@ -207,13 +208,13 @@ func taskToModel(t *Task) (*ScheduleTask, error) {
 		if v, ok := t.Metadata["name"]; ok {
 			m.Name = v
 		}
-		if v, ok := t.Metadata["schedule_type"]; ok {
+		if v, ok := t.Metadata[metaKeyScheduleType]; ok {
 			m.ScheduleType = v
 		}
-		if v, ok := t.Metadata["cron_expr"]; ok {
+		if v, ok := t.Metadata[metaKeyCronExpr]; ok {
 			m.CronExpr = v
 		}
-		if v, ok := t.Metadata["interval"]; ok {
+		if v, ok := t.Metadata[string(ScheduleTypeInterval)]; ok {
 			if d, err := time.ParseDuration(v); err == nil {
 				m.Interval = int64(d.Seconds())
 			}
@@ -298,9 +299,7 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 // page starts at 1; size is normalized via ClampPaging semantics (defaults
 // and the max-page-size cap are applied by the caller).
 func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = defaultExecutionListLimit
 	}

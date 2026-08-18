@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth/region"
 )
@@ -24,15 +25,15 @@ const (
 
 // newRegionTestEngine creates a test engine with the given region middleware
 // and a handler that records the resolved region from the context.
-func newRegionTestEngine(mw app.HandlerFunc) (*route.Engine, *string) {
-	var recorded string
-	engine := route.NewEngine(config.NewOptions([]config.Option{}))
+func newRegionTestEngine(mw app.HandlerFunc) (engine *route.Engine, recorded *string) {
+	rec := ""
+	engine = route.NewEngine(config.NewOptions([]config.Option{}))
 	engine.Use(mw)
 	engine.GET("/", func(ctx context.Context, arc *app.RequestContext) {
-		recorded = httputil.GetRegion(ctx)
+		rec = httputil.GetRegion(ctx)
 		httputil.Success(arc, nil)
 	})
-	return engine, &recorded
+	return engine, &rec
 }
 
 // TestRegionHeaderPriority verifies that the X-Tickraft-Region header takes
@@ -54,8 +55,8 @@ func TestRegionHeaderPriority(t *testing.T) {
 	if *recorded != "cn" {
 		t.Errorf("region = %q, want %q", *recorded, "cn")
 	}
-	if got := w.Header().Get(routeRegionHeader); got != "cn" {
-		t.Errorf("response header %q = %q, want %q", routeRegionHeader, got, "cn")
+	if got := w.Header().Get(httputil.HeaderRouteRegion); got != "cn" {
+		t.Errorf("response header %q = %q, want %q", httputil.HeaderRouteRegion, got, "cn")
 	}
 }
 
@@ -79,8 +80,8 @@ func TestRegionCookiePriority(t *testing.T) {
 	if *recorded != testCookieRegion {
 		t.Errorf("region = %q, want %q", *recorded, testCookieRegion)
 	}
-	if got := w.Header().Get(routeRegionHeader); got != testCookieRegion {
-		t.Errorf("response header %q = %q, want %q", routeRegionHeader, got, testCookieRegion)
+	if got := w.Header().Get(httputil.HeaderRouteRegion); got != testCookieRegion {
+		t.Errorf("response header %q = %q, want %q", httputil.HeaderRouteRegion, got, testCookieRegion)
 	}
 }
 
@@ -126,8 +127,8 @@ func TestRegionGeoIPFallback(t *testing.T) {
 	if *recorded != "eu-west" {
 		t.Errorf("region = %q, want %q", *recorded, "eu-west")
 	}
-	if got := w.Header().Get(routeRegionHeader); got != "eu-west" {
-		t.Errorf("response header %q = %q, want %q", routeRegionHeader, got, "eu-west")
+	if got := w.Header().Get(httputil.HeaderRouteRegion); got != "eu-west" {
+		t.Errorf("response header %q = %q, want %q", httputil.HeaderRouteRegion, got, "eu-west")
 	}
 }
 
@@ -167,7 +168,7 @@ func TestRegionNoInfo(t *testing.T) {
 	if *recorded != defaultRegion {
 		t.Errorf("region = %q, want %q", *recorded, defaultRegion)
 	}
-	if got := w.Header().Get(routeRegionHeader); got != defaultRegion {
-		t.Errorf("response header %q = %q, want %q", routeRegionHeader, got, defaultRegion)
+	if got := w.Header().Get(httputil.HeaderRouteRegion); got != defaultRegion {
+		t.Errorf("response header %q = %q, want %q", httputil.HeaderRouteRegion, got, defaultRegion)
 	}
 }

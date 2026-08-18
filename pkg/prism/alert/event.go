@@ -4,33 +4,39 @@
 
 package alert
 
-import "time"
+import (
+	"time"
+
+	"github.com/tickraft/tickraft/pkg/types"
+)
 
 // Type enumerates the normalized alert categories consumed by channels.
 type Type string
 
 const (
 	// TypeMetric is emitted by metric threshold violations.
-	TypeMetric Type = "metric"
+	TypeMetric Type = Type(types.EventKindMetric)
 	// TypeLog is emitted by log keyword matches.
-	TypeLog Type = "log"
+	TypeLog Type = Type(types.EventKindLog)
 	// TypeHeartbeat is emitted when a probe stops reporting heartbeats.
-	TypeHeartbeat Type = "heartbeat"
+	TypeHeartbeat Type = Type(types.EventKindHeartbeat)
 	// TypeStatus is emitted when an asset transitions to an abnormal state.
-	TypeStatus Type = "status"
+	TypeStatus Type = Type(types.EventKindStatus)
 )
 
 // Violation kind constants identify the category of a single rule violation.
-// Use these instead of raw string literals to avoid magic strings.
+// They alias the Type constants above so both vocabularies share the same
+// canonical values; use them instead of raw string literals to avoid magic
+// strings.
 const (
 	// ViolationKindMetric identifies a metric threshold violation.
-	ViolationKindMetric = "metric"
+	ViolationKindMetric = string(TypeMetric)
 	// ViolationKindLog identifies a log keyword match violation.
-	ViolationKindLog = "log"
+	ViolationKindLog = string(TypeLog)
 	// ViolationKindHeartbeat identifies a heartbeat loss violation.
-	ViolationKindHeartbeat = "heartbeat"
+	ViolationKindHeartbeat = string(TypeHeartbeat)
 	// ViolationKindStatus identifies an asset status transition violation.
-	ViolationKindStatus = "status"
+	ViolationKindStatus = string(TypeStatus)
 )
 
 // Violation describes a single rule violation detected during alert
@@ -165,15 +171,15 @@ func (e Event) PrimaryViolation() (Violation, bool) {
 // indicate higher severity. Unknown levels default to 0 (lowest).
 func severityRank(level string) int {
 	switch level {
-	case "critical", "fatal":
+	case string(types.SeverityCritical), "fatal":
 		return 5
-	case "error":
+	case string(types.SeverityError):
 		return 4
-	case "warning", "warn":
+	case string(types.SeverityWarning), "warn":
 		return 3
-	case "info", "notice":
+	case string(types.SeverityInfo), "notice":
 		return 2
-	case "debug":
+	case string(types.SeverityDebug):
 		return 1
 	default:
 		return 0

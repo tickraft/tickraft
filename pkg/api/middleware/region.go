@@ -8,18 +8,13 @@ import (
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth/region"
-	"go.uber.org/zap"
 )
 
 const (
-	// regionHeader is the HTTP header that explicitly specifies the target
-	// routing region. It has the highest priority in the three-level routing.
-	regionHeader = "X-Tickraft-Region"
-	// routeRegionHeader is the response header that records the resolved
-	// routing region for client-side inspection and debugging.
-	routeRegionHeader = "X-Tickraft-Route-Region"
 	// regionCookieName is the name of the HMAC-signed region preference cookie.
 	regionCookieName = "tk_region"
 	// defaultRegion is used when no region information is available and GeoIP
@@ -57,7 +52,7 @@ func NewRegionMiddleware(
 	return func(ctx context.Context, arc *app.RequestContext) {
 		resolved := resolveRegion(arc, cookieSecret, keyRotator, geoipLookup)
 
-		arc.Header(routeRegionHeader, resolved)
+		arc.Header(httputil.HeaderRouteRegion, resolved)
 		ctx = httputil.SetRegion(ctx, resolved)
 
 		arc.Next(ctx)
@@ -72,7 +67,7 @@ func resolveRegion(
 	geoipLookup func(ip string) string,
 ) string {
 	// Level 1: X-Tickraft-Region header (highest priority).
-	if hdr := string(arc.GetHeader(regionHeader)); hdr != "" {
+	if hdr := string(arc.GetHeader(httputil.HeaderRegion)); hdr != "" {
 		return hdr
 	}
 

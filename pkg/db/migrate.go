@@ -11,10 +11,11 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
-	"gorm.io/gorm"
 )
 
 // AutoMigrate automatically creates or updates database tables for the
@@ -99,7 +100,7 @@ func EnsureAdminUser(ctx context.Context, db *gorm.DB, username, pwd string) (st
 		Status:       1, // active
 	}
 
-	if err := db.Create(&u).Error; err != nil {
+	if err = db.Create(&u).Error; err != nil {
 		return "", fmt.Errorf("db: create admin user: %w", err)
 	}
 

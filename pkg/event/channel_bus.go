@@ -118,6 +118,9 @@ func acquireEnvelope() *Envelope {
 // releaseEnvelope returns the Envelope object to the sync.Pool.
 // All fields are cleared before release to avoid stale data.
 func releaseEnvelope(env *Envelope) {
+	if env == nil {
+		return
+	}
 	env.Type = ""
 	env.Payload = nil
 	env.Timestamp = time.Time{}
@@ -291,13 +294,14 @@ func (b *channelBus) Subscribe(eventType Type, handler Handler, opts ...Subscrib
 			b.mu.Lock()
 			subs := b.subscribers[eventType]
 			for i, s := range subs {
-				if s == sub {
-					last := len(subs) - 1
-					subs[i] = subs[last]
-					subs[last] = nil
-					b.subscribers[eventType] = subs[:last]
-					break
+				if s != sub {
+					continue
 				}
+				last := len(subs) - 1
+				subs[i] = subs[last]
+				subs[last] = nil
+				b.subscribers[eventType] = subs[:last]
+				break
 			}
 			if len(b.subscribers[eventType]) == 0 {
 				delete(b.subscribers, eventType)
@@ -417,6 +421,7 @@ func (b *channelBus) callHandler(ctx context.Context, sub *subscriber, eventType
 				exponential := baseBackoff * time.Duration(1<<uint(attempt-1))
 				backoff := exponential
 				if sub.config.jitter > 0 {
+					//nolint:gosec // jitter needs no crypto randomness
 					scale := 1.0 - sub.config.jitter + sub.config.jitter*rand.Float64()
 					backoff = time.Duration(float64(exponential) * scale)
 				}
@@ -500,7 +505,8 @@ func (b *channelBus) handleFailedEvent(eventType Type, env Envelope, err error) 
 }
 
 // Close gracefully shuts down the bus.
-// It marks the bus as closed -> closes all done channels -> waits for all consumer goroutines to drain their queues and exit.
+// It marks the bus as closed -> closes all done channels -> waits for all consumer goroutines
+// to drain their queues and exit.
 func (b *channelBus) Close() error {
 	if !b.closed.CompareAndSwap(false, true) {
 		return nil

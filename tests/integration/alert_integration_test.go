@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	prismengine "github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 // mockAlertRecordStore implements alert.RecordStore for the alerting
@@ -71,13 +72,14 @@ func (s *mockAlertRecordStore) Acknowledge(_ context.Context, id int64) (*alert.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.records {
-		if r.ID == id {
-			r.Status = "acknowledged"
-			now := time.Now()
-			r.AcknowledgedAt = &now
-			cp := *r
-			return &cp, nil
+		if r.ID != id {
+			continue
 		}
+		r.Status = "acknowledged"
+		now := time.Now()
+		r.AcknowledgedAt = &now
+		cp := *r
+		return &cp, nil
 	}
 	return nil, errdefs.ErrNotFound
 }
@@ -86,13 +88,14 @@ func (s *mockAlertRecordStore) Resolve(_ context.Context, id int64) (*alert.Reco
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.records {
-		if r.ID == id {
-			r.Status = "resolved"
-			now := time.Now()
-			r.ResolvedAt = &now
-			cp := *r
-			return &cp, nil
+		if r.ID != id {
+			continue
 		}
+		r.Status = "resolved"
+		now := time.Now()
+		r.ResolvedAt = &now
+		cp := *r
+		return &cp, nil
 	}
 	return nil, errdefs.ErrNotFound
 }

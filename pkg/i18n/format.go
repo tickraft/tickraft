@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // Style is the formatting style applied to an alert message. It controls the
@@ -152,6 +154,7 @@ func (f *defaultFormatter) resolveLevel(tr Translator, evt alert.Event) string {
 	case alert.TypeMetric:
 		raw = inferMetricLevel(evt)
 	default:
+		// Heartbeat and status alerts carry no severity of their own.
 		raw = "info"
 	}
 	if raw == "" {
@@ -172,7 +175,7 @@ func inferMetricLevel(evt alert.Event) string {
 	hasWarning := false
 	for _, v := range evt.Violations {
 		switch strings.ToLower(v.Severity) {
-		case "critical", "fatal":
+		case string(types.SeverityCritical), "fatal":
 			hasCritical = true
 		case "error":
 			hasCritical = true
@@ -181,7 +184,7 @@ func inferMetricLevel(evt alert.Event) string {
 		}
 	}
 	if hasCritical {
-		return "critical"
+		return string(types.SeverityCritical)
 	}
 	if hasWarning {
 		return "warning"
@@ -192,7 +195,7 @@ func inferMetricLevel(evt alert.Event) string {
 // formatTimestamp renders the alert timestamp in the recipient's locale
 // format. When opts.Timezone is non-empty, the timestamp is converted to
 // that timezone before formatting.
-func formatTimestamp(evt alert.Event, tr Translator, opts FormatOptions) string {
+func formatTimestamp(evt alert.Event, tr Translator, _ FormatOptions) string {
 	fmtStr := ResolveKey(tr, "time.format", nil)
 	if fmtStr == "" || fmtStr == "time.format" {
 		fmtStr = "2006-01-02 15:04:05"
@@ -222,6 +225,8 @@ func buildFields(evt alert.Event, tr Translator) map[string]string {
 			fields[ResolveKey(tr, "field.content", nil)] = v.Log.Content
 		}
 		fields[ResolveKey(tr, "field.source_ip", nil)] = v.Source
+	case alert.TypeHeartbeat, alert.TypeStatus:
+		// No type-specific fields for heartbeat and status alerts.
 	}
 	if len(evt.Violations) > 1 {
 		fields[ResolveKey(tr, "field.violations_count", nil)] = fmt.Sprintf("%d", len(evt.Violations))
@@ -274,7 +279,7 @@ func buildTemplateVars(evt alert.Event) map[string]any {
 
 	vars["asset_name"] = fmt.Sprintf("asset-%d", evt.AssetID)
 
-	var violationList []map[string]any
+	violationList := make([]map[string]any, 0, len(evt.Violations))
 	for _, viol := range evt.Violations {
 		entry := map[string]any{
 			"kind":     viol.Kind,

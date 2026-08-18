@@ -86,6 +86,8 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 		ceiling = quota.Ceiling(quota.TypeDevice)
 	case types.AssetTypeHost:
 		ceiling = quota.Ceiling(quota.TypeHost)
+	case types.AssetTypeTask, types.AssetTypePort, types.AssetTypeWebsite, types.AssetTypeService:
+		// No quota ceiling for these asset types.
 	}
 	if ceiling > 0 || a.AssetType == types.AssetTypeHost {
 		const tenantID = 0
@@ -240,7 +242,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 	}
 	existing.ID = id
 
-	if err := h.store.Update(ctx, existing); err != nil {
+	if err = h.store.Update(ctx, existing); err != nil {
 		h.logger.Error("asset update failed",
 			zap.String("operation", "asset.update"),
 			zap.String("outcome", "error"),
@@ -358,7 +360,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 
 	prevStatus := existing.Status
 
-	if err := h.store.UpdateStatus(ctx, id, req.Status, time.Now()); err != nil {
+	if err = h.store.UpdateStatus(ctx, id, req.Status, time.Now()); err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset status update: not found",
 				zap.String("operation", "asset.status_update"),

@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // ErrRuleNotFound is returned when a remediation rule cannot be located by
@@ -150,15 +151,11 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Rule, error) {
 // plus the total count. page starts at 1; size is the maximum number of
 // items returned. Soft-deleted rows are excluded.
 func (s *Store) List(ctx context.Context, page, size int) ([]*Rule, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).Count(&total).Error; err != nil {
@@ -197,7 +194,7 @@ func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 // and trigger type. Both global rules (asset_id = 0) and asset-scoped rules
 // (asset_id = assetID) are returned. Rules are ordered by descending ID so
 // more specific (recently created) rules evaluate first.
-func (s *Store) GetRules(ctx context.Context, tenantID int64, assetID int64, triggerType string) ([]*Rule, error) {
+func (s *Store) GetRules(ctx context.Context, tenantID, assetID int64, triggerType string) ([]*Rule, error) {
 	var rules []*Rule
 	q := s.dbc.WithContext(ctx).
 		Where("tenant_id = ? AND trigger_event_type = ? AND enabled = ?",
@@ -211,7 +208,7 @@ func (s *Store) GetRules(ctx context.Context, tenantID int64, assetID int64, tri
 }
 
 // UpdateRuleStatus updates the rule's operational status and metadata blob.
-func (s *Store) UpdateRuleStatus(ctx context.Context, ruleID int64, status string, metadata string) error {
+func (s *Store) UpdateRuleStatus(ctx context.Context, ruleID int64, status, metadata string) error {
 	updates := map[string]any{
 		"status":   status,
 		"metadata": metadata,

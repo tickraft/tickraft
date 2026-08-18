@@ -31,7 +31,7 @@ type Entry struct {
 	// ExpireAt is the absolute time when the entry should fire.
 	ExpireAt time.Time
 	// Metadata holds optional user data associated with the entry.
-	Metadata interface{}
+	Metadata any
 }
 
 // Wheel is the hierarchical time wheel interface.

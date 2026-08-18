@@ -10,6 +10,8 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/hertz-contrib/http2 v0.1.8
+	github.com/hertz-contrib/websocket v0.2.0
+	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/bbolt v1.5.0
 	go.uber.org/zap v1.28.0
@@ -26,7 +28,6 @@ require (
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/cloudwego/gopkg v0.2.0 // indirect
 	github.com/cloudwego/netpoll v0.7.5 // indirect
-	github.com/hertz-contrib/websocket v0.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect

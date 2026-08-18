@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package event provides in-process event bus capabilities, implementing type-safe publish/subscribe based on Go generics.
+// Package event provides in-process event bus capabilities, implementing
+// type-safe publish/subsccribe based on Go generics.
 package event
 
 // Type identifies an event type in the system.

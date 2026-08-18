@@ -15,7 +15,7 @@ package totp
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // RFC 6238 TOTP mandates HMAC-SHA1
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
@@ -109,6 +109,8 @@ func QRCode(uri string) ([]byte, error) {
 // generateCode computes the TOTP code for the given secret key and time
 // counter using HMAC-SHA1 and dynamic truncation as specified in RFC 6238.
 func generateCode(key []byte, counter int64) string {
+	// TOTP counters derive from unix time; negative only pre-1970.
+	counter = max(counter, 0)
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], uint64(counter))
 
@@ -122,7 +124,7 @@ func generateCode(key []byte, counter int64) string {
 	bin := binary.BigEndian.Uint32(sum[offset:offset+4]) & 0x7fffffff
 
 	mod := uint32(1)
-	for i := 0; i < codeDigits; i++ {
+	for range codeDigits {
 		mod *= 10
 	}
 	otp := bin % mod

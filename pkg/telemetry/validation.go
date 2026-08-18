@@ -10,9 +10,10 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/cache"
-	"go.uber.org/zap"
 )
 
 // Validation limits for incoming telemetry.
@@ -108,10 +109,12 @@ func (v *Validator) Validate(ctx context.Context, t *Telemetry) error {
 		return fmt.Errorf("%w: asset type is empty", ErrValidationFailed)
 	}
 	if len(t.Metrics) > MaxMetricsPerReport {
-		return fmt.Errorf("%w: metrics count %d exceeds limit %d", ErrMetricLimitExceeded, len(t.Metrics), MaxMetricsPerReport)
+		return fmt.Errorf("%w: metrics count %d exceeds limit %d",
+			ErrMetricLimitExceeded, len(t.Metrics), MaxMetricsPerReport)
 	}
 	if len(t.LogContent) > MaxLogBodyBytes {
-		return fmt.Errorf("%w: log body size %d exceeds limit %d", ErrLogLimitExceeded, len(t.LogContent), MaxLogBodyBytes)
+		return fmt.Errorf("%w: log body size %d exceeds limit %d",
+			ErrLogLimitExceeded, len(t.LogContent), MaxLogBodyBytes)
 	}
 
 	// Store-based checks require a configured asset store.
@@ -124,7 +127,8 @@ func (v *Validator) Validate(ctx context.Context, t *Telemetry) error {
 		return fmt.Errorf("%w: asset %d: %w", ErrAssetNotFound, t.AssetID, err)
 	}
 	if a.TenantID != t.TenantID {
-		return fmt.Errorf("%w: telemetry tenant %d does not match asset tenant %d", ErrTenantMismatch, t.TenantID, a.TenantID)
+		return fmt.Errorf("%w: telemetry tenant %d does not match asset tenant %d",
+			ErrTenantMismatch, t.TenantID, a.TenantID)
 	}
 
 	return nil

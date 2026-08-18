@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // NoopMetricStore is a no-op MetricStore that discards all writes and
@@ -26,7 +27,13 @@ func (NoopMetricStore) SaveMetric(_ context.Context, _ *CollectMetric) error { r
 func (NoopMetricStore) SaveMetricsBatch(_ context.Context, _ []*CollectMetric) error { return nil }
 
 // QueryMetrics returns an empty slice.
-func (NoopMetricStore) QueryMetrics(_ context.Context, _, _ int64, _ string, _, _ time.Time, _ int) ([]CollectMetric, error) {
+func (NoopMetricStore) QueryMetrics(
+	_ context.Context,
+	_, _ int64,
+	_ string,
+	_, _ time.Time,
+	_ int,
+) ([]CollectMetric, error) {
 	return nil, nil
 }
 
@@ -87,7 +94,13 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 // The limit parameter caps the number of returned entries; a value <= 0
 // applies a default limit of 1000.
 // Results are ordered by timestamp ascending.
-func (s *metricStore) QueryMetrics(ctx context.Context, tenantID, assetID int64, metricName string, start, end time.Time, limit int) ([]CollectMetric, error) {
+func (s *metricStore) QueryMetrics(
+	ctx context.Context,
+	tenantID, assetID int64,
+	metricName string,
+	start, end time.Time,
+	limit int,
+) ([]CollectMetric, error) {
 	query := s.dbc.WithContext(ctx).
 		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", tenantID, assetID, start, end)
 	if metricName != "" {
@@ -141,7 +154,8 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 // The limit parameter caps the number of returned entries; a value of 0
 // applies a default limit of 1000.
 // Results are ordered by timestamp descending (newest first).
-func (s *logStore) QueryLogs(ctx context.Context, tenantID, assetID int64, level string, start, end time.Time, limit int) ([]CollectLog, error) {
+func (s *logStore) QueryLogs(ctx context.Context, tenantID, assetID int64, level string,
+	start, end time.Time, limit int) ([]CollectLog, error) {
 	query := s.dbc.WithContext(ctx).
 		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", tenantID, assetID, start, end)
 

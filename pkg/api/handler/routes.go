@@ -43,9 +43,49 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 		opt(cfg)
 	}
 
-	// Validate required core domain services. These services back routes
-	// that are always registered regardless of deployment mode, so a nil
-	// value would produce routes that panic on first request.
+	if err := validateRouteConfig(cfg); err != nil {
+		return err
+	}
+
+	// --- Construct domain handlers ---
+	authH := auth.NewHandler(cfg.authService)
+	taskH := task.NewHandler(cfg.taskSvc)
+	alertH := alert.NewHandler(cfg.alertSvc)
+	channelH := channel.NewHandler(cfg.channelSvc)
+	remediationH := remediation.NewHandler(cfg.remediationRuleSvc)
+	systemH := system.NewHandler(cfg.systemSvc, cfg.authService)
+	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
+	telemetryH.SetDataStores(cfg.telemetryMetricStore, cfg.telemetryLogStore)
+
+	registerHealthRoutes(server, cfg)
+	registerAuthRoutes(server, cfg, authH)
+	registerTaskRoutes(server, cfg, taskH)
+	registerPrismRoutes(server, cfg, alertH, channelH, remediationH)
+	registerSystemRoutes(server, cfg, systemH)
+	registerAssetRoutes(server, cfg)
+	registerTelemetryRoutes(server, cfg, telemetryH)
+
+	// --- WebSocket realtime push (query-token auth) ---
+	if cfg.wsHandler != nil {
+		root := server.Group("")
+		root.GET("/ws", cfg.wsHandler.ServeHTTP)
+	}
+
+	// --- i18n locale listing (public, no auth) ---
+	if cfg.i18nHandler != nil {
+		i18nGroup := server.Group("/api/v1/i18n")
+		i18nGroup.GET("/locales", cfg.i18nHandler.ListLocales)
+	}
+
+	return nil
+}
+
+// validateRouteConfig validates required core domain services. These services
+// back routes that are always registered regardless of deployment mode, so a
+// nil value would produce routes that panic on first request. It returns an
+// error listing all missing services so the caller can fail startup instead of
+// silently registering routes backed by nil services.
+func validateRouteConfig(cfg *routeConfig) error {
 	var missing []string
 	if cfg.authService == nil {
 		missing = append(missing, "auth service")
@@ -68,22 +108,22 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("handler: required services not injected: %s", strings.Join(missing, ", "))
 	}
+	return nil
+}
 
-	// --- Construct domain handlers ---
-	authH := auth.NewHandler(cfg.authService)
-	taskH := task.NewHandler(cfg.taskSvc)
-	alertH := alert.NewHandler(cfg.alertSvc)
-	channelH := channel.NewHandler(cfg.channelSvc)
-	remediationH := remediation.NewHandler(cfg.remediationRuleSvc)
-	systemH := system.NewHandler(cfg.systemSvc, cfg.authService)
-	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
-	telemetryH.SetDataStores(cfg.telemetryMetricStore, cfg.telemetryLogStore)
-
-	// --- Health probes (standalone, no auth) ---
-
-	// Cluster-level health probe. When a concrete HealthzHandler is injected
-	// it probes DB/Cache dependencies; otherwise the default stub returns
-	// 200 without checks.
+// registerHealthRoutes registers the cluster-level health and readiness
+// probes on the root route group (standalone, no auth).
+//
+// Cluster-level health probe. When a concrete HealthzHandler is injected
+// it probes DB/Cache dependencies; otherwise the default stub returns
+// 200 without checks.
+//
+// Cluster-level readiness probe. When a concrete ReadyHandler is
+// injected it probes DB/Cache dependencies in parallel with a
+// per-check timeout; otherwise the default stub returns 200 without
+// checks. /readyz returns 503 when any dependency is down so a load
+// balancer can route traffic away from a not-yet-ready instance.
+func registerHealthRoutes(server *api.Server, cfg *routeConfig) {
 	root := server.Group("")
 	if cfg.healthzHandler != nil {
 		root.GET("/healthz", cfg.healthzHandler.Healthz)
@@ -91,17 +131,17 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 		root.GET("/healthz", healthz.DefaultHealthz)
 	}
 
-	// Cluster-level readiness probe. When a concrete ReadyHandler is
-	// injected it probes DB/Cache dependencies in parallel with a
-	// per-check timeout; otherwise the default stub returns 200 without
-	// checks. /readyz returns 503 when any dependency is down so a load
-	// balancer can route traffic away from a not-yet-ready instance.
 	if cfg.readyzHandler != nil {
 		root.GET("/readyz", cfg.readyzHandler.Ready)
 	} else {
 		root.GET("/readyz", readyz.DefaultReady)
 	}
+}
 
+// registerAuthRoutes registers the auth module routes: the public login and
+// refresh endpoints, and the JWT-protected password, logout, and API key
+// management endpoints.
+func registerAuthRoutes(server *api.Server, cfg *routeConfig, authH *auth.Handler) {
 	// --- Auth module (public) ---
 	authPublic := server.Group("/api/v1/auth")
 	authPublic.POST("/login", authH.Login)
@@ -115,7 +155,11 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	authJWT.GET("/apikeys", middleware.RequirePermission(middleware.ActionRead, "*"), authH.ListAPIKeys)
 	authJWT.POST("/apikeys", middleware.RequirePermission(middleware.ActionWrite, "*"), authH.CreateAPIKey)
 	authJWT.DELETE("/apikeys/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), authH.RevokeAPIKey)
+}
 
+// registerTaskRoutes registers the task module routes (JWT required): task
+// CRUD and lifecycle actions, execution record lookups, and task statistics.
+func registerTaskRoutes(server *api.Server, cfg *routeConfig, taskH *task.Handler) {
 	// --- Task module (JWT required) ---
 	taskGroup := server.Group("/api/v1/tasks")
 	taskGroup.Use(cfg.jwtMiddleware)
@@ -131,13 +175,20 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 
 	// --- Task execution records (JWT required) ---
 	taskGroup.GET("/:id/executions", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.ListExecutions)
-	taskGroup.GET("/:id/executions/:execId", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetExecution)
+	taskGroup.GET("/:id/executions/:execId", middleware.RequirePermission(middleware.ActionRead, "task"),
+		taskH.GetExecution)
 
 	// --- Task statistics (JWT required) ---
 	taskStatsGroup := server.Group("/api/v1/tasks")
 	taskStatsGroup.Use(cfg.jwtMiddleware)
 	taskStatsGroup.GET("/stats", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetExecutionStats)
+}
 
+// registerPrismRoutes registers the alert rule and record routes (always) and
+// the notification channel and remediation rule routes (when their services
+// are injected), all under /api/v1/prism (JWT required).
+func registerPrismRoutes(server *api.Server, cfg *routeConfig,
+	alertH *alert.Handler, channelH *channel.Handler, remediationH *remediation.Handler) {
 	// --- Alert module (JWT required) ---
 	alertRuleGroup := server.Group("/api/v1/prism/alert/rules")
 	alertRuleGroup.Use(cfg.jwtMiddleware)
@@ -145,14 +196,17 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	alertRuleGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.GetAlertRule)
 	alertRuleGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.CreateAlertRule)
 	alertRuleGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.UpdateAlertRule)
-	alertRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "alert"), alertH.DeleteAlertRule)
+	alertRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "alert"),
+		alertH.DeleteAlertRule)
 
 	alertRecordGroup := server.Group("/api/v1/prism/alert/records")
 	alertRecordGroup.Use(cfg.jwtMiddleware)
 	alertRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.ListAlertRecords)
 	alertRecordGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.GetAlertRecord)
-	alertRecordGroup.PUT("/:id/acknowledge", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.AcknowledgeAlertRecord)
-	alertRecordGroup.PUT("/:id/resolve", middleware.RequirePermission(middleware.ActionWrite, "alert"), alertH.ResolveAlertRecord)
+	alertRecordGroup.PUT("/:id/acknowledge", middleware.RequirePermission(middleware.ActionWrite, "alert"),
+		alertH.AcknowledgeAlertRecord)
+	alertRecordGroup.PUT("/:id/resolve", middleware.RequirePermission(middleware.ActionWrite, "alert"),
+		alertH.ResolveAlertRecord)
 
 	// --- Notification channel module (JWT required) ---
 	// Only registered when a ChannelService is injected. This follows the
@@ -176,11 +230,16 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 	if cfg.remediationRuleSvc != nil {
 		remediationRuleGroup := server.Group("/api/v1/prism/remediation/rules")
 		remediationRuleGroup.Use(cfg.jwtMiddleware)
-		remediationRuleGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.ListRemediationRules)
-		remediationRuleGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.GetRemediationRule)
-		remediationRuleGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"), remediationH.CreateRemediationRule)
-		remediationRuleGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), remediationH.UpdateRemediationRule)
-		remediationRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), remediationH.DeleteRemediationRule)
+		remediationRuleGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"),
+			remediationH.ListRemediationRules)
+		remediationRuleGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "*"),
+			remediationH.GetRemediationRule)
+		remediationRuleGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"),
+			remediationH.CreateRemediationRule)
+		remediationRuleGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"),
+			remediationH.UpdateRemediationRule)
+		remediationRuleGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"),
+			remediationH.DeleteRemediationRule)
 
 		// Remediation dispatch records. Registered alongside the rule
 		// routes because both are injected via the remediation rule
@@ -188,9 +247,14 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 		// conflicting with the /rules/:id wildcard.
 		remediationRecordGroup := server.Group("/api/v1/prism/remediation/records")
 		remediationRecordGroup.Use(cfg.jwtMiddleware)
-		remediationRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), remediationH.ListRemediationRecords)
+		remediationRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"),
+			remediationH.ListRemediationRecords)
 	}
+}
 
+// registerSystemRoutes registers the system module routes (JWT required) and
+// the certificate reload endpoint when a certificate handler is injected.
+func registerSystemRoutes(server *api.Server, cfg *routeConfig, systemH *system.Handler) {
 	// --- System module (JWT required) ---
 	systemGroup := server.Group("/api/v1/system")
 	systemGroup.Use(cfg.jwtMiddleware)
@@ -203,54 +267,87 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 
 	// --- Certificate management (JWT required, optional injection) ---
 	if cfg.certificateHandler != nil {
-		systemGroup.POST("/certificates/reload", middleware.RequirePermission(middleware.ActionWrite, "*"), cfg.certificateHandler.Reload)
+		systemGroup.POST("/certificates/reload", middleware.RequirePermission(middleware.ActionWrite, "*"),
+			cfg.certificateHandler.Reload)
 	}
+}
 
+// registerAssetRoutes registers the asset management module (JWT required)
+// when an asset handler is injected.
+func registerAssetRoutes(server *api.Server, cfg *routeConfig) {
 	// --- Asset management (JWT required) ---
 	if cfg.assetHandler != nil {
 		assetGroup := server.Group("/api/v1/assets")
 		assetGroup.Use(cfg.jwtMiddleware)
 		assetGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "device"), cfg.assetHandler.ListAssets)
 		assetGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "device"), cfg.assetHandler.GetAsset)
-		assetGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.CreateAsset)
-		assetGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.UpdateAsset)
-		assetGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "device"), cfg.assetHandler.DeleteAsset)
-		assetGroup.PUT("/:id/status", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.UpdateAssetStatus)
-		assetGroup.POST("/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"), cfg.assetHandler.ProbeAsset)
+		assetGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "device"),
+			cfg.assetHandler.CreateAsset)
+		assetGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "device"),
+			cfg.assetHandler.UpdateAsset)
+		assetGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "device"),
+			cfg.assetHandler.DeleteAsset)
+		assetGroup.PUT("/:id/status", middleware.RequirePermission(middleware.ActionWrite, "device"),
+			cfg.assetHandler.UpdateAssetStatus)
+		assetGroup.POST("/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"),
+			cfg.assetHandler.ProbeAsset)
 	}
+}
 
+// registerTelemetryRoutes registers the telemetry routes (JWT required):
+// prober/listener type metadata, monitor CRUD and templates, and the unified
+// asset-key-authenticated report endpoint.
+func registerTelemetryRoutes(server *api.Server, cfg *routeConfig, telemetryH *telemetry.Handler) {
 	// --- Telemetry prober/listener type metadata (JWT required) ---
 	telemetryMetaGroup := server.Group("/api/v1/telemetry")
 	telemetryMetaGroup.Use(cfg.jwtMiddleware)
 	telemetryMetaGroup.GET("/probers", middleware.RequirePermission(middleware.ActionRead, "*"), telemetryH.ListProbers)
-	telemetryMetaGroup.GET("/listeners", middleware.RequirePermission(middleware.ActionRead, "*"), telemetryH.ListListeners)
+	telemetryMetaGroup.GET("/listeners", middleware.RequirePermission(middleware.ActionRead, "*"),
+		telemetryH.ListListeners)
 
 	// --- Telemetry monitor CRUD and templates (JWT required) ---
 	if cfg.telemetrySvc != nil || cfg.templateHandler != nil {
 		telemetryGroup := server.Group("/api/v1/telemetry")
 		telemetryGroup.Use(cfg.jwtMiddleware)
 		if cfg.telemetrySvc != nil {
-			telemetryGroup.GET("/monitors", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.ListTelemetry)
-			telemetryGroup.GET("/monitors/:id", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetTelemetry)
-			telemetryGroup.POST("/monitors", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.CreateTelemetry)
-			telemetryGroup.PUT("/monitors/:id", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.UpdateTelemetry)
-			telemetryGroup.DELETE("/monitors/:id", middleware.RequirePermission(middleware.ActionDelete, "device"), telemetryH.DeleteTelemetry)
-			telemetryGroup.GET("/monitors/:id/status", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorStatus)
-			telemetryGroup.GET("/monitors/:id/history", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorHistory)
-			telemetryGroup.POST("/monitors/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.ProbeMonitor)
-			telemetryGroup.GET("/monitors/:id/logs", middleware.RequirePermission(middleware.ActionRead, "device"), telemetryH.GetMonitorLogs)
-			telemetryGroup.PUT("/monitors/:id/enable", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.EnableMonitor)
-			telemetryGroup.PUT("/monitors/:id/disable", middleware.RequirePermission(middleware.ActionWrite, "device"), telemetryH.DisableMonitor)
+			telemetryGroup.GET("/monitors", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.ListTelemetry)
+			telemetryGroup.GET("/monitors/:id", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.GetTelemetry)
+			telemetryGroup.POST("/monitors", middleware.RequirePermission(middleware.ActionWrite, "device"),
+				telemetryH.CreateTelemetry)
+			telemetryGroup.PUT("/monitors/:id", middleware.RequirePermission(middleware.ActionWrite, "device"),
+				telemetryH.UpdateTelemetry)
+			telemetryGroup.DELETE("/monitors/:id", middleware.RequirePermission(middleware.ActionDelete, "device"),
+				telemetryH.DeleteTelemetry)
+			telemetryGroup.GET("/monitors/:id/status", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.GetMonitorStatus)
+			telemetryGroup.GET("/monitors/:id/history", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.GetMonitorHistory)
+			telemetryGroup.POST("/monitors/:id/probe", middleware.RequirePermission(middleware.ActionWrite, "device"),
+				telemetryH.ProbeMonitor)
+			telemetryGroup.GET("/monitors/:id/logs", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.GetMonitorLogs)
+			telemetryGroup.PUT("/monitors/:id/enable", middleware.RequirePermission(middleware.ActionWrite, "device"),
+				telemetryH.EnableMonitor)
+			telemetryGroup.PUT("/monitors/:id/disable", middleware.RequirePermission(middleware.ActionWrite, "device"),
+				telemetryH.DisableMonitor)
 		}
 		if cfg.templateHandler != nil {
 			th := cfg.templateHandler
 			telemetryGroup.GET("/templates", middleware.RequirePermission(middleware.ActionRead, "*"), th.ListTemplates)
-			telemetryGroup.GET("/templates/builtin", middleware.RequirePermission(middleware.ActionRead, "*"), th.ListBuiltinTemplates)
-			telemetryGroup.GET("/templates/:id", middleware.RequirePermission(middleware.ActionRead, "*"), th.GetTemplate)
-			telemetryGroup.POST("/templates", middleware.RequirePermission(middleware.ActionWrite, "*"), th.CreateTemplate)
-			telemetryGroup.PUT("/templates/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), th.UpdateTemplate)
-			telemetryGroup.DELETE("/templates/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), th.DeleteTemplate)
-			telemetryGroup.POST("/templates/:id/apply", middleware.RequirePermission(middleware.ActionWrite, "*"), th.ApplyTemplate)
+			telemetryGroup.GET("/templates/builtin", middleware.RequirePermission(middleware.ActionRead, "*"),
+				th.ListBuiltinTemplates)
+			telemetryGroup.GET("/templates/:id", middleware.RequirePermission(middleware.ActionRead, "*"),
+				th.GetTemplate)
+			telemetryGroup.POST("/templates", middleware.RequirePermission(middleware.ActionWrite, "*"),
+				th.CreateTemplate)
+			telemetryGroup.PUT("/templates/:id", middleware.RequirePermission(middleware.ActionWrite, "*"),
+				th.UpdateTemplate)
+			telemetryGroup.DELETE("/templates/:id", middleware.RequirePermission(middleware.ActionDelete, "*"),
+				th.DeleteTemplate)
+			telemetryGroup.POST("/templates/:id/apply", middleware.RequirePermission(middleware.ActionWrite, "*"),
+				th.ApplyTemplate)
 		}
 	}
 
@@ -262,17 +359,4 @@ func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
 		}
 		reportGroup.POST("", cfg.telemetryReportHandler.Report)
 	}
-
-	// --- WebSocket realtime push (query-token auth) ---
-	if cfg.wsHandler != nil {
-		root.GET("/ws", cfg.wsHandler.ServeHTTP)
-	}
-
-	// --- i18n locale listing (public, no auth) ---
-	if cfg.i18nHandler != nil {
-		i18nGroup := server.Group("/api/v1/i18n")
-		i18nGroup.GET("/locales", cfg.i18nHandler.ListLocales)
-	}
-
-	return nil
 }

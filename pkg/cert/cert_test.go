@@ -5,6 +5,7 @@
 package cert
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -21,7 +22,7 @@ import (
 // ErrDomainRequired, so generation fails fast rather than producing a
 // certificate with an empty CommonName.
 func TestGenerateDomainRequired(t *testing.T) {
-	_, err := Generate(Options{Domain: "", Days: 365, KeyType: "ecdsa"})
+	_, err := Generate(Options{Domain: "", Days: 365, KeyType: DefaultKeyType})
 	if !errors.Is(err, ErrDomainRequired) {
 		t.Fatalf("err = %v, want wrapping %v", err, ErrDomainRequired)
 	}
@@ -40,12 +41,12 @@ func TestGenerateUnsupportedKeyType(t *testing.T) {
 // wrapped ErrInvalidDays sentinel so callers can detect this specific failure
 // via errors.Is.
 func TestGenerateInvalidDays(t *testing.T) {
-	_, err := Generate(Options{Domain: "example.com", Days: 0, KeyType: "ecdsa"})
+	_, err := Generate(Options{Domain: "example.com", Days: 0, KeyType: DefaultKeyType})
 	if !errors.Is(err, ErrInvalidDays) {
 		t.Fatalf("err = %v, want wrapping %v", err, ErrInvalidDays)
 	}
 
-	_, err = Generate(Options{Domain: "example.com", Days: -1, KeyType: "ecdsa"})
+	_, err = Generate(Options{Domain: "example.com", Days: -1, KeyType: DefaultKeyType})
 	if !errors.Is(err, ErrInvalidDays) {
 		t.Fatalf("err = %v, want wrapping %v", err, ErrInvalidDays)
 	}
@@ -57,7 +58,7 @@ func TestGenerateInvalidDays(t *testing.T) {
 // the certificate's public key matching the private key.
 func TestGenerateECDSA(t *testing.T) {
 	const domain = "test.example.com"
-	result, err := Generate(Options{Domain: domain, Days: 30, KeyType: "ecdsa"})
+	result, err := Generate(Options{Domain: domain, Days: 30, KeyType: DefaultKeyType})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -128,7 +129,7 @@ func TestGenerateRSA(t *testing.T) {
 // DNSNames field.
 func TestGenerateIPSAN(t *testing.T) {
 	const ip = "192.168.1.10"
-	result, err := Generate(Options{Domain: ip, Days: 30, KeyType: "ecdsa"})
+	result, err := Generate(Options{Domain: ip, Days: 30, KeyType: DefaultKeyType})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestGenerateIPSAN(t *testing.T) {
 func TestWriteToDirCreatesOutputDir(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "nested", "certs")
 	const domain = "nested.example.com"
-	certPath, keyPath, err := WriteToDir(Options{Domain: domain, Days: 30, KeyType: "ecdsa"}, output)
+	certPath, keyPath, err := WriteToDir(Options{Domain: domain, Days: 30, KeyType: DefaultKeyType}, output)
 	if err != nil {
 		t.Fatalf("WriteToDir: %v", err)
 	}
@@ -165,7 +166,7 @@ func TestWriteToDirCreatesOutputDir(t *testing.T) {
 func TestWriteToDirECDSA(t *testing.T) {
 	output := t.TempDir()
 	const domain = "wt.example.com"
-	certPath, keyPath, err := WriteToDir(Options{Domain: domain, Days: 30, KeyType: "ecdsa"}, output)
+	certPath, keyPath, err := WriteToDir(Options{Domain: domain, Days: 30, KeyType: DefaultKeyType}, output)
 	if err != nil {
 		t.Fatalf("WriteToDir: %v", err)
 	}
@@ -284,6 +285,6 @@ func publicKeysEqual(t *testing.T, a, b any) bool {
 		if errA != nil || errB != nil {
 			return false
 		}
-		return string(aDER) == string(bDER)
+		return bytes.Equal(aDER, bDER)
 	}
 }

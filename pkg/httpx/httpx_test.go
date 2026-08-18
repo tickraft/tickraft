@@ -55,7 +55,9 @@ func TestNewPoolClient_Overrides(t *testing.T) {
 		IdleConnTimeout:     2 * time.Minute,
 		TLSHandshakeTimeout: 3 * time.Second,
 		DialTimeout:         5 * time.Second,
-		TLSConfig:           &tls.Config{InsecureSkipVerify: true},
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
 	}
 	c := NewPoolClient(cfg)
 	if c.Timeout != 7*time.Second {

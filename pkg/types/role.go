@@ -13,9 +13,14 @@ package types
 // mismatched role values at the call site and documents the role
 // semantics in a single location.
 //
-// Migration note: pkg/auth exposes a type alias and re-exports the
-// constants so existing callers using auth.RoleVisitor etc. continue to
-// compile unchanged.
+// Migration note: pkg/auth keeps its own untyped int constants
+// (auth.RoleVisitor, auth.RoleDeveloper, auth.RoleAdmin) mirroring these
+// values. They intentionally remain separate definitions rather than
+// references, because untyped constants cannot be derived from these
+// typed ones, and downstream call sites pass them directly to both int
+// fields (user.User.Role, jwt.Claims.Role) and int64 parameters
+// (user.Store.Create). This package is the canonical definition of the
+// role values; the auth constants must be kept in sync with it.
 type Role int
 
 const (

@@ -21,10 +21,10 @@ const (
 	CapWrite = CapExec | CapMutate | CapNotify // 14
 )
 
-// HasCap reports whether capabilities contains the specified capability cap.
-// Returns true when the bitwise AND of capabilities and cap equals cap.
-func HasCap(capabilities Capability, cap Capability) bool {
-	return capabilities&cap == cap
+// HasCap reports whether capabilities contains the specified capability c.
+// Returns true when the bitwise AND of capabilities and c equals c.
+func HasCap(capabilities, c Capability) bool {
+	return capabilities&c == c
 }
 
 // HasWrite reports whether capabilities contains any write capability

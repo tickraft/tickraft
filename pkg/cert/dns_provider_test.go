@@ -134,7 +134,7 @@ func (s *stubDNSProvider) CleanUp(_ context.Context, _, _, _ string) error {
 }
 
 // Timeout satisfies DNSProvider.
-func (s *stubDNSProvider) Timeout() (time.Duration, time.Duration) {
+func (s *stubDNSProvider) Timeout() (interval, timeout time.Duration) {
 	return s.interval, s.timeout
 }
 

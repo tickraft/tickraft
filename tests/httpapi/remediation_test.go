@@ -61,6 +61,7 @@ func TestRemediationRulesCRUDAndValidation(t *testing.T) {
 	}
 
 	// All three contract trigger types are accepted.
+	createdRuleIDs := make([]int64, 0, 3)
 	for _, trigger := range []string{"metric", "log", "status_change"} {
 		body := remediationBody("httpapi-trigger-"+trigger, trigger, "webhook")
 		status, env := hs.do("POST", "/api/v1/prism/remediation/rules", body, token)
@@ -72,11 +73,15 @@ func TestRemediationRulesCRUDAndValidation(t *testing.T) {
 			ID int64 `json:"id"`
 		}
 		hs.mustOK(status, env, "create remediation rule "+trigger, &rule)
-		id := rule.ID
-		defer func() {
-			_, _ = hs.do("DELETE", "/api/v1/prism/remediation/rules/"+jsonInt64(id), nil, token)
-		}()
+		createdRuleIDs = append(createdRuleIDs, rule.ID)
 	}
+	// Cleanup runs once at test exit (not per iteration) to avoid deferring
+	// inside the loop above.
+	defer func() {
+		for _, id := range createdRuleIDs {
+			_, _ = hs.do("DELETE", "/api/v1/prism/remediation/rules/"+jsonInt64(id), nil, token)
+		}
+	}()
 
 	// Update + get + list.
 	status, env = hs.do("PUT", "/api/v1/prism/remediation/rules/"+jsonInt64(created.ID),
@@ -114,7 +119,7 @@ func TestRemediationQuota(t *testing.T) {
 		}
 	}()
 
-	for i := int64(0); i < quotaCeiling-existing; i++ {
+	for i := range quotaCeiling - existing {
 		status, env := hs.do("POST", "/api/v1/prism/remediation/rules",
 			remediationBody("httpapi-quota-rule", "metric", "webhook"), token)
 		var rule struct {

@@ -184,7 +184,7 @@ b = "c"`,
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer f.Close()
+	_ = f.Close()
 }
 
 func TestOpenOSFile_NonExistent(t *testing.T) {

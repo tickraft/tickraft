@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 func TestNewBuiltinLibrary_LoadsAllTemplates(t *testing.T) {
@@ -54,14 +55,17 @@ func TestBuiltinLibrary_RenderCpuHigh_EN_Concise(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "en-US",
 		Style:      StyleConcise,
@@ -78,14 +82,17 @@ func TestBuiltinLibrary_RenderCpuHigh_ZH_Detailed(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "zh-Hans",
 		Style:      StyleDetailed,
@@ -105,13 +112,16 @@ func TestBuiltinLibrary_RenderMemoryHigh(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "memory_usage", Value: 95.0, Threshold: 85.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "memory_usage", Value: 95.0, Threshold: 85.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "memory_high",
 		Locale:     "en-US",
 		Style:      StyleDetailed,
@@ -128,13 +138,16 @@ func TestBuiltinLibrary_RenderDiskFull(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "disk_usage", Value: 98.0, Threshold: 90.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "disk_usage", Value: 98.0, Threshold: 90.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "disk_full",
 		Locale:     "zh-Hans",
 		Style:      StyleConcise,
@@ -151,12 +164,12 @@ func TestBuiltinLibrary_RenderServiceDown(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeLog,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "service_down",
 		Locale:     "en-US",
 		Style:      StyleDetailed,
@@ -173,13 +186,18 @@ func TestBuiltinLibrary_RenderLogKeywordMatched(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeLog,
-		AssetID:    10,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeLog,
+		AssetID:   10,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "OOM", Content: "out of memory"},
+			Source:   "10.0.0.1",
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "log_keyword_matched",
 		Locale:     "en-US",
 		Style:      StyleDetailed,
@@ -199,12 +217,12 @@ func TestBuiltinLibrary_RenderNetworkUnreachable(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeLog,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "network_unreachable",
 		Locale:     "zh-Hans",
 		Style:      StyleDetailed,
@@ -221,13 +239,16 @@ func TestBuiltinLibrary_RenderHttpErrorRateHigh(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "http_5xx_rate", Value: 15.0, Threshold: 5.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "http_5xx_rate", Value: 15.0, Threshold: 5.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "http_error_rate_high",
 		Locale:     "en-US",
 		Style:      StyleDetailed,
@@ -244,13 +265,16 @@ func TestBuiltinLibrary_RenderConnectionPoolExhausted(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "conn_pool_usage", Value: 99.0, Threshold: 85.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "conn_pool_usage", Value: 99.0, Threshold: 85.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "connection_pool_exhausted",
 		Locale:     "en-US",
 		Style:      StyleConcise,
@@ -267,12 +291,12 @@ func TestBuiltinLibrary_RenderCertificateExpiring(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeLog,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "certificate_expiring",
 		Locale:     "zh-Hans",
 		Style:      StyleDetailed,
@@ -289,13 +313,16 @@ func TestBuiltinLibrary_RenderCustomMetricThreshold(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "queue_depth", Value: 5000.0, Threshold: 1000.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "queue_depth", Value: 5000.0, Threshold: 1000.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "custom_metric_threshold",
 		Locale:     "en-US",
 		Style:      StyleTechnical,
@@ -314,15 +341,21 @@ func TestBuiltinLibrary_RenderAllTemplates(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0}, Severity: "error", Log: &alert.LogContext{Keyword: "test", Content: "test content"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindMetric,
+			Metric:   &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0},
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "test", Content: "test content"},
+			Source:   "10.0.0.1",
+		}},
 	}
 
 	for _, tpl := range l.List() {
-		msg, err := r.Render(context.Background(), alert, RenderOptions{
+		msg, err := r.Render(context.Background(), evt, RenderOptions{
 			TemplateID: tpl.ID,
 			Locale:     "en-US",
 			Style:      StyleDetailed,
@@ -342,15 +375,21 @@ func TestBuiltinLibrary_RenderAllTemplates_ZH(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0}, Severity: "error", Log: &alert.LogContext{Keyword: "test", Content: "test content"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindMetric,
+			Metric:   &alert.MetricContext{Name: "test_metric", Value: 90.0, Threshold: 80.0},
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "test", Content: "test content"},
+			Source:   "10.0.0.1",
+		}},
 	}
 
 	for _, tpl := range l.List() {
-		msg, err := r.Render(context.Background(), alert, RenderOptions{
+		msg, err := r.Render(context.Background(), evt, RenderOptions{
 			TemplateID: tpl.ID,
 			Locale:     "zh-Hans",
 			Style:      StyleDetailed,
@@ -373,16 +412,19 @@ func TestBuiltinLibrary_RenderAllStyles(t *testing.T) {
 	l := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(l, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
 	styles := []string{StyleConcise, StyleDetailed, StyleTechnical}
 	for _, style := range styles {
-		msg, err := r.Render(context.Background(), alert, RenderOptions{
+		msg, err := r.Render(context.Background(), evt, RenderOptions{
 			TemplateID: "cpu_high",
 			Locale:     "en-US",
 			Style:      style,

@@ -85,7 +85,7 @@ func newFakeSystemService() *fakeSystemService {
 // claim it.
 func freeAddr(t *testing.T) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("freeAddr: listen: %v", err)
 	}
@@ -140,7 +140,7 @@ func startTestServer(t *testing.T, opts ...RegisterOption) (addr string, shutdow
 	// Poll until the server is accepting connections or fails to start.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, dialErr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		conn, dialErr := (&net.Dialer{Timeout: 100 * time.Millisecond}).DialContext(t.Context(), "tcp", addr)
 		if dialErr == nil {
 			_ = conn.Close()
 			break
@@ -167,7 +167,8 @@ func startTestServer(t *testing.T, opts ...RegisterOption) (addr string, shutdow
 // the given address and returns the parsed SystemInfo payload.
 func doSystemInfoGET(t *testing.T, addr, token string) system.Info {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/api/v1/system/info", nil)
+	url := "http://" + addr + "/api/v1/system/info"
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}

@@ -42,9 +42,9 @@ func newAdapterTestEngineWithLogger(t *testing.T, netHandler http.Handler) (*rou
 func findAuditEntry(t *testing.T, logs *observer.ObservedLogs, operation string) observer.LoggedEntry {
 	t.Helper()
 	all := logs.All()
-	for _, e := range all {
-		if op, ok := fieldValue(e, "operation"); ok && op == operation {
-			return e
+	for i := range all {
+		if op, ok := fieldValue(all[i], "operation"); ok && op == operation {
+			return all[i]
 		}
 	}
 	t.Fatalf("audit log entry with operation=%q not found (total entries: %d)", operation, len(all))
@@ -142,7 +142,7 @@ func TestAdapterEmptyBody(t *testing.T) {
 	netHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
 			bodyReceived = make([]byte, r.ContentLength)
-			r.Body.Read(bodyReceived)
+			_, _ = r.Body.Read(bodyReceived)
 		}
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -227,7 +227,7 @@ func TestAdapterResponseBody(t *testing.T) {
 	netHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"accepted","queued":true}`))
+		_, _ = w.Write([]byte(`{"status":"accepted","queued":true}`))
 	})
 
 	engine, _ := newAdapterTestEngineWithLogger(t, netHandler)
@@ -275,9 +275,9 @@ func TestAdapterEmptyResponseBody(t *testing.T) {
 func TestAdapterMultipleWrites(t *testing.T) {
 	netHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("chunk1-"))
-		w.Write([]byte("chunk2-"))
-		w.Write([]byte("chunk3"))
+		_, _ = w.Write([]byte("chunk1-"))
+		_, _ = w.Write([]byte("chunk2-"))
+		_, _ = w.Write([]byte("chunk3"))
 	})
 
 	engine, _ := newAdapterTestEngineWithLogger(t, netHandler)

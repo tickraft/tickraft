@@ -12,6 +12,7 @@ import (
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/parser"
 	"github.com/expr-lang/expr/vm"
+
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
@@ -240,6 +241,7 @@ type comparisonVisitor struct {
 	onCollect func(comparison)
 }
 
+//nolint:gocritic // implements the expr-lang ast.Visitor interface whose signature is fixed
 func (v *comparisonVisitor) Visit(node *ast.Node) {
 	if node == nil || *node == nil {
 		return
@@ -284,7 +286,7 @@ func (x *ViolationExtractor) buildViolation(c comparison, env MetricMatchEnv) al
 // evalBool compiles (cached) and runs a comparison sub-expression,
 // returning the boolean result. The bool ok result is false when the
 // sub-expression cannot be compiled or does not yield a bool.
-func (x *ViolationExtractor) evalBool(source string, env MetricMatchEnv) (bool, bool) {
+func (x *ViolationExtractor) evalBool(source string, env MetricMatchEnv) (value, ok bool) {
 	prog, err := x.compileSub(source)
 	if err != nil {
 		return false, false

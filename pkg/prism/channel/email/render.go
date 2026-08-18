@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
-	"go.uber.org/zap"
 )
 
 // buildMessage constructs the raw SMTP message bytes (headers + body) from
@@ -151,14 +152,15 @@ func formatSubject(evt alert.Event) string {
 		return fmt.Sprintf("[Alert] metric alert - asset %d", evt.AssetID)
 	case alert.TypeLog:
 		if v.Log != nil && v.Log.Keyword != "" {
-			return fmt.Sprintf("[Alert] log keyword \"%s\" matched - asset %d", v.Log.Keyword, evt.AssetID)
+			return fmt.Sprintf("[Alert] log keyword %q matched - asset %d", v.Log.Keyword, evt.AssetID)
 		}
 		return fmt.Sprintf("[Alert] log alert - asset %d", evt.AssetID)
 	case alert.TypeHeartbeat:
 		return fmt.Sprintf("[Alert] heartbeat lost - asset %d", evt.AssetID)
 	case alert.TypeStatus:
 		if v.Status != nil {
-			return fmt.Sprintf("[Alert] status %s -> %s - asset %d", v.Status.PrevStatus, v.Status.CurrStatus, evt.AssetID)
+			return fmt.Sprintf("[Alert] status %s -> %s - asset %d",
+				v.Status.PrevStatus, v.Status.CurrStatus, evt.AssetID)
 		}
 		return fmt.Sprintf("[Alert] status change - asset %d", evt.AssetID)
 	default:
@@ -266,7 +268,8 @@ func formatHTML(evt alert.Event, formatted i18n.FormattedMessage) string {
 	// Render all violations
 	for i, v := range evt.Violations {
 		if len(evt.Violations) > 1 {
-			fmt.Fprintf(&buf, `<tr><td colspan="2" style="border: 1px solid #ddd; padding: 8px; background: #e6f7ff; font-weight: bold;">Violation %d</td></tr>`, i+1)
+			fmt.Fprintf(&buf, `<tr><td colspan="2" style="border: 1px solid #ddd; padding: 8px; `+
+				`background: #e6f7ff; font-weight: bold;">Violation %d</td></tr>`, i+1)
 		}
 		renderViolationHTML(&buf, v, evt.Type)
 	}
@@ -321,7 +324,8 @@ func renderViolationHTML(buf *bytes.Buffer, v alert.Violation, eventType alert.T
 
 // writeHTMLRow writes a key-value row to the HTML table buffer.
 func writeHTMLRow(buf *bytes.Buffer, key, value string) {
-	fmt.Fprintf(buf, `<tr><td style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5; font-weight: bold;">%s</td><td style="border: 1px solid #ddd; padding: 8px;">%s</td></tr>`,
+	fmt.Fprintf(buf, `<tr><td style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5; `+
+		`font-weight: bold;">%s</td><td style="border: 1px solid #ddd; padding: 8px;">%s</td></tr>`,
 		escapeHTML(key), escapeHTML(value))
 }
 

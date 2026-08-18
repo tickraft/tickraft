@@ -44,7 +44,7 @@ func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write temp config: %v", err)
 	}
 	return path
@@ -52,7 +52,7 @@ func writeTempConfig(t *testing.T, content string) string {
 
 // runValidate executes "tickraft config validate" with the given extra args
 // and returns the captured stdout, stderr, and error.
-func runValidate(t *testing.T, args ...string) (string, string, error) {
+func runValidate(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"config", "validate"}, args...))

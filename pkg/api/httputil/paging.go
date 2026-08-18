@@ -9,8 +9,9 @@ import (
 	"strconv"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/tickraft/tickraft/pkg/errdefs"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
 // Field length limits shared by API handlers. They mirror the varchar
@@ -50,12 +51,12 @@ func ParseID(arc *app.RequestContext) (int64, bool) {
 // when missing or non-positive. page_size is clamped to maxPageSize (100); when
 // a client requests more than the cap, the value is reduced and a warning is
 // logged so the truncation is observable by operators.
-func ParsePaging(arc *app.RequestContext) (int, int) {
-	page, _ := strconv.Atoi(arc.Query("page"))
+func ParsePaging(arc *app.RequestContext) (page, size int) {
+	page, _ = strconv.Atoi(arc.Query("page"))
 	if page <= 0 {
 		page = 1
 	}
-	size, _ := strconv.Atoi(arc.Query("page_size"))
+	size, _ = strconv.Atoi(arc.Query("page_size"))
 	if size <= 0 {
 		size = defaultPageSize
 	}
@@ -71,33 +72,25 @@ func ParsePaging(arc *app.RequestContext) (int, int) {
 
 // ClampPaging normalizes page/size parameters for list endpoints.
 // page starts at 1; size defaults to 20 when non-positive and is capped at 100.
-func ClampPaging(page, size int) (int, int) {
-	if page < 1 {
-		page = 1
+func ClampPaging(page, size int) (clampedPage, clampedSize int) {
+	clampedPage = page
+	clampedSize = size
+	clampedPage = max(clampedPage, 1)
+	if clampedSize <= 0 {
+		clampedSize = defaultPageSize
 	}
-	if size <= 0 {
-		size = defaultPageSize
-	}
-	if size > maxPageSize {
-		size = maxPageSize
-	}
-	return page, size
+	clampedSize = min(clampedSize, maxPageSize)
+	return clampedPage, clampedSize
 }
 
 // PageWindow returns the [start, end) index window for the given page/size
 // over a collection of total items. start may be >= total to signal an empty
 // result; callers must guard against that before slicing.
-func PageWindow(page, size, total int) (int, int) {
-	start := (page - 1) * size
-	if start < 0 {
-		start = 0
-	}
-	if start > total {
-		start = total
-	}
-	end := start + size
-	if end > total {
-		end = total
-	}
+func PageWindow(page, size, total int) (start, end int) {
+	start = (page - 1) * size
+	start = max(start, 0)
+	start = min(start, total)
+	end = start + size
+	end = min(end, total)
 	return start, end
 }

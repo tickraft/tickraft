@@ -111,5 +111,5 @@ func TestEnginePanicRecovery(t *testing.T) {
 	}
 
 	// Clean up.
-	eng.Remove(1)
+	_ = eng.Remove(1)
 }

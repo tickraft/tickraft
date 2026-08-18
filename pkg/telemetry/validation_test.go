@@ -12,9 +12,10 @@ import (
 	"sync"
 	"testing"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // newTestValidator creates a Validator backed by a mock store pre-populated

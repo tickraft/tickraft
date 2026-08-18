@@ -26,7 +26,7 @@ type Store interface {
 	// Create creates a new user and returns the new user ID.
 	Create(ctx context.Context, username, passwordHash, email string, role int64) (int64, error)
 	// Update updates user fields specified in the data map.
-	Update(ctx context.Context, id int64, data map[string]interface{}) error
+	Update(ctx context.Context, id int64, data map[string]any) error
 	// UpdatePassword updates the user's password hash.
 	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
 	// Delete deletes a user by ID.

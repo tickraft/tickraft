@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // renderer is the default Renderer implementation. It looks up templates in
@@ -53,7 +55,11 @@ func NewRenderer(lib Library, r i18n.Registry, logger *zap.Logger) Renderer {
 // The whole call is wrapped with panic recovery so a buggy custom Library or
 // Registry SPI implementation cannot crash the caller; a panic is recovered,
 // logged at error level, and surfaced as a wrapped error.
-func (r *renderer) Render(ctx context.Context, evt alert.Event, opts RenderOptions) (msg i18n.FormattedMessage, err error) {
+func (r *renderer) Render(
+	ctx context.Context,
+	evt alert.Event,
+	opts RenderOptions,
+) (msg i18n.FormattedMessage, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			r.logger.Error("renderer Render panicked",
@@ -93,11 +99,13 @@ func (r *renderer) Render(ctx context.Context, evt alert.Event, opts RenderOptio
 	descKey := "description." + style
 	titleTmpl, ok := translation[titleKey]
 	if !ok {
-		return i18n.FormattedMessage{}, fmt.Errorf("%w: missing key %s in locale %s", ErrTranslationMissing, titleKey, resolvedLocale)
+		return i18n.FormattedMessage{}, fmt.Errorf("%w: missing key %s in locale %s",
+			ErrTranslationMissing, titleKey, resolvedLocale)
 	}
 	descTmpl, ok := translation[descKey]
 	if !ok {
-		return i18n.FormattedMessage{}, fmt.Errorf("%w: missing key %s in locale %s", ErrTranslationMissing, descKey, resolvedLocale)
+		return i18n.FormattedMessage{}, fmt.Errorf("%w: missing key %s in locale %s",
+			ErrTranslationMissing, descKey, resolvedLocale)
 	}
 
 	vars := buildTemplateVars(evt)
@@ -131,7 +139,7 @@ func (r *renderer) Render(ctx context.Context, evt alert.Event, opts RenderOptio
 // tries the exact locale first, then the language-only variant (e.g. "zh"
 // for "zh-Hans"), then i18n.DefaultLocale. Returns nil when no translation is
 // available.
-func resolveTranslation(t Template, locale string) (map[string]string, string) {
+func resolveTranslation(t Template, locale string) (translation map[string]string, matchedLocale string) {
 	if tr, ok := t.Translations[locale]; ok {
 		return tr, locale
 	}
@@ -162,6 +170,7 @@ func resolveLevel(tr i18n.Translator, evt alert.Event, logger *zap.Logger) strin
 	case alert.TypeMetric:
 		raw = inferMetricLevel(evt)
 	default:
+		// Heartbeat and status alerts carry no severity of their own.
 		raw = "info"
 	}
 	if raw == "" {
@@ -181,21 +190,21 @@ func inferMetricLevel(evt alert.Event) string {
 	hasWarning := false
 	for _, v := range evt.Violations {
 		switch strings.ToLower(v.Severity) {
-		case "critical", "fatal":
+		case string(types.SeverityCritical), "fatal":
 			hasCritical = true
-		case "error":
+		case string(types.SeverityError):
 			hasCritical = true
 		default:
 			hasWarning = true
 		}
 	}
 	if hasCritical {
-		return "critical"
+		return string(types.SeverityCritical)
 	}
 	if hasWarning {
-		return "warning"
+		return string(types.SeverityWarning)
 	}
-	return "warning"
+	return string(types.SeverityWarning)
 }
 
 // formatTimestamp renders the alert timestamp using the locale-specific
@@ -254,6 +263,8 @@ func buildFields(evt alert.Event, tr i18n.Translator) map[string]string {
 			fields[contentLabel] = v.Log.Content
 		}
 		fields[sourceIPLabel] = v.Source
+	case alert.TypeHeartbeat, alert.TypeStatus:
+		// No type-specific fields for heartbeat and status alerts.
 	}
 	if len(evt.Violations) > 1 {
 		violationsCountLabel := "Violations Count"
@@ -298,7 +309,7 @@ func buildTemplateVars(evt alert.Event) map[string]any {
 		vars["content"] = v.Log.Content
 	}
 
-	var violationList []map[string]any
+	violationList := make([]map[string]any, 0, len(evt.Violations))
 	for _, viol := range evt.Violations {
 		entry := map[string]any{
 			"kind":     viol.Kind,

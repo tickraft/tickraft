@@ -8,9 +8,10 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
 
 // TemplateStore provides CRUD operations for telemetry templates backed by

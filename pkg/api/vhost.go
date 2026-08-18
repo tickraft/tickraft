@@ -5,6 +5,7 @@
 // This file implements VirtualHost routing
 // dispatch (design doc section 7.7): mapping the request Host header to a
 // named route group via exact, wildcard, and default fallback matching.
+
 package api
 
 import "strings"
@@ -172,7 +173,7 @@ func isAllDigits(s string) bool {
 	if s == "" {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] < '0' || s[i] > '9' {
 			return false
 		}

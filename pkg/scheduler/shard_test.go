@@ -63,10 +63,10 @@ func TestModuloShardStrategyNoSharding(t *testing.T) {
 func TestModuloShardStrategyOwnership(t *testing.T) {
 	total := 4
 	// Verify that every task ID is owned by exactly one shard.
-	for id := int64(0); id < 100; id++ {
+	for id := range int64(100) {
 		ownedCount := 0
 		ownerIndex := -1
-		for index := 0; index < total; index++ {
+		for index := range total {
 			s := NewModuloShardStrategy(total, index)
 			if s.Owns(id) {
 				ownedCount++
@@ -130,9 +130,9 @@ func TestConsistentHashShardStrategyNoSharding(t *testing.T) {
 func TestConsistentHashShardStrategyCoverage(t *testing.T) {
 	total := 5
 	// Verify that every task ID is owned by exactly one shard.
-	for id := int64(0); id < 200; id++ {
+	for id := range int64(200) {
 		ownedCount := 0
-		for index := 0; index < total; index++ {
+		for index := range total {
 			s := NewConsistentHashShardStrategy(total, index)
 			if s.Owns(id) {
 				ownedCount++
@@ -148,7 +148,7 @@ func TestConsistentHashShardStrategyDeterministic(t *testing.T) {
 	s := NewConsistentHashShardStrategy(4, 2)
 	// The same task ID must always produce the same ownership result.
 	first := s.Owns(12345)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if got := s.Owns(12345); got != first {
 			t.Errorf("ConsistentHashShardStrategy.Owns(12345) not deterministic: got %v, want %v", got, first)
 		}
@@ -160,8 +160,8 @@ func TestConsistentHashShardStrategyDistribution(t *testing.T) {
 	// This is a sanity check, not a strict statistical test.
 	total := 4
 	counts := make([]int, total)
-	for id := int64(0); id < 1000; id++ {
-		for index := 0; index < total; index++ {
+	for id := range int64(1000) {
+		for index := range total {
 			s := NewConsistentHashShardStrategy(total, index)
 			if s.Owns(id) {
 				counts[index]++
@@ -191,7 +191,7 @@ var (
 func BenchmarkConsistentHashShardStrategyOwns(b *testing.B) {
 	s := NewConsistentHashShardStrategy(16, 3)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		_ = s.Owns(int64(i))
 	}
 }

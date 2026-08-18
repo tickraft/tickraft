@@ -101,7 +101,7 @@ func acceptsGzip(arc *app.RequestContext) bool {
 	if acceptEncoding == "" {
 		return false
 	}
-	for _, part := range strings.Split(acceptEncoding, ",") {
+	for part := range strings.SplitSeq(acceptEncoding, ",") {
 		encoding := strings.TrimSpace(part)
 		// Strip q-value (e.g. "gzip;q=0.8").
 		if idx := strings.Index(encoding, ";"); idx >= 0 {
@@ -143,11 +143,11 @@ func gzipBytes(src []byte) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if _, err := w.Write(src); err != nil {
+	if _, err = w.Write(src); err != nil {
 		_ = w.Close() // best-effort close after write error, error not actionable
 		return nil, false
 	}
-	if err := w.Close(); err != nil {
+	if err = w.Close(); err != nil {
 		return nil, false
 	}
 	// Reject if compression did not reduce the size — rare for textual

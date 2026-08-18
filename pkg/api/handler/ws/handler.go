@@ -17,11 +17,12 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	hws "github.com/hertz-contrib/websocket"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
-	"go.uber.org/zap"
 )
 
 const (
@@ -96,7 +97,7 @@ func (p eventPayload) MarshalJSON() ([]byte, error) {
 
 // Handler serves the /ws endpoint.
 type Handler struct {
-	jwtMgr *jwt.JWT
+	jwt    *jwt.JWT
 	bus    event.Bus
 	logger *zap.Logger
 
@@ -131,7 +132,7 @@ func NewHandler(jwtMgr *jwt.JWT, bus event.Bus, logger *zap.Logger) *Handler {
 		logger = zap.NewNop()
 	}
 	return &Handler{
-		jwtMgr:  jwtMgr,
+		jwt:     jwtMgr,
 		bus:     bus,
 		logger:  logger,
 		clients: make(map[*clientConn]struct{}),
@@ -195,7 +196,7 @@ func (h *Handler) ServeHTTP(_ context.Context, arc *app.RequestContext) {
 		arc.Abort()
 		return
 	}
-	claims, err := h.jwtMgr.ValidateToken(token, jwt.TokenTypeAccess)
+	claims, err := h.jwt.ValidateToken(token, jwt.TokenTypeAccess)
 	if err != nil || claims == nil {
 		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "invalid token")
 		arc.Abort()
@@ -206,7 +207,8 @@ func (h *Handler) ServeHTTP(_ context.Context, arc *app.RequestContext) {
 	full := h.connCount >= maxConnections
 	h.mu.Unlock()
 	if full {
-		httputil.FailWithCode(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "too many websocket connections")
+		httputil.FailWithCode(arc, http.StatusServiceUnavailable, errdefs.CodeInternal,
+			"too many websocket connections")
 		arc.Abort()
 		return
 	}
@@ -250,9 +252,7 @@ func (h *Handler) removeClient(c *clientConn) {
 		h.connCount--
 		delete(h.clients, c)
 	}
-	if h.connCount < 0 {
-		h.connCount = 0
-	}
+	h.connCount = max(h.connCount, 0)
 }
 
 // broadcast marshals the envelope and queues it on every client's
@@ -300,7 +300,7 @@ func (h *Handler) readLoop(c *clientConn) {
 		}
 		_ = c.conn.SetReadDeadline(time.Now().Add(readWait))
 		var msg clientMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
+		if err = json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
 		if msg.Type == "ping" {

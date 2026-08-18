@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"

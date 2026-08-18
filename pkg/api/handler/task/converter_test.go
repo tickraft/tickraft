@@ -5,6 +5,7 @@
 package task
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -20,7 +21,7 @@ func configJSONEqual(t *testing.T, a, b map[string]any) bool {
 	t.Helper()
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)
-	if string(ja) != string(jb) {
+	if !bytes.Equal(ja, jb) {
 		t.Errorf("config not equal:\n  got  %s\n  want %s", ja, jb)
 		return false
 	}
@@ -107,7 +108,8 @@ func TestHandlerToDomainTask_FullFields(t *testing.T) {
 		t.Errorf("Metadata[%q] = %q, want %q", metaKeyName, got.Metadata[metaKeyName], "probe-http")
 	}
 	if got.Metadata[metaKeyDescription] != "probe example.com" {
-		t.Errorf("Metadata[%q] = %q, want %q", metaKeyDescription, got.Metadata[metaKeyDescription], "probe example.com")
+		t.Errorf("Metadata[%q] = %q, want %q",
+			metaKeyDescription, got.Metadata[metaKeyDescription], "probe example.com")
 	}
 	if got.Metadata[metaKeySchedule] != "*/5 * * * *" {
 		t.Errorf("Metadata[%q] = %q, want %q", metaKeySchedule, got.Metadata[metaKeySchedule], "*/5 * * * *")
@@ -116,10 +118,12 @@ func TestHandlerToDomainTask_FullFields(t *testing.T) {
 		t.Errorf("Metadata[%q] = %q, want %q", metaKeyEnabled, got.Metadata[metaKeyEnabled], "true")
 	}
 	if got.Metadata[metaKeyCreatedAt] != created.Format(time.RFC3339Nano) {
-		t.Errorf("Metadata[%q] = %q, want %q", metaKeyCreatedAt, got.Metadata[metaKeyCreatedAt], created.Format(time.RFC3339Nano))
+		t.Errorf("Metadata[%q] = %q, want %q",
+			metaKeyCreatedAt, got.Metadata[metaKeyCreatedAt], created.Format(time.RFC3339Nano))
 	}
 	if got.Metadata[metaKeyUpdatedAt] != updated.Format(time.RFC3339Nano) {
-		t.Errorf("Metadata[%q] = %q, want %q", metaKeyUpdatedAt, got.Metadata[metaKeyUpdatedAt], updated.Format(time.RFC3339Nano))
+		t.Errorf("Metadata[%q] = %q, want %q",
+			metaKeyUpdatedAt, got.Metadata[metaKeyUpdatedAt], updated.Format(time.RFC3339Nano))
 	}
 }
 

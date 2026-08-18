@@ -10,11 +10,12 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/timewheel"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // timeoutEntry tracks the time wheel entry and timeout duration for an asset.
@@ -129,7 +130,12 @@ func (sm *stateManager) GetStatus(assetID int64) types.AssetStatus {
 
 // UpdateStatus persists a status change, updates the cache, and records history.
 // It returns true if the status actually changed.
-func (sm *stateManager) UpdateStatus(ctx context.Context, assetID int64, newStatus types.AssetStatus, reason string) (bool, error) {
+func (sm *stateManager) UpdateStatus(
+	ctx context.Context,
+	assetID int64,
+	newStatus types.AssetStatus,
+	reason string,
+) (bool, error) {
 	sm.mu.Lock()
 	prevStatus, exists := sm.cache[assetID]
 	if !exists {

@@ -27,11 +27,12 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ import (
 // failures for retry testing.
 type mockServer struct {
 	listener        net.Listener
+	ctx             context.Context
 	tlsConfig       *tls.Config
 	supportStartTLS bool
 	implicitTLS     bool
@@ -73,13 +75,15 @@ func newMockServer(t *testing.T, tlsConfig *tls.Config, implicitTLS, supportStar
 	if implicitTLS && tlsConfig != nil {
 		ln, err = tls.Listen("tcp", "127.0.0.1:0", tlsConfig)
 	} else {
-		ln, err = net.Listen("tcp", "127.0.0.1:0")
+		var lc net.ListenConfig
+		ln, err = lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	}
 	if err != nil {
 		t.Fatalf("mock server listen: %v", err)
 	}
 	s := &mockServer{
 		listener:        ln,
+		ctx:             t.Context(),
 		tlsConfig:       tlsConfig,
 		supportStartTLS: supportStartTLS,
 		implicitTLS:     implicitTLS,
@@ -118,7 +122,7 @@ func (s *mockServer) host() string {
 func (s *mockServer) port() int {
 	_, portStr, _ := net.SplitHostPort(s.listener.Addr().String())
 	port := 0
-	fmt.Sscanf(portStr, "%d", &port)
+	_, _ = fmt.Sscanf(portStr, "%d", &port)
 	return port
 }
 
@@ -148,7 +152,7 @@ func (s *mockServer) getLastTo() []string {
 	return out
 }
 
-func (s *mockServer) getAuthInfo() (string, string, string) {
+func (s *mockServer) getAuthInfo() (mech, user, pass string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.authMech, s.authUser, s.authPass
@@ -193,7 +197,7 @@ func (s *mockServer) handle(conn net.Conn) {
 		case strings.HasPrefix(upper, "STARTTLS"):
 			send("220 Ready to start TLS\r\n")
 			tlsConn := tls.Server(conn, s.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
+			if err := tlsConn.HandshakeContext(s.ctx); err != nil {
 				return
 			}
 			conn = tlsConn
@@ -385,7 +389,7 @@ func generateTestCert(t *testing.T) tls.Certificate {
 	if err != nil {
 		t.Fatalf("generate ECDSA key: %v", err)
 	}
-	template := x509.Certificate{
+	certTmpl := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "127.0.0.1"},
 		NotBefore:    time.Now().Add(-time.Hour),
@@ -395,7 +399,7 @@ func generateTestCert(t *testing.T) tls.Certificate {
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	der, err := x509.CreateCertificate(rand.Reader, &certTmpl, &certTmpl, &priv.PublicKey, priv)
 	if err != nil {
 		t.Fatalf("create certificate: %v", err)
 	}
@@ -405,22 +409,35 @@ func generateTestCert(t *testing.T) tls.Certificate {
 // testAlert returns a sample metric alert event for testing.
 func testAlert() alert.Event {
 	return alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		TenantID:   1,
-		Timestamp:  time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 95.5, Threshold: 80.0, Metrics: map[string]float64{"memory": 70.2}}}},
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		TenantID:  1,
+		Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind: alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{
+				Name:      "cpu_usage",
+				Value:     95.5,
+				Threshold: 80.0,
+				Metrics:   map[string]float64{"memory": 70.2},
+			},
+		}},
 	}
 }
 
 // testLogAlert returns a sample log alert event for testing.
 func testLogAlert() alert.Event {
 	return alert.Event{
-		Type:       alert.TypeLog,
-		AssetID:    7,
-		TenantID:   2,
-		Timestamp:  time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "ERROR", Log: &alert.LogContext{Keyword: "panic", Content: "nil pointer dereference"}, Source: "10.0.0.1"}},
+		Type:      alert.TypeLog,
+		AssetID:   7,
+		TenantID:  2,
+		Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
+			Severity: "ERROR",
+			Log:      &alert.LogContext{Keyword: "panic", Content: "nil pointer dereference"},
+			Source:   "10.0.0.1",
+		}},
 	}
 }
 
@@ -433,14 +450,15 @@ func insecureTLSConfig() *tls.Config {
 // channelOpts builds common channel options for tests pointing at the mock
 // server with fast retry settings.
 func channelOpts(s *mockServer, extra ...Option) []Option {
-	opts := []Option{
+	opts := make([]Option, 0, 6+len(extra))
+	opts = append(opts,
 		WithHost(s.host()),
 		WithPort(s.port()),
 		WithFrom("alert@tickraft.dev"),
 		WithTo("ops@tickraft.dev"),
 		WithRetry(3, time.Millisecond),
 		WithCircuitBreaker(5, 30*time.Second),
-	}
+	)
 	opts = append(opts, extra...)
 	return opts
 }
@@ -1354,9 +1372,9 @@ func TestBuildMessage_DefaultFormatterProducesLocalizedOutput(t *testing.T) {
 		From: "alert@example.com",
 		To:   []string{"ops@example.com"},
 	}
-	alert := testAlert()
-	alert.Locale = "zh-Hans"
-	msg := buildMessage(context.Background(), alert, cfg, zap.NewNop())
+	evt := testAlert()
+	evt.Locale = "zh-Hans"
+	msg := buildMessage(context.Background(), evt, cfg, zap.NewNop())
 	s := string(msg)
 
 	// The default Formatter should produce a Chinese title containing the
@@ -1456,11 +1474,11 @@ func TestBuildMessage_TemplateRendering(t *testing.T) {
 	lib := template.NewBuiltinLibrary(zap.NewNop())
 	cfg.Library = lib
 
-	alert := testAlert()
-	alert.TemplateID = "cpu_high"
-	alert.Locale = "en-US"
+	evt := testAlert()
+	evt.TemplateID = "cpu_high"
+	evt.Locale = "en-US"
 
-	msg := buildMessage(context.Background(), alert, cfg, zap.NewNop())
+	msg := buildMessage(context.Background(), evt, cfg, zap.NewNop())
 	s := string(msg)
 
 	// The template-rendered title should contain "cpu_usage" since the
@@ -1480,11 +1498,11 @@ func TestBuildMessage_TemplateRenderFallback(t *testing.T) {
 	lib := template.NewBuiltinLibrary(zap.NewNop())
 	cfg.Library = lib
 
-	alert := testAlert()
-	alert.TemplateID = "nonexistent_template"
-	alert.Locale = "en-US"
+	evt := testAlert()
+	evt.TemplateID = "nonexistent_template"
+	evt.Locale = "en-US"
 
-	msg := buildMessage(context.Background(), alert, cfg, zap.NewNop())
+	msg := buildMessage(context.Background(), evt, cfg, zap.NewNop())
 	s := string(msg)
 
 	// Should still produce a valid message via the default Formatter.
@@ -1500,10 +1518,10 @@ func TestBuildMessage_AlertLocalePriority(t *testing.T) {
 		From: "alert@example.com",
 		To:   []string{"ops@example.com"},
 	}
-	alert := testAlert()
-	alert.Locale = "zh-Hans"
+	evt := testAlert()
+	evt.Locale = "zh-Hans"
 
-	msg := buildMessage(context.Background(), alert, cfg, zap.NewNop())
+	msg := buildMessage(context.Background(), evt, cfg, zap.NewNop())
 	s := string(msg)
 
 	// The zh-Hans Formatter should produce a Chinese description. The
@@ -1555,11 +1573,11 @@ func TestRenderAlert_TemplateLibrary(t *testing.T) {
 	lib := template.NewBuiltinLibrary(zap.NewNop())
 	cfg := Config{Library: lib}
 
-	alert := testAlert()
-	alert.TemplateID = "cpu_high"
-	alert.Locale = "zh-Hans"
+	evt := testAlert()
+	evt.TemplateID = "cpu_high"
+	evt.Locale = "zh-Hans"
 
-	msg := renderAlert(context.Background(), alert, cfg, zap.NewNop())
+	msg := renderAlert(context.Background(), evt, cfg, zap.NewNop())
 
 	if msg.Title == "" {
 		t.Error("template render should produce non-empty title")

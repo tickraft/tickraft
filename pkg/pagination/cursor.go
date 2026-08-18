@@ -75,7 +75,7 @@ func DecodeCursor(token string) (Cursor, error) {
 		return Cursor{}, fmt.Errorf("pagination: decode cursor: %w", err)
 	}
 	var c Cursor
-	if err := json.Unmarshal(data, &c); err != nil {
+	if err = json.Unmarshal(data, &c); err != nil {
 		return Cursor{}, fmt.Errorf("pagination: decode cursor: %w", err)
 	}
 	return c, nil

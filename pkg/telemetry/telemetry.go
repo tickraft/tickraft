@@ -8,11 +8,12 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // Collector is the collection engine interface.

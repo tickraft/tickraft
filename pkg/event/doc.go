@@ -111,7 +111,8 @@
 //	    handler,
 //	    event.WithTimeout(2*time.Second),
 //	    event.WithRetry(3, 100*time.Millisecond),  // at most 3 retries, backoff 100ms/200ms/400ms
-//	    event.WithJitter(0.5),                      // jitter factor 0.5: backoff randomized in [50%, 100%] of exponential
+//	    event.WithJitter(0.5),                      // jitter factor 0.5: backoff randomized in [50%, 100%] of
+//	                                                 // exponential backoff
 //	)
 //
 // WithJitter randomizes the exponential backoff to avoid thundering herd.
@@ -164,7 +165,8 @@
 //	    // ...
 //	}
 //
-//	func (b *StreamBridge) Publish(ctx context.Context, t event.Type, payload any, opts ...event.PublishOption) error {
+//	func (b *StreamBridge) Publish(ctx context.Context, t event.Type, payload any,
+//	    opts ...event.PublishOption) error {
 //	    // Local delivery + cross-process delivery via Redis Stream.
 //	    return b.local.Publish(ctx, t, payload, opts...)
 //	}

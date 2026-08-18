@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package channel exposes the notification channel CRUD endpoints of the
+// prism engine.
 package channel
 
 import (
@@ -63,7 +65,8 @@ func (h *Handler) CreateChannel(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if req.Type == "" {
@@ -93,7 +96,8 @@ func (h *Handler) UpdateChannel(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	req.ID = id

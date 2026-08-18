@@ -15,10 +15,11 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
-	"github.com/tickraft/tickraft/pkg/api"
-	"github.com/tickraft/tickraft/pkg/cache"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/cache"
 )
 
 // newReadyEngine wires a Handler onto a fresh route.Engine at the

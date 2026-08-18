@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -18,7 +20,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // Compile-time interface assertions mirror the ones in matcher.go so a
@@ -77,7 +78,9 @@ func (s *stubAssetStore) Migrate(context.Context) error { return nil }
 func (s *stubAssetStore) List(context.Context, int, int, asset.ListFilter) ([]*asset.Asset, int64, error) {
 	return nil, 0, nil
 }
-func (s *stubAssetStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
+func (s *stubAssetStore) ListKeyset(
+	_ context.Context, _ pagination.PageRequest,
+) (pagination.PageResult[*asset.Asset], error) {
 	return pagination.PageResult[*asset.Asset]{}, nil
 }
 func (s *stubAssetStore) Delete(context.Context, int64) error { return nil }
@@ -106,8 +109,22 @@ func TestTaskMatcher_Match(t *testing.T) {
 	eng := NewEngine(zap.NewNop())
 	rules := []Rule{
 		{ID: 1, Name: "high-priority", Scene: SceneTask, Expression: "task.priority > 5", Priority: 10, Enabled: true},
-		{ID: 2, Name: "ssh-executor", Scene: SceneTask, Expression: `task.executor_type == "ssh"`, Priority: 5, Enabled: true},
-		{ID: 3, Name: "tag-region", Scene: SceneTask, Expression: `tags["region"] == "cn-east-1"`, Priority: 1, Enabled: true},
+		{
+			ID:         2,
+			Name:       "ssh-executor",
+			Scene:      SceneTask,
+			Expression: `task.executor_type == "ssh"`,
+			Priority:   5,
+			Enabled:    true,
+		},
+		{
+			ID:         3,
+			Name:       "tag-region",
+			Scene:      SceneTask,
+			Expression: `tags["region"] == "cn-east-1"`,
+			Priority:   1,
+			Enabled:    true,
+		},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
 		t.Fatalf("Load: %v", err)
@@ -207,7 +224,14 @@ func TestProbeMatcher_Process_HitAndMiss(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	if err := eng.Load(ctx, []Rule{
-		{ID: 10, Name: "log-error", Scene: SceneProbe, Expression: `report.log_content contains "error"`, Priority: 5, Enabled: true},
+		{
+			ID:         10,
+			Name:       "log-error",
+			Scene:      SceneProbe,
+			Expression: `report.log_content contains "error"`,
+			Priority:   5,
+			Enabled:    true,
+		},
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -361,13 +385,14 @@ func TestProbeMatcher_OnTimeout(t *testing.T) {
 		gotPayload event.StatusChangePayload
 		gotCount   int
 	)
-	sub, err := event.Subscribe[event.StatusChangePayload](bus, event.TypeAssetStatusChanged, func(_ context.Context, e event.Event[event.StatusChangePayload]) error {
-		busMu.Lock()
-		defer busMu.Unlock()
-		gotPayload = e.Payload
-		gotCount++
-		return nil
-	})
+	sub, err := event.Subscribe[event.StatusChangePayload](bus, event.TypeAssetStatusChanged,
+		func(_ context.Context, e event.Event[event.StatusChangePayload]) error {
+			busMu.Lock()
+			defer busMu.Unlock()
+			gotPayload = e.Payload
+			gotCount++
+			return nil
+		})
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -390,7 +415,7 @@ func TestProbeMatcher_OnTimeout(t *testing.T) {
 	// Event published on the bus. The event bus is async (Task 7), so close
 	// the bus to flush all in-flight events before asserting. Close is
 	// idempotent and the deferred Close above is still safe.
-	bus.Close()
+	_ = bus.Close()
 
 	busMu.Lock()
 	defer busMu.Unlock()
@@ -482,7 +507,10 @@ func TestMetricMatcher_Match_HitAndMiss(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	if err := eng.Load(ctx, []Rule{
-		{ID: 1, Name: "cpu-high", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 80`, Priority: 10, Enabled: true},
+		{
+			ID: 1, Name: "cpu-high", Scene: SceneMetric,
+			Expression: `alert.metrics["cpu"] > 80`, Priority: 10, Enabled: true,
+		},
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -582,21 +610,21 @@ func TestBuildProbeAlerts(t *testing.T) {
 	if len(alerts) != 1 {
 		t.Fatalf("expected 1 alert, got %d", len(alerts))
 	}
-	a := alerts[0]
-	if a.Level != "warning" {
-		t.Errorf("Level = %q, want warning", a.Level)
+	first := alerts[0]
+	if first.Level != "warning" {
+		t.Errorf("Level = %q, want warning", first.Level)
 	}
-	if a.Title != "Probe Rule Matched" {
-		t.Errorf("Title = %q, want \"Probe Rule Matched\"", a.Title)
+	if first.Title != "Probe Rule Matched" {
+		t.Errorf("Title = %q, want \"Probe Rule Matched\"", first.Title)
 	}
-	if a.Metadata["rule_id_7"] != "true" {
-		t.Errorf("metadata rule_id_7 = %q, want true", a.Metadata["rule_id_7"])
+	if first.Metadata["rule_id_7"] != "true" {
+		t.Errorf("metadata rule_id_7 = %q, want true", first.Metadata["rule_id_7"])
 	}
-	if a.Metadata["rule_id_42"] != "true" {
-		t.Errorf("metadata rule_id_42 = %q, want true", a.Metadata["rule_id_42"])
+	if first.Metadata["rule_id_42"] != "true" {
+		t.Errorf("metadata rule_id_42 = %q, want true", first.Metadata["rule_id_42"])
 	}
-	if a.Metadata["rule_ids"] != "2" {
-		t.Errorf("metadata rule_ids = %q, want 2", a.Metadata["rule_ids"])
+	if first.Metadata["rule_ids"] != "2" {
+		t.Errorf("metadata rule_ids = %q, want 2", first.Metadata["rule_ids"])
 	}
 }
 

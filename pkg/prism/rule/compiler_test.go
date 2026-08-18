@@ -200,8 +200,16 @@ func TestCompile_WhitelistedBuiltinAvailable(t *testing.T) {
 		env        any
 	}{
 		{SceneTask, "len(task.executor_type) > 0", TaskMatchEnv{Task: TaskView{ExecutorType: "ssh"}}},
-		{SceneMetric, "len(alert.metrics) > 0", MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 90}}}},
-		{SceneMetric, "len(keys(alert.metrics)) > 0", MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 90}}}},
+		{
+			SceneMetric,
+			"len(alert.metrics) > 0",
+			MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 90}}},
+		},
+		{
+			SceneMetric,
+			"len(keys(alert.metrics)) > 0",
+			MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 90}}},
+		},
 	}
 	for _, tc := range cases {
 		prog, err := c.Compile(tc.scene, tc.expression)

@@ -4,7 +4,10 @@
 
 package i18n
 
-import "sync"
+import (
+	"maps"
+	"sync"
+)
 
 // Bundle is an immutable store of message keys for a single locale.
 //
@@ -40,9 +43,7 @@ type MessageMap struct {
 // may freely mutate it after construction.
 func NewMessageMap(tag string, values map[string]string) *MessageMap {
 	cp := make(map[string]string, len(values))
-	for k, v := range values {
-		cp[k] = v
-	}
+	maps.Copy(cp, values)
 	return &MessageMap{tag: tag, values: cp}
 }
 

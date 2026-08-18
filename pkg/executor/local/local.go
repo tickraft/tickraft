@@ -17,9 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // defaultTimeout is the default execution timeout for the local executor.
@@ -79,7 +80,7 @@ func New(opts ...Option) *Executor {
 }
 
 // Name returns the executor name identifier.
-func (e *Executor) Name() string { return "local" }
+func (e *Executor) Name() string { return string(types.ExecutorLocal) }
 
 // Capabilities returns the executor capability bitmask.
 func (e *Executor) Capabilities() executor.Capability { return executor.CapExec }
@@ -161,6 +162,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	)
 
 	start := time.Now()
+	//nolint:gosec // operator-configured task command, executed by design
 	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
 	// TimeoutReaper: run the command in its own process group so a timeout
 	// can kill the command and any children it spawned (shells, pipelines,
@@ -188,7 +190,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	duration := time.Since(start)
 
 	// Timeout takes precedence: the context deadline elapsed.
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		e.logger.Warn("local executor: timeout",
 			zap.String("command", cfg.Command),
 			zap.Duration("duration", duration),

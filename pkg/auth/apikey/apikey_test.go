@@ -5,6 +5,7 @@
 package apikey
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,7 @@ func TestGenerateAPIKey(t *testing.T) {
 	}
 
 	// Two generated keys must differ.
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	rawKey2, _, _, _ := GenerateAPIKey()
 	if rawKey == rawKey2 {
 		t.Error("two generated keys should not be equal")
@@ -88,7 +90,7 @@ func TestValidateAPIKey_WrongKey(t *testing.T) {
 	rawKey, hash, _, _ := GenerateAPIKey()
 	wrongKey := rawKey + "x"
 	err := ValidateAPIKey(wrongKey, hash, StatusActive, nil)
-	if err != ErrAPIKeyInvalid {
+	if !errors.Is(err, ErrAPIKeyInvalid) {
 		t.Errorf("ValidateAPIKey() error = %v, want %v", err, ErrAPIKeyInvalid)
 	}
 }
@@ -96,7 +98,7 @@ func TestValidateAPIKey_WrongKey(t *testing.T) {
 func TestValidateAPIKey_Revoked(t *testing.T) {
 	rawKey, hash, _, _ := GenerateAPIKey()
 	err := ValidateAPIKey(rawKey, hash, StatusRevoked, nil)
-	if err != ErrAPIKeyRevoked {
+	if !errors.Is(err, ErrAPIKeyRevoked) {
 		t.Errorf("ValidateAPIKey() error = %v, want %v", err, ErrAPIKeyRevoked)
 	}
 }
@@ -105,7 +107,7 @@ func TestValidateAPIKey_Expired(t *testing.T) {
 	rawKey, hash, _, _ := GenerateAPIKey()
 	past := time.Now().Add(-1 * time.Hour)
 	err := ValidateAPIKey(rawKey, hash, StatusActive, &past)
-	if err != ErrAPIKeyExpired {
+	if !errors.Is(err, ErrAPIKeyExpired) {
 		t.Errorf("ValidateAPIKey() error = %v, want %v", err, ErrAPIKeyExpired)
 	}
 }

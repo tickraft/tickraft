@@ -46,7 +46,8 @@ func registerBuiltinExecutors(reg *executor.Registry, probeTimeout time.Duration
 
 // registerBuiltinProcessors registers the built-in processors (device and
 // task) into the processor registry.
-func registerBuiltinProcessors(reg *telemetry.ProcessorRegistry, assetStore asset.Store, bus event.Bus, logger *zap.Logger) error {
+func registerBuiltinProcessors(reg *telemetry.ProcessorRegistry, assetStore asset.Store,
+	bus event.Bus, logger *zap.Logger) error {
 	processors := []telemetry.Processor{
 		processor.NewDevice(assetStore, bus, logger),
 		processor.NewTask(assetStore, bus, logger),
@@ -106,8 +107,11 @@ func buildWorkerRegistry(probeTimeout time.Duration) (*executor.Registry, error)
 // In standalone mode the telemetry runs in-process without binding its own
 // HTTP listener; webhook report ingestion is handled by the main API server
 // routes registered in startAPIServer.
-func startWorkerEngines(ctx context.Context, rt *runtime,
-	executorPoolSize int, probeTimeout time.Duration,
+func startWorkerEngines(
+	ctx context.Context,
+	rt *runtime,
+	executorPoolSize int,
+	probeTimeout time.Duration,
 ) (stopFunc, error) {
 	var (
 		runner    executor.Runner
@@ -249,7 +253,13 @@ func startWorkerEngines(ctx context.Context, rt *runtime,
 
 // stopWorkerEngines stops the telemetry, scheduler, and executor in reverse
 // sub-order, logging any errors. Components that were not started are skipped.
-func stopWorkerEngines(ctx context.Context, logger *zap.Logger, collector telemetry.Collector, sched task.Manager, runner executor.Runner) {
+func stopWorkerEngines(
+	ctx context.Context,
+	logger *zap.Logger,
+	collector telemetry.Collector,
+	sched task.Manager,
+	runner executor.Runner,
+) {
 	if collector != nil {
 		if err := collector.Stop(ctx); err != nil {
 			logger.Error("stop telemetry", zap.Error(err))

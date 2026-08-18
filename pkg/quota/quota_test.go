@@ -54,7 +54,10 @@ func TestTypeAliases(t *testing.T) {
 func TestLayerOf(t *testing.T) {
 	assetTypes := []Type{TypeAsset, TypeDevice, TypeHost, TypeTeamMember, TypeCustomField}
 	configTypes := []Type{TypeScheduledTask, TypeProber, TypeRemediation, TypeProbeInterval, TypeScheduledTaskInterval}
-	runtimeTypes := []Type{TypeDailyEvents, TypeIngestionMetricTPS, TypeIngestionEventTPS, TypeConcurrentTasks, TypeAPIMinute, TypeAPIDaily, TypeAPIConcurrent}
+	runtimeTypes := []Type{
+		TypeDailyEvents, TypeIngestionMetricTPS, TypeIngestionEventTPS,
+		TypeConcurrentTasks, TypeAPIMinute, TypeAPIDaily, TypeAPIConcurrent,
+	}
 
 	for _, typ := range assetTypes {
 		if got := LayerOf(typ); got != LayerAsset {
@@ -77,8 +80,15 @@ func TestLayerOf(t *testing.T) {
 }
 
 func TestIsScalable(t *testing.T) {
-	scalable := []Type{TypeAsset, TypeDevice, TypeHost, TypeTeamMember, TypeScheduledTask, TypeProber, TypeRemediation, TypeDailyEvents}
-	notScalable := []Type{TypeProbeInterval, TypeScheduledTaskInterval, TypeIngestionMetricTPS, TypeIngestionEventTPS, TypeConcurrentTasks, TypeAPIMinute, TypeAPIDaily, TypeAPIConcurrent}
+	scalable := []Type{
+		TypeAsset, TypeDevice, TypeHost, TypeTeamMember,
+		TypeScheduledTask, TypeProber, TypeRemediation, TypeDailyEvents,
+	}
+	notScalable := []Type{
+		TypeProbeInterval, TypeScheduledTaskInterval, TypeIngestionMetricTPS,
+		TypeIngestionEventTPS, TypeConcurrentTasks, TypeAPIMinute,
+		TypeAPIDaily, TypeAPIConcurrent,
+	}
 
 	for _, typ := range scalable {
 		if !IsScalable(typ) {
@@ -202,7 +212,7 @@ func TestConcurrentSetProviderAndCeiling(t *testing.T) {
 	}
 
 	// Concurrent SetProvider + Ceiling calls
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(2)
 		go func(idx int) {
 			defer wg.Done()

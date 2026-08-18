@@ -9,9 +9,10 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/cron"
 	"github.com/tickraft/tickraft/pkg/quota"
-	"go.uber.org/zap"
 )
 
 // Restore loads persisted tasks from the configured Store into memory
@@ -163,8 +164,8 @@ func (m *Service) listTasks() []Task {
 	m.taskMu.RLock()
 	defer m.taskMu.RUnlock()
 	result := make([]Task, 0, len(m.tasks))
-	for _, t := range m.tasks {
-		result = append(result, t)
+	for id := range m.tasks {
+		result = append(result, m.tasks[id])
 	}
 	return result
 }

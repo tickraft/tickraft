@@ -21,6 +21,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/task"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // systemConfig is the GORM model for the sys_config table. It stores
@@ -56,7 +57,13 @@ type Service struct {
 // connected GORM instance; taskStore, execStore, and assetStore may be
 // nil when the corresponding engines were not started (stats return 0
 // for those data sources).
-func New(dbc *gorm.DB, logger *zap.Logger, taskStore task.Store, execStore task.ExecutionStore, assetStore asset.Store) *Service {
+func New(
+	dbc *gorm.DB,
+	logger *zap.Logger,
+	taskStore task.Store,
+	execStore task.ExecutionStore,
+	assetStore asset.Store,
+) *Service {
 	return &Service{
 		dbc:        dbc,
 		logger:     logger,
@@ -75,13 +82,14 @@ func (s *Service) Migrate(ctx context.Context) error {
 	}
 	// Seed the singleton row if it does not exist.
 	var count int64
-	if err := s.dbc.WithContext(ctx).Model(&systemConfig{}).Where("id = ?", configRowID).Count(&count).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Model(&systemConfig{}).
+		Where("id = ?", configRowID).Count(&count).Error; err != nil {
 		return fmt.Errorf("seed sys_config: count: %w", err)
 	}
 	if count == 0 {
 		seed := systemConfig{
 			ID:            configRowID,
-			LogLevel:      "info",
+			LogLevel:      string(types.LogLevelInfo),
 			DefaultLang:   "zh-Hans",
 			RetentionDays: 30,
 		}
@@ -117,7 +125,8 @@ func (s *Service) UpdateConfig(ctx context.Context, req *system.Config) (*system
 		"retention_days": req.RetentionDays,
 		"updated_at":     time.Now(),
 	}
-	if err := s.dbc.WithContext(ctx).Model(&systemConfig{}).Where("id = ?", configRowID).Updates(updates).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Model(&systemConfig{}).
+		Where("id = ?", configRowID).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("update system config: %w", err)
 	}
 	return s.GetConfig(ctx)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
@@ -102,6 +103,14 @@ func serveStatic(rootfs fs.FS, urlPrefix string) app.HandlerFunc {
 	}
 }
 
+// contentTypeJSON is the Content-Type used for JSON payloads and source-map
+// files served by the SPA handler.
+const contentTypeJSON = "application/json; charset=utf-8"
+
+// contentTypeOctetStream is the fallback Content-Type for assets with an
+// unknown or missing extension.
+const contentTypeOctetStream = "application/octet-stream"
+
 // contentTypeFor returns a content type for common frontend asset extensions.
 // Falls back to application/octet-stream for unknown types.
 func contentTypeFor(name string) string {
@@ -113,7 +122,7 @@ func contentTypeFor(name string) string {
 	case strings.HasSuffix(name, ".js"), strings.HasSuffix(name, ".mjs"):
 		return "application/javascript; charset=utf-8"
 	case strings.HasSuffix(name, ".json"):
-		return "application/json; charset=utf-8"
+		return contentTypeJSON
 	case strings.HasSuffix(name, ".svg"):
 		return "image/svg+xml"
 	case strings.HasSuffix(name, ".png"):
@@ -133,9 +142,9 @@ func contentTypeFor(name string) string {
 	case strings.HasSuffix(name, ".eot"):
 		return "application/vnd.ms-fontobject"
 	case strings.HasSuffix(name, ".map"):
-		return "application/json; charset=utf-8"
+		return contentTypeJSON
 	default:
-		return "application/octet-stream"
+		return contentTypeOctetStream
 	}
 }
 

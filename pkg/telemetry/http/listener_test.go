@@ -18,11 +18,12 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // mockStore implements asset.Store for testing.
@@ -103,9 +104,7 @@ func (s *mockStore) List(_ context.Context, page, size int, _ asset.ListFilter) 
 	for _, r := range s.assets {
 		all = append(all, r)
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
@@ -114,9 +113,7 @@ func (s *mockStore) List(_ context.Context, page, size int, _ asset.ListFilter) 
 		return nil, total, nil
 	}
 	end := offset + size
-	if end > int(total) {
-		end = int(total)
-	}
+	end = min(end, int(total))
 	return all[offset:end], total, nil
 }
 
@@ -153,7 +150,8 @@ func (s *mockStore) ExistsByKey(_ context.Context, key string) (bool, error) {
 	return false, nil
 }
 
-func (s *mockStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
+func (s *mockStore) ListKeyset(_ context.Context,
+	_ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
 	return pagination.PageResult[*asset.Asset]{}, nil
 }
 
@@ -168,10 +166,11 @@ func computeHMAC(body []byte, secret string) string {
 // postHandler invokes the given net/http handler via httptest and returns
 // the response. The handler is wrapped in a httptest.Server so the request
 // path does not matter (the listener handler ignores the path).
-func postHandler(handler nethttp.HandlerFunc, body []byte, headers ...[2]string) *nethttp.Response {
-	srv := httptest.NewServer(nethttp.HandlerFunc(handler))
+func postHandler(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers ...[2]string) *nethttp.Response {
+	t.Helper()
+	srv := httptest.NewServer(handler)
 	defer srv.Close()
-	req, _ := nethttp.NewRequest(nethttp.MethodPost, srv.URL, bytes.NewReader(body))
+	req, _ := nethttp.NewRequestWithContext(t.Context(), nethttp.MethodPost, srv.URL, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for _, h := range headers {
 		req.Header.Set(h[0], h[1])
@@ -187,29 +186,29 @@ func postHandler(handler nethttp.HandlerFunc, body []byte, headers ...[2]string)
 // the test if the request could not be performed.
 func mustPost(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers ...[2]string) *nethttp.Response {
 	t.Helper()
-	resp := postHandler(handler, body, headers...)
+	resp := postHandler(t, handler, body, headers...)
 	return resp
 }
 
 // captureIngest returns an ingest callback that stores the received telemetry
 // in a mutex-guarded variable for later assertion. The returned function
 // must be used as the ingest argument to WithIngest.
-func captureIngest() (func(context.Context, *telemetry.Telemetry), func() *telemetry.Telemetry) {
+func captureIngest() (ingest func(context.Context, *telemetry.Telemetry), peek func() *telemetry.Telemetry) {
 	var (
 		mu  sync.Mutex
 		got *telemetry.Telemetry
 	)
-	cb := func(_ context.Context, r *telemetry.Telemetry) {
+	ingest = func(_ context.Context, r *telemetry.Telemetry) {
 		mu.Lock()
 		defer mu.Unlock()
 		got = r
 	}
-	peek := func() *telemetry.Telemetry {
+	peek = func() *telemetry.Telemetry {
 		mu.Lock()
 		defer mu.Unlock()
 		return got
 	}
-	return cb, peek
+	return ingest, peek
 }
 
 func TestListener_PostReport_ByID(t *testing.T) {
@@ -221,7 +220,8 @@ func TestListener_PostReport_ByID(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 
-	body := telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1, LogContent: "hello", LogLevel: "warning"}}
+	body := telemetryRequest{Kind: "heartbeat",
+		reportRequest: reportRequest{AssetID: 1, LogContent: "hello", LogLevel: "warning"}}
 	bodyBytes, _ := json.Marshal(body)
 
 	resp := mustPost(t, h.ReportHandler(), bodyBytes)
@@ -263,7 +263,8 @@ func TestListener_PostReport_ByKey(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 
-	body := telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetKey: "dev-1", TenantID: 100, Status: "abnormal"}}
+	body := telemetryRequest{Kind: "heartbeat",
+		reportRequest: reportRequest{AssetKey: "dev-1", TenantID: 100, Status: "abnormal"}}
 	bodyBytes, _ := json.Marshal(body)
 
 	resp := mustPost(t, h.ReportHandler(), bodyBytes)
@@ -289,10 +290,14 @@ func TestListener_MethodNotAllowed(t *testing.T) {
 		WithStore(newMockStore()),
 		WithLogger(zap.NewNop()),
 	)
-	srv := httptest.NewServer(nethttp.HandlerFunc(h.ReportHandler()))
+	srv := httptest.NewServer(h.ReportHandler())
 	defer srv.Close()
 
-	resp, err := nethttp.Get(srv.URL)
+	req, err := nethttp.NewRequestWithContext(t.Context(), nethttp.MethodGet, srv.URL, nethttp.NoBody)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := nethttp.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -510,7 +515,7 @@ func TestListener_TaskStatus_Valid(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body := telemetryRequest{
-		Kind:   "task_status",
+		Kind:   kindTaskStatus,
 		TaskID: 42,
 		Reason: "manual trigger",
 		reportRequest: reportRequest{
@@ -570,7 +575,7 @@ func TestListener_TaskStatus_MissingTaskID(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind: "task_status",
+		Kind: kindTaskStatus,
 		reportRequest: reportRequest{
 			AssetID: 1,
 			Status:  "running",
@@ -589,7 +594,7 @@ func TestListener_TaskStatus_MissingStatus(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:   "task_status",
+		Kind:   kindTaskStatus,
 		TaskID: 42,
 		reportRequest: reportRequest{
 			AssetID: 1,
@@ -613,7 +618,7 @@ func TestListener_TaskExecStatus_Valid(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body := telemetryRequest{
-		Kind:        "task_execution_status",
+		Kind:        kindTaskExecutionStatus,
 		TaskID:      42,
 		ExecutionID: 1024,
 		Output:      "task completed",
@@ -677,7 +682,7 @@ func TestListener_TaskExecStatus_MissingTaskID(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:        "task_execution_status",
+		Kind:        kindTaskExecutionStatus,
 		ExecutionID: 1024,
 		reportRequest: reportRequest{
 			AssetID: 1,
@@ -697,7 +702,7 @@ func TestListener_TaskExecStatus_MissingExecutionID(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:   "task_execution_status",
+		Kind:   kindTaskExecutionStatus,
 		TaskID: 42,
 		reportRequest: reportRequest{
 			AssetID: 1,
@@ -717,7 +722,7 @@ func TestListener_TaskExecStatus_MissingStatus(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:        "task_execution_status",
+		Kind:        kindTaskExecutionStatus,
 		TaskID:      42,
 		ExecutionID: 1024,
 		reportRequest: reportRequest{

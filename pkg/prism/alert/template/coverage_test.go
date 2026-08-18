@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template/builtin"
-	"go.uber.org/zap"
 )
 
 // TestEmbeddedFS_ReturnsNonEmptyFS verifies builtin.EmbeddedFS returns a
@@ -66,10 +67,14 @@ func TestInferMetricLevel_SeverityBased(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			alert := alert.Event{
-				Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Severity: tc.severity, Metric: &alert.MetricContext{Value: 90, Threshold: 80}}},
+			evt := alert.Event{
+				Violations: []alert.Violation{{
+					Kind:     alert.ViolationKindMetric,
+					Severity: tc.severity,
+					Metric:   &alert.MetricContext{Value: 90, Threshold: 80},
+				}},
 			}
-			if got := inferMetricLevel(alert); got != tc.want {
+			if got := inferMetricLevel(evt); got != tc.want {
 				t.Errorf("inferMetricLevel(severity=%q) = %q, want %q",
 					tc.severity, got, tc.want)
 			}
@@ -96,10 +101,10 @@ func TestFormatRelatedResources_NonEmpty(t *testing.T) {
 // TestFormatTimestamp_NilTranslator covers the nil-translator branch of
 // formatTimestamp.
 func TestFormatTimestamp_NilTranslator(t *testing.T) {
-	alert := alert.Event{
+	evt := alert.Event{
 		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
 	}
-	got := formatTimestamp(alert, nil)
+	got := formatTimestamp(evt, nil)
 	if got != "2026-07-05 12:30:00" {
 		t.Errorf("formatTimestamp with nil translator = %q, want %q", got, "2026-07-05 12:30:00")
 	}
@@ -108,13 +113,16 @@ func TestFormatTimestamp_NilTranslator(t *testing.T) {
 // TestBuildFields_NilTranslator covers the nil-translator branch of
 // buildFields.
 func TestBuildFields_NilTranslator(t *testing.T) {
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	fields := buildFields(alert, nil)
+	fields := buildFields(evt, nil)
 	if _, ok := fields["Metric"]; !ok {
 		t.Errorf("nil translator should use raw 'Metric' label, got keys: %v", fields)
 	}
@@ -153,15 +161,23 @@ func TestBuiltinLibrary_RendererWithFullRegistry(t *testing.T) {
 	lib := NewBuiltinLibrary(zap.NewNop())
 	r := NewRenderer(lib, registry, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		TenantID:   1,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0, Metrics: map[string]float64{"memory": 70.5}}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		TenantID:  1,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind: alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{
+				Name:      "cpu_usage",
+				Value:     92.5,
+				Threshold: 80.0,
+				Metrics:   map[string]float64{"memory": 70.5},
+			},
+		}},
 	}
 
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID:      "cpu_high",
 		Locale:          "zh-Hans",
 		Style:           StyleDetailed,

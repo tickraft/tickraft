@@ -12,11 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
 	"github.com/tickraft/tickraft/pkg/timewheel"
-	"go.uber.org/zap"
 )
 
 // Runner is the execution engine that subscribes to execution trigger events,
@@ -293,10 +294,11 @@ func (r *runner) SubscribeEvents(ctx context.Context) {
 	if runCtx == nil {
 		runCtx = ctx
 	}
-	sub, err := event.Subscribe[event.ExecutionPayload](r.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		r.dispatch(runCtx, ev)
-		return nil
-	})
+	sub, err := event.Subscribe(r.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			r.dispatch(runCtx, ev)
+			return nil
+		})
 	if err != nil {
 		r.logger.Error("failed to subscribe to execution triggered events",
 			zap.Error(err),
@@ -333,7 +335,7 @@ func (r *runner) dispatch(ctx context.Context, ev event.Event[event.ExecutionPay
 		AssetID:      assetID,
 		ExecutorName: payload.ExecutorType,
 		Config:       payload.Config,
-		Operation:    parseOperation(payload.Action),
+		Operation:    operationOrDefault(payload.Action),
 		Timeout:      time.Duration(payload.Timeout),
 		RunID:        payload.RunID,
 		TriggerType:  payload.TriggerType,

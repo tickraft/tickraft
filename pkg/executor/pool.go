@@ -47,7 +47,5 @@ func (r *Result) reset() {
 	r.Body = ""
 	r.ErrorMsg = ""
 	r.Duration = 0
-	for k := range r.Metrics {
-		delete(r.Metrics, k)
-	}
+	clear(r.Metrics)
 }

@@ -39,6 +39,89 @@ const (
 	TriggerTypeEvent TriggerType = "event"
 )
 
+// MetadataKeyEnabled is the Task.Metadata key that persists the task's
+// enabled flag.
+//
+// It is a storage compatibility contract: the scheduler writes it on
+// Pause/Resume and the API converter layer writes it on every task
+// create/update round trip. Renaming the key would orphan the flag on
+// tasks already persisted in sys_schedule_task, so the value must never
+// change.
+const MetadataKeyEnabled = "enabled"
+
+// Persisted execution status values stored in the sys_schedule_log.status
+// column and carried on Execution.Status.
+//
+// These strings are a storage compatibility contract: rows already written
+// to the database must keep resolving to the same semantics, so the values
+// must never change. The scheduler records StatusTriggered when an
+// execution is dispatched; terminal outcomes are recorded as StatusNormal
+// (success), StatusAbnormal (failure), or StatusUnknown.
+//
+// These are the task execution domain's own statuses. They intentionally
+// coincide with pkg/types.AssetStatus values for "normal"/"abnormal"/
+// "unknown" but are not the same concept and must not be mixed.
+const (
+	// StatusNormal marks an execution that completed successfully.
+	StatusNormal = "normal"
+	// StatusAbnormal marks an execution that completed with a failure.
+	StatusAbnormal = "abnormal"
+	// StatusUnknown marks an execution whose outcome could not be
+	// determined.
+	StatusUnknown = "unknown"
+	// StatusTriggered marks an execution that has been dispatched but has
+	// not yet reached a terminal state.
+	StatusTriggered = "triggered"
+)
+
+// Lifecycle status values exposed by the HTTP API execution contract.
+// They are the user-facing counterpart of the persisted Status* values
+// above and are translated by ToLifecycleStatus / ToStoredStatus.
+const (
+	// LifecycleSuccess is the API lifecycle status for executions that
+	// completed successfully.
+	LifecycleSuccess = "success"
+	// LifecycleFailed is the API lifecycle status for executions that
+	// completed with a failure.
+	LifecycleFailed = "failed"
+	// LifecycleRunning is the API lifecycle status for executions that
+	// have been triggered but have not yet reached a terminal state.
+	LifecycleRunning = "running"
+)
+
+// ToLifecycleStatus maps a persisted execution status to the API contract
+// lifecycle status. Unknown values pass through unchanged so callers
+// surfacing custom stored statuses keep working.
+func ToLifecycleStatus(stored string) string {
+	switch stored {
+	case StatusNormal:
+		return LifecycleSuccess
+	case StatusAbnormal, StatusUnknown:
+		return LifecycleFailed
+	case StatusTriggered:
+		return LifecycleRunning
+	default:
+		return stored
+	}
+}
+
+// ToStoredStatus is the inverse of ToLifecycleStatus: it maps an API
+// contract lifecycle status to the persisted execution status value.
+// Unknown values pass through so callers filtering by raw stored values
+// keep working.
+func ToStoredStatus(lifecycle string) string {
+	switch lifecycle {
+	case LifecycleSuccess:
+		return StatusNormal
+	case LifecycleFailed:
+		return StatusAbnormal
+	case LifecycleRunning:
+		return StatusTriggered
+	default:
+		return lifecycle
+	}
+}
+
 // Task represents the scheduler's view of a task for executor consumption.
 type Task struct {
 	// ID is the unique task identifier.
@@ -98,7 +181,8 @@ type Execution struct {
 	ExecutorName string `json:"executor_name"`
 	// Operation records the operation type (probe or execute).
 	Operation executor.Operation `json:"operation,omitempty"`
-	// Status is the execution outcome (e.g. "success", "failed").
+	// Status is the persisted execution outcome; see the Status*
+	// constants for the recognized values.
 	Status string `json:"status"`
 	// StatusCode is the numeric status code returned by the executor.
 	StatusCode int `json:"status_code"`

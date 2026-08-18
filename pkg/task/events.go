@@ -12,9 +12,10 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // SubscribeEvents wires the manager to the event bus.
@@ -28,28 +29,30 @@ func (m *Service) SubscribeEvents(_ context.Context) {
 		return
 	}
 
-	if _, err := event.Subscribe[event.StatusChangePayload](m.bus, event.TypeAssetStatusChanged, func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
-		m.handleStatusChange(ev.Payload)
-		return nil
-	}); err != nil {
+	if _, err := event.Subscribe(m.bus, event.TypeAssetStatusChanged,
+		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
+			m.handleStatusChange(ev.Payload)
+			return nil
+		}); err != nil {
 		m.logger.Error("failed to subscribe to status change events",
 			zap.Error(err),
 		)
 	}
 
-	if _, err := event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionCompleted, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		payload := ev.Payload
-		taskID, _ := strconv.ParseInt(payload.ExecutionID, 10, 64)
-		m.deps.UpdateStatus(taskID, types.AssetStatus(payload.Status))
+	if _, err := event.Subscribe(m.bus, event.TypeExecutionCompleted,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			payload := ev.Payload
+			taskID, _ := strconv.ParseInt(payload.ExecutionID, 10, 64)
+			m.deps.UpdateStatus(taskID, types.AssetStatus(payload.Status))
 
-		m.releaseRunning(taskID)
+			m.releaseRunning(taskID)
 
-		m.logger.Debug("task completed, updated dependency status",
-			zap.Int64("task_id", taskID),
-			zap.String("status", payload.Status),
-		)
-		return nil
-	}); err != nil {
+			m.logger.Debug("task completed, updated dependency status",
+				zap.Int64("task_id", taskID),
+				zap.String("status", payload.Status),
+			)
+			return nil
+		}); err != nil {
 		m.logger.Error("failed to subscribe to execution completed events",
 			zap.Error(err),
 		)
@@ -129,7 +132,8 @@ func (m *Service) trigger(task Task) {
 	if task.Metadata != nil {
 		pubOpts = append(pubOpts, event.WithMetadata(task.Metadata))
 	}
-	if err := event.Publish(context.Background(), m.bus, event.TypeExecutionTriggered, payload, pubOpts...); err != nil {
+	if err := event.Publish(context.Background(), m.bus, event.TypeExecutionTriggered, payload,
+		pubOpts...); err != nil {
 		m.logger.Warn("failed to publish execution triggered event",
 			zap.Int64("task_id", task.ID),
 			zap.Error(err),

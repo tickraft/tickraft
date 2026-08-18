@@ -57,7 +57,7 @@ func RenderTemplate(tmpl string, vars map[string]any, logger *zap.Logger) string
 	// map[string]any indexing natively via .key syntax, so {{.metric_name}}
 	// resolves to vars["metric_name"].
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, vars); err != nil {
+	if err = t.Execute(&buf, vars); err != nil {
 		if logger != nil {
 			logger.Warn("i18n template execute failed, returning partial result",
 				zap.String("template", tmpl),

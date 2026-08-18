@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package http implements the HTTP executor, which runs tasks by issuing HTTP
+// requests to configured endpoints and reporting status, metrics and logs.
 package http
 
 import (
@@ -14,13 +16,15 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/httpx"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 const (
+	executorName    = string(types.ExecutorHTTP)
 	httpMaxBodySize = 4 * 1024 // 4 KiB
 )
 
@@ -112,7 +116,7 @@ func New(timeout time.Duration, opts ...Option) *Executor {
 
 // Name returns the executor name identifier.
 func (p *Executor) Name() string {
-	return "http"
+	return executorName
 }
 
 // Capabilities returns the executor capability bitmask.

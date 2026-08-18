@@ -20,6 +20,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// jsonExt is the file extension that selects the JSON resource parser.
+const jsonExt = ".json"
+
+// tomlExt is the file extension that selects the TOML resource parser.
+const tomlExt = ".toml"
+
 // Loader loads locale resource files from an fs.FS into a Registry. It
 // supports both TOML (used by the backend) and JSON (used by tooling) file
 // formats, dispatched by file extension.
@@ -82,7 +88,7 @@ func (l *Loader) LoadInto(fsys fs.FS, target Bundle) error {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".toml" && ext != ".json" {
+		if ext != tomlExt && ext != jsonExt {
 			return nil
 		}
 
@@ -151,7 +157,7 @@ func (l *Loader) LoadToRegistry(fsys fs.FS, r Registry) error {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".toml" && ext != ".json" {
+		if ext != tomlExt && ext != jsonExt {
 			return nil
 		}
 
@@ -209,14 +215,14 @@ func parseResourceFile(fsys fs.FS, path, ext string) (map[string]string, error) 
 func parseResourceBytes(data []byte, ext string) (map[string]string, error) {
 	out := make(map[string]string)
 	switch ext {
-	case ".toml":
+	case tomlExt:
 		var anyMap map[string]any
 		if err := toml.Unmarshal(data, &anyMap); err != nil {
 			return nil, fmt.Errorf("parse toml: %w", err)
 		}
 		flattenAny("", anyMap, out)
 		return out, nil
-	case ".json":
+	case jsonExt:
 		parsed, err := parseJSON(data)
 		if err != nil {
 			return nil, fmt.Errorf("parse json: %w", err)
@@ -231,7 +237,7 @@ func parseResourceBytes(data []byte, ext string) (map[string]string, error) {
 // is used by the hot-reload watcher, which receives absolute paths from
 // fsnotify that must not be re-joined with the watch directory.
 func openOSFileBytes(path string) ([]byte, error) {
-	return os.ReadFile(path)
+	return os.ReadFile(path) //nolint:gosec // locale file path from controlled registry
 }
 
 // Watch monitors dir for changes to .toml or .json resource files and
@@ -280,7 +286,7 @@ func (l *Loader) Watch(ctx context.Context, dir string, r Registry) error {
 
 	reload := func(path string) {
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".toml" && ext != ".json" {
+		if ext != tomlExt && ext != jsonExt {
 			return
 		}
 		stem := strings.TrimSuffix(filepath.Base(path), ext)
@@ -319,53 +325,60 @@ func (l *Loader) Watch(ctx context.Context, dir string, r Registry) error {
 	// goroutine lifecycle: bound to ctx, exits on ctx.Done() or when the
 	// fsnotify watcher channels are closed (which happens when watcher.Close
 	// runs in the deferred cleanup above).
-	go func() {
-		debounceTimer := time.NewTimer(debounce)
-		debounceTimer.Stop()
-		defer debounceTimer.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				l.logger.Info("i18n loader watch stopped")
-				return
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
-					continue
-				}
-				mu.Lock()
-				pending[event.Name] = time.Now()
-				debounceTimer.Reset(debounce)
-				mu.Unlock()
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				l.logger.Warn("i18n loader watcher error",
-					zap.Error(err),
-				)
-			case <-debounceTimer.C:
-				mu.Lock()
-				now := time.Now()
-				for path, t := range pending {
-					if now.Sub(t) >= debounce {
-						delete(pending, path)
-						reload(path)
-					}
-				}
-				if len(pending) > 0 {
-					debounceTimer.Reset(debounce)
-				}
-				mu.Unlock()
-			}
-		}
-	}()
+	go l.watchLoop(ctx, watcher, pending, &mu, reload, debounce)
 
 	<-ctx.Done()
 	return nil
+}
+
+// watchLoop consumes fsnotify events until ctx is cancelled or the watcher
+// channels are closed. It coalesces rapid write events for the same file
+// into a single reload: events are recorded in pending (guarded by mu) and
+// reloaded once they have aged past debounce.
+func (l *Loader) watchLoop(ctx context.Context, watcher *fsnotify.Watcher,
+	pending map[string]time.Time, mu *sync.Mutex, reload func(string), debounce time.Duration) {
+	debounceTimer := time.NewTimer(debounce)
+	debounceTimer.Stop()
+	defer debounceTimer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			l.logger.Info("i18n loader watch stopped")
+			return
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+				continue
+			}
+			mu.Lock()
+			pending[event.Name] = time.Now()
+			debounceTimer.Reset(debounce)
+			mu.Unlock()
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			l.logger.Warn("i18n loader watcher error",
+				zap.Error(err),
+			)
+		case <-debounceTimer.C:
+			mu.Lock()
+			now := time.Now()
+			for path, t := range pending {
+				if now.Sub(t) >= debounce {
+					delete(pending, path)
+					reload(path)
+				}
+			}
+			if len(pending) > 0 {
+				debounceTimer.Reset(debounce)
+			}
+			mu.Unlock()
+		}
+	}
 }
 
 // osDirFS adapts a host directory path to an fs.FS for parseResourceFile.

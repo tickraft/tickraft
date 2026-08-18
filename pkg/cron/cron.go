@@ -160,7 +160,7 @@ func (c *Crontab) Add(id int64, schedule Schedule, job Job) error {
 	}
 
 	if _, exists := c.entries[id]; exists {
-		c.remove(id)
+		c.removeJob(id)
 	}
 
 	entry := &Entry{ID: id, Schedule: schedule, Job: job}
@@ -176,11 +176,11 @@ func (c *Crontab) Add(id int64, schedule Schedule, job Job) error {
 func (c *Crontab) Remove(id int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.remove(id)
+	c.removeJob(id)
 	c.rescheduleTimer()
 }
 
-func (c *Crontab) remove(id int64) {
+func (c *Crontab) removeJob(id int64) {
 	entry, exists := c.entries[id]
 	if !exists {
 		return
@@ -200,7 +200,7 @@ func (c *Crontab) start(ctx context.Context) {
 	c.rescheduleTimer()
 	c.mu.Unlock()
 
-	for i := 0; i < c.workerSize; i++ {
+	for range c.workerSize {
 		c.wg.Add(1)
 		// goroutine lifecycle: pool-owned — worker selects on ctx.Done,
 		// c.done, and c.jobs; tracked by c.wg so Stop can wait for all

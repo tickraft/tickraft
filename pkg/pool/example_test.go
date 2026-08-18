@@ -102,7 +102,7 @@ func ExampleJob_struct() {
 			}
 			fmt.Println("error:", err)
 		}),
-		pool.WithPanicHandler(func(job pool.Job, r interface{}) {
+		pool.WithPanicHandler(func(job pool.Job, r any) {
 			if pj, ok := job.(*printJob); ok {
 				fmt.Println("panic:", r, "(", pj.msg, ")")
 				return

@@ -15,10 +15,11 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/httpx"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // Executor performs HTTP callback execution.
@@ -63,7 +64,7 @@ func New(opts ...Option) *Executor {
 }
 
 // Name returns the executor name identifier.
-func (e *Executor) Name() string { return "webhook" }
+func (e *Executor) Name() string { return string(types.ExecutorWebhook) }
 
 // Capabilities returns the executor capability bitmask.
 func (e *Executor) Capabilities() executor.Capability { return executor.CapNotify }

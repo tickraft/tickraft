@@ -80,15 +80,17 @@ func (s *FileACMECertStore) StoreCert(_ context.Context, domain string, certPEM,
 
 // LoadCert returns the persisted certificate chain and private key for the
 // given domain, or (nil, nil, nil) when no certificate has been stored.
-func (s *FileACMECertStore) LoadCert(_ context.Context, domain string) ([]byte, []byte, error) {
-	certPEM, err := os.ReadFile(filepath.Join(s.dir, domain+".crt.pem"))
+func (s *FileACMECertStore) LoadCert(_ context.Context, domain string) (certPEM, keyPEM []byte, err error) {
+	//nolint:gosec // path built from store dir and validated domain
+	certPEM, err = os.ReadFile(filepath.Join(s.dir, domain+".crt.pem"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil, nil
 		}
 		return nil, nil, fmt.Errorf("load cert for %q: %w", domain, err)
 	}
-	keyPEM, err := os.ReadFile(filepath.Join(s.dir, domain+".key.pem"))
+	//nolint:gosec // path built from store dir and validated domain
+	keyPEM, err = os.ReadFile(filepath.Join(s.dir, domain+".key.pem"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil, nil

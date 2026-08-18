@@ -120,7 +120,8 @@ func TestExecutionPayloadOmitEmpty(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
 	}
-	omitted := []string{"status", "trigger_type", "result", "output", "error", "duration", "progress", "retry_count", "started_at", "completed_at"}
+	omitted := []string{"status", "trigger_type", "result", "output", "error", "duration",
+		"progress", "retry_count", "started_at", "completed_at"}
 	for _, key := range omitted {
 		if _, ok := raw[key]; ok {
 			t.Errorf("%s should be omitted when zero", key)
@@ -494,7 +495,8 @@ func TestRemediationPayloadOmitEmpty(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
 	}
-	omitted := []string{"trigger_type", "source_event_id", "status", "error", "skip_reason", "executor_type", "duration", "retry_count", "started_at", "completed_at"}
+	omitted := []string{"trigger_type", "source_event_id", "status", "error", "skip_reason",
+		"executor_type", "duration", "retry_count", "started_at", "completed_at"}
 	for _, key := range omitted {
 		if _, ok := raw[key]; ok {
 			t.Errorf("%s should be omitted when zero", key)

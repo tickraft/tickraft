@@ -134,12 +134,10 @@ func New(opts ...Option) (Pool, error) {
 	// submitted jobs run without waiting for lazy growth. The
 	// remainder are grown on demand as the queue fills.
 	warmup := defaultWarmup
-	if warmup > cfg.workers {
-		warmup = cfg.workers
-	}
+	warmup = min(warmup, cfg.workers)
 	p.currentWorkers.Store(int64(warmup))
 	p.wg.Add(warmup)
-	for i := 0; i < warmup; i++ {
+	for range warmup {
 		// goroutine lifecycle: pool-owned — worker selects on ctx.Done
 		// and p.jobCh; tracked by p.wg so Shutdown can wait for all
 		// workers to drain and exit before returning.
@@ -330,7 +328,8 @@ func (p *pool) handleRejection(ctx context.Context, job Job) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	default: // RejectionAbort
+	default:
+		// Abort semantics, also used as the fallback for unknown policies.
 		// Block until a slot is available, ctx is cancelled, or
 		// the pool is shut down. Passing a pre-cancelled ctx
 		// yields immediate rejection.
@@ -408,9 +407,7 @@ func (p *pool) stallLoop(ctx context.Context) {
 	defer close(p.stallDone)
 
 	interval := p.stallThreshold / 4
-	if interval < 50*time.Millisecond {
-		interval = 50 * time.Millisecond
-	}
+	interval = max(interval, 50*time.Millisecond)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

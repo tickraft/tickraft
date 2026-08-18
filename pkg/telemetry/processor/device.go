@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // deviceErrorKeywords are the log keywords that indicate a device abnormality.
@@ -118,6 +119,8 @@ func determineDeviceStatus(t *telemetry.Telemetry) types.AssetStatus {
 	switch t.Status {
 	case types.AssetStatusNormal, types.AssetStatusAbnormal, types.AssetStatusOffline:
 		return t.Status
+	case types.AssetStatusUnknown:
+		// Unknown: derive the status from the telemetry payload below.
 	}
 	if hasAbnormalMetrics(t.Metrics) {
 		return types.AssetStatusAbnormal
@@ -163,14 +166,14 @@ func buildDeviceAlerts(t *telemetry.Telemetry, currStatus types.AssetStatus) []t
 
 	if currStatus == types.AssetStatusAbnormal {
 		alerts = append(alerts, telemetry.AlertContext{
-			Level:   "warning",
+			Level:   string(types.SeverityWarning),
 			Title:   "Device Abnormal",
 			Message: fmt.Sprintf("Device %d reported abnormal state", t.AssetID),
 		})
 	}
 	if currStatus == types.AssetStatusOffline {
 		alerts = append(alerts, telemetry.AlertContext{
-			Level:   "critical",
+			Level:   string(types.SeverityCritical),
 			Title:   "Device Offline",
 			Message: fmt.Sprintf("Device %d is offline", t.AssetID),
 		})
@@ -193,7 +196,7 @@ func checkMetricAlerts(t *telemetry.Telemetry) []telemetry.AlertContext {
 
 	if rtt, ok := t.Metrics["rtt_ms"]; ok && rtt > 500 {
 		alerts = append(alerts, telemetry.AlertContext{
-			Level:   "warning",
+			Level:   string(types.SeverityWarning),
 			Title:   "High Latency",
 			Message: fmt.Sprintf("Device %d RTT %.0fms exceeds 500ms threshold", t.AssetID, rtt),
 			Metadata: map[string]string{

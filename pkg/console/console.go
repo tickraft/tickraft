@@ -48,7 +48,7 @@ const indexFileName = "index.html"
 //
 // Callers should run this in a goroutine managed by an errgroup so a
 // startup failure on any listener aborts the whole role.
-func Start(ctx context.Context, addr string, rootDir string) error {
+func Start(ctx context.Context, addr, rootDir string) error {
 	if rootDir == "" {
 		// Console disabled — caller may serve the SPA via the API listener
 		// (e.g. embedded dist via api.RegisterSPA) and choose not to expose
@@ -77,6 +77,7 @@ func Start(ctx context.Context, addr string, rootDir string) error {
 	// the file on every miss. A missing index.html means the SPA build is
 	// incomplete; surface it as a startup error rather than serving 404s
 	// at runtime.
+	//nolint:gosec // path joined from the configured static root
 	indexBytes, err := os.ReadFile(filepath.Join(absRoot, indexFileName))
 	if err != nil {
 		return err

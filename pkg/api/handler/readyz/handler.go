@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package readyz exposes the /readyz readiness endpoint. It runs every
+// configured dependency checker in parallel with a per-check timeout and
+// returns HTTP 503 when any checker fails, so load balancers can route
+// traffic away from instances that are alive but not yet ready.
 package readyz
 
 import (
@@ -12,10 +16,11 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
 
 // readyCheckTimeout bounds each individual dependency probe so a hung
@@ -26,6 +31,12 @@ const readyCheckTimeout = 2 * time.Second
 // readyzCheckKey is a sentinel cache key used to verify cache responsiveness
 // without producing side effects on real cache entries.
 const readyzCheckKey = "__readyz_ping__"
+
+// JSON field name and ready status value of the readiness response payload.
+const (
+	statusKey   = "status"
+	statusReady = "ready"
+)
 
 // DependencyChecker probes a single dependency and reports whether it is
 // ready to serve traffic. Implementations must be safe for concurrent use
@@ -60,12 +71,12 @@ type Handler struct {
 // cache. Either argument may be nil, in which case the corresponding
 // dependency check is skipped. This mirrors healthz.NewHandler so the two
 // probes can be wired identically at startup.
-func NewHandler(dbc *gorm.DB, cache *cache.LRUCache) *Handler {
+func NewHandler(dbc *gorm.DB, c *cache.LRUCache) *Handler {
 	h := &Handler{}
 	if dc := NewDatabaseChecker(dbc); dc != nil {
 		h.checkers = append(h.checkers, dc)
 	}
-	if cc := NewCacheChecker(cache); cc != nil {
+	if cc := NewCacheChecker(c); cc != nil {
 		h.checkers = append(h.checkers, cc)
 	}
 	return h
@@ -134,22 +145,22 @@ func (h *Handler) Ready(ctx context.Context, arc *app.RequestContext) {
 	checks := make(map[string]any, len(results))
 	for name, res := range results {
 		checks[name] = map[string]any{
-			"status":     res.status,
+			statusKey:    res.status,
 			"latency_ms": res.latencyMs,
 		}
 	}
 
 	if ready {
 		api.Success(arc, map[string]any{
-			"status": "ready",
-			"checks": checks,
+			statusKey: statusReady,
+			"checks":  checks,
 		})
 		return
 	}
 
 	api.FailWithData(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "not ready", map[string]any{
-		"status": "not_ready",
-		"checks": checks,
+		statusKey: "not_ready",
+		"checks":  checks,
 	})
 }
 
@@ -158,22 +169,22 @@ func (h *Handler) Ready(ctx context.Context, arc *app.RequestContext) {
 // without performing any dependency checks, preserving a trivially-ready
 // behavior for deployments that do not wire concrete checkers.
 func DefaultReady(ctx context.Context, arc *app.RequestContext) {
-	api.Success(arc, map[string]string{"status": "ready"})
+	api.Success(arc, map[string]string{statusKey: statusReady})
 }
 
 // DatabaseChecker probes a SQL database via SELECT 1.
 type DatabaseChecker struct {
-	db *gorm.DB
+	dbc *gorm.DB
 }
 
 // NewDatabaseChecker creates a DatabaseChecker. Returns nil when db is nil
 // so the caller can pass the result directly to NewHandler without an
 // extra nil guard.
-func NewDatabaseChecker(db *gorm.DB) *DatabaseChecker {
-	if db == nil {
+func NewDatabaseChecker(dbc *gorm.DB) *DatabaseChecker {
+	if dbc == nil {
 		return nil
 	}
-	return &DatabaseChecker{db: db}
+	return &DatabaseChecker{dbc: dbc}
 }
 
 // Name returns "database".
@@ -181,7 +192,7 @@ func (c *DatabaseChecker) Name() string { return "database" }
 
 // Check executes SELECT 1 against the underlying database.
 func (c *DatabaseChecker) Check(ctx context.Context) error {
-	return c.db.WithContext(ctx).Exec("SELECT 1").Error
+	return c.dbc.WithContext(ctx).Exec("SELECT 1").Error
 }
 
 // CacheChecker probes the LRU cache via a Has sentinel key.

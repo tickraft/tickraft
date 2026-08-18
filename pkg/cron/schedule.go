@@ -12,13 +12,16 @@ type Schedule interface {
 }
 
 // specSchedule stores precomputed bitmasks for each cron field.
+// All masks are uint64 to avoid narrowing conversions at every
+// construction and bit-test site; the struct is allocated once per
+// entry so the extra bytes are irrelevant.
 type specSchedule struct {
 	sec     uint64
 	min     uint64
-	hour    uint32
-	dom     uint32
-	month   uint16
-	dow     uint8
+	hour    uint64
+	dom     uint64
+	month   uint64
+	dow     uint64
 	domStar bool
 	dowStar bool
 	loc     *time.Location
@@ -38,7 +41,7 @@ func (ss *specSchedule) Next(from time.Time) time.Time {
 		if iter > 1000 {
 			return time.Time{}
 		}
-		month, ok := nextSetBit(uint64(ss.month), int(current.Month()), 12)
+		month, ok := nextSetBit(ss.month, int(current.Month()), 12)
 		if !ok {
 			current = time.Date(current.Year()+1, time.January, 1, 0, 0, 0, 0, loc)
 			continue
@@ -53,7 +56,7 @@ func (ss *specSchedule) Next(from time.Time) time.Time {
 			continue
 		}
 
-		hour, ok := nextSetBit(uint64(ss.hour), current.Hour(), 23)
+		hour, ok := nextSetBit(ss.hour, current.Hour(), 23)
 		if !ok {
 			current = current.AddDate(0, 0, 1)
 			current = time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, loc)
@@ -63,14 +66,14 @@ func (ss *specSchedule) Next(from time.Time) time.Time {
 			current = time.Date(current.Year(), current.Month(), current.Day(), hour, 0, 0, 0, loc)
 		}
 
-		min, ok := nextSetBit(ss.min, current.Minute(), 59)
+		nextMin, ok := nextSetBit(ss.min, current.Minute(), 59)
 		if !ok {
 			current = current.Add(time.Duration(60-current.Minute()) * time.Minute)
 			current = current.Truncate(time.Hour)
 			continue
 		}
-		if min != current.Minute() {
-			current = time.Date(current.Year(), current.Month(), current.Day(), current.Hour(), min, 0, 0, loc)
+		if nextMin != current.Minute() {
+			current = time.Date(current.Year(), current.Month(), current.Day(), current.Hour(), nextMin, 0, 0, loc)
 		}
 
 		sec, ok := nextSetBit(ss.sec, current.Second(), 59)
@@ -80,10 +83,11 @@ func (ss *specSchedule) Next(from time.Time) time.Time {
 			continue
 		}
 		if sec != current.Second() {
-			current = time.Date(current.Year(), current.Month(), current.Day(), current.Hour(), current.Minute(), sec, 0, loc)
+			current = time.Date(current.Year(), current.Month(), current.Day(), current.Hour(),
+				current.Minute(), sec, 0, loc)
 		}
 
-		if ss.matchesDay(current) && bitMatch(uint64(ss.month), int(current.Month())) {
+		if ss.matchesDay(current) && bitMatch(ss.month, int(current.Month())) {
 			return current
 		}
 
@@ -97,8 +101,8 @@ func (ss *specSchedule) matchesDay(t time.Time) bool {
 	day := t.Day()
 	weekday := int(t.Weekday())
 
-	domMatch := bitMatch(uint64(ss.dom), day)
-	dowMatch := bitMatch(uint64(ss.dow), weekday) || (weekday == 0 && bitMatch(uint64(ss.dow), 7))
+	domMatch := bitMatch(ss.dom, day)
+	dowMatch := bitMatch(ss.dow, weekday) || (weekday == 0 && bitMatch(ss.dow, 7))
 
 	if ss.domStar && ss.dowStar {
 		return true
@@ -130,9 +134,7 @@ func (cds constantDelaySchedule) Next(t time.Time) time.Time {
 // Durations less than one second are rounded up to one second,
 // and sub-second precision is truncated.
 func Every(duration time.Duration) Schedule {
-	if duration < time.Second {
-		duration = time.Second
-	}
+	duration = max(duration, time.Second)
 	duration = duration.Truncate(time.Second)
 	return &constantDelaySchedule{Delay: duration}
 }
@@ -155,10 +157,10 @@ func Minutely() Schedule {
 	return &specSchedule{
 		sec:     1,
 		min:     allBits(0, 59),
-		hour:    uint32(allBits(0, 23)),
-		dom:     uint32(allBits(1, 31)),
-		month:   uint16(allBits(1, 12)),
-		dow:     uint8(allBits(0, 7)),
+		hour:    allBits(0, 23),
+		dom:     allBits(1, 31),
+		month:   allBits(1, 12),
+		dow:     allBits(0, 7),
 		domStar: true,
 		dowStar: true,
 		loc:     time.Local,
@@ -171,10 +173,10 @@ func Hourly() Schedule {
 	return &specSchedule{
 		sec:     1,
 		min:     1,
-		hour:    uint32(allBits(0, 23)),
-		dom:     uint32(allBits(1, 31)),
-		month:   uint16(allBits(1, 12)),
-		dow:     uint8(allBits(0, 7)),
+		hour:    allBits(0, 23),
+		dom:     allBits(1, 31),
+		month:   allBits(1, 12),
+		dow:     allBits(0, 7),
 		domStar: true,
 		dowStar: true,
 		loc:     time.Local,
@@ -188,9 +190,9 @@ func Daily() Schedule {
 		sec:     1,
 		min:     1,
 		hour:    1,
-		dom:     uint32(allBits(1, 31)),
-		month:   uint16(allBits(1, 12)),
-		dow:     uint8(allBits(0, 7)),
+		dom:     allBits(1, 31),
+		month:   allBits(1, 12),
+		dow:     allBits(0, 7),
 		domStar: true,
 		dowStar: true,
 		loc:     time.Local,
@@ -204,8 +206,8 @@ func Weekly() Schedule {
 		sec:     1,
 		min:     1,
 		hour:    1,
-		dom:     uint32(allBits(1, 31)),
-		month:   uint16(allBits(1, 12)),
+		dom:     allBits(1, 31),
+		month:   allBits(1, 12),
 		dow:     1,
 		domStar: true,
 		dowStar: false,
@@ -221,8 +223,8 @@ func Monthly() Schedule {
 		min:     1,
 		hour:    1,
 		dom:     2,
-		month:   uint16(allBits(1, 12)),
-		dow:     uint8(allBits(0, 7)),
+		month:   allBits(1, 12),
+		dow:     allBits(0, 7),
 		domStar: false,
 		dowStar: true,
 		loc:     time.Local,
@@ -238,7 +240,7 @@ func Yearly() Schedule {
 		hour:    1,
 		dom:     2,
 		month:   2,
-		dow:     uint8(allBits(0, 7)),
+		dow:     allBits(0, 7),
 		domStar: false,
 		dowStar: true,
 		loc:     time.Local,

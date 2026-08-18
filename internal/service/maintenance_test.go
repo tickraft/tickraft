@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/task"
-	"go.uber.org/zap"
 )
 
 // mockBlacklistStore records CleanExpired invocations so tests can assert that
@@ -44,7 +45,8 @@ func (m *mockExecutionStore) Save(context.Context, *task.Execution) error {
 func (m *mockExecutionStore) List(context.Context, int64, int) ([]*task.Execution, error) {
 	return nil, nil
 }
-func (m *mockExecutionStore) Query(_ context.Context, _ task.ExecutionQuery, _, _ int) ([]*task.Execution, int64, error) {
+func (m *mockExecutionStore) Query(_ context.Context, _ task.ExecutionQuery,
+	_, _ int) ([]*task.Execution, int64, error) {
 	return nil, 0, nil
 }
 func (m *mockExecutionStore) Get(_ context.Context, _ int64) (*task.Execution, error) {

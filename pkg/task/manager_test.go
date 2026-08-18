@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/scheduler"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // mockStore is an in-memory Store implementation used to test the
@@ -102,7 +103,7 @@ func TestTaskManagerGetNotFound(t *testing.T) {
 	m := mustNewManager()
 
 	_, err := m.getTask(999)
-	if err != ErrTaskNotFound {
+	if !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("got error %v, want ErrTaskNotFound", err)
 	}
 }
@@ -115,7 +116,7 @@ func TestTaskManagerDelete(t *testing.T) {
 	m.deleteTask(1)
 
 	_, err := m.getTask(1)
-	if err != ErrTaskNotFound {
+	if !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("got error %v, want ErrTaskNotFound", err)
 	}
 }
@@ -334,10 +335,11 @@ func TestTaskManagerSchedulePublishesTaskTriggered(t *testing.T) {
 
 	// Subscribe to ExecutionTriggered events.
 	triggered := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	tk := Task{
 		ID:           42,
@@ -401,10 +403,11 @@ func TestTaskManagerOnFirePublishesTaskTriggered(t *testing.T) {
 
 	// Subscribe to ExecutionTriggered events.
 	triggered := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Register a task that fires immediately.
 	tk := Task{
@@ -438,10 +441,11 @@ func TestTaskManagerOnFireShardFiltering(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Register an odd task ID (not owned by this shard).
 	oddTask := Task{
@@ -493,10 +497,11 @@ func TestTaskManagerOnFireDependencyNotMet(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Register a task that depends on task 100 (which has no recorded status).
 	tk := Task{
@@ -528,10 +533,11 @@ func TestTaskManager_DependencyCheckerCleanup_OneTimeTask(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Pre-record a dependency status for task 1 to simulate a stale entry
 	// left from a prior cycle. onFire for a one-time task should clear it.
@@ -631,10 +637,11 @@ func TestTaskManagerSubscribeEventsStatusChangeTriggersEventTask(t *testing.T) {
 	m.SubscribeEvents(context.Background())
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Register an event-driven task associated with asset 50.
 	tk := Task{
@@ -674,10 +681,11 @@ func TestTaskManagerSubscribeEventsStatusChangeIgnoresNormal(t *testing.T) {
 	m.SubscribeEvents(context.Background())
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	tk := Task{
 		ID:      1,
@@ -714,10 +722,11 @@ func TestTaskManagerSubscribeEventsStatusChangeAssetismatch(t *testing.T) {
 	m.SubscribeEvents(context.Background())
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	tk := Task{
 		ID:      1,
@@ -753,10 +762,11 @@ func TestTaskManagerSubscribeEventsStatusChangeShardFiltering(t *testing.T) {
 	m.SubscribeEvents(context.Background())
 
 	triggered := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	// Register an event-driven task with odd ID (not owned by shard 0).
 	oddTask := Task{
@@ -870,8 +880,10 @@ func TestTaskManagerRestoreFromStore(t *testing.T) {
 	store := newMockStore()
 	// Pre-populate the store with tasks as if they were persisted before a restart.
 	seedTasks := []*Task{
-		{ID: 1, TenantID: 10, ExecutorName: "webhook", Metadata: map[string]string{"schedule_type": "cron", "cron_expr": "*/5 * * * *"}},
-		{ID: 2, TenantID: 10, ExecutorName: "http", Metadata: map[string]string{"schedule_type": "interval", "interval": "30s"}},
+		{ID: 1, TenantID: 10, ExecutorName: "webhook",
+			Metadata: map[string]string{"schedule_type": "cron", "cron_expr": "*/5 * * * *"}},
+		{ID: 2, TenantID: 10, ExecutorName: "http",
+			Metadata: map[string]string{"schedule_type": "interval", "interval": "30s"}},
 	}
 	for _, t := range seedTasks {
 		_ = store.Save(context.Background(), t)
@@ -1156,10 +1168,11 @@ func TestTaskManagerRestorePublishesForImmediateOnceTask(t *testing.T) {
 
 	// Subscribe to ExecutionTriggered events to verify the restored one-time task fires.
 	triggered := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
 
 	if err := m.Restore(context.Background()); err != nil {
 		t.Fatalf("Restore: %v", err)
@@ -1264,7 +1277,7 @@ func BenchmarkTaskManagerStatusChangeHandler(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		m.handleStatusChange(payload)
 	}
 }
@@ -1324,7 +1337,7 @@ func TestTryClaimRunningConcurrent(t *testing.T) {
 	var wins int32
 	var mu sync.Mutex
 	start := make(chan struct{})
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			<-start

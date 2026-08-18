@@ -11,12 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/user"
-	"go.uber.org/zap"
 )
 
 const (
@@ -77,14 +78,14 @@ func NewService(
 		loginFails:      make(map[string]*loginFailRecord),
 		cleanupInterval: cleanupInterval,
 	}
-	s.startCleanupLoop()
+	s.launchCleanupLoop()
 	return s
 }
 
 // Login authenticates a user and returns a login result containing the token
 // pair and policy flags (e.g. MustChangePassword).
 func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult, error) {
-	if err := validateUsername(username); err != nil {
+	if err := checkUsername(username); err != nil {
 		zap.L().Warn("auth login: validate username", zap.String("username", username), zap.Error(err))
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 		return nil, err
 	}
 
-	user, err := s.users.GetByUsername(ctx, username)
+	u, err := s.users.GetByUsername(ctx, username)
 	if err != nil {
 		zap.L().Warn("auth login: get user by username", zap.String("username", username), zap.Error(err))
 		s.recordLoginFailure(username)
@@ -104,14 +105,15 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 	// Reject disabled users (Status == 0). This is a generic security check:
 	// the user.User.Status field is defined in the user package and
 	// conventionally 0=disabled, 1=active.
-	if user.Status == 0 {
-		zap.L().Warn("auth login: user disabled", zap.String("username", username), zap.Int64("user_id", user.ID))
+	if u.Status == 0 {
+		zap.L().Warn("auth login: user disabled", zap.String("username", username), zap.Int64("user_id", u.ID))
 		s.recordLoginFailure(username)
 		return nil, ErrUnauthorized
 	}
 
-	if err := password.Verify(user.PasswordHash, pwd); err != nil {
-		zap.L().Warn("auth login: password verify", zap.String("username", username), zap.Int64("user_id", user.ID), zap.Error(err))
+	if err = password.Verify(u.PasswordHash, pwd); err != nil {
+		zap.L().Warn("auth login: password verify", zap.String("username", username),
+			zap.Int64("user_id", u.ID), zap.Error(err))
 		s.recordLoginFailure(username)
 		return nil, ErrUnauthorized
 	}
@@ -122,20 +124,21 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 	// value. The runtime populates TenantID from the augmented user
 	// type before issuing tokens.
 	claims := jwt.UserClaims{
-		UID:      user.ID,
-		Username: user.Username,
-		Role:     user.Role,
+		UID:      u.ID,
+		Username: u.Username,
+		Role:     u.Role,
 	}
 
 	tokenPair, err := s.jwt.GenerateTokenPair(claims)
 	if err != nil {
-		zap.L().Error("auth login: generate token pair", zap.String("username", username), zap.Int64("user_id", user.ID), zap.Error(err))
+		zap.L().Error("auth login: generate token pair", zap.String("username", username),
+			zap.Int64("user_id", u.ID), zap.Error(err))
 		return nil, fmt.Errorf("generate token pair: %w", err)
 	}
 
 	return &LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
-		MustChangePassword: user.MustChangePassword,
+		MustChangePassword: u.MustChangePassword,
 	}, nil
 }
 
@@ -145,8 +148,8 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 // the external identity, it calls IssueTokens to obtain JWTs without
 // re-verifying the password. The caller must ensure the user has been fully
 // authenticated before calling this method.
-func (s *Service) IssueTokens(ctx context.Context, user *user.User) (*LoginResult, error) {
-	if user == nil {
+func (s *Service) IssueTokens(ctx context.Context, u *user.User) (*LoginResult, error) {
+	if u == nil {
 		return nil, fmt.Errorf("auth: issue tokens: nil user")
 	}
 
@@ -154,9 +157,9 @@ func (s *Service) IssueTokens(ctx context.Context, user *user.User) (*LoginResul
 	// value. The runtime populates TenantID from the augmented user
 	// type before issuing tokens.
 	claims := jwt.UserClaims{
-		UID:      user.ID,
-		Username: user.Username,
-		Role:     user.Role,
+		UID:      u.ID,
+		Username: u.Username,
+		Role:     u.Role,
 	}
 
 	tokenPair, err := s.jwt.GenerateTokenPair(claims)
@@ -166,7 +169,7 @@ func (s *Service) IssueTokens(ctx context.Context, user *user.User) (*LoginResul
 
 	return &LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
-		MustChangePassword: user.MustChangePassword,
+		MustChangePassword: u.MustChangePassword,
 	}, nil
 }
 
@@ -241,16 +244,16 @@ func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwt.T
 // is handled by the caller via Logout, so this method does not perform
 // JTI-based revocation.
 func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newPwd, currentJTI string) error {
-	if err := validatePassword(newPwd); err != nil {
+	if err := checkPassword(newPwd); err != nil {
 		return err
 	}
 
-	user, err := s.users.GetByID(ctx, userID)
+	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return ErrUnauthorized
 	}
 
-	if err := password.Verify(user.PasswordHash, oldPwd); err != nil {
+	if err = password.Verify(u.PasswordHash, oldPwd); err != nil {
 		return ErrUnauthorized
 	}
 
@@ -259,7 +262,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 		return fmt.Errorf("hash new password: %w", err)
 	}
 
-	if err := s.users.UpdatePassword(ctx, userID, hash); err != nil {
+	if err = s.users.UpdatePassword(ctx, userID, hash); err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
 
@@ -267,7 +270,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 	// change password on the next login. This is best-effort: the password
 	// has already been updated, so a flag-clear failure is logged but does
 	// not fail the operation.
-	if user.MustChangePassword {
+	if u.MustChangePassword {
 		if err := s.users.Update(ctx, userID, map[string]any{"must_change_password": false}); err != nil {
 			zap.L().Warn("auth: clear must_change_password failed",
 				zap.Int64("user_id", userID),
@@ -280,7 +283,8 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 }
 
 // CreateAPIKey generates a new API key.
-func (s *Service) CreateAPIKey(ctx context.Context, name string, expiredAt *time.Time) (rawKey string, info *user.APIKey, err error) {
+func (s *Service) CreateAPIKey(ctx context.Context, name string,
+	expiredAt *time.Time) (rawKey string, info *user.APIKey, err error) {
 	raw, hash, prefix, err := apikey.GenerateAPIKey()
 	if err != nil {
 		return "", nil, fmt.Errorf("generate api key: %w", err)
@@ -347,7 +351,8 @@ func (s *Service) GetProfile(ctx context.Context, userID int64) (*user.User, err
 // Only non-nil pointer arguments are applied; nil pointers leave the
 // corresponding field unchanged. It returns the updated user after the
 // change is persisted.
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, nickname, email, language, alertFormatStyle *string) (*user.User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID int64,
+	nickname, email, language, alertFormatStyle *string) (*user.User, error) {
 	data := make(map[string]any)
 	if nickname != nil {
 		data["nickname"] = *nickname
@@ -435,17 +440,17 @@ func (s *Service) recordLoginSuccess(username string) {
 	delete(s.loginFails, username)
 }
 
-// startCleanupLoop launches the background goroutine that periodically
+// launchCleanupLoop launches the background goroutine that periodically
 // removes expired login-fail entries. The goroutine is stopped by
 // canceling the context stored on s.cancel (via Close).
-func (s *Service) startCleanupLoop() {
+func (s *Service) launchCleanupLoop() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	go s.runCleanupLoop(ctx)
 }
 
 // runCleanupLoop is the background goroutine that periodically calls
-// cleanupExpiredFails. It exits when ctx is canceled.
+// evictExpiredFails. It exits when ctx is canceled.
 func (s *Service) runCleanupLoop(ctx context.Context) {
 	interval := s.cleanupInterval
 	if interval <= 0 {
@@ -458,16 +463,16 @@ func (s *Service) runCleanupLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.cleanupExpiredFails()
+			s.evictExpiredFails()
 		}
 	}
 }
 
-// cleanupExpiredFails removes login-fail entries that are no longer
+// evictExpiredFails removes login-fail entries that are no longer
 // active. An entry is removed when it is not currently locked and its
 // last failure is older than failEntryTTL. Locked entries are retained
 // until the lockout expires.
-func (s *Service) cleanupExpiredFails() {
+func (s *Service) evictExpiredFails() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -484,17 +489,17 @@ func (s *Service) cleanupExpiredFails() {
 	}
 }
 
-// validateUsername checks that the username matches the canonical
+// checkUsername checks that the username matches the canonical
 // user.UsernameRegex (3-64 chars, only letters, digits and underscores).
-func validateUsername(username string) error {
+func checkUsername(username string) error {
 	if !user.UsernameRegex.MatchString(username) {
 		return ErrInvalidUsername
 	}
 	return nil
 }
 
-// validatePassword checks that the password is 8-128 chars with at least one letter and one digit.
-func validatePassword(pwd string) error {
+// checkPassword checks that the password is 8-128 chars with at least one letter and one digit.
+func checkPassword(pwd string) error {
 	n := len(pwd)
 	if n < 8 || n > 128 {
 		return ErrWeakPassword

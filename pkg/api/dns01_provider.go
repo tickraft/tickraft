@@ -13,6 +13,7 @@
 // flow uniformly for both challenge types: it only interacts with
 // ACMEProvider, while the DNS-specific Present/CleanUp/Timeout contract lives
 // in pkg/cert.DNSProvider and is shared with the cert.Manager self-sign path.
+
 package api
 
 import (

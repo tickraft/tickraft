@@ -6,6 +6,7 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/tickraft/tickraft/internal/auth"
@@ -53,7 +54,7 @@ func TestRegistrar_DuplicateUser(t *testing.T) {
 
 	ctx := context.Background()
 	_, err = reg.Register(ctx, "existinguser", "password123", "test@example.com")
-	if err != authcore.ErrUserExists {
+	if !errors.Is(err, authcore.ErrUserExists) {
 		t.Errorf("expected ErrUserExists, got %v", err)
 	}
 }

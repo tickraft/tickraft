@@ -9,10 +9,16 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
+
+// statusColumn is the DB column name shared by the acknowledge/resolve
+// update statements. Extracted as a package-level constant to satisfy
+// goconst.
+const statusColumn = "status"
 
 // recordStore is the GORM-backed implementation of RecordStore,
 // accessing the database through a *gorm.DB.
@@ -22,6 +28,8 @@ type recordStore struct {
 
 // NewRecordStore creates a new RecordStore backed by the given
 // *gorm.DB.
+//
+//nolint:revive // recordStore is deliberately unexported; callers consume it through the exported RecordStore interface
 func NewRecordStore(dbc *gorm.DB) *recordStore {
 	return &recordStore{dbc: dbc}
 }
@@ -65,15 +73,11 @@ func (s *recordStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 // descending ID, plus the total count. page starts at 1; size is the maximum
 // number of items. A zero-value filter returns all records.
 func (s *recordStore) List(ctx context.Context, page, size int, filter RecordFilter) ([]*Record, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	query := s.dbc.WithContext(ctx).Model(&Record{})
 	if filter.Severity != "" {
@@ -115,8 +119,8 @@ func (s *recordStore) Acknowledge(ctx context.Context, id int64) (*Record, error
 	result := s.dbc.WithContext(ctx).
 		Model(&Record{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"status":          "acknowledged",
+		Updates(map[string]any{
+			statusColumn:      StatusAcknowledged,
 			"acknowledged_at": now,
 		})
 	if result.Error != nil {
@@ -142,8 +146,8 @@ func (s *recordStore) Resolve(ctx context.Context, id int64) (*Record, error) {
 	result := s.dbc.WithContext(ctx).
 		Model(&Record{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"status":      "resolved",
+		Updates(map[string]any{
+			statusColumn:  StatusResolved,
 			"resolved_at": now,
 		})
 	if result.Error != nil {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tickraft/tickraft/internal/service"
 )
 
@@ -42,7 +43,9 @@ At least one of --dsn or --config must be provided.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&dsn, "dsn", "", "database data source name (sqlite://, sqlite3://, or bare path); overrides the config file database section when set")
+	cmd.Flags().StringVar(&dsn, "dsn", "",
+		"database data source name (sqlite://, sqlite3://, or bare path); "+
+			"overrides the config file database section when set")
 
 	return cmd
 }

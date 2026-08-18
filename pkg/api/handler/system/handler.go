@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package system exposes system configuration, runtime info, and
+// user-profile endpoints.
 package system
 
 import (

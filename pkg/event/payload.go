@@ -32,9 +32,11 @@ type TaskPayload struct {
 	MaxRetries int `json:"max_retries,omitempty"`
 	// NextRunAt is the next scheduled execution time as Unix nanoseconds. Populated for scheduled/retry_scheduled.
 	NextRunAt int64 `json:"next_run_at,omitempty"`
-	// TriggerReason is a human-readable reason for the trigger (e.g. "cron schedule", "manual trigger", "retry after failure").
+	// TriggerReason is a human-readable reason for the trigger
+	// (e.g. "cron schedule", "manual trigger", "retry after failure").
 	TriggerReason string `json:"trigger_reason,omitempty"`
-	// ChangedBy is the user or system component that initiated the change. Populated for created/updated/deleted/paused/resumed.
+	// ChangedBy is the user or system component that initiated the change.
+	// Populated for created/updated/deleted/paused/resumed.
 	ChangedBy string `json:"changed_by,omitempty"`
 }
 
@@ -126,7 +128,8 @@ type StatusChangePayload struct {
 	// The standard term for the module is "collector" per the
 	// terminology rules.
 	MonitorID string `json:"monitor_id,omitempty"`
-	// MetricName is the metric name that directly caused the status change. Populated when the change is attributable to a single metric.
+	// MetricName is the metric name that directly caused the status change.
+	// Populated when the change is attributable to a single metric.
 	MetricName string `json:"metric_name,omitempty"`
 	// MetricValue is the metric value observed at the time of the status change. Populated together with MetricName.
 	MetricValue float64 `json:"metric_value,omitempty"`
@@ -323,7 +326,8 @@ type RemediationPayload struct {
 	Status string `json:"status,omitempty"`
 	// Error is the error message when the remediation fails. Populated for completed (failure/timeout).
 	Error string `json:"error,omitempty"`
-	// SkipReason is the reason for skipping: idempotent, cooldown, circuit_breaker, condition_mismatch. Populated for skipped.
+	// SkipReason is the reason for skipping: idempotent, cooldown, circuit_breaker,
+	// condition_mismatch. Populated for skipped.
 	SkipReason string `json:"skip_reason,omitempty"`
 	// ExecutorType is the executor type (e.g. http, local, webhook, ssh).
 	ExecutorType string `json:"executor_type,omitempty"`

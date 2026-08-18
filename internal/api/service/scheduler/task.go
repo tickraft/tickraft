@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/internal/api/service/taskconv"
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
@@ -26,7 +28,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/scheduler"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
-	"go.uber.org/zap"
 )
 
 // Compile-time assertion that TaskService implements task.Service.
@@ -51,7 +52,8 @@ type TaskService struct {
 
 // NewTaskService creates a scheduler-backed TaskService from the given engine
 // and persistent stores. If logger is nil, a no-op logger is used.
-func NewTaskService(engine schedtask.Manager, tasks schedtask.Store, execs schedtask.ExecutionStore, logger *zap.Logger) *TaskService {
+func NewTaskService(engine schedtask.Manager, tasks schedtask.Store,
+	execs schedtask.ExecutionStore, logger *zap.Logger) *TaskService {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -204,7 +206,7 @@ func (s *TaskService) TriggerTask(ctx context.Context, id int64) error {
 
 	exec := &schedtask.Execution{
 		TaskID:      id,
-		Status:      "triggered",
+		Status:      schedtask.StatusTriggered,
 		StartedAt:   time.Now(),
 		TriggerType: string(schedtask.TriggerTypeManual),
 	}
@@ -240,7 +242,12 @@ func (s *TaskService) ResumeTask(_ context.Context, id int64) error {
 // ListExecutions returns a page of executions matching the filter and the
 // total count. A taskID <= 0 lists executions across all tasks. Results are
 // enriched with the owning task's name, resolved from the task store.
-func (s *TaskService) ListExecutions(ctx context.Context, taskID int64, page, size int, filter task.ExecutionFilter) ([]task.Execution, int64, error) {
+func (s *TaskService) ListExecutions(
+	ctx context.Context,
+	taskID int64,
+	page, size int,
+	filter task.ExecutionFilter,
+) ([]task.Execution, int64, error) {
 	var taskIDs []int64
 	nameOf := func(id int64) string { return "" }
 	if filter.TaskName != "" || taskID <= 0 {
@@ -373,9 +380,7 @@ func (s *TaskService) assignID(ctx context.Context) (int64, error) {
 		}
 		var maxID int64
 		for _, t := range existing {
-			if t.ID > maxID {
-				maxID = t.ID
-			}
+			maxID = max(maxID, t.ID)
 		}
 		atomic.StoreInt64(&s.nextID, maxID)
 	})
@@ -421,6 +426,8 @@ func validateScheduleInterval(schedule string) error {
 	}
 	interval, err := time.ParseDuration(schedule)
 	if err != nil {
+		//nolint:nilerr // unreachable in practice: isIntervalSchedule already parsed this
+		// value successfully, and malformed durations are rejected later by parseSchedule
 		return nil // malformed durations are handled later by parseSchedule
 	}
 	minSecs := quota.Ceiling(quota.TypeScheduledTaskInterval)
@@ -450,7 +457,7 @@ func executionToHandler(e *schedtask.Execution) task.Execution {
 		ID:           e.ID,
 		TaskID:       e.TaskID,
 		ExecutorType: e.ExecutorName,
-		Status:       lifecycleStatus(e.Status),
+		Status:       schedtask.ToLifecycleStatus(e.Status),
 		Output:       e.Output,
 		Error:        e.Error,
 		StatusCode:   e.StatusCode,
@@ -465,20 +472,9 @@ func executionToHandler(e *schedtask.Execution) task.Execution {
 	return h
 }
 
-// lifecycleStatus maps a persisted execution status to the API contract
-// lifecycle status (pending/running/success/failed).
-func lifecycleStatus(stored string) string {
-	switch stored {
-	case "normal":
-		return "success"
-	case "abnormal", "unknown":
-		return "failed"
-	case "triggered":
-		return "running"
-	default:
-		return stored
-	}
-}
+// statusRunning aliases schedtask.LifecycleRunning for the behavioral
+// tests in this package (see task_test.go).
+const statusRunning = schedtask.LifecycleRunning
 
 // mapError translates scheduler and store errors into handler-level service
 // errors carrying the appropriate HTTP status and business code.
@@ -502,23 +498,21 @@ func mapError(err error) error {
 }
 
 // clampPaging normalizes page and size parameters to sane defaults.
-func clampPaging(page, size int) (int, int) {
-	if page < 1 {
-		page = 1
+func clampPaging(page, size int) (clampedPage, clampedSize int) {
+	clampedPage = page
+	clampedSize = size
+	clampedPage = max(clampedPage, 1)
+	if clampedSize < 1 {
+		clampedSize = 20
 	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 100 {
-		size = 100
-	}
-	return page, size
+	clampedSize = min(clampedSize, 100)
+	return clampedPage, clampedSize
 }
 
 // pageWindow returns the [start, end) slice indices for the given page and
 // size within a collection of total length.
-func pageWindow(page, size, total int) (int, int) {
-	start := min(max((page-1)*size, 0), total)
-	end := min(start+size, total)
+func pageWindow(page, size, total int) (start, end int) {
+	start = min(max((page-1)*size, 0), total)
+	end = min(start+size, total)
 	return start, end
 }

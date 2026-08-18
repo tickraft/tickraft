@@ -13,12 +13,21 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/governance"
-	"go.uber.org/zap"
+	"github.com/tickraft/tickraft/pkg/types"
 )
+
+// sourceTimeout marks a status change as a heartbeat loss reported by
+// telemetry.MarkOffline.
+const sourceTimeout = "timeout"
+
+// statusOffline is the abnormal asset state for an unreachable asset.
+const statusOffline = "offline"
 
 // DispatchResult is the structured outcome of a synchronous Dispatch call.
 type DispatchResult struct {
@@ -46,10 +55,10 @@ type DispatchResult struct {
 	Message string
 }
 
-// dispatch is the event-bus subscription callback. It delegates to Dispatch
+// onBusEvent is the event-bus subscription callback. It delegates to Dispatch
 // and discards the result so the existing fire-and-forget semantics are
 // preserved.
-func (e *Engine) dispatch(ctx context.Context, evt alert.Event) {
+func (e *Engine) onBusEvent(ctx context.Context, evt alert.Event) {
 	// Dispatch returns a DispatchResult carrying observability metadata (matched
 	// rules, dispatched channels). The event-bus callback has no caller to
 	// surface this to, and Dispatch already logs every relevant outcome
@@ -107,36 +116,8 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// aggregated alerts are still recorded (OnAlert) but skip channel
 	// dispatch. default deployments pass an empty chain, so this loop
 	// is a no-op and Dispatch falls through to rule evaluation.
-	for _, g := range guards {
-		decision := process(ctx, g, &evt, e.logger)
-		switch decision {
-		case governance.DecisionSuppress:
-			e.recordAlert(ctx, evt, eventID)
-			e.logger.Debug("alert suppressed by governance guard",
-				zap.String("event_id", eventID),
-				zap.String("guard", guardName(g)),
-				zap.String("type", string(evt.Type)),
-				zap.Int64("asset_id", evt.AssetID),
-			)
-			return DispatchResult{
-				Accepted: false,
-				EventID:  eventID,
-				Message:  "alert suppressed by governance guard",
-			}
-		case governance.DecisionAggregate:
-			e.recordAlert(ctx, evt, eventID)
-			e.logger.Debug("alert aggregated by governance guard",
-				zap.String("event_id", eventID),
-				zap.String("guard", guardName(g)),
-				zap.String("type", string(evt.Type)),
-				zap.Int64("asset_id", evt.AssetID),
-			)
-			return DispatchResult{
-				Accepted: false,
-				EventID:  eventID,
-				Message:  "alert aggregated by governance guard",
-			}
-		}
+	if res, suppressed := e.runGovernanceGuards(ctx, guards, &evt, eventID); suppressed {
+		return res
 	}
 
 	// All governance guards passed (DecisionPass). Invoke the post-guard
@@ -145,8 +126,6 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// deployments, so this is a no-op there.
 	postGuardHook(ctx, e.postGuardHook, &evt, e.logger)
 
-	matchedRules := make([]string, 0)
-	matched := len(rules) == 0
 	// Collect structured violations from any matched rule that implements
 	// ViolationMatcher. When a compound rule (e.g. "cpu > 90 && mem > 85")
 	// matches multiple conditions, each condition contributes one Violation.
@@ -156,19 +135,7 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// fingerprint, record persistence) see the full set of matched
 	// conditions. When no ViolationMatcher rules match or none return
 	// violations, the payload-populated Event.Violations are preserved.
-	var collectedViolations []alert.Violation
-	for _, r := range rules {
-		if match(ctx, r, evt, e.logger) {
-			matched = true
-			if nr, ok := r.(NamedMatcher); ok {
-				matchedRules = append(matchedRules, nr.Name())
-			}
-			if vm, ok := r.(ViolationMatcher); ok {
-				collectedViolations = append(collectedViolations,
-					matchWithViolations(ctx, vm, evt, e.logger)...)
-			}
-		}
-	}
+	matchedRules, collectedViolations, matched := e.evaluateRules(ctx, rules, evt)
 	if len(collectedViolations) > 0 {
 		evt.Violations = collectedViolations
 	}
@@ -191,7 +158,6 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// channel notification.
 	e.recordAlert(ctx, evt, eventID)
 
-	dispatchedChannels := make([]string, 0, len(channels))
 	if len(channels) == 0 {
 		// No channels registered: log the alert so it is still
 		// observable in deployments without a configured
@@ -217,6 +183,107 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 		}
 	}
 
+	dispatchedChannels := e.dispatchToChannels(ctx, channels, evt, eventID)
+
+	return DispatchResult{
+		Accepted:           true,
+		EventID:            eventID,
+		MatchedRules:       matchedRules,
+		DispatchedChannels: dispatchedChannels,
+		Message:            "alert accepted",
+	}
+}
+
+// runGovernanceGuards runs the governance guard chain invoked before
+// rule evaluation. The first non-Pass decision short-circuits the chain:
+// the alert is still recorded (the OnAlert callback is invoked) but
+// notification channels are skipped. The bool result reports whether the
+// chain short-circuited; when it is true, res is the DispatchResult
+// Dispatch must return.
+func (e *Engine) runGovernanceGuards(
+	ctx context.Context,
+	guards []governance.Guard,
+	evt *alert.Event,
+	eventID string,
+) (res DispatchResult, suppressed bool) {
+	for _, g := range guards {
+		decision := process(ctx, g, evt, e.logger)
+		switch decision {
+		case governance.DecisionPass:
+			// Guard passed; continue with the next guard.
+		case governance.DecisionSuppress:
+			e.recordAlert(ctx, *evt, eventID)
+			e.logger.Debug("alert suppressed by governance guard",
+				zap.String("event_id", eventID),
+				zap.String("guard", guardName(g)),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
+			)
+			return DispatchResult{
+				Accepted: false,
+				EventID:  eventID,
+				Message:  "alert suppressed by governance guard",
+			}, true
+		case governance.DecisionAggregate:
+			e.recordAlert(ctx, *evt, eventID)
+			e.logger.Debug("alert aggregated by governance guard",
+				zap.String("event_id", eventID),
+				zap.String("guard", guardName(g)),
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
+			)
+			return DispatchResult{
+				Accepted: false,
+				EventID:  eventID,
+				Message:  "alert aggregated by governance guard",
+			}, true
+		}
+	}
+	return DispatchResult{}, false
+}
+
+// evaluateRules evaluates all registered rules (no short-circuit) so
+// that every matching rule name is collected for the response. This
+// differs from the historical fire-and-forget dispatch path which broke
+// on the first match; the dispatch decision (any-match) is unchanged.
+// Each rule.Match call is wrapped with panic recovery so a buggy custom
+// Matcher cannot crash the engine; a panicking rule is logged and
+// treated as not matching. It returns the matched rule names, the
+// structured violations collected from ViolationMatcher rules, and
+// whether the alert matched (an empty rule set defaults to matched).
+func (e *Engine) evaluateRules(
+	ctx context.Context,
+	rules []Matcher,
+	evt alert.Event,
+) (matchedRules []string, collectedViolations []alert.Violation, matched bool) {
+	matchedRules = make([]string, 0)
+	matched = len(rules) == 0
+	for _, r := range rules {
+		if match(ctx, r, evt, e.logger) {
+			matched = true
+			if nr, ok := r.(NamedMatcher); ok {
+				matchedRules = append(matchedRules, nr.Name())
+			}
+			if vm, ok := r.(ViolationMatcher); ok {
+				collectedViolations = append(collectedViolations,
+					matchWithViolations(ctx, vm, evt, e.logger)...)
+			}
+		}
+	}
+	return matchedRules, collectedViolations, matched
+}
+
+// dispatchToChannels submits one notification job to the worker pool
+// per registered channel and returns the channel names that received a
+// dispatch request. Channel sends happen asynchronously; this function
+// returns as soon as the jobs are submitted.
+func (e *Engine) dispatchToChannels(
+	ctx context.Context,
+	channels []Channel,
+	evt alert.Event,
+	eventID string,
+) []string {
+	dispatchedChannels := make([]string, 0, len(channels))
 	for _, ch := range channels {
 		c := ch
 		dispatchedChannels = append(dispatchedChannels, c.Name())
@@ -254,14 +321,7 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 			}
 		}
 	}
-
-	return DispatchResult{
-		Accepted:           true,
-		EventID:            eventID,
-		MatchedRules:       matchedRules,
-		DispatchedChannels: dispatchedChannels,
-		Message:            "alert accepted",
-	}
+	return dispatchedChannels
 }
 
 // onAlert invokes the OnAlert callback with panic recovery so that a
@@ -306,7 +366,12 @@ func (e *Engine) recordAlert(ctx context.Context, evt alert.Event, eventID strin
 // that a buggy guard cannot crash the engine. A panic is recovered,
 // logged, and treated as governance.DecisionPass so the alert is not silently swallowed
 // by a faulty guard.
-func process(ctx context.Context, g governance.Guard, evt *alert.Event, logger *zap.Logger) (decision governance.Decision) {
+func process(
+	ctx context.Context,
+	g governance.Guard,
+	evt *alert.Event,
+	logger *zap.Logger,
+) (decision governance.Decision) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("governance guard panicked",
@@ -344,7 +409,13 @@ func postGuardHook(ctx context.Context, hook PostGuardHook, evt *alert.Event, lo
 // handleDeadLetter invokes the DeadLetterHandler with panic recovery so a
 // buggy handler cannot crash the engine. The event is already lost from the
 // notification path, so a panic here is logged and swallowed.
-func handleDeadLetter(ctx context.Context, handler DeadLetterHandler, evt alert.Event, channelName string, logger *zap.Logger) {
+func handleDeadLetter(
+	ctx context.Context,
+	handler DeadLetterHandler,
+	evt alert.Event,
+	channelName string,
+	logger *zap.Logger,
+) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("deadLetterHandler panicked",
@@ -406,7 +477,7 @@ func metricPayloadToAlert(ev event.Event[event.MetricExceededPayload]) alert.Eve
 	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
 	severity := p.Severity
 	if severity == "" {
-		severity = "warning"
+		severity = string(types.SeverityWarning)
 	}
 	return alert.Event{
 		Type:      alert.TypeMetric,
@@ -474,12 +545,12 @@ func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (alert.Even
 
 	alertType := alert.TypeStatus
 	kind := alert.ViolationKindStatus
-	severity := "error"
+	severity := string(types.SeverityError)
 	message := fmt.Sprintf("asset %s transitioned %s -> %s", p.AssetID, p.PrevStatus, p.CurrStatus)
-	if p.Source == "timeout" {
+	if p.Source == sourceTimeout {
 		alertType = alert.TypeHeartbeat
 		kind = alert.ViolationKindHeartbeat
-		severity = "critical"
+		severity = string(types.SeverityCritical)
 		message = fmt.Sprintf("asset %s heartbeat lost, marked offline", p.AssetID)
 	}
 	if p.Reason != "" {
@@ -509,7 +580,7 @@ func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (alert.Even
 // recovery transitions so alerts are emitted only for degradations.
 func isAbnormalStatus(status string) bool {
 	switch status {
-	case "offline", "critical", "warning":
+	case statusOffline, string(types.SeverityCritical), string(types.SeverityWarning):
 		return true
 	default:
 		return false
@@ -520,16 +591,16 @@ func isAbnormalStatus(status string) bool {
 // the unified severity scale: critical > error > warning > info > debug.
 func mapLogLevel(level string) string {
 	switch level {
-	case "fatal", "critical":
-		return "critical"
-	case "error":
-		return "error"
-	case "warn", "warning":
-		return "warning"
-	case "info", "notice":
-		return "info"
-	case "debug":
-		return "debug"
+	case "fatal", string(types.SeverityCritical):
+		return string(types.SeverityCritical)
+	case string(types.SeverityError):
+		return string(types.SeverityError)
+	case "warn", string(types.SeverityWarning):
+		return string(types.SeverityWarning)
+	case string(types.SeverityInfo), "notice":
+		return string(types.SeverityInfo)
+	case string(types.SeverityDebug):
+		return string(types.SeverityDebug)
 	default:
 		return level
 	}

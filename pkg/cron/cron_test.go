@@ -19,7 +19,7 @@ func TestWithWorkerPool(t *testing.T) {
 
 	var count int64
 	sched := Every(1 * time.Second)
-	crontab.Add(1, sched, Lambda(func(_ context.Context) {
+	_ = crontab.Add(1, sched, Lambda(func(_ context.Context) {
 		atomic.AddInt64(&count, 1)
 	}))
 
@@ -43,7 +43,7 @@ func TestMultipleJobs(t *testing.T) {
 	for i := int64(1); i <= 5; i++ {
 		id := i
 		sched := Every(1 * time.Second)
-		crontab.Add(id, sched, Lambda(func(_ context.Context) {
+		_ = crontab.Add(id, sched, Lambda(func(_ context.Context) {
 			mu.Lock()
 			results[id]++
 			mu.Unlock()
@@ -71,7 +71,7 @@ func TestStop(t *testing.T) {
 	crontab := New(WithContext(context.Background()))
 
 	sched := Every(1 * time.Second)
-	crontab.Add(1, sched, Lambda(func(_ context.Context) {}))
+	_ = crontab.Add(1, sched, Lambda(func(_ context.Context) {}))
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -90,13 +90,13 @@ func TestAddReplace(t *testing.T) {
 	var count1, count2 int64
 
 	sched1 := Every(1 * time.Second)
-	crontab.Add(1, sched1, Lambda(func(_ context.Context) {
+	_ = crontab.Add(1, sched1, Lambda(func(_ context.Context) {
 		atomic.AddInt64(&count1, 1)
 	}))
 
 	// Replace job 1 with a different job
 	sched2 := Every(2 * time.Second)
-	crontab.Add(1, sched2, Lambda(func(_ context.Context) {
+	_ = crontab.Add(1, sched2, Lambda(func(_ context.Context) {
 		atomic.AddInt64(&count2, 1)
 	}))
 
@@ -118,11 +118,11 @@ func TestConcurrentAddRemove(t *testing.T) {
 	sched := Every(1 * time.Second)
 
 	// Concurrently add and remove entries
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(id int64) {
 			defer wg.Done()
-			crontab.Add(id, sched, Lambda(func(_ context.Context) {}))
+			_ = crontab.Add(id, sched, Lambda(func(_ context.Context) {}))
 			time.Sleep(10 * time.Millisecond)
 			crontab.Remove(id)
 		}(int64(i + 1))
@@ -140,12 +140,12 @@ func TestPanicIsolation(t *testing.T) {
 
 	// Job 1 panics; job 2 must still execute afterwards.
 	sched := Every(1 * time.Second)
-	crontab.Add(1, sched, Lambda(func(_ context.Context) {
+	_ = crontab.Add(1, sched, Lambda(func(_ context.Context) {
 		panic("boom")
 	}))
 
 	var ran int64
-	crontab.Add(2, sched, Lambda(func(_ context.Context) {
+	_ = crontab.Add(2, sched, Lambda(func(_ context.Context) {
 		atomic.AddInt64(&ran, 1)
 	}))
 

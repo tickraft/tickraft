@@ -42,9 +42,9 @@ func capturingFactory(counter *int32) Factory {
 	}
 }
 
-// resetRegistryForTest clears all registered factories. It is intended
+// clearRegistry clears all registered factories. It is intended
 // for test isolation only and must never be called from production code.
-func resetRegistryForTest() {
+func clearRegistry() {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry = make(map[string]Factory)
@@ -58,7 +58,7 @@ func resetRegistryForTest() {
 // name is retrievable via LookupFactory, and that an unregistered type
 // returns nil.
 func TestRegisterAndLookup(t *testing.T) {
-	t.Cleanup(resetRegistryForTest)
+	t.Cleanup(clearRegistry)
 
 	var calls int32
 	Register("sms", capturingFactory(&calls))
@@ -74,7 +74,7 @@ func TestRegisterAndLookup(t *testing.T) {
 // TestRegisterCaseInsensitive verifies that Register normalizes the type
 // name to lowercase so that lookups are case-insensitive.
 func TestRegisterCaseInsensitive(t *testing.T) {
-	t.Cleanup(resetRegistryForTest)
+	t.Cleanup(clearRegistry)
 
 	var calls int32
 	Register("Slack", capturingFactory(&calls))
@@ -92,7 +92,7 @@ func TestRegisterCaseInsensitive(t *testing.T) {
 // TestRegisterOverwrite verifies that registering a new factory for an
 // existing type name overwrites the previous one.
 func TestRegisterOverwrite(t *testing.T) {
-	t.Cleanup(resetRegistryForTest)
+	t.Cleanup(clearRegistry)
 
 	var first, second int32
 	Register("overwritable", capturingFactory(&first))
@@ -102,7 +102,7 @@ func TestRegisterOverwrite(t *testing.T) {
 	if f == nil {
 		t.Fatal("expected factory, got nil")
 	}
-	f(Config{Type: "overwritable"})
+	_, _ = f(Config{Type: "overwritable"})
 
 	if first != 0 {
 		t.Errorf("first factory call count: got %d, want 0", first)
@@ -119,12 +119,12 @@ func TestRegisterOverwrite(t *testing.T) {
 // TestRegisterConcurrentSafe verifies that concurrent Register calls do
 // not trigger the race detector. Run with -race to be meaningful.
 func TestRegisterConcurrentSafe(t *testing.T) {
-	t.Cleanup(resetRegistryForTest)
+	t.Cleanup(clearRegistry)
 
 	const goroutines = 50
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(n int) {
 			defer wg.Done()
 			typeName := fmt.Sprintf("concurrent-%d", n)
@@ -146,7 +146,7 @@ func TestRegisterConcurrentSafe(t *testing.T) {
 // TestResetRegistryForTest verifies that ResetRegistryForTest clears all
 // registered factories.
 func TestResetRegistryForTest(t *testing.T) {
-	t.Cleanup(resetRegistryForTest)
+	t.Cleanup(clearRegistry)
 
 	var calls int32
 	Register("temp", capturingFactory(&calls))

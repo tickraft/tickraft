@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // procMockStore implements asset.Store for testing.
@@ -88,9 +89,7 @@ func (s *procMockStore) List(_ context.Context, page, size int, _ asset.ListFilt
 	for _, r := range s.assets {
 		all = append(all, r)
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
@@ -99,9 +98,7 @@ func (s *procMockStore) List(_ context.Context, page, size int, _ asset.ListFilt
 		return nil, total, nil
 	}
 	end := offset + size
-	if end > int(total) {
-		end = int(total)
-	}
+	end = min(end, int(total))
 	return all[offset:end], total, nil
 }
 
@@ -138,7 +135,8 @@ func (s *procMockStore) ExistsByKey(_ context.Context, key string) (bool, error)
 	return false, nil
 }
 
-func (s *procMockStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
+func (s *procMockStore) ListKeyset(_ context.Context,
+	_ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
 	return pagination.PageResult[*asset.Asset]{}, nil
 }
 

@@ -38,8 +38,8 @@ type CursorPageData struct {
 }
 
 // Success writes a successful response with code=0.
-func Success(c *app.RequestContext, data interface{}) {
-	c.JSON(http.StatusOK, Response{
+func Success(arc *app.RequestContext, data any) {
+	arc.JSON(http.StatusOK, Response{
 		Code:    0,
 		Message: "ok",
 		Data:    data,
@@ -48,9 +48,9 @@ func Success(c *app.RequestContext, data interface{}) {
 
 // Fail writes an error response by auto-mapping the error to HTTP status and code.
 // It checks: 1) ErrorCoder interface, 2) known sentinel errors, 3) fallback to 500.
-func Fail(c *app.RequestContext, err error) {
+func Fail(arc *app.RequestContext, err error) {
 	httpStatus, code, msg := mapError(err)
-	c.JSON(httpStatus, Response{
+	arc.JSON(httpStatus, Response{
 		Code:    code,
 		Message: msg,
 		Data:    nil,
@@ -58,8 +58,8 @@ func Fail(c *app.RequestContext, err error) {
 }
 
 // FailWithCode writes an error response with explicit HTTP status, code, and message.
-func FailWithCode(c *app.RequestContext, httpStatus int, code int, msg string) {
-	c.JSON(httpStatus, Response{
+func FailWithCode(arc *app.RequestContext, httpStatus, code int, msg string) {
+	arc.JSON(httpStatus, Response{
 		Code:    code,
 		Message: msg,
 		Data:    nil,
@@ -67,8 +67,8 @@ func FailWithCode(c *app.RequestContext, httpStatus int, code int, msg string) {
 }
 
 // FailWithData writes an error response with additional data.
-func FailWithData(c *app.RequestContext, httpStatus int, code int, msg string, data interface{}) {
-	c.JSON(httpStatus, Response{
+func FailWithData(arc *app.RequestContext, httpStatus, code int, msg string, data any) {
+	arc.JSON(httpStatus, Response{
 		Code:    code,
 		Message: msg,
 		Data:    data,
@@ -76,8 +76,8 @@ func FailWithData(c *app.RequestContext, httpStatus int, code int, msg string, d
 }
 
 // SuccessPage writes a successful paginated response.
-func SuccessPage(c *app.RequestContext, items interface{}, total int64, page int, size int) {
-	c.JSON(http.StatusOK, Response{
+func SuccessPage(arc *app.RequestContext, items any, total int64, page, size int) {
+	arc.JSON(http.StatusOK, Response{
 		Code:    0,
 		Message: "ok",
 		Data: PageData{
@@ -92,8 +92,8 @@ func SuccessPage(c *app.RequestContext, items interface{}, total int64, page int
 // SuccessPageCursor writes a successful cursor-based (keyset) paginated
 // response. nextCursor is the opaque token clients pass as ?cursor= to
 // fetch the next page; pass an empty string when there are no more rows.
-func SuccessPageCursor(c *app.RequestContext, items interface{}, total int64, nextCursor string, size int) {
-	c.JSON(http.StatusOK, Response{
+func SuccessPageCursor(arc *app.RequestContext, items any, total int64, nextCursor string, size int) {
+	arc.JSON(http.StatusOK, Response{
 		Code:    0,
 		Message: "ok",
 		Data: CursorPageData{

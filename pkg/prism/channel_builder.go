@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package prism implements the AIOps engine that unifies alerting,
+// notification channels, rule evaluation, and self-healing remediation
+// for the tickraft observability pipeline.
 package prism
 
 import (

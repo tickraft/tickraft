@@ -37,7 +37,7 @@ var envVarRegex = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}`)
 // so env var references may appear anywhere in the file including inside
 // quoted strings.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // config path provided by operator
 	if err != nil {
 		return nil, fmt.Errorf("read config file %q: %w", path, err)
 	}

@@ -28,6 +28,7 @@ import (
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsHandler "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/auth"
+	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
@@ -55,9 +56,157 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, err
 	}
 
-	// Map config.Server and config.Logger fields to the API server config.
-	// The Logger.Mode is passed as the API server's Mode to keep logger
-	// and server output format consistent.
+	cfg, err := buildServerConfig(rt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Bridge Hertz's hlog to the runtime zap logger so all framework-level
+	// logs (middleware recovery, access log, TLS reload, ACME, shutdown)
+	// flow through the same structured logging pipeline. This must be called
+	// before api.NewServer because NewServer calls hlog.SetLevel to apply
+	// the mode-based level filter, and that call must target the bridged
+	// logger rather than the default stderr-based hlog writer.
+	api.SetLogger(rt.logger)
+
+	srv := api.NewServer(cfg)
+	sc := rt.cfg.Server
+
+	// Build the asset-key getter from the asset store so that
+	// telemetry report endpoints can validate X-Tickraft-Asset-Key
+	// headers against existing resources.
+	assetKeyGetter := func(ctx context.Context, key string) (bool, error) {
+		return rt.assetStore.ExistsByKey(ctx, key)
+	}
+
+	// Build the RegisterOption list from the runtime's shared resources.
+	routeOpts, err := newRouteOptions(ctx, srv, rt)
+	if err != nil {
+		return nil, err
+	}
+
+	// WebSocket realtime push: subscribe to the shared event bus and
+	// register the /ws endpoint. Stopped together with the server.
+	wsH := wsHandler.NewHandler(rt.jwt, rt.eventBus(), rt.logger)
+	if err = wsH.Start(context.Background()); err != nil {
+		return nil, fmt.Errorf("start ws handler: %w", err)
+	}
+	routeOpts = append(routeOpts, router.WithWSHandler(wsH))
+
+	if err = router.RegisterRoutes(srv, rt.jwt, rt.authz, assetKeyGetter, routeOpts...); err != nil {
+		return nil, fmt.Errorf("register routes: %w", err)
+	}
+
+	if err = startACMERenewal(ctx, rt, errCh, srv, &cfg, sc); err != nil {
+		return nil, err
+	}
+
+	registerSPAAssets(rt, srv)
+
+	// goroutine lifecycle: bounded — runs srv.Start and exits after it
+	// returns (server error or Shutdown via the returned stop function).
+	// Fatal errors are reported on errCh (buffered), which the standalone
+	// supervisor drains on shutdown.
+	go func() {
+		if runErr := srv.Start(); runErr != nil {
+			select {
+			case errCh <- runErr:
+			default:
+			}
+		}
+	}()
+
+	rt.logger.Info("api server started", zap.String("addr", sc.Addr))
+
+	return func(ctx context.Context) error {
+		wsH.Stop()
+		return srv.Shutdown(ctx)
+	}, nil
+}
+
+// newRouteOptions assembles the RegisterOption list from the runtime's
+// shared resources. In standalone mode every engine (worker, prism) has
+// already been started, so all stores must be non-nil. A nil store here
+// indicates a startup sequencing bug — fail hard instead of silently
+// registering a partial route surface.
+func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]router.RegisterOption, error) {
+	sc := rt.cfg.Server
+	var routeOpts []router.RegisterOption
+
+	prismOpts, err := newPrismRouteOptions(rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, prismOpts...)
+
+	taskOpts, err := newTaskRouteOptions(rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, taskOpts...)
+
+	assetOpts, err := newAssetRouteOptions(rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, assetOpts...)
+
+	telemetryOpts, telemetrySvc, err := newTelemetryRouteOptions(rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, telemetryOpts...)
+
+	// Healthz handler: probes the database (SELECT 1) and the cache (Has
+	// sentinel key). The cache may be nil when caching is disabled; the
+	// handler skips nil dependencies.
+	healthzH := healthz.NewHandler(rt.dbc, rt.cache)
+	routeOpts = append(routeOpts, router.WithHealthzHandler(healthzH))
+
+	// Readyz handler: probes the database and cache in parallel with a
+	// per-check timeout. Returns 503 when any dependency is down so a load
+	// balancer can route traffic away from a not-yet-ready instance. The
+	// cache may be nil when caching is disabled; the handler skips nil
+	// dependencies.
+	readyzH := readyz.NewHandler(rt.dbc, rt.cache)
+	routeOpts = append(routeOpts, router.WithReadyzHandler(readyzH))
+
+	certOpts, err := newCertificateRouteOptions(srv, sc.TLSEnabled)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, certOpts...)
+
+	templateOpts, err := newTemplateRouteOptions(rt, telemetrySvc)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, templateOpts...)
+
+	systemOpts, err := newSystemRouteOptions(ctx, rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, systemOpts...)
+
+	// i18n handler: exposes the locale list via GET /api/v1/i18n/locales.
+	// The endpoint is public (no JWT) so the frontend can discover
+	// available locales before authentication. The callers
+	// extends the locale list transparently by registering additional
+	// locale bundles in the Registry at startup.
+	if rt.i18nRegistry != nil {
+		i18nHandler := i18n.NewHandler(rt.i18nRegistry)
+		routeOpts = append(routeOpts, router.WithI18nHandler(i18nHandler))
+	}
+
+	return routeOpts, nil
+}
+
+// buildServerConfig maps config.Server and config.Logger fields to the API
+// server config, applies defaults, and validates the result. The Logger.Mode
+// is passed as the API server's Mode to keep logger and server output format
+// consistent.
+func buildServerConfig(rt *runtime) (api.ServerConfig, error) {
 	sc := rt.cfg.Server
 	cfg := api.ServerConfig{
 		Addr:            sc.Addr,
@@ -85,33 +234,16 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 
 	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("validate server tls config: %w", err)
+		return cfg, fmt.Errorf("validate server tls config: %w", err)
 	}
+	return cfg, nil
+}
 
-	// Bridge Hertz's hlog to the runtime zap logger so all framework-level
-	// logs (middleware recovery, access log, TLS reload, ACME, shutdown)
-	// flow through the same structured logging pipeline. This must be called
-	// before api.NewServer because NewServer calls hlog.SetLevel to apply
-	// the mode-based level filter, and that call must target the bridged
-	// logger rather than the default stderr-based hlog writer.
-	api.SetLogger(rt.logger)
-
-	srv := api.NewServer(cfg)
-
-	// Build the asset-key getter from the asset store so that
-	// telemetry report endpoints can validate X-Tickraft-Asset-Key
-	// headers against existing resources.
-	assetKeyGetter := func(ctx context.Context, key string) (bool, error) {
-		return rt.assetStore.ExistsByKey(ctx, key)
-	}
-
-	// Build the RegisterOption list from the runtime's shared resources.
-	// In standalone mode every engine (worker, prism) has already been
-	// started, so all stores must be non-nil. A nil store here indicates a
-	// startup sequencing bug — fail hard instead of silently registering a
-	// partial route surface.
-	var routeOpts []router.RegisterOption
-
+// newPrismRouteOptions builds the prism-backed route options: the alert
+// service (backed by the rule engine and persistent rule/record stores), the
+// channel service, and the remediation rule service, each accessed via the
+// prism engine's accessor methods.
+func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	// Alert service: backed by the rule engine and persistent stores
 	// accessed via the prism engine's accessor methods.
 	if rt.prismEngine == nil {
@@ -122,7 +254,6 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
 	}
 	alertSvc := prism.NewAlertService(eng.RuleStore(), eng.RecordStore(), eng.RuleEngine())
-	routeOpts = append(routeOpts, router.WithAlertService(alertSvc))
 
 	// Channel service: backed by the persistent channel store accessed
 	// via the prism engine.
@@ -130,7 +261,6 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
 	}
 	channelSvc := prism.NewChannelService(eng.ChannelStore(), eng)
-	routeOpts = append(routeOpts, router.WithChannelService(channelSvc))
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.
@@ -138,8 +268,17 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("start api server: prism remediation store is nil; prism engine may not have started")
 	}
 	remediationRuleSvc := prism.NewRemediationService(eng.RemediationStore())
-	routeOpts = append(routeOpts, router.WithRemediationRuleService(remediationRuleSvc))
 
+	return []router.RegisterOption{
+		router.WithAlertService(alertSvc),
+		router.WithChannelService(channelSvc),
+		router.WithRemediationRuleService(remediationRuleSvc),
+	}, nil
+}
+
+// newTaskRouteOptions builds the task service route option, backed by the
+// scheduler engine and persistent task / execution stores.
+func newTaskRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	// Task service: backed by the scheduler engine and persistent task /
 	// execution stores. The scheduler engine must have been started by
 	// this point in standalone mode; nil stores indicate a startup order
@@ -153,16 +292,24 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		rt.schedulerExecStore,
 		rt.logger,
 	)
-	routeOpts = append(routeOpts, router.WithTaskService(taskSvc))
+	return []router.RegisterOption{router.WithTaskService(taskSvc)}, nil
+}
 
+// newAssetRouteOptions builds the asset management handler route option.
+func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	// Asset handler: backed by the GORM asset store created in
 	// initRuntime. Must be non-nil.
 	if rt.assetStore == nil {
 		return nil, fmt.Errorf("start api server: asset store is nil; runtime may not have initialized")
 	}
 	assetH := asset.NewHandler(rt.assetStore, rt.logger)
-	routeOpts = append(routeOpts, router.WithAssetHandler(assetH))
+	return []router.RegisterOption{router.WithAssetHandler(assetH)}, nil
+}
 
+// newTelemetryRouteOptions builds the telemetry route options — the telemetry
+// CRUD service (with prober hooks and data stores) and the unified report
+// handler — and returns the constructed service for the template handler.
+func newTelemetryRouteOptions(rt *runtime) ([]router.RegisterOption, *telemetrysvc.Service, error) {
 	// Telemetry service: backed by the persistent MonitorStore (monitor_points
 	// table) created by the worker engines. All CRUD operations survive
 	// process restarts. Prober hooks are wired so active monitoring points
@@ -180,12 +327,6 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		))
 	}
 	telemetrySvc := telemetrysvc.NewService(monitorStore, rt.logger, telemetryOpts...)
-	routeOpts = append(routeOpts, router.WithTelemetryService(telemetrySvc))
-
-	// Telemetry data stores: wire the metric and log stores (created by the
-	// worker engines) so the telemetry handler's history/logs endpoints
-	// query real persistent data instead of returning empty stubs.
-	routeOpts = append(routeOpts, router.WithTelemetryDataStores(rt.metricStore, rt.logStore))
 
 	// Telemetry report handler: wires the webhook listener to the telemetry
 	// collector so POST /api/v1/telemetry forwards received payloads into
@@ -196,7 +337,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	// In standalone mode the telemetry collector is always started by the
 	// worker engines; nil indicates a startup order bug.
 	if rt.telemetryCollector == nil {
-		return nil, fmt.Errorf("start api server: telemetry collector is nil; worker engines may not have started")
+		return nil, nil, fmt.Errorf("start api server: telemetry collector is nil; worker engines may not have started")
 	}
 	ingest := func(_ context.Context, t *telemetry.Telemetry) {
 		rt.telemetryCollector.Submit(t)
@@ -207,38 +348,39 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		telemetryhttp.WithLogger(rt.logger),
 	)
 	reportAdapter := telemetryhandler.NewTelemetryReportHandlerAdapter(webhookListener.ReportHandler(), rt.logger)
-	routeOpts = append(routeOpts, router.WithTelemetryReportHandler(reportAdapter))
 
-	// Healthz handler: probes the database (SELECT 1) and the cache (Has
-	// sentinel key). The cache may be nil when caching is disabled; the
-	// handler skips nil dependencies.
-	healthzH := healthz.NewHandler(rt.dbc, rt.cache)
-	routeOpts = append(routeOpts, router.WithHealthzHandler(healthzH))
+	// Telemetry data stores: wire the metric and log stores (created by the
+	// worker engines) so the telemetry handler's history/logs endpoints
+	// query real persistent data instead of returning empty stubs.
+	return []router.RegisterOption{
+		router.WithTelemetryService(telemetrySvc),
+		router.WithTelemetryDataStores(rt.metricStore, rt.logStore),
+		router.WithTelemetryReportHandler(reportAdapter),
+	}, telemetrySvc, nil
+}
 
-	// Readyz handler: probes the database and cache in parallel with a
-	// per-check timeout. Returns 503 when any dependency is down so a load
-	// balancer can route traffic away from a not-yet-ready instance. The
-	// cache may be nil when caching is disabled; the handler skips nil
-	// dependencies.
-	readyzH := readyz.NewHandler(rt.dbc, rt.cache)
-	routeOpts = append(routeOpts, router.WithReadyzHandler(readyzH))
-
-	// Certificate reload handler: registered only when TLS is enabled so the
-	// POST /api/v1/system/certificates/reload endpoint is available exactly
-	// when there is a live certificate to reload. The handler delegates to
-	// srv.ReloadTLSConfig, which atomically swaps the active *tls.Config and
-	// returns the SHA-256 fingerprint of the new leaf certificate.
-	if sc.TLSEnabled {
-		if _, err := srv.ReloadTLSConfig(); err != nil {
-			return nil, fmt.Errorf("initial TLS config load: %w", err)
-		}
-		certHandler, err := certificates.NewHandler(srv)
-		if err != nil {
-			return nil, fmt.Errorf("create certificate handler: %w", err)
-		}
-		routeOpts = append(routeOpts, router.WithCertificateHandler(certHandler))
+// newCertificateRouteOptions builds the certificate reload handler route
+// option. The handler is registered only when TLS is enabled so the
+// POST /api/v1/system/certificates/reload endpoint is available exactly
+// when there is a live certificate to reload. The handler delegates to
+// srv.ReloadTLSConfig, which atomically swaps the active *tls.Config and
+// returns the SHA-256 fingerprint of the new leaf certificate.
+func newCertificateRouteOptions(srv *api.Server, tlsEnabled bool) ([]router.RegisterOption, error) {
+	if !tlsEnabled {
+		return nil, nil
 	}
+	if _, err := srv.ReloadTLSConfig(); err != nil {
+		return nil, fmt.Errorf("initial TLS config load: %w", err)
+	}
+	certHandler, err := certificates.NewHandler(srv)
+	if err != nil {
+		return nil, fmt.Errorf("create certificate handler: %w", err)
+	}
+	return []router.RegisterOption{router.WithCertificateHandler(certHandler)}, nil
+}
 
+// newTemplateRouteOptions builds the telemetry template handler route option.
+func newTemplateRouteOptions(rt *runtime, telemetrySvc *telemetrysvc.Service) ([]router.RegisterOption, error) {
 	// Telemetry template handler: backed by the GORM template store,
 	// seeded on every startup with the CE built-in template set
 	// (icmp/tcp/http(s); LoadBuiltinTemplates is idempotent and removes
@@ -251,8 +393,12 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("load builtin telemetry templates: %w", err)
 	}
 	templateH := telemetryhandler.NewTemplateHandler(templateStore, telemetrySvc)
-	routeOpts = append(routeOpts, router.WithTemplateHandler(templateH))
+	return []router.RegisterOption{router.WithTemplateHandler(templateH)}, nil
+}
 
+// newSystemRouteOptions builds the system service route option and migrates
+// its schema.
+func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterOption, error) {
 	// System service: backed by the database for config persistence,
 	// build-time metadata for version info, and the runtime's task /
 	// asset / execution stores for global stats. Always available when
@@ -261,115 +407,90 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	if err := systemSvc.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate system service: %w", err)
 	}
-	routeOpts = append(routeOpts, router.WithSystemService(systemSvc))
+	return []router.RegisterOption{router.WithSystemService(systemSvc)}, nil
+}
 
-	// i18n handler: exposes the locale list via GET /api/v1/i18n/locales.
-	// The endpoint is public (no JWT) so the frontend can discover
-	// available locales before authentication. The callers
-	// extends the locale list transparently by registering additional
-	// locale bundles in the Registry at startup.
-	if rt.i18nRegistry != nil {
-		i18nHandler := i18n.NewHandler(rt.i18nRegistry)
-		routeOpts = append(routeOpts, router.WithI18nHandler(i18nHandler))
+// startACMERenewal registers the HTTP-01 challenge handler and starts the
+// ACME renewal loop when ACME auto-issuance is enabled.
+//
+// ACME: when ACME auto-issuance is enabled register the HTTP-01 challenge
+// handler on the Hertz server so ACME validations reach it on the same
+// port as the API, then start the ACME renewal loop in a background
+// goroutine. The loop is tied to the server context so it exits when the
+// server shuts down. Failures to issue are logged by the loop and do not
+// abort startup, so a transient ACME server failure cannot take an
+// otherwise-healthy server down.
+func startACMERenewal(
+	ctx context.Context,
+	rt *runtime,
+	errCh chan<- error,
+	srv *api.Server,
+	cfg *api.ServerConfig,
+	sc config.ServerConfig,
+) error {
+	if !sc.TLSEnabled || !sc.ACME.Enabled {
+		return nil
+	}
+	http01 := api.NewHTTP01Provider()
+	api.SetACMEProvider(http01)
+	srv.Group("").GET(api.HTTP01ChallengePath+":token", http01.Handler)
+
+	// File-backed ACME cert store so issued certificates and the ACME
+	// account key survive process restarts. The store writes the most
+	// recent certificate to server.crt.pem / server.key.pem; these paths
+	// are set on the server config so ReloadTLSConfig picks them up.
+	acmeDataDir := filepath.Join("data", "acme")
+	acmeCertStore, err := api.NewFileACMECertStore(acmeDataDir)
+	if err != nil {
+		return fmt.Errorf("create acme cert store: %w", err)
+	}
+	cfg.TLSCertFile = acmeCertStore.ServerCertFile()
+	cfg.TLSKeyFile = acmeCertStore.ServerKeyFile()
+	// Rebuild the TLS config so the cert paths point at the ACME store.
+	if _, err := srv.ReloadTLSConfig(); err != nil {
+		// Pre-issuance: the cert files do not exist yet. This is
+		// expected on first start; the ACME loop will create them.
+		rt.logger.Debug("acme: initial tls reload deferred (no cert yet)", zap.Error(err))
 	}
 
-	// WebSocket realtime push: subscribe to the shared event bus and
-	// register the /ws endpoint. Stopped together with the server.
-	wsH := wsHandler.NewHandler(rt.jwt, rt.eventBus(), rt.logger)
-	if err := wsH.Start(context.Background()); err != nil {
-		return nil, fmt.Errorf("start ws handler: %w", err)
+	acmeMgr := &api.ACMEManager{
+		DirectoryURL:  cfg.ACME.DirectoryURL,
+		Email:         cfg.ACME.Email,
+		ChallengeType: cfg.ACME.ChallengeType,
+		Domains:       cfg.ACME.Domains,
+		Reloader:      srv,
+		CertStore:     acmeCertStore,
 	}
-	routeOpts = append(routeOpts, router.WithWSHandler(wsH))
-
-	if err := router.RegisterRoutes(srv, rt.jwt, rt.authz, assetKeyGetter, routeOpts...); err != nil {
-		return nil, fmt.Errorf("register routes: %w", err)
-	}
-
-	// ACME: when ACME auto-issuance is enabled register the HTTP-01 challenge
-	// handler on the Hertz server so ACME validations reach it on the same
-	// port as the API, then start the ACME renewal loop in a background
-	// goroutine. The loop is tied to the server context so it exits when the
-	// server shuts down. Failures to issue are logged by the loop and do not
-	// abort startup, so a transient ACME server failure cannot take an
-	// otherwise-healthy server down.
-	if sc.TLSEnabled && sc.ACME.Enabled {
-		http01 := api.NewHTTP01Provider()
-		api.SetACMEProvider(http01)
-		srv.Group("").GET(api.HTTP01ChallengePath+":token", http01.Handler)
-
-		// File-backed ACME cert store so issued certificates and the ACME
-		// account key survive process restarts. The store writes the most
-		// recent certificate to server.crt.pem / server.key.pem; these paths
-		// are set on the server config so ReloadTLSConfig picks them up.
-		acmeDataDir := filepath.Join("data", "acme")
-		acmeCertStore, err := api.NewFileACMECertStore(acmeDataDir)
-		if err != nil {
-			return nil, fmt.Errorf("create acme cert store: %w", err)
-		}
-		cfg.TLSCertFile = acmeCertStore.ServerCertFile()
-		cfg.TLSKeyFile = acmeCertStore.ServerKeyFile()
-		// Rebuild the TLS config so the cert paths point at the ACME store.
-		if _, err := srv.ReloadTLSConfig(); err != nil {
-			// Pre-issuance: the cert files do not exist yet. This is
-			// expected on first start; the ACME loop will create them.
-			rt.logger.Debug("acme: initial tls reload deferred (no cert yet)", zap.Error(err))
-		}
-
-		acmeMgr := &api.ACMEManager{
-			DirectoryURL:  cfg.ACME.DirectoryURL,
-			Email:         cfg.ACME.Email,
-			ChallengeType: cfg.ACME.ChallengeType,
-			Domains:       cfg.ACME.Domains,
-			Reloader:      srv,
-			CertStore:     acmeCertStore,
-		}
-		acmeCtx, acmeCancel := context.WithCancel(ctx)
-		// goroutine lifecycle: bound to acmeCtx (derived from ctx); Run
-		// exits when acmeCtx is cancelled (on server shutdown via ctx) or
-		// on internal ACME loop termination. The goroutine calls acmeCancel
-		// itself on exit so the acmeCtx resource is released.
-		go func() {
-			if err := acmeMgr.Run(acmeCtx); err != nil {
-				rt.logger.Error("acme manager exited", zap.Error(err))
-				select {
-				case errCh <- fmt.Errorf("acme manager: %w", err):
-				default:
-				}
+	acmeCtx, acmeCancel := context.WithCancel(ctx)
+	// goroutine lifecycle: bound to acmeCtx (derived from ctx); Run
+	// exits when acmeCtx is cancelled (on server shutdown via ctx) or
+	// on internal ACME loop termination. The goroutine calls acmeCancel
+	// itself on exit so the acmeCtx resource is released.
+	go func() {
+		if err := acmeMgr.Run(acmeCtx); err != nil {
+			rt.logger.Error("acme manager exited", zap.Error(err))
+			select {
+			case errCh <- fmt.Errorf("acme manager: %w", err):
+			default:
 			}
-			acmeCancel()
-		}()
-		rt.logger.Info("acme manager started",
-			zap.String("directory", cfg.ACME.DirectoryURL),
-			zap.Strings("domains", acmeMgr.Domains),
-		)
-	}
+		}
+		acmeCancel()
+	}()
+	rt.logger.Info("acme manager started",
+		zap.String("directory", cfg.ACME.DirectoryURL),
+		zap.Strings("domains", acmeMgr.Domains),
+	)
+	return nil
+}
 
-	// Register SPA static assets (non-fatal if frontend is not embedded).
+// registerSPAAssets registers the SPA static assets (non-fatal if frontend
+// is not embedded).
+func registerSPAAssets(rt *runtime, srv *api.Server) {
 	if distFS, distErr := web.DistFS(); distErr != nil {
 		rt.logger.Warn("frontend assets not embedded, skipping SPA", zap.Error(distErr))
 	} else if spaErr := api.RegisterSPA(srv, distFS); spaErr != nil {
 		rt.logger.Warn("register SPA", zap.Error(spaErr))
 	}
-
-	// goroutine lifecycle: bounded — runs srv.Start and exits after it
-	// returns (server error or Shutdown via the returned stop function).
-	// Fatal errors are reported on errCh (buffered), which the standalone
-	// supervisor drains on shutdown.
-	go func() {
-		if runErr := srv.Start(); runErr != nil {
-			select {
-			case errCh <- runErr:
-			default:
-			}
-		}
-	}()
-
-	rt.logger.Info("api server started", zap.String("addr", sc.Addr))
-
-	return func(ctx context.Context) error {
-		wsH.Stop()
-		return srv.Shutdown(ctx)
-	}, nil
 }
 
 // startMaintenanceLoop starts the periodic maintenance loop that cleans up
@@ -380,7 +501,9 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 // engines were not started) the retention cleanup is skipped while blacklist
 // cleanup still runs. It returns a stop function that cancels the loop and
 // waits for it to exit.
-func startMaintenanceLoop(ctx context.Context, rt *runtime,
+func startMaintenanceLoop(
+	ctx context.Context,
+	rt *runtime,
 	maintenanceInterval time.Duration,
 ) (stopFunc, error) {
 	if maintenanceInterval <= 0 {
@@ -398,7 +521,8 @@ func startMaintenanceLoop(ctx context.Context, rt *runtime,
 	// goroutine lifecycle: bound to maintCtx (cancelled by the returned
 	// stop function); runMaintenanceLoop selects on ctx.Done and exits;
 	// tracked by wg so the stop function can wait for full exit.
-	go runMaintenanceLoop(maintCtx, &wg, rt.logger, blacklistStore, rt.schedulerExecStore, retentionDays, maintenanceInterval)
+	go runMaintenanceLoop(maintCtx, &wg, rt.logger, blacklistStore,
+		rt.schedulerExecStore, retentionDays, maintenanceInterval)
 
 	rt.logger.Info("maintenance loop started",
 		zap.Duration("interval", maintenanceInterval),
@@ -428,7 +552,15 @@ func startMaintenanceLoop(ctx context.Context, rt *runtime,
 // expired token blacklist entries and deleting stale execution logs that
 // exceed the configured retention window. The loop exits when ctx is
 // cancelled.
-func runMaintenanceLoop(ctx context.Context, wg *sync.WaitGroup, logger *zap.Logger, blacklistStore auth.BlacklistStore, executionStore task.ExecutionStore, retentionDays int, interval time.Duration) {
+func runMaintenanceLoop(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	logger *zap.Logger,
+	blacklistStore auth.BlacklistStore,
+	executionStore task.ExecutionStore,
+	retentionDays int,
+	interval time.Duration,
+) {
 	defer wg.Done()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -447,7 +579,13 @@ func runMaintenanceLoop(ctx context.Context, wg *sync.WaitGroup, logger *zap.Log
 // retention window are configured, deletes execution log records older than
 // the retention period. The two cleanups are independent: a failure in one
 // does not skip the other.
-func runMaintenanceSweep(ctx context.Context, logger *zap.Logger, blacklistStore auth.BlacklistStore, executionStore task.ExecutionStore, retentionDays int) {
+func runMaintenanceSweep(
+	ctx context.Context,
+	logger *zap.Logger,
+	blacklistStore auth.BlacklistStore,
+	executionStore task.ExecutionStore,
+	retentionDays int,
+) {
 	if err := blacklistStore.CleanExpired(ctx); err != nil {
 		logger.Error("maintenance: clean expired blacklist tokens", zap.Error(err))
 	} else {

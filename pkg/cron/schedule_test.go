@@ -15,10 +15,10 @@ func TestSpecScheduleNextTimezone(t *testing.T) {
 	sched := &specSchedule{
 		sec:     1,
 		min:     1,
-		hour:    uint32(allBits(0, 23)),
-		dom:     uint32(allBits(1, 31)),
-		month:   uint16(allBits(1, 12)),
-		dow:     uint8(allBits(0, 7)),
+		hour:    allBits(0, 23),
+		dom:     allBits(1, 31),
+		month:   allBits(1, 12),
+		dow:     allBits(0, 7),
 		domStar: true,
 		dowStar: true,
 		loc:     loc,
@@ -33,8 +33,8 @@ func TestSpecScheduleNextTimezone(t *testing.T) {
 
 func TestSpecScheduleMemoryLayout(t *testing.T) {
 	size := unsafe.Sizeof(specSchedule{})
-	if size > 48 {
-		t.Fatalf("SpecSchedule size %d is too large, expected < 48 bytes", size)
+	if size > 64 {
+		t.Fatalf("SpecSchedule size %d is too large, expected < 64 bytes", size)
 	}
 	t.Logf("SpecSchedule size: %d bytes", size)
 }
@@ -59,7 +59,7 @@ func TestSpecScheduleFiveYearLimit(t *testing.T) {
 		hour:    1,
 		dom:     1 << 30, // day 30 only
 		month:   1 << 2,  // February only
-		dow:     uint8(allBits(0, 7)),
+		dow:     allBits(0, 7),
 		domStar: false,
 		dowStar: true,
 		loc:     time.UTC,
@@ -85,7 +85,7 @@ func TestSpecScheduleLeapYear(t *testing.T) {
 		hour:    1,
 		dom:     1 << 29, // day 29 only
 		month:   1 << 2,  // February only
-		dow:     uint8(allBits(0, 7)),
+		dow:     allBits(0, 7),
 		domStar: false,
 		dowStar: true,
 		loc:     time.UTC,

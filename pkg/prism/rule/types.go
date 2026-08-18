@@ -4,7 +4,10 @@
 
 package rule
 
-import "github.com/tickraft/tickraft/pkg/prism/alert"
+import (
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/types"
+)
 
 // Scene enumerates the rule matching scenes handled by the engine.
 type Scene string
@@ -15,7 +18,7 @@ const (
 	// SceneProbe matches collector probe results and passive reports.
 	SceneProbe Scene = "probe"
 	// SceneMetric matches prism metric and log events as a pre-filter.
-	SceneMetric Scene = "metric"
+	SceneMetric Scene = Scene(types.EventKindMetric)
 	// SceneRemediation matches self-healing remediation contexts,
 	// selecting which remediation workflow to dispatch for a triggering
 	// alert event.

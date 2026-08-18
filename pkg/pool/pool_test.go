@@ -34,7 +34,7 @@ func waitFor(t *testing.T, p Pool, cond func(Stats) bool, d time.Duration) {
 type counterJob struct {
 	counter *atomic.Int64
 	err     error
-	panicV  interface{}
+	panicV  any
 }
 
 func (j *counterJob) Run(ctx context.Context) error {
@@ -175,11 +175,11 @@ func TestSubmitPanic(t *testing.T) {
 	var (
 		mu       sync.Mutex
 		gotJob   Job
-		gotPanic interface{}
+		gotPanic any
 	)
 	p, err := New(
 		WithWorkers(1), WithQueueSize(1),
-		WithPanicHandler(func(job Job, r interface{}) {
+		WithPanicHandler(func(job Job, r any) {
 			mu.Lock()
 			defer mu.Unlock()
 			gotJob = job
@@ -271,9 +271,7 @@ func TestNewDefaults(t *testing.T) {
 
 	s := p.Stats()
 	expectedWarmup := runtime.NumCPU()
-	if expectedWarmup > defaultWarmup {
-		expectedWarmup = defaultWarmup
-	}
+	expectedWarmup = min(expectedWarmup, defaultWarmup)
 	if s.Workers != int64(expectedWarmup) {
 		t.Fatalf("Workers = %d, want %d (warmup)", s.Workers, expectedWarmup)
 	}
@@ -320,7 +318,7 @@ func TestShutdownGraceful(t *testing.T) {
 
 	var completed atomic.Int64
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			completed.Add(1)
 			return nil
@@ -581,7 +579,7 @@ func TestLazyWorkerStartup(t *testing.T) {
 
 	// Block all warmup workers so the queue starts filling.
 	release := make(chan struct{})
-	for i := 0; i < defaultWarmup; i++ {
+	for i := range defaultWarmup {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			<-release
 			return nil
@@ -592,7 +590,7 @@ func TestLazyWorkerStartup(t *testing.T) {
 	waitFor(t, p, func(s Stats) bool { return s.Active == int64(defaultWarmup) }, time.Second)
 
 	// Fill the queue to capacity. After this the queue is full.
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			<-release
 			return nil
@@ -605,7 +603,7 @@ func TestLazyWorkerStartup(t *testing.T) {
 	// grow + retry either enqueues immediately (the new worker
 	// drains a slot) or briefly falls through to Abort which then
 	// succeeds once the new worker drains.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			<-release
 			return nil
@@ -726,9 +724,9 @@ func TestConcurrentSubmit(t *testing.T) {
 	var done atomic.Int64
 	var submitErr atomic.Value // stores error
 	var subErrOnce sync.Once
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
-			for j := 0; j < perG; j++ {
+			for range perG {
 				if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 					defer wg.Done()
 					done.Add(1)
@@ -775,7 +773,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			defer wg.Done()
 			return nil

@@ -208,9 +208,7 @@ func TestTelemetryTemplates(t *testing.T) {
 	if applied.ID == 0 || applied.Name != "httpapi-applied-monitor" {
 		t.Fatalf("apply template: unexpected monitor %+v", applied)
 	}
-	defer func() {
-		_, _ = hs.do("DELETE", "/api/v1/telemetry/monitors/"+jsonInt64(applied.ID), nil, token)
-	}()
+	_, _ = hs.do("DELETE", "/api/v1/telemetry/monitors/"+jsonInt64(applied.ID), nil, token)
 }
 
 // TestTelemetryReportAuth asserts the telemetry report endpoint rejects

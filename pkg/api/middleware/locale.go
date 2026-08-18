@@ -8,15 +8,10 @@ import (
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/i18n"
 )
-
-// localeHeader is the HTTP header that carries the request locale as a BCP 47
-// language tag. It is sent by the frontend on every request so the backend can
-// render localized alert messages, format logs, and drive any locale-aware
-// response formatting.
-const localeHeader = "X-Tickraft-Locale"
 
 // NewLocaleMiddleware returns a Hertz middleware that reads the
 // X-Tickraft-Locale header from each request, parses it as a BCP 47 locale
@@ -30,7 +25,7 @@ const localeHeader = "X-Tickraft-Locale"
 // httputil.GetLocale.
 func NewLocaleMiddleware() app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
-		header := string(arc.GetHeader(localeHeader))
+		header := string(arc.GetHeader(httputil.HeaderLocale))
 		loc := i18n.Parse(header)
 		ctx = httputil.SetLocale(ctx, loc)
 		arc.Next(ctx)

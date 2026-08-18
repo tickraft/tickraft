@@ -13,10 +13,14 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
+
+// executorName is the executor name identifier returned by Name.
+const executorName = string(types.ExecutorTCP)
 
 // Executor dials a TCP connection to check reachability and measure
 // connection latency. It implements the executor.Executor interface and is
@@ -56,7 +60,7 @@ func New(timeout time.Duration, opts ...Option) *Executor {
 
 // Name returns the executor name identifier.
 func (p *Executor) Name() string {
-	return "tcp"
+	return executorName
 }
 
 // Capabilities returns the executor capability bitmask.

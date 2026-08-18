@@ -73,32 +73,32 @@ func (l *zapFullLogger) SetOutput(_ io.Writer) {
 // --- Logger (v ...interface{}) ---
 
 // Trace logs at Debug level (zap has no Trace level).
-func (l *zapFullLogger) Trace(v ...interface{}) {
+func (l *zapFullLogger) Trace(v ...any) {
 	l.log(hlog.LevelTrace, fmt.Sprint(v...))
 }
 
 // Debug logs at Debug level.
-func (l *zapFullLogger) Debug(v ...interface{}) {
+func (l *zapFullLogger) Debug(v ...any) {
 	l.log(hlog.LevelDebug, fmt.Sprint(v...))
 }
 
 // Info logs at Info level.
-func (l *zapFullLogger) Info(v ...interface{}) {
+func (l *zapFullLogger) Info(v ...any) {
 	l.log(hlog.LevelInfo, fmt.Sprint(v...))
 }
 
 // Notice logs at Info level (zap has no Notice level).
-func (l *zapFullLogger) Notice(v ...interface{}) {
+func (l *zapFullLogger) Notice(v ...any) {
 	l.log(hlog.LevelNotice, fmt.Sprint(v...))
 }
 
 // Warn logs at Warn level.
-func (l *zapFullLogger) Warn(v ...interface{}) {
+func (l *zapFullLogger) Warn(v ...any) {
 	l.log(hlog.LevelWarn, fmt.Sprint(v...))
 }
 
 // Error logs at Error level.
-func (l *zapFullLogger) Error(v ...interface{}) {
+func (l *zapFullLogger) Error(v ...any) {
 	l.log(hlog.LevelError, fmt.Sprint(v...))
 }
 
@@ -106,7 +106,7 @@ func (l *zapFullLogger) Error(v ...interface{}) {
 // call os.Exit(1) directly; we use Error + os.Exit to ensure the log
 // entry is flushed before exit and to keep the behavior consistent with
 // the hlog contract (Fatal is terminal).
-func (l *zapFullLogger) Fatal(v ...interface{}) {
+func (l *zapFullLogger) Fatal(v ...any) {
 	l.log(hlog.LevelFatal, fmt.Sprint(v...))
 	_ = l.logger.Sync()
 	os.Exit(1)
@@ -115,37 +115,37 @@ func (l *zapFullLogger) Fatal(v ...interface{}) {
 // --- FormatLogger (format string, v ...interface{}) ---
 
 // Tracef logs at Debug level with a formatted message.
-func (l *zapFullLogger) Tracef(format string, v ...interface{}) {
+func (l *zapFullLogger) Tracef(format string, v ...any) {
 	l.log(hlog.LevelTrace, fmt.Sprintf(format, v...))
 }
 
 // Debugf logs at Debug level with a formatted message.
-func (l *zapFullLogger) Debugf(format string, v ...interface{}) {
+func (l *zapFullLogger) Debugf(format string, v ...any) {
 	l.log(hlog.LevelDebug, fmt.Sprintf(format, v...))
 }
 
 // Infof logs at Info level with a formatted message.
-func (l *zapFullLogger) Infof(format string, v ...interface{}) {
+func (l *zapFullLogger) Infof(format string, v ...any) {
 	l.log(hlog.LevelInfo, fmt.Sprintf(format, v...))
 }
 
 // Noticef logs at Info level with a formatted message.
-func (l *zapFullLogger) Noticef(format string, v ...interface{}) {
+func (l *zapFullLogger) Noticef(format string, v ...any) {
 	l.log(hlog.LevelNotice, fmt.Sprintf(format, v...))
 }
 
 // Warnf logs at Warn level with a formatted message.
-func (l *zapFullLogger) Warnf(format string, v ...interface{}) {
+func (l *zapFullLogger) Warnf(format string, v ...any) {
 	l.log(hlog.LevelWarn, fmt.Sprintf(format, v...))
 }
 
 // Errorf logs at Error level with a formatted message.
-func (l *zapFullLogger) Errorf(format string, v ...interface{}) {
+func (l *zapFullLogger) Errorf(format string, v ...any) {
 	l.log(hlog.LevelError, fmt.Sprintf(format, v...))
 }
 
 // Fatalf logs at Error level with a formatted message and then exits.
-func (l *zapFullLogger) Fatalf(format string, v ...interface{}) {
+func (l *zapFullLogger) Fatalf(format string, v ...any) {
 	l.log(hlog.LevelFatal, fmt.Sprintf(format, v...))
 	_ = l.logger.Sync()
 	os.Exit(1)
@@ -156,37 +156,37 @@ func (l *zapFullLogger) Fatalf(format string, v ...interface{}) {
 // CtxTracef logs at Debug level. The context is accepted to satisfy the
 // hlog.CtxLogger interface; zap does not perform context-based filtering
 // so the context is not consulted.
-func (l *zapFullLogger) CtxTracef(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxTracef(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelTrace, fmt.Sprintf(format, v...))
 }
 
 // CtxDebugf logs at Debug level.
-func (l *zapFullLogger) CtxDebugf(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxDebugf(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelDebug, fmt.Sprintf(format, v...))
 }
 
 // CtxInfof logs at Info level.
-func (l *zapFullLogger) CtxInfof(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxInfof(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelInfo, fmt.Sprintf(format, v...))
 }
 
 // CtxNoticef logs at Info level.
-func (l *zapFullLogger) CtxNoticef(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxNoticef(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelNotice, fmt.Sprintf(format, v...))
 }
 
 // CtxWarnf logs at Warn level.
-func (l *zapFullLogger) CtxWarnf(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxWarnf(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelWarn, fmt.Sprintf(format, v...))
 }
 
 // CtxErrorf logs at Error level.
-func (l *zapFullLogger) CtxErrorf(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxErrorf(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelError, fmt.Sprintf(format, v...))
 }
 
 // CtxFatalf logs at Error level and then exits.
-func (l *zapFullLogger) CtxFatalf(_ context.Context, format string, v ...interface{}) {
+func (l *zapFullLogger) CtxFatalf(_ context.Context, format string, v ...any) {
 	l.log(hlog.LevelFatal, fmt.Sprintf(format, v...))
 	_ = l.logger.Sync()
 	os.Exit(1)

@@ -111,7 +111,8 @@
 //	query.Find(&users)
 //
 //	// Update
-//	result := dbc.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(map[string]interface{}{"name": "bob"})
+//	result := dbc.WithContext(ctx).Model(&model.User{}).
+//		Where("id = ?", id).Updates(map[string]interface{}{"name": "bob"})
 //	if result.Error != nil {
 //	    return errmap.MapError(result.Error)
 //	}

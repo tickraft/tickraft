@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package jwt implements JWT signing, parsing, validation, refresh-token
+// rotation, and token-revocation blacklists for tickraft authentication.
 package jwt
 
 import (

@@ -66,7 +66,7 @@ func (c *LRUCache) Get(_ context.Context, key string) ([]byte, bool) {
 		return nil, false
 	}
 
-	entry := elem.Value.(*lruEntry) //nolint:errcheck // type guaranteed by construction: only *lruEntry is pushed into evictList
+	entry := entryOf(elem)
 	if time.Now().After(entry.expireAt) {
 		c.removeElement(elem)
 		return nil, false
@@ -98,7 +98,7 @@ func (c *LRUCache) SetWithTTL(_ context.Context, key string, value []byte, ttl t
 
 	if elem, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(elem)
-		entry := elem.Value.(*lruEntry) //nolint:errcheck // type guaranteed by construction: only *lruEntry is pushed into evictList
+		entry := entryOf(elem)
 		entry.value = value
 		entry.expireAt = time.Now().Add(ttl)
 		return
@@ -159,7 +159,7 @@ func (c *LRUCache) Has(_ context.Context, key string) bool {
 		return false
 	}
 
-	entry := elem.Value.(*lruEntry) //nolint:errcheck // type guaranteed by construction: only *lruEntry is pushed into evictList
+	entry := entryOf(elem)
 	return !time.Now().After(entry.expireAt)
 }
 
@@ -177,7 +177,7 @@ func (c *LRUCache) GetWithTTL(_ context.Context, key string) ([]byte, time.Durat
 		return nil, 0, false
 	}
 
-	entry := elem.Value.(*lruEntry) //nolint:errcheck // type guaranteed by construction: only *lruEntry is pushed into evictList
+	entry := entryOf(elem)
 	now := time.Now()
 	if now.After(entry.expireAt) {
 		c.removeElement(elem)
@@ -230,6 +230,12 @@ func (c *LRUCache) Close(_ context.Context) error {
 // items map. The caller must hold c.mu.
 func (c *LRUCache) removeElement(elem *list.Element) {
 	c.evictList.Remove(elem)
-	entry := elem.Value.(*lruEntry) //nolint:errcheck // type guaranteed by construction: only *lruEntry is pushed into evictList
+	entry := entryOf(elem)
 	delete(c.items, entry.key)
+}
+
+// entryOf returns the lruEntry stored in a list element. The type assertion
+// is safe because only *lruEntry values are ever pushed into evictList.
+func entryOf(elem *list.Element) *lruEntry {
+	return elem.Value.(*lruEntry) //nolint:errcheck // invariant: only *lruEntry is stored
 }

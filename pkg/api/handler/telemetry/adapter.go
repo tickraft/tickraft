@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package telemetry exposes telemetry monitor CRUD, the unified report
+// endpoint, and history/log query endpoints.
 package telemetry
 
 import (
@@ -12,6 +14,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
 // netHTTPHandlerAdapter wraps a standard net/http.Handler so it can be
@@ -96,7 +100,7 @@ func (a *netHTTPHandlerAdapter) Report(ctx context.Context, arc *app.RequestCont
 	// the request is forwarded. The asset key header is the primary
 	// identifier for the reporting source; the remote address provides a
 	// secondary attribution channel.
-	assetKey := string(arc.GetHeader("X-Tickraft-Asset-Key"))
+	assetKey := string(arc.GetHeader(httputil.HeaderAssetKey))
 	remoteAddr := ""
 	if ra := arc.RemoteAddr(); ra != nil {
 		remoteAddr = ra.String()

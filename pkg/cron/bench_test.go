@@ -20,7 +20,7 @@ func BenchmarkSpecScheduleNext(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ss.Next(from)
 	}
 }
@@ -36,7 +36,7 @@ func BenchmarkSpecScheduleNextComplex(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ss.Next(from)
 	}
 }
@@ -47,14 +47,14 @@ func BenchmarkConstantDelayScheduleNext(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		sched.Next(from)
 	}
 }
 
 func BenchmarkParse(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := Parse("0 30 9 * * MON-FRI")
 		if err != nil {
 			b.Fatal(err)
@@ -64,7 +64,7 @@ func BenchmarkParse(b *testing.B) {
 
 func BenchmarkParseWithDescriptor(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := Parse("@hourly")
 		if err != nil {
 			b.Fatal(err)
@@ -74,7 +74,7 @@ func BenchmarkParseWithDescriptor(b *testing.B) {
 
 func BenchmarkParseWithTimezone(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := Parse("TZ=UTC 0 30 9 * * MON-FRI")
 		if err != nil {
 			b.Fatal(err)

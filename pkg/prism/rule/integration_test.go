@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"github.com/tickraft/tickraft/pkg/telemetry"
-	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/telemetry"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // TestMetricMatcher_WithPrismEngine verifies that MetricMatcher plugs into
@@ -305,14 +306,62 @@ func TestEngine_MultiSceneLoad(t *testing.T) {
 
 	rules := []Rule{
 		// 1 task rule.
-		{ID: 1, TenantID: 1, Name: "task-priority", Scene: SceneTask, Expression: "task.priority > 5", Priority: 10, Enabled: true},
+		{
+			ID:         1,
+			TenantID:   1,
+			Name:       "task-priority",
+			Scene:      SceneTask,
+			Expression: "task.priority > 5",
+			Priority:   10,
+			Enabled:    true,
+		},
 		// 2 probe rules.
-		{ID: 2, TenantID: 1, Name: "probe-error", Scene: SceneProbe, Expression: `report.log_content contains "error"`, Priority: 10, Enabled: true},
-		{ID: 3, TenantID: 1, Name: "probe-warn", Scene: SceneProbe, Expression: `report.log_content contains "warn"`, Priority: 5, Enabled: true},
+		{
+			ID:         2,
+			TenantID:   1,
+			Name:       "probe-error",
+			Scene:      SceneProbe,
+			Expression: `report.log_content contains "error"`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         3,
+			TenantID:   1,
+			Name:       "probe-warn",
+			Scene:      SceneProbe,
+			Expression: `report.log_content contains "warn"`,
+			Priority:   5,
+			Enabled:    true,
+		},
 		// 3 metric rules.
-		{ID: 4, TenantID: 1, Name: "metric-cpu", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 80`, Priority: 10, Enabled: true},
-		{ID: 5, TenantID: 1, Name: "metric-mem", Scene: SceneMetric, Expression: `alert.metrics["mem"] > 90`, Priority: 5, Enabled: true},
-		{ID: 6, TenantID: 1, Name: "metric-disk", Scene: SceneMetric, Expression: `alert.metrics["disk"] > 70`, Priority: 1, Enabled: true},
+		{
+			ID:         4,
+			TenantID:   1,
+			Name:       "metric-cpu",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["cpu"] > 80`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         5,
+			TenantID:   1,
+			Name:       "metric-mem",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["mem"] > 90`,
+			Priority:   5,
+			Enabled:    true,
+		},
+		{
+			ID:         6,
+			TenantID:   1,
+			Name:       "metric-disk",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["disk"] > 70`,
+			Priority:   1,
+			Enabled:    true,
+		},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
 		t.Fatalf("Load: %v", err)

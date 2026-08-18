@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------

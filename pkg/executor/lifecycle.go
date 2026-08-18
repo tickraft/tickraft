@@ -10,10 +10,11 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/retry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // defaultExecutionTimeout is used when the request does not specify a timeout.
@@ -135,6 +136,20 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 		r.finish(ctx, req, lastResult, execErr, retryCount, start)
 	}
 
+	r.runWithRetry(ctx, req, retryCfg, execFn, onComplete)
+}
+
+// runWithRetry dispatches execFn according to the retry configuration:
+// async retry via the time wheel when both are available, synchronous
+// retry when a retry config exists but no wheel is injected, and a bare
+// execution otherwise. onComplete is always invoked exactly once.
+func (r *runner) runWithRetry(
+	ctx context.Context,
+	req ExecutionRequest,
+	retryCfg *retry.Retry,
+	execFn func() error,
+	onComplete func(error),
+) {
 	switch {
 	case retryCfg != nil && r.wheel != nil:
 		// Async retry via time wheel: retry delays are scheduled as
@@ -177,7 +192,14 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 // finish saves the execution record and publishes the completion event.
 // retryCount is the number of retries attempted (0 when the task succeeded
 // on the first attempt or when no retry config was applied).
-func (r *runner) finish(_ context.Context, req ExecutionRequest, result *Result, execErr error, retryCount int, start time.Time) {
+func (r *runner) finish(
+	_ context.Context,
+	req ExecutionRequest,
+	result *Result,
+	execErr error,
+	retryCount int,
+	start time.Time,
+) {
 	duration := time.Since(start)
 	finishedAt := time.Now()
 
@@ -228,7 +250,8 @@ func (r *runner) finish(_ context.Context, req ExecutionRequest, result *Result,
 			payload.Output = result.Body
 			payload.Duration = int64(result.Duration)
 		}
-		if err := event.Publish(context.Background(), r.bus, event.TypeExecutionCompleted, payload, event.WithMetadata(req.Metadata)); err != nil {
+		if err := event.Publish(context.Background(), r.bus, event.TypeExecutionCompleted,
+			payload, event.WithMetadata(req.Metadata)); err != nil {
 			r.logger.Warn("failed to publish execution completed event",
 				zap.Int64("task_id", req.ID),
 				zap.Error(err),
@@ -277,9 +300,8 @@ func (r *runner) buildRetry(req ExecutionRequest) (*retry.Retry, error) {
 //   - Otherwise, if a result is present, status and error message are taken
 //     from the result.
 //   - If neither error nor result is present, status defaults to Abnormal.
-func inferStatus(result *Result, execErr error) (types.AssetStatus, string) {
-	status := types.AssetStatusAbnormal
-	errorMsg := ""
+func inferStatus(result *Result, execErr error) (status types.AssetStatus, errorMsg string) {
+	status = types.AssetStatusAbnormal
 	if execErr != nil {
 		errorMsg = execErr.Error()
 	} else if result != nil {

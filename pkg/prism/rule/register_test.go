@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	a "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // mockRuleTarget implements RuleTarget for tests without importing the prism
@@ -56,7 +57,9 @@ func TestConfig_IsEnabled(t *testing.T) {
 		want bool
 	}{
 		{"zero value", Config{}, false},
-		{"only rules", Config{Rules: []Spec{{Name: "r", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 0`}}}, true},
+		{"only rules", Config{
+			Rules: []Spec{{Name: "r", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 0`}},
+		}, true},
 		{"only store", Config{Store: &stubRuleStore{}}, true},
 		{"rules and store", Config{
 			Rules: []Spec{{Name: "r", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 0`}},
@@ -226,7 +229,15 @@ func TestRegister_StoreInitialReload(t *testing.T) {
 	target := mustNewTarget(t)
 
 	store := &stubRuleStore{rules: []Record{
-		{ID: 100, TenantID: 1, Name: "dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 50`, Enabled: true, Priority: 5},
+		{
+			ID:         100,
+			TenantID:   1,
+			Name:       "dynamic",
+			Scene:      string(SceneMetric),
+			Expression: `alert.metrics["cpu"] > 50`,
+			Enabled:    true,
+			Priority:   5,
+		},
 	}}
 	cfg := Config{
 		Logger: zap.NewNop(),
@@ -334,7 +345,15 @@ func TestRegister_EvalIntervalStartsReloadLoop(t *testing.T) {
 	var calls int64
 	store := &countingStore{
 		stubRuleStore: stubRuleStore{rules: []Record{
-			{ID: 1, TenantID: 1, Name: "dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1},
+			{
+				ID:         1,
+				TenantID:   1,
+				Name:       "dynamic",
+				Scene:      string(SceneMetric),
+				Expression: `alert.metrics["cpu"] > 0`,
+				Enabled:    true,
+				Priority:   1,
+			},
 		}},
 		calls: &calls,
 	}
@@ -379,7 +398,15 @@ func TestRegister_EvalIntervalZeroNoReloadLoop(t *testing.T) {
 	var calls int64
 	store := &countingStore{
 		stubRuleStore: stubRuleStore{rules: []Record{
-			{ID: 1, TenantID: 1, Name: "dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1},
+			{
+				ID:         1,
+				TenantID:   1,
+				Name:       "dynamic",
+				Scene:      string(SceneMetric),
+				Expression: `alert.metrics["cpu"] > 0`,
+				Enabled:    true,
+				Priority:   1,
+			},
 		}},
 		calls: &calls,
 	}
@@ -464,7 +491,15 @@ func TestRegister_FullIntegration(t *testing.T) {
 	target := mustNewTarget(t)
 
 	store := &stubRuleStore{rules: []Record{
-		{ID: 1, TenantID: 1, Name: "cpu-dynamic", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 70`, Enabled: true, Priority: 10},
+		{
+			ID:         1,
+			TenantID:   1,
+			Name:       "cpu-dynamic",
+			Scene:      string(SceneMetric),
+			Expression: `alert.metrics["cpu"] > 70`,
+			Enabled:    true,
+			Priority:   10,
+		},
 	}}
 	cfg := Config{
 		Logger: zap.NewNop(),
@@ -520,11 +555,11 @@ func TestRegister_ConcurrentMatchAfterRegister(t *testing.T) {
 	wg.Add(goroutines)
 	start := make(chan struct{})
 	ctx := context.Background()
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			<-start
-			for i := 0; i < 20; i++ {
+			for range 20 {
 				_ = mm.Match(ctx, metricEvent("cpu", 90, "critical"))
 			}
 		}()

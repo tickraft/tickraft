@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/tickraft/tickraft/pkg/errdefs"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
 func TestMapError_Nil(t *testing.T) {

@@ -36,7 +36,7 @@ type entryLocation struct {
 // entryPool recycles [Entry] values to reduce GC pressure under high
 // callback throughput. Entries are acquired in [hierarchicalWheel.AddAt]
 // and returned to the pool when they expire (in [hierarchicalWheel.tick])
-// or are explicitly removed (in [hierarchicalWheel.remove]).
+// or are explicitly removed (in [hierarchicalWheel.removeEntry]).
 //
 // All mutable fields are cleared by [releaseEntry] before an entry is
 // returned so that closures captured by Callback and references held by
@@ -203,12 +203,12 @@ func (w *hierarchicalWheel) AddAt(fireAt time.Time, cb Callback) EntryID {
 func (w *hierarchicalWheel) Remove(id EntryID) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.remove(id)
+	w.removeEntry(id)
 }
 
-// remove removes an entry by ID without acquiring the lock and returns
-// it to the entry pool. Caller must hold w.mu.
-func (w *hierarchicalWheel) remove(id EntryID) {
+// removeEntry removes an entry by ID without acquiring the lock and
+// returns it to the entry pool. Caller must hold w.mu.
+func (w *hierarchicalWheel) removeEntry(id EntryID) {
 	loc, ok := w.index[id]
 	if !ok {
 		return
@@ -250,7 +250,7 @@ func (w *hierarchicalWheel) Renew(id EntryID, duration time.Duration) EntryID {
 		}
 	}
 
-	w.remove(id)
+	w.removeEntry(id)
 	w.mu.Unlock()
 
 	if cb == nil {
@@ -310,7 +310,7 @@ func (w *hierarchicalWheel) tick() {
 	}
 
 	// Collect entries from the current seconds slot.
-	var expired []*Entry
+	expired := make([]*Entry, 0, len(w.seconds[w.secPtr]))
 	for id, entry := range w.seconds[w.secPtr] {
 		expired = append(expired, entry)
 		delete(w.index, id)
@@ -355,16 +355,17 @@ func (w *hierarchicalWheel) cascade() {
 		id := entry.ID
 
 		remainingSeconds := int(time.Until(entry.ExpireAt).Seconds())
-		if remainingSeconds < 1 {
+		switch {
+		case remainingSeconds < 1:
 			// Already expired; place in current seconds slot for immediate dispatch.
 			w.seconds[w.secPtr][id] = entry
 			w.index[id] = entryLocation{layer: 0, slot: w.secPtr}
-		} else if remainingSeconds < secondsPerMin {
+		case remainingSeconds < secondsPerMin:
 			// Within the next minute; place in the seconds wheel.
 			slot := (w.secPtr + remainingSeconds) % wheelSize
 			w.seconds[slot][id] = entry
 			w.index[id] = entryLocation{layer: 0, slot: slot}
-		} else {
+		default:
 			// Still beyond 60 seconds; reinsert into the minutes wheel.
 			minuteOffset := remainingSeconds / secondsPerMin
 			slot := (w.minPtr + minuteOffset) % wheelSize

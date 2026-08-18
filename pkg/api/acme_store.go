@@ -5,6 +5,7 @@
 // This file hosts the small PEM / certificate helpers shared by the ACME
 // manager and the TLS reload path, plus the in-memory ACMECertStore used as
 // the default non-persistent store and by tests.
+
 package api
 
 import (
@@ -23,7 +24,7 @@ func encodePEM(blockType string, der []byte) []byte {
 // encodePEMChain PEM-encodes a chain of DER blocks (e.g. a leaf certificate
 // followed by its intermediates) into a single PEM byte slice.
 func encodePEMChain(blockType string, derChain [][]byte) []byte {
-	var out []byte
+	out := make([]byte, 0, len(derChain))
 	for _, der := range derChain {
 		out = append(out, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der})...)
 	}
@@ -82,7 +83,7 @@ func (s *MemoryACMECertStore) StoreCert(_ context.Context, domain string, certPE
 
 // LoadCert returns the PEM-encoded certificate chain and private key for the
 // given domain, or (nil, nil, nil) when no certificate has been stored.
-func (s *MemoryACMECertStore) LoadCert(_ context.Context, domain string) ([]byte, []byte, error) {
+func (s *MemoryACMECertStore) LoadCert(_ context.Context, domain string) (certPEM, keyPEM []byte, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cert, ok := s.certs[domain]

@@ -40,11 +40,13 @@ func (e *ServiceError) Code() int { return e.code }
 // automatically. These are shared across all service implementations in both
 // pkg/ sub-packages and internal/api/service/ sub-packages.
 var (
-	ErrTaskNotFound            = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "task not found")
-	ErrRuleNotFound            = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "alert rule not found")
-	ErrRecordNotFound          = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "alert record not found")
-	ErrExecutionNotFound       = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "execution not found")
-	ErrChannelNotFound         = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "notification channel not found")
-	ErrRemediationRuleNotFound = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "remediation rule not found")
-	ErrInvalidRequest          = NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request")
+	ErrTaskNotFound      = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "task not found")
+	ErrRuleNotFound      = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "alert rule not found")
+	ErrRecordNotFound    = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "alert record not found")
+	ErrExecutionNotFound = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "execution not found")
+	ErrChannelNotFound   = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound,
+		"notification channel not found")
+	ErrRemediationRuleNotFound = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound,
+		"remediation rule not found")
+	ErrInvalidRequest = NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request")
 )

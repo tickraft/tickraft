@@ -58,12 +58,12 @@ func NewAuthenticator(users user.Store, _ auth.BlacklistStore, jwtMgr *jwt.JWT, 
 // Login authenticates a user by username and password, returning a login
 // result containing the token pair and policy flags on success.
 func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*auth.LoginResult, error) {
-	user, err := a.users.GetByUsername(ctx, username)
+	u, err := a.users.GetByUsername(ctx, username)
 	if err != nil {
 		return nil, auth.ErrUnauthorized
 	}
 
-	if err = password.Verify(user.PasswordHash, pwd); err != nil {
+	if err = password.Verify(u.PasswordHash, pwd); err != nil {
 		return nil, auth.ErrUnauthorized
 	}
 
@@ -73,9 +73,9 @@ func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*au
 	// value. The extended User model embeds user.User and
 	// populates TenantID from its own augmented user type before issuing tokens.
 	claims := jwt.UserClaims{
-		UID:      user.ID,
-		Username: user.Username,
-		Role:     user.Role,
+		UID:      u.ID,
+		Username: u.Username,
+		Role:     u.Role,
 	}
 
 	tokenPair, err := a.jwt.GenerateTokenPair(claims)
@@ -85,7 +85,7 @@ func (a *jwtAuthenticator) Login(ctx context.Context, username, pwd string) (*au
 
 	return &auth.LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
-		MustChangePassword: user.MustChangePassword,
+		MustChangePassword: u.MustChangePassword,
 	}, nil
 }
 
@@ -96,12 +96,12 @@ func (a *jwtAuthenticator) Verify(ctx context.Context, token string) (*user.User
 		return nil, auth.ErrUnauthorized
 	}
 
-	user, err := a.users.GetByID(ctx, claims.UID)
+	u, err := a.users.GetByID(ctx, claims.UID)
 	if err != nil {
 		return nil, auth.ErrUnauthorized
 	}
 
-	return user, nil
+	return u, nil
 }
 
 // userRegistrar implements Registrar for user registration.
@@ -164,10 +164,16 @@ func NewAuthorizer() Authorizer {
 }
 
 // Can checks if a user has permission to perform an action on a asset.
-func (a *rbacAuthorizer) Can(ctx context.Context, user *user.User, action string, assetType string, assetID int64) (bool, error) {
-	if user == nil {
+func (a *rbacAuthorizer) Can(
+	ctx context.Context,
+	u *user.User,
+	action string,
+	assetType string,
+	assetID int64,
+) (bool, error) {
+	if u == nil {
 		return false, nil
 	}
 
-	return a.policy.Check(user.Role, action, assetType), nil
+	return a.policy.Check(u.Role, action, assetType), nil
 }

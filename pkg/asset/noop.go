@@ -61,11 +61,12 @@ func (NoopStore) Delete(_ context.Context, _ int64) error {
 	return errdefs.ErrNotFound
 }
 
-// CountByType always returns 0 because no assets are persisted.
+// CountByStatus always returns an empty map because no assets are persisted.
 func (NoopStore) CountByStatus(_ context.Context) (map[string]int64, error) {
 	return map[string]int64{}, nil
 }
 
+// CountByType always returns 0 because no assets are persisted.
 func (NoopStore) CountByType(_ context.Context, _ int64, _ types.AssetType) (int64, error) {
 	return 0, nil
 }

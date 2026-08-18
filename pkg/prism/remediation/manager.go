@@ -16,10 +16,11 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
-	"go.uber.org/zap"
 )
 
 // defaultExecutionPoolSize is the worker count used when no pool size is
@@ -161,13 +162,13 @@ func New(opts ...Option) (*Manager, error) {
 	for _, op := range o.operators {
 		if op != nil {
 			m.operators[op.Name()] = op
-			if op.Name() == "local" {
+			if op.Name() == localExecutorName {
 				hasLocal = true
 			}
 		}
 	}
 	if !hasLocal {
-		m.operators["local"] = NewLocalOperator(nil, WithOperatorLogger(o.logger))
+		m.operators[localExecutorName] = NewLocalOperator(nil, WithOperatorLogger(o.logger))
 	}
 
 	if o.execPool != nil {
@@ -219,10 +220,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.started = true
 
 	// Metric threshold breaches -> metric trigger.
-	sub, err := event.Subscribe[event.MetricExceededPayload](m.bus, event.TypeTelemetryMetricExceeded, func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
-		m.handle(runCtx, metricPayloadToContext(ev))
-		return nil
-	})
+	sub, err := event.Subscribe(m.bus, event.TypeTelemetryMetricExceeded,
+		func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
+			m.handle(runCtx, metricPayloadToContext(ev))
+			return nil
+		})
 	if err != nil {
 		m.started = false
 		return fmt.Errorf("remediation: subscribe to metric exceeded events: %w", err)
@@ -230,10 +232,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.subs = append(m.subs, sub)
 
 	// Log keyword matches -> log trigger.
-	sub, err = event.Subscribe[event.LogMatchedPayload](m.bus, event.TypeTelemetryLogMatched, func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
-		m.handle(runCtx, logPayloadToContext(ev))
-		return nil
-	})
+	sub, err = event.Subscribe(m.bus, event.TypeTelemetryLogMatched,
+		func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
+			m.handle(runCtx, logPayloadToContext(ev))
+			return nil
+		})
 	if err != nil {
 		m.started = false
 		return fmt.Errorf("remediation: subscribe to log matched events: %w", err)
@@ -241,10 +244,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.subs = append(m.subs, sub)
 
 	// Asset status transitions -> status_change trigger.
-	sub, err = event.Subscribe[event.StatusChangePayload](m.bus, event.TypeAssetStatusChanged, func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
-		m.handle(runCtx, statusPayloadToContext(ev))
-		return nil
-	})
+	sub, err = event.Subscribe(m.bus, event.TypeAssetStatusChanged,
+		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
+			m.handle(runCtx, statusPayloadToContext(ev))
+			return nil
+		})
 	if err != nil {
 		m.started = false
 		return fmt.Errorf("remediation: subscribe to status change events: %w", err)
@@ -299,7 +303,6 @@ func (m *Manager) handle(ctx context.Context, ec EventContext) {
 		return
 	}
 	for _, r := range rules {
-		r := r
 		if !r.Enabled || r.Status != string(StatusActive) {
 			continue
 		}

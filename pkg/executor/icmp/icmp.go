@@ -16,17 +16,19 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/tickraft/tickraft/pkg/executor"
-	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+
+	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 const (
-	echoData    = "tickraft-icmp-probe"
-	readBufSize = 1500
-	protocolV4  = 1 // protocol number for ICMPv4
+	echoData     = "tickraft-icmp-probe"
+	readBufSize  = 1500
+	protocolV4   = 1 // protocol number for ICMPv4
+	executorName = string(types.ExecutorICMP)
 )
 
 // Executor sends ICMP echo requests to measure reachability and round-trip
@@ -67,7 +69,7 @@ func New(timeout time.Duration, opts ...Option) *Executor {
 
 // Name returns the executor name identifier.
 func (p *Executor) Name() string {
-	return "icmp"
+	return executorName
 }
 
 // Capabilities returns the executor capability bitmask.
@@ -186,7 +188,7 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	defer func() { _ = conn.Close() }() // best-effort close, error not actionable
 
 	// Set the connection deadline from the timeout context.
-	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+	if err = conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal
 		r.ErrorMsg = fmt.Sprintf("set deadline failed: %v", err)
@@ -224,7 +226,7 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	// Send the echo request and measure round-trip time.
 	dst := &net.UDPAddr{IP: ip}
 	start := time.Now()
-	if _, err := conn.WriteTo(msgBytes, dst); err != nil {
+	if _, err = conn.WriteTo(msgBytes, dst); err != nil {
 		duration := time.Since(start)
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal

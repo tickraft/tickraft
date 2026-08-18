@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
@@ -19,7 +20,6 @@ import (
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // --- Stub service implementations for route-registration tests ---
@@ -47,7 +47,8 @@ func (stubTaskService) DeleteTask(_ context.Context, _ int64) error  { return ni
 func (stubTaskService) TriggerTask(_ context.Context, _ int64) error { return nil }
 func (stubTaskService) PauseTask(_ context.Context, _ int64) error   { return nil }
 func (stubTaskService) ResumeTask(_ context.Context, _ int64) error  { return nil }
-func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int, _ task.ExecutionFilter) ([]task.Execution, int64, error) {
+func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int,
+	_ task.ExecutionFilter) ([]task.Execution, int64, error) {
 	return nil, 0, nil
 }
 func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*task.Execution, error) {
@@ -143,7 +144,8 @@ var _ telemetry.ReportHandler = (*stubReportHandler)(nil)
 // stubTelemetryService implements telemetry.Service.
 type stubTelemetryService struct{}
 
-func (stubTelemetryService) ListTasks(_ context.Context, _, _ int, _ telemetry.Filter) ([]telemetry.Task, int64, error) {
+func (stubTelemetryService) ListTasks(_ context.Context, _, _ int,
+	_ telemetry.Filter) ([]telemetry.Task, int64, error) {
 	return nil, 0, nil
 }
 func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetry.Task, error) {
@@ -185,7 +187,9 @@ func (stubAssetStore) UpdateStatus(_ context.Context, _ int64, _ types.AssetStat
 func (stubAssetStore) List(_ context.Context, _, _ int, _ assetstore.ListFilter) ([]*assetstore.Asset, int64, error) {
 	return nil, 0, nil
 }
-func (stubAssetStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*assetstore.Asset], error) {
+func (stubAssetStore) ListKeyset(
+	_ context.Context, _ pagination.PageRequest,
+) (pagination.PageResult[*assetstore.Asset], error) {
 	return pagination.PageResult[*assetstore.Asset]{}, nil
 }
 func (stubAssetStore) Delete(_ context.Context, _ int64) error { return nil }

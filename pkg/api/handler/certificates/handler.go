@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// This file implements the certificate reload endpoint
+// Package certificates implements the certificate reload endpoint
 // (POST /api/v1/system/certificates/reload). The handler reuses the JWT
 // middleware registered by routes.go (see WithJWTAuth) and the live
 // certificate-reload machinery exposed by *api.Server (see ReloadTLSConfig in

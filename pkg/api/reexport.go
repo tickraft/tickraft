@@ -27,9 +27,15 @@ var (
 )
 
 // Response types
+
 type (
-	Response       = httputil.Response
-	PageData       = httputil.PageData
+	// Response aliases httputil.Response, the unified API response envelope.
+	Response = httputil.Response
+	// PageData aliases httputil.PageData, the offset-based pagination
+	// payload of a response.
+	PageData = httputil.PageData
+	// CursorPageData aliases httputil.CursorPageData, the cursor-based
+	// (keyset) pagination payload of a response.
 	CursorPageData = httputil.CursorPageData
 )
 

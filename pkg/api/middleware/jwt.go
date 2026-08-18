@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -37,14 +38,16 @@ func NewJWTAuth(j *jwt.JWT, permission string) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		authHeader := string(arc.GetHeader("Authorization"))
 		if authHeader == "" {
-			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "missing authorization header")
+			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized,
+				"missing authorization header")
 			arc.Abort()
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "invalid authorization header format")
+			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized,
+				"invalid authorization header format")
 			arc.Abort()
 			return
 		}
@@ -103,14 +106,16 @@ func NewScopedJWTAuth(
 	return func(ctx context.Context, arc *app.RequestContext) {
 		authHeader := string(arc.GetHeader("Authorization"))
 		if authHeader == "" {
-			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "missing authorization header")
+			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized,
+				"missing authorization header")
 			arc.Abort()
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "invalid authorization header format")
+			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized,
+				"invalid authorization header format")
 			arc.Abort()
 			return
 		}

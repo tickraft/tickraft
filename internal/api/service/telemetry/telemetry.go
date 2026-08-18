@@ -78,7 +78,11 @@ func NewService(store *telemetry.MonitorStore, logger *zap.Logger, opts ...Optio
 // ListTasks returns a page of telemetry tasks ordered by ascending ID, plus
 // the total count. When filter.Mode is non-empty, only tasks whose Mode matches
 // are returned.
-func (s *Service) ListTasks(ctx context.Context, page, size int, filter telemetryhandler.Filter) ([]telemetryhandler.Task, int64, error) {
+func (s *Service) ListTasks(
+	ctx context.Context,
+	page, size int,
+	filter telemetryhandler.Filter,
+) ([]telemetryhandler.Task, int64, error) {
 	page, size = httputil.ClampPaging(page, size)
 
 	mode := telemetry.Mode(filter.Mode)
@@ -140,7 +144,11 @@ func (s *Service) CreateTask(ctx context.Context, req *telemetryhandler.Task) (*
 
 // UpdateTask merges the request fields onto the existing task. The ID and
 // CreatedAt are preserved; UpdatedAt is refreshed by GORM auto-update.
-func (s *Service) UpdateTask(ctx context.Context, id int64, req *telemetryhandler.Task) (*telemetryhandler.Task, error) {
+func (s *Service) UpdateTask(
+	ctx context.Context,
+	id int64,
+	req *telemetryhandler.Task,
+) (*telemetryhandler.Task, error) {
 	if req == nil {
 		return nil, telemetryhandler.ErrInvalidRequest
 	}
@@ -271,6 +279,8 @@ func checkHTTPIntervalQuota(mode, typ, schedule string) error {
 	}
 	interval, err := time.ParseDuration(schedule)
 	if err != nil {
+		//nolint:nilerr // intentional: non-interval schedules (e.g. cron expressions) do not parse as
+		// durations and are not subject to the interval quota
 		return nil
 	}
 	minInterval := time.Duration(ceiling) * time.Second

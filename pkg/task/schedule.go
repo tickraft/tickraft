@@ -12,6 +12,12 @@ import (
 	"github.com/tickraft/tickraft/pkg/scheduler"
 )
 
+// Metadata keys used to persist schedule configuration on tasks.
+const (
+	metaKeyScheduleType = "schedule_type"
+	metaKeyCronExpr     = "cron_expr"
+)
+
 // extractScheduleConfig reads the schedule type, cron expression, and
 // interval from a task's Metadata map. Defaults to ScheduleTypeCron with
 // empty values when the corresponding keys are absent.
@@ -21,13 +27,13 @@ func extractScheduleConfig(task Task) (ScheduleType, string, time.Duration) {
 	interval := time.Duration(0)
 
 	if task.Metadata != nil {
-		if v, ok := task.Metadata["schedule_type"]; ok {
+		if v, ok := task.Metadata[metaKeyScheduleType]; ok {
 			scheduleType = ScheduleType(v)
 		}
-		if v, ok := task.Metadata["cron_expr"]; ok {
+		if v, ok := task.Metadata[metaKeyCronExpr]; ok {
 			cronExpr = v
 		}
-		if v, ok := task.Metadata["interval"]; ok {
+		if v, ok := task.Metadata[string(ScheduleTypeInterval)]; ok {
 			if d, err := time.ParseDuration(v); err == nil {
 				interval = d
 			}

@@ -40,7 +40,7 @@ func (f *FullJitter) Apply(d time.Duration) time.Duration {
 	if d <= 0 {
 		return 0
 	}
-	return time.Duration(rand.Int64N(int64(d)))
+	return time.Duration(rand.Int64N(int64(d))) //nolint:gosec // jitter needs no crypto randomness
 }
 
 // ProportionalJitter randomizes the delay by a configurable factor.
@@ -75,7 +75,7 @@ func (p *ProportionalJitter) Apply(d time.Duration) time.Duration {
 	if d <= 0 || p.factor == 0.0 {
 		return d
 	}
-	scale := 1.0 - p.factor + p.factor*rand.Float64()
+	scale := 1.0 - p.factor + p.factor*rand.Float64() //nolint:gosec // jitter needs no crypto randomness
 	return time.Duration(float64(d) * scale)
 }
 
@@ -109,19 +109,19 @@ type Exponential struct {
 //
 // Parameters:
 //   - base: initial delay, must be > 0
-//   - max: maximum delay cap, must be >= base
+//   - maxDelay: maximum delay cap, must be >= base
 //
-// Returns an error if base <= 0, max < base, or multiplier <= 0.
-func NewExponential(base, max time.Duration, options ...ExponentialOption) (Backoff, error) {
+// Returns an error if base <= 0, maxDelay < base, or multiplier <= 0.
+func NewExponential(base, maxDelay time.Duration, options ...ExponentialOption) (Backoff, error) {
 	if base <= 0 {
 		return nil, fmt.Errorf("retry: base must be > 0, got %v", base)
 	}
-	if max < base {
-		return nil, fmt.Errorf("retry: max must be >= base, got max=%v base=%v", max, base)
+	if maxDelay < base {
+		return nil, fmt.Errorf("retry: max must be >= base, got max=%v base=%v", maxDelay, base)
 	}
 	e := &Exponential{
 		base:       base,
-		max:        max,
+		max:        maxDelay,
 		multiplier: 2.0,
 	}
 	for _, o := range options {
@@ -139,7 +139,7 @@ func NewExponential(base, max time.Duration, options ...ExponentialOption) (Back
 // applying the configured jitter, and capped at max.
 func (e *Exponential) Next(attempt int) time.Duration {
 	d := float64(e.base)
-	for i := 0; i < attempt; i++ {
+	for range attempt {
 		d *= e.multiplier
 		if d >= float64(e.max) {
 			return e.withJitter(e.max)
@@ -272,7 +272,7 @@ func New(options ...Option) (*Retry, error) {
 // before an attempt or during a wait, it returns ctx.Err() immediately.
 func (r *Retry) Do(ctx context.Context, fn func() error) error {
 	var lastErr error
-	for attempt := 0; attempt < r.maxAttempts; attempt++ {
+	for attempt := range r.maxAttempts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -337,7 +337,8 @@ func (r *Retry) DoAsync(ctx context.Context, op Operation, wheel timewheel.Wheel
 // attempt is scheduled with the backoff delay; otherwise onComplete is
 // invoked with the final result. The context is checked at the start of each
 // callback so cancellation propagates without waiting for the delay to elapse.
-func (r *Retry) scheduleAttempt(ctx context.Context, op Operation, wheel timewheel.Wheel, onComplete func(error), attempt int, delay time.Duration) {
+func (r *Retry) scheduleAttempt(ctx context.Context, op Operation, wheel timewheel.Wheel,
+	onComplete func(error), attempt int, delay time.Duration) {
 	wheel.Add(delay, func(timewheel.EntryID) {
 		select {
 		case <-ctx.Done():

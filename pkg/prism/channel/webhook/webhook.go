@@ -21,12 +21,17 @@ import (
 	"io"
 	"net/http"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/retry"
-	"go.uber.org/zap"
 )
+
+// channelName is the name reported by Channel.Name and used to tag
+// outbound SendError values.
+const channelName = "webhook"
 
 // Channel sends alert notifications as JSON POST requests to a configured
 // HTTP endpoint. It satisfies the alert.Channel interface.
@@ -43,7 +48,7 @@ type Channel struct {
 var _ alert.Channel = (*Channel)(nil)
 
 // Name implements alert.Channel.
-func (c *Channel) Name() string { return "webhook" }
+func (c *Channel) Name() string { return channelName }
 
 // Send implements alert.Channel. It marshals the alert as JSON and
 // POSTs it to the configured URL with the configured headers. The
@@ -62,7 +67,7 @@ func (c *Channel) Name() string { return "webhook" }
 // non-retryable SendError so the prism alert engine is not crashed.
 // Context cancellations and marshal failures (programming errors) do not
 // count against the circuit breaker.
-func (c *Channel) Send(ctx context.Context, alert alert.Event) (err error) {
+func (c *Channel) Send(ctx context.Context, evt alert.Event) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			c.breaker.RecordFailure()
@@ -82,7 +87,7 @@ func (c *Channel) Send(ctx context.Context, alert alert.Event) (err error) {
 		c.logger.Debug("webhook send suppressed: circuit breaker open")
 		return channel.ErrCircuitOpen
 	}
-	body, err := json.Marshal(alert)
+	body, err := json.Marshal(evt)
 	if err != nil {
 		// Marshal failures are programming errors, not transient
 		// server failures. Do not penalise the circuit breaker.

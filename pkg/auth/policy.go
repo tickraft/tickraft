@@ -42,7 +42,7 @@ func newRBACPolicy() *rbacPolicy {
 }
 
 // Check returns whether the given role is allowed to perform the action on the asset type.
-func (rbac *rbacPolicy) Check(role int, action string, assetType string) bool {
+func (rbac *rbacPolicy) Check(role int, action, assetType string) bool {
 	resourceRules, ok := rbac.rules[role]
 	if !ok {
 		return false

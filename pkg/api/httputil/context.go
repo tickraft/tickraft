@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package httputil provides shared helpers for API handlers: request-context
+// accessors for request IDs, auth principals, regions, and locales; request
+// binding and validation; and the unified response envelope with paging
+// helpers.
 package httputil
 
 import (
@@ -9,6 +13,7 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/i18n"
@@ -19,7 +24,7 @@ import (
 const (
 	requestIDKey  = "api.request_id"
 	userClaimsKey = "api.user_claims"
-	apiKeyIDKey   = "api.api_key_id"
+	apiKeyIDKey   = "api.api_key_id" //nolint:gosec // context key name, not a credential
 	clientIPKey   = "api.client_ip"
 )
 
@@ -67,7 +72,7 @@ func GetAPIKeyID(c *app.RequestContext) (int64, bool) {
 
 // BindAndValidate binds request parameters to obj and validates.
 // Returns true on success; on failure, writes a 400 error response automatically.
-func BindAndValidate(c *app.RequestContext, obj interface{}) bool {
+func BindAndValidate(c *app.RequestContext, obj any) bool {
 	if err := c.Bind(obj); err != nil {
 		FailWithCode(c, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request parameters")
 		return false

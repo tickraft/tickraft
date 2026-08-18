@@ -124,7 +124,7 @@ func TestRegistry_ListReturnsAllLocales(t *testing.T) {
 	r := NewRegistry(zap.NewNop())
 	r.Register("en-US", NewMessageMap("en-US", map[string]string{}))
 	r.Register("zh-Hans", NewMessageMap("zh-Hans", map[string]string{
-		"_meta.native_name": "简体中文",
+		"_meta.native_name": displayZhHans,
 	}))
 	r.Register("ar", NewMessageMap("ar", map[string]string{}))
 
@@ -138,7 +138,7 @@ func TestRegistry_ListReturnsAllLocales(t *testing.T) {
 	}
 
 	for _, info := range infos {
-		if info.Tag == "zh-Hans" && info.NativeName != "简体中文" {
+		if info.Tag == "zh-Hans" && info.NativeName != displayZhHans {
 			t.Errorf("zh-Hans native name = %q, want 简体中文", info.NativeName)
 		}
 		if info.Tag == "ar" && info.Direction != RTL {
@@ -170,7 +170,7 @@ func TestRegistry_ConcurrentRegisterResolve(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(n * 2)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		go func(i int) {
 			defer wg.Done()
 			tag := "zh-Hans"

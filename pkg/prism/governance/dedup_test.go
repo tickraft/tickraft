@@ -11,16 +11,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 func newDedupEvent() *alert.Event {
 	return &alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		TenantID:   0,
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage"}, Severity: "critical"}},
+		Type:     alert.TypeMetric,
+		AssetID:  1,
+		TenantID: 0,
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindMetric,
+			Metric:   &alert.MetricContext{Name: "cpu_usage"},
+			Severity: "critical",
+		}},
 	}
 }
 
@@ -78,7 +83,7 @@ func TestDedupConcurrentSafe(t *testing.T) {
 
 	var suppressed atomic.Int64
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -154,7 +159,8 @@ func TestDedupMultiViolationEventFingerprint(t *testing.T) {
 	// arriving with the same violations in different order.
 	// The fingerprint should be stable (sorted), so this should be suppressed.
 	if got := d.Process(context.Background(), evtReordered); got != DecisionSuppress {
-		t.Fatalf("reordered same-violation alert: got %v, want %v (fingerprint should be stable)", got, DecisionSuppress)
+		t.Fatalf("reordered same-violation alert: got %v, want %v (fingerprint should be stable)",
+			got, DecisionSuppress)
 	}
 }
 

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package healthz exposes the /healthz liveness endpoint. The handler probes
+// the configured database and cache dependencies and returns HTTP 503 when
+// any of them is unhealthy.
 package healthz
 
 import (
@@ -9,10 +12,11 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
 
 // healthzCheckKey is a sentinel cache key used to verify cache responsiveness
@@ -32,8 +36,8 @@ type Handler struct {
 // NewHandler creates a Handler that probes the given database
 // and cache. Either argument may be nil, in which case the corresponding
 // dependency check is skipped.
-func NewHandler(dbc *gorm.DB, cache *cache.LRUCache) *Handler {
-	return &Handler{dbc: dbc, cache: cache}
+func NewHandler(dbc *gorm.DB, c *cache.LRUCache) *Handler {
+	return &Handler{dbc: dbc, cache: c}
 }
 
 // Healthz handles GET /healthz. It probes all configured dependencies and

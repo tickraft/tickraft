@@ -48,7 +48,7 @@ func TestValidateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateSecret: %v", err)
 	}
-	if len(secret) == 0 {
+	if secret == "" {
 		t.Fatal("GenerateSecret returned empty secret")
 	}
 

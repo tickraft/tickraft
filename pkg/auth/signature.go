@@ -14,7 +14,7 @@ import (
 
 // HmacSHA256 computes an HMAC-SHA256 using the given secret and payload,
 // returning the result as a hex-encoded string.
-func HmacSHA256(secret string, payload string) string {
+func HmacSHA256(secret, payload string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(payload))
 	return hex.EncodeToString(mac.Sum(nil))
@@ -23,7 +23,7 @@ func HmacSHA256(secret string, payload string) string {
 // VerifyHmacSHA256 computes an HMAC-SHA256 over the payload and compares it
 // with the provided signature using constant-time comparison to prevent
 // timing attacks. Returns true if the signatures match.
-func VerifyHmacSHA256(secret string, payload string, signature string) bool {
+func VerifyHmacSHA256(secret, payload, signature string) bool {
 	expected := HmacSHA256(secret, payload)
 	expectedBytes, err := hex.DecodeString(expected)
 	if err != nil {
@@ -38,6 +38,6 @@ func VerifyHmacSHA256(secret string, payload string, signature string) bool {
 
 // GenerateSignString produces the canonical string to be signed from the
 // given timestamp, nonce, and request body.
-func GenerateSignString(timestamp int64, nonce string, body string) string {
+func GenerateSignString(timestamp int64, nonce, body string) string {
 	return fmt.Sprintf("%d\n%s\n%s", timestamp, nonce, body)
 }

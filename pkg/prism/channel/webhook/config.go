@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/httpx"
 	"github.com/tickraft/tickraft/pkg/retry"
-	"go.uber.org/zap"
 )
 
 // Default configuration values applied when the corresponding Config field
@@ -189,9 +190,7 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 
 	base := o.cfg.RetryBaseInterval
 	maxBackoff := retryMaxBackoff
-	if maxBackoff < base {
-		maxBackoff = base
-	}
+	maxBackoff = max(maxBackoff, base)
 	backoff, err := retry.NewExponential(
 		base,
 		maxBackoff,

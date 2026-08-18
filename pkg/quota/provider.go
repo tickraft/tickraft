@@ -135,11 +135,11 @@ type UsageProvider interface {
 
 // UsageSnapshot captures a point-in-time view of quota usage.
 type UsageSnapshot struct {
-	Type     Type   `json:"type"`
-	Used     int    `json:"used"`
-	Ceiling  int    `json:"ceiling"`
-	Rate     float64 `json:"rate"`
-	NearLimit bool   `json:"near_limit"`
+	Type      Type    `json:"type"`
+	Used      int     `json:"used"`
+	Ceiling   int     `json:"ceiling"`
+	Rate      float64 `json:"rate"`
+	NearLimit bool    `json:"near_limit"`
 }
 
 // zeroProvider is a no-op Provider that returns 0 for every type,

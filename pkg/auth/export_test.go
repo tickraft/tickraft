@@ -67,14 +67,14 @@ func (s *Service) HasLoginFail(username string) bool {
 // need a shorter interval to verify the goroutine fires promptly.
 func (s *Service) SetCleanupInterval(d time.Duration) { s.cleanupInterval = d }
 
-// CleanupExpiredFails exposes the unexported cleanupExpiredFails method.
-func (s *Service) CleanupExpiredFails() { s.cleanupExpiredFails() }
+// CleanupExpiredFails exposes the unexported evictExpiredFails method.
+func (s *Service) CleanupExpiredFails() { s.evictExpiredFails() }
 
-// StartCleanupLoop exposes the unexported startCleanupLoop method.
-func (s *Service) StartCleanupLoop() { s.startCleanupLoop() }
+// StartCleanupLoop exposes the unexported launchCleanupLoop method.
+func (s *Service) StartCleanupLoop() { s.launchCleanupLoop() }
 
-// ValidateUsername exposes the unexported validateUsername function.
-func ValidateUsername(username string) error { return validateUsername(username) }
+// ValidateUsername exposes the unexported checkUsername function.
+func ValidateUsername(username string) error { return checkUsername(username) }
 
-// ValidatePassword exposes the unexported validatePassword function.
-func ValidatePassword(pwd string) error { return validatePassword(pwd) }
+// ValidatePassword exposes the unexported checkPassword function.
+func ValidatePassword(pwd string) error { return checkPassword(pwd) }

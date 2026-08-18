@@ -78,16 +78,17 @@ type Event[T any] struct {
 	Metadata map[string]string
 }
 
-// Publish[T] is the generic wrapper of Bus.Publish, providing compile-time type safety.
+// Publish is the generic wrapper of Bus.Publish, providing compile-time type safety.
 // Internally it converts the generic Event[T] into a non-generic Envelope and calls Bus.Publish.
 func Publish[T any](ctx context.Context, bus Bus, eventType Type, payload T, opts ...PublishOption) error {
 	return bus.Publish(ctx, eventType, payload, opts...)
 }
 
-// Subscribe[T] is the generic wrapper of Bus.Subscribe, providing compile-time type safety.
+// Subscribe is the generic wrapper of Bus.Subscribe, providing compile-time type safety.
 // The handler parameter is a type-safe function receiving an Event[T] payload.
 // Internally it converts the generic handler into a non-generic Handler and calls Bus.Subscribe.
-func Subscribe[T any](bus Bus, eventType Type, handler func(ctx context.Context, event Event[T]) error, opts ...SubscribeOption) (Subscription, error) {
+func Subscribe[T any](bus Bus, eventType Type, handler func(ctx context.Context, event Event[T]) error,
+	opts ...SubscribeOption) (Subscription, error) {
 	wrapper := func(ctx context.Context, env Envelope) error {
 		typed, ok := env.Payload.(T)
 		if !ok {

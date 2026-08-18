@@ -119,13 +119,13 @@ func (r *Registry) Executors() []Executor {
 
 // ByCapability returns all executors whose capabilities include the given
 // capability mask. The result order is not deterministic.
-func (r *Registry) ByCapability(cap Capability) []Executor {
+func (r *Registry) ByCapability(c Capability) []Executor {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]Executor, 0)
 	for _, e := range r.executors {
-		if HasCap(e.Capabilities(), cap) {
+		if HasCap(e.Capabilities(), c) {
 			result = append(result, e)
 		}
 	}
@@ -134,13 +134,13 @@ func (r *Registry) ByCapability(cap Capability) []Executor {
 
 // NamesByCapability returns the names of executors whose capabilities include
 // the given capability mask. The result order is not deterministic.
-func (r *Registry) NamesByCapability(cap Capability) []string {
+func (r *Registry) NamesByCapability(c Capability) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]string, 0)
 	for name, e := range r.executors {
-		if HasCap(e.Capabilities(), cap) {
+		if HasCap(e.Capabilities(), c) {
 			result = append(result, name)
 		}
 	}

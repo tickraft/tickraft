@@ -25,11 +25,12 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/retry"
-	"go.uber.org/zap"
 )
 
 // Channel sends alert notifications via SMTP email. It satisfies the
@@ -140,6 +141,16 @@ func (c *Channel) sendOnce(ctx context.Context, msg []byte) error {
 		return fmt.Errorf("email: new smtp client: %w", err)
 	}
 
+	if err = c.helloAndAuth(client); err != nil {
+		return err
+	}
+
+	return c.deliver(client, msg)
+}
+
+// helloAndAuth performs the SMTP HELO handshake, the optional STARTTLS
+// upgrade, and authentication on an established client connection.
+func (c *Channel) helloAndAuth(client *smtp.Client) error {
 	if err := client.Hello(heloDomain); err != nil {
 		return fmt.Errorf("email: hello: %w", err)
 	}
@@ -158,7 +169,13 @@ func (c *Channel) sendOnce(ctx context.Context, msg []byte) error {
 			}
 		}
 	}
+	return nil
+}
 
+// deliver sends the envelope (MAIL FROM / RCPT TO), streams the message
+// body over DATA, and closes the session with QUIT. A QUIT failure
+// after DATA is accepted is logged and ignored.
+func (c *Channel) deliver(client *smtp.Client, msg []byte) error {
 	if err := client.Mail(c.config.From); err != nil {
 		return fmt.Errorf("email: mail from: %w", err)
 	}
@@ -172,14 +189,14 @@ func (c *Channel) sendOnce(ctx context.Context, msg []byte) error {
 	if err != nil {
 		return fmt.Errorf("email: data: %w", err)
 	}
-	if _, err := w.Write(msg); err != nil {
+	if _, err = w.Write(msg); err != nil {
 		return fmt.Errorf("email: write message: %w", err)
 	}
-	if err := w.Close(); err != nil {
+	if err = w.Close(); err != nil {
 		return fmt.Errorf("email: close data: %w", err)
 	}
 
-	if err := client.Quit(); err != nil {
+	if err = client.Quit(); err != nil {
 		// Quit failure after DATA is accepted is non-critical; the
 		// message has already been queued by the server.
 		c.logger.Debug("email: quit failed", zap.Error(err))
@@ -255,8 +272,8 @@ type loginAuth struct {
 // Start begins the LOGIN authentication. It advertises the "LOGIN" mechanism
 // and sends no initial response; the server is expected to prompt for the
 // username.
-func (a *loginAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
-	return "LOGIN", nil, nil
+func (a *loginAuth) Start(_ *smtp.ServerInfo) (mech string, ir []byte, err error) {
+	return authLogin, nil, nil
 }
 
 // Next responds to server challenges. The first challenge expects the

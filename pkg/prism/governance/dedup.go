@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // defaultDedupWindow is the suppression window used when no window is
@@ -111,7 +112,7 @@ func (d *Dedup) maybeSweepLocked(now time.Time) {
 // The fingerprint includes all violations (kind:severity pairs) sorted to
 // ensure stable deduplication for multi-violation events.
 func fingerprint(evt *alert.Event) string {
-	var violationParts []string
+	violationParts := make([]string, 0, len(evt.Violations))
 	for _, v := range evt.Violations {
 		part := v.Kind
 		if v.Severity != "" {

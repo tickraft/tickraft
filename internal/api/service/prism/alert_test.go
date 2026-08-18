@@ -12,14 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // ctx is a reusable background context for service-layer tests.
@@ -41,7 +43,7 @@ func closeUnderlyingDB(t *testing.T, dbc *gorm.DB) {
 // assertErrorCoder verifies that err is non-nil, matches the expected sentinel
 // via errors.Is, and reports the expected HTTP status and business code
 // through the errdefs.ErrorCoder interface.
-func assertErrorCoder(t *testing.T, err error, sentinel error, wantStatus, wantCode int) {
+func assertErrorCoder(t *testing.T, err, sentinel error, wantStatus, wantCode int) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("expected error matching %v, got nil", sentinel)
@@ -128,8 +130,8 @@ func TestViolationToRecord(t *testing.T) {
 		if rec.RuleName != "cpu_usage" {
 			t.Errorf("RuleName = %q, want %q", rec.RuleName, "cpu_usage")
 		}
-		if rec.Severity != "warning" {
-			t.Errorf("Severity = %q, want %q (default)", rec.Severity, "warning")
+		if rec.Severity != string(types.SeverityWarning) {
+			t.Errorf("Severity = %q, want %q (default)", rec.Severity, string(types.SeverityWarning))
 		}
 		if rec.Value != 95.0 {
 			t.Errorf("Value = %v, want 95.0", rec.Value)
@@ -141,7 +143,7 @@ func TestViolationToRecord(t *testing.T) {
 
 	t.Run("empty violation yields defaults", func(t *testing.T) {
 		rec := prismalert.ViolationToRecord(prismalert.Violation{}, time.Now())
-		if rec.RuleID != 0 || rec.RuleName != "" || rec.Severity != "warning" {
+		if rec.RuleID != 0 || rec.RuleName != "" || rec.Severity != string(types.SeverityWarning) {
 			t.Errorf("empty violation should yield defaults, got id=%d name=%q severity=%q",
 				rec.RuleID, rec.RuleName, rec.Severity)
 		}
@@ -181,7 +183,7 @@ func TestViolationToRecord(t *testing.T) {
 		if !strings.Contains(rec.Message, "cpu_usage") {
 			t.Errorf("expected message to contain rule name, got %q", rec.Message)
 		}
-		if !strings.Contains(rec.Message, string(prismalert.ViolationKindMetric)) {
+		if !strings.Contains(rec.Message, prismalert.ViolationKindMetric) {
 			t.Errorf("expected message to contain kind, got %q", rec.Message)
 		}
 	})
@@ -195,11 +197,14 @@ func TestRecordAlert(t *testing.T) {
 		defer cleanup()
 
 		evt := prismalert.Event{
-			Type:       prismalert.TypeMetric,
-			AssetID:    7,
-			TenantID:   1,
-			Timestamp:  time.Now(),
-			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0}}},
+			Type:      prismalert.TypeMetric,
+			AssetID:   7,
+			TenantID:  1,
+			Timestamp: time.Now(),
+			Violations: []prismalert.Violation{{
+				Kind:   prismalert.ViolationKindMetric,
+				Metric: &prismalert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
+			}},
 		}
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
@@ -222,8 +227,8 @@ func TestRecordAlert(t *testing.T) {
 		if got.RuleName != "cpu_usage" {
 			t.Errorf("RuleName = %q, want %q", got.RuleName, "cpu_usage")
 		}
-		if got.Severity != "warning" {
-			t.Errorf("Severity = %q, want %q", got.Severity, "warning")
+		if got.Severity != string(types.SeverityWarning) {
+			t.Errorf("Severity = %q, want %q", got.Severity, string(types.SeverityWarning))
 		}
 		if got.Value != 95.0 {
 			t.Errorf("Value = %v, want 95.0", got.Value)
@@ -244,11 +249,14 @@ func TestRecordAlert(t *testing.T) {
 		defer cleanup()
 
 		evt := prismalert.Event{
-			Type:       prismalert.TypeMetric,
-			AssetID:    1,
-			TenantID:   1,
-			Timestamp:  time.Now(),
-			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "nonexistent"}}},
+			Type:      prismalert.TypeMetric,
+			AssetID:   1,
+			TenantID:  1,
+			Timestamp: time.Now(),
+			Violations: []prismalert.Violation{{
+				Kind:   prismalert.ViolationKindMetric,
+				Metric: &prismalert.MetricContext{Name: "nonexistent"},
+			}},
 		}
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
@@ -271,8 +279,11 @@ func TestRecordAlert(t *testing.T) {
 
 	t.Run("no-op when recordStore is nil", func(t *testing.T) {
 		evt := prismalert.Event{
-			Type:       prismalert.TypeMetric,
-			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage"}}},
+			Type: prismalert.TypeMetric,
+			Violations: []prismalert.Violation{{
+				Kind:   prismalert.ViolationKindMetric,
+				Metric: &prismalert.MetricContext{Name: "cpu_usage"},
+			}},
 		}
 		if err := prismalert.RecordAlert(ctx, nil, evt); err != nil {
 			t.Errorf("RecordAlert with nil recordStore should return nil, got %v", err)
@@ -285,8 +296,11 @@ func TestRecordAlert(t *testing.T) {
 
 		before := time.Now()
 		evt := prismalert.Event{
-			Type:       prismalert.TypeMetric,
-			Violations: []prismalert.Violation{{Kind: prismalert.ViolationKindMetric, Metric: &prismalert.MetricContext{Name: "cpu_usage"}}},
+			Type: prismalert.TypeMetric,
+			Violations: []prismalert.Violation{{
+				Kind:   prismalert.ViolationKindMetric,
+				Metric: &prismalert.MetricContext{Name: "cpu_usage"},
+			}},
 			// Timestamp left zero — RecordAlert should populate it with time.Now().
 		}
 		if err := prismalert.RecordAlert(ctx, recordStore, evt); err != nil {

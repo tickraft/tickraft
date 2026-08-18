@@ -54,7 +54,7 @@ type Info struct {
 // GenerateAPIKey creates a new API key consisting of a human-readable prefix and
 // a cryptographically random body. It returns the raw key (to be shown once to the
 // caller), its SHA-256 hash (for persistent storage), and the prefix (for display).
-func GenerateAPIKey() (rawKey string, hash string, prefix string, err error) {
+func GenerateAPIKey() (rawKey, hash, prefix string, err error) {
 	prefixBytes := make([]byte, 2)
 	if _, err = rand.Read(prefixBytes); err != nil {
 		return "", "", "", fmt.Errorf("apikey: generate prefix: %w", err)
@@ -82,7 +82,7 @@ func HashAPIKey(rawKey string) string {
 // ValidateAPIKey verifies a raw API key against its stored hash and checks both
 // the key status and optional expiration. It uses constant-time comparison to
 // prevent timing attacks on the hash value.
-func ValidateAPIKey(rawKey string, storedHash string, status int, expiredAt *time.Time) error {
+func ValidateAPIKey(rawKey, storedHash string, status int, expiredAt *time.Time) error {
 	computedHash := HashAPIKey(rawKey)
 	if subtle.ConstantTimeCompare([]byte(computedHash), []byte(storedHash)) != 1 {
 		return ErrAPIKeyInvalid

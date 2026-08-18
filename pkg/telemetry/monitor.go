@@ -8,9 +8,10 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
 
 // MonitorStore provides CRUD operations for unified monitoring points backed
@@ -57,9 +58,7 @@ func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int)
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("telemetry: count monitor points: %w", errmap.MapError(err))
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}

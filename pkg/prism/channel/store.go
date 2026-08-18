@@ -10,9 +10,10 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"gorm.io/gorm"
 )
 
 // ErrChannelNotFound is returned when a channel cannot be located by its ID.
@@ -72,8 +73,7 @@ func (s *Store) Update(ctx context.Context, m *Record) error {
 // ErrChannelNotFound when no record with the given ID exists.
 func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 	var m Record
-	err := s.dbc.WithContext(ctx).First(&m, id).Error
-	if err != nil {
+	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChannelNotFound
 		}
@@ -86,15 +86,11 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
 // the total count. page starts at 1; size is the maximum number of items
 // returned. Soft-deleted rows are excluded.
 func (s *Store) List(ctx context.Context, page, size int) ([]*Record, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {

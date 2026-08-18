@@ -18,6 +18,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/task"
 )
 
 // Handler exposes task and execution CRUD endpoints.
@@ -44,7 +45,7 @@ func (h *Handler) ListTasks(ctx context.Context, arc *app.RequestContext) {
 		Group: arc.Query("group"),
 	}
 	if tagsParam := arc.Query("tags"); tagsParam != "" {
-		for _, tag := range strings.Split(tagsParam, ",") {
+		for tag := range strings.SplitSeq(tagsParam, ",") {
 			tag = strings.TrimSpace(tag)
 			if tag != "" {
 				filter.Tags = append(filter.Tags, tag)
@@ -65,12 +66,12 @@ func (h *Handler) GetTask(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	tsk, err := h.svc.GetTask(ctx, id)
 	if err != nil {
 		api.Fail(arc, err)
 		return
 	}
-	api.Success(arc, task)
+	api.Success(arc, tsk)
 }
 
 // CreateTask handles POST /api/v1/tasks.
@@ -84,7 +85,8 @@ func (h *Handler) CreateTask(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	created, err := h.svc.CreateTask(ctx, &req)
@@ -106,7 +108,8 @@ func (h *Handler) UpdateTask(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	req.ID = id
@@ -197,7 +200,8 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 		if parsed, err := time.Parse(time.RFC3339, v); err == nil {
 			from = parsed
 		} else {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'from' timestamp, expected RFC3339 format")
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid 'from' timestamp, expected RFC3339 format")
 			return
 		}
 	}
@@ -205,7 +209,8 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 		if parsed, err := time.Parse(time.RFC3339, v); err == nil {
 			to = parsed
 		} else {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'to' timestamp, expected RFC3339 format")
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid 'to' timestamp, expected RFC3339 format")
 			return
 		}
 	}
@@ -228,7 +233,7 @@ func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 	}
 	page, size := httputil.ParsePaging(arc)
 	filter := ExecutionFilter{
-		Status:       storedStatus(arc.Query("status")),
+		Status:       task.ToStoredStatus(arc.Query("status")),
 		ExecutorType: arc.Query("executor"),
 		TaskName:     arc.Query("task_name"),
 	}
@@ -258,20 +263,4 @@ func (h *Handler) GetExecution(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	api.Success(arc, execution)
-}
-
-// storedStatus maps an execution lifecycle status from the API contract
-// (pending/running/success/failed) to the persisted status value. Unknown
-// values pass through so callers filtering by raw stored values keep working.
-func storedStatus(lifecycle string) string {
-	switch lifecycle {
-	case "success":
-		return "normal"
-	case "failed":
-		return "abnormal"
-	case "running":
-		return "triggered"
-	default:
-		return lifecycle
-	}
 }

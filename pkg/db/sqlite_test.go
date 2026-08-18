@@ -9,9 +9,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 func TestValidatePragmaValue(t *testing.T) {

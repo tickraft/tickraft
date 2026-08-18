@@ -11,11 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/cron"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/scheduler"
-	"go.uber.org/zap"
 )
 
 // Manager is the task lifecycle management interface. It owns task
@@ -194,10 +195,6 @@ type Service struct {
 	running   map[int64]struct{}
 }
 
-// metaKeyEnabledFlag is the Metadata key used to persist the task's enabled
-// state across Pause/Resume.
-const metaKeyEnabledFlag = "enabled"
-
 // Register registers a new task for scheduling.
 // It parses the task's schedule configuration, stores the task, and
 // registers a timed callback with the engine.
@@ -306,7 +303,7 @@ func (m *Service) Pause(taskID int64) error {
 	if task.Metadata == nil {
 		task.Metadata = make(map[string]string)
 	}
-	task.Metadata[metaKeyEnabledFlag] = strconv.FormatBool(false)
+	task.Metadata[MetadataKeyEnabled] = strconv.FormatBool(false)
 	m.setTask(task)
 
 	m.logger.Info("task paused",
@@ -358,7 +355,7 @@ func (m *Service) Resume(taskID int64) error {
 	if task.Metadata == nil {
 		task.Metadata = make(map[string]string)
 	}
-	task.Metadata[metaKeyEnabledFlag] = strconv.FormatBool(true)
+	task.Metadata[MetadataKeyEnabled] = strconv.FormatBool(true)
 	m.setTask(task)
 
 	m.logger.Info("task resumed",

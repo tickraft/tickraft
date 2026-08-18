@@ -47,26 +47,39 @@ var DefaultTLSCipherSuites = []string{
 	"TLS_AES_128_GCM_SHA256", // TLS 1.3
 }
 
+// tlsMinVersion13 is the TLS 1.3 minimum-version setting accepted by
+// TLSMinVersion, complementing DefaultTLSMinVersion ("1.2").
+const tlsMinVersion13 = "1.3"
+
+// Non-default TLS client authentication modes accepted by TLSClientAuth,
+// mirroring the corresponding crypto/tls.ClientAuthType values.
+const (
+	clientAuthRequestCert      = "request_client_cert"
+	clientAuthRequireAnyCert   = "require_any_client_cert"
+	clientAuthVerifyIfGiven    = "verify_client_cert_if_given"
+	clientAuthRequireAndVerify = "require_and_verify_client_cert"
+)
+
 // allowedTLSMinVersions is the set of accepted TLS minimum versions.
 var allowedTLSMinVersions = map[string]struct{}{
-	"1.2": {},
-	"1.3": {},
+	DefaultTLSMinVersion: {},
+	tlsMinVersion13:      {},
 }
 
 // allowedTLSClientAuthModes is the set of accepted client authentication
 // modes, mirroring crypto/tls.ClientAuthType values.
 var allowedTLSClientAuthModes = map[string]struct{}{
-	"no_client_cert":                 {},
-	"request_client_cert":            {},
-	"require_any_client_cert":        {},
-	"verify_client_cert_if_given":    {},
-	"require_and_verify_client_cert": {},
+	DefaultTLSClientAuth:       {},
+	clientAuthRequestCert:      {},
+	clientAuthRequireAnyCert:   {},
+	clientAuthVerifyIfGiven:    {},
+	clientAuthRequireAndVerify: {},
 }
 
 // allowedACMEChallengeTypes is the set of accepted ACME challenge types.
 var allowedACMEChallengeTypes = map[string]struct{}{
-	"http-01": {},
-	"dns-01":  {},
+	DefaultACMEChallengeType:   {},
+	string(ACMEChallengeDNS01): {},
 }
 
 // Sentinel validation errors. Callers may use errors.Is to detect a specific
@@ -78,11 +91,14 @@ var (
 
 	// ErrTLSClientAuthInvalid is returned when TLSClientAuth is set to a value
 	// outside the five accepted client authentication modes.
-	ErrTLSClientAuthInvalid = errors.New("tls_client_auth must be one of: no_client_cert, request_client_cert, require_any_client_cert, verify_client_cert_if_given, require_and_verify_client_cert")
+	ErrTLSClientAuthInvalid = errors.New("tls_client_auth must be one of: no_client_cert, " +
+		"request_client_cert, require_any_client_cert, verify_client_cert_if_given, " +
+		"require_and_verify_client_cert")
 
 	// ErrTLSCertRequired is returned when TLS is enabled without ACME but the
 	// certificate or key file path is empty.
-	ErrTLSCertRequired = errors.New("tls_cert_file and tls_key_file are required when tls is enabled and acme is disabled")
+	ErrTLSCertRequired = errors.New("tls_cert_file and tls_key_file are required when tls is " +
+		"enabled and acme is disabled")
 
 	// ErrACMEEmailRequired is returned when ACME is enabled but the
 	// registration email is empty.

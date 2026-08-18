@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package asset implements the HTTP handlers for asset management:
+// CRUD, status updates, probing and audited lifecycle operations.
 package asset
 
 import (
@@ -13,15 +15,16 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
-	assetstore "github.com/tickraft/tickraft/pkg/asset"
-	"github.com/tickraft/tickraft/pkg/errdefs"
-	"github.com/tickraft/tickraft/pkg/quota"
-	"github.com/tickraft/tickraft/pkg/types"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	assetstore "github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/quota"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // newAssetTestEngineWithLogger is like newAssetTestEngine but returns a
@@ -61,9 +64,9 @@ func newAssetTestEngineWithLogger(t *testing.T) (*route.Engine, assetstore.Store
 func findAuditEntry(t *testing.T, logs *observer.ObservedLogs, operation string) observer.LoggedEntry {
 	t.Helper()
 	all := logs.All()
-	for _, e := range all {
-		if op, ok := fieldValue(e, "operation"); ok && op == operation {
-			return e
+	for i := range all {
+		if op, ok := fieldValue(all[i], "operation"); ok && op == operation {
+			return all[i]
 		}
 	}
 	t.Fatalf("audit log entry with operation=%q not found (total entries: %d)", operation, len(all))
@@ -448,7 +451,8 @@ func TestAssetCreateAllAssetTypes(t *testing.T) {
 		{"service", types.AssetTypeService},
 	}
 	for _, c := range cases {
-		body := []byte(`{"asset_type":"` + string(c.assetType) + `","asset_key":"` + c.name + `-key","name":"` + c.name + `"}`)
+		body := []byte(`{"asset_type":"` + string(c.assetType) + `","asset_key":"` +
+			c.name + `-key","name":"` + c.name + `"}`)
 		w := doRequest(engine, "POST", assetBasePath, body)
 		if w.Code != http.StatusOK {
 			t.Errorf("type %q: HTTP %d, want %d (body=%q)", c.assetType, w.Code, http.StatusOK, w.Body.String())
@@ -539,7 +543,7 @@ func TestAuditLogAssetCreateQuotaExceeded(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed the store to the quota cap.
-	for i := 0; i < maxDeviceQuota; i++ {
+	for i := range maxDeviceQuota {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeDevice,
 			AssetKey:  "quota-audit-" + itoa(int64(i)),
@@ -789,7 +793,7 @@ func TestAssetListPagination(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed 5 assets.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeHost,
 			AssetKey:  "page-" + itoa(int64(i)),
@@ -833,7 +837,7 @@ func TestAssetListDefaultPaging(t *testing.T) {
 	engine, store := newAssetTestEngine(t)
 	ctx := context.Background()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeHost,
 			AssetKey:  "default-" + itoa(int64(i)),
@@ -909,8 +913,9 @@ func TestAssetUpdateInvalidJSON(t *testing.T) {
 func TestAssetCreateMultipleDistinctKeys(t *testing.T) {
 	engine, _ := newAssetTestEngine(t)
 
-	for i := 0; i < 10; i++ {
-		body := []byte(`{"asset_type":"host","asset_key":"multi-` + itoa(int64(i)) + `","name":"host-` + itoa(int64(i)) + `"}`)
+	for i := range 10 {
+		body := []byte(`{"asset_type":"host","asset_key":"multi-` + itoa(int64(i)) +
+			`","name":"host-` + itoa(int64(i)) + `"}`)
 		w := doRequest(engine, "POST", assetBasePath, body)
 		if w.Code != http.StatusOK {
 			t.Fatalf("create %d: HTTP %d (body=%q)", i, w.Code, w.Body.String())

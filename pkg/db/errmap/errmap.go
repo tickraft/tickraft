@@ -22,8 +22,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tickraft/tickraft/pkg/errdefs"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
 // Sentinel errors specific to database operations. Cross-domain shared

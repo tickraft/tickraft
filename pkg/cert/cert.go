@@ -77,7 +77,7 @@ func Generate(opts Options) (*Result, error) {
 	if opts.Days <= 0 {
 		return nil, fmt.Errorf("days must be positive, got %d: %w", opts.Days, ErrInvalidDays)
 	}
-	if opts.KeyType != "rsa" && opts.KeyType != "ecdsa" {
+	if opts.KeyType != "rsa" && opts.KeyType != DefaultKeyType {
 		return nil, fmt.Errorf("key-type %q: %w", opts.KeyType, ErrUnsupportedKeyType)
 	}
 
@@ -138,7 +138,7 @@ func WriteToDir(opts Options, outputDir string) (certPath, keyPath string, err e
 		return "", "", err
 	}
 
-	if err = os.MkdirAll(outputDir, 0o755); err != nil {
+	if err = os.MkdirAll(outputDir, 0o750); err != nil {
 		return "", "", fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
 
@@ -188,7 +188,7 @@ func generatePrivateKey(keyType string) (any, error) {
 			return nil, fmt.Errorf("generate rsa key: %w", err)
 		}
 		return key, nil
-	case "ecdsa":
+	case DefaultKeyType:
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, fmt.Errorf("generate ecdsa key: %w", err)

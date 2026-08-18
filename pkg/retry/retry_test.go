@@ -462,21 +462,21 @@ func (m *mockWheel) Stop(_ context.Context) error {
 }
 
 // doAsyncRunner runs DoAsync and waits for onComplete with a timeout.
-func doAsyncRunner(t *testing.T, r *Retry, ctx context.Context, op Operation, wheel timewheel.Wheel) (error, bool) {
+func doAsyncRunner(ctx context.Context, t *testing.T, r *Retry, op Operation, wheel timewheel.Wheel) (bool, error) {
 	t.Helper()
 	resultCh := make(chan error, 1)
 	err := r.DoAsync(ctx, op, wheel, func(e error) {
 		resultCh <- e
 	})
 	if err != nil {
-		return err, false
+		return false, err
 	}
 	select {
 	case e := <-resultCh:
-		return e, true
+		return true, e
 	case <-time.After(5 * time.Second):
 		t.Fatal("DoAsync timed out waiting for onComplete")
-		return nil, false
+		return false, nil
 	}
 }
 
@@ -489,7 +489,7 @@ func TestDoAsync_SuccessOnFirstAttempt(t *testing.T) {
 	defer wheel.Stop(context.Background())
 
 	var calls atomic.Int32
-	gotErr, ok := doAsyncRunner(t, r, context.Background(), func() error {
+	ok, gotErr := doAsyncRunner(context.Background(), t, r, func() error {
 		calls.Add(1)
 		return nil
 	}, wheel)
@@ -513,7 +513,7 @@ func TestDoAsync_SuccessAfterRetries(t *testing.T) {
 	defer wheel.Stop(context.Background())
 
 	var calls atomic.Int32
-	gotErr, ok := doAsyncRunner(t, r, context.Background(), func() error {
+	ok, gotErr := doAsyncRunner(context.Background(), t, r, func() error {
 		n := calls.Add(1)
 		if n < 3 {
 			return errors.New("fail")
@@ -540,7 +540,7 @@ func TestDoAsync_MaxAttemptsExhausted(t *testing.T) {
 	defer wheel.Stop(context.Background())
 
 	var calls atomic.Int32
-	gotErr, ok := doAsyncRunner(t, r, context.Background(), func() error {
+	ok, gotErr := doAsyncRunner(context.Background(), t, r, func() error {
 		calls.Add(1)
 		return errors.New("always fail")
 	}, wheel)
@@ -571,7 +571,7 @@ func TestDoAsync_NonRetryableError(t *testing.T) {
 	defer wheel.Stop(context.Background())
 
 	var calls atomic.Int32
-	gotErr, ok := doAsyncRunner(t, r, context.Background(), func() error {
+	ok, gotErr := doAsyncRunner(context.Background(), t, r, func() error {
 		calls.Add(1)
 		return permanentErr
 	}, wheel)

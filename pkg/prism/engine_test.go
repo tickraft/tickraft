@@ -13,11 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -537,10 +538,13 @@ func TestLogPayloadToAlert(t *testing.T) {
 // TestEventJSON verifies the JSON serialization of Event.
 func TestEventJSON(t *testing.T) {
 	a := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		TenantID:   2,
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+		Type:     alert.TypeMetric,
+		AssetID:  1,
+		TenantID: 2,
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 	data, err := json.Marshal(a)
 	if err != nil {

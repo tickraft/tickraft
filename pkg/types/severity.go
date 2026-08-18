@@ -33,13 +33,21 @@ const (
 	SeverityCritical Severity = "critical"
 	// SeverityError indicates an error condition.
 	SeverityError Severity = "error"
+	// SeverityDebug indicates a verbose diagnostic message. It ranks below
+	// SeverityInfo and is used by log ingestion and level normalization.
+	// It is not an alerting level: Severity.IsValid deliberately excludes
+	// it so alert validation keeps rejecting debug as a record severity.
+	SeverityDebug Severity = "debug"
 )
 
 // IsValid reports whether s is one of the recognized Severity constants.
+// SeverityDebug is deliberately excluded: debug is a log level, not an
+// alerting level, so alert validation keeps rejecting it.
 func (s Severity) IsValid() bool {
 	switch s {
 	case SeverityInfo, SeverityWarning, SeverityCritical, SeverityError:
 		return true
+	default:
+		return false
 	}
-	return false
 }

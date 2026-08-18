@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package prism provides the internal API service implementations that
+// bridge the handler layer with the prism rule engine and its persistent
+// rule and record stores.
 package prism
 
 import (
@@ -17,6 +20,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // AlertService implements alert.Service using the prism rule engine
@@ -95,12 +99,12 @@ func (s *AlertService) UpdateRule(ctx context.Context, id int64, req *alert.Rule
 	m := ruleHandlerToModel(req)
 	m.ID = existing.ID
 	m.CreatedAt = existing.CreatedAt
-	if err := s.ruleStore.Update(ctx, m); err != nil {
+	if err = s.ruleStore.Update(ctx, m); err != nil {
 		return nil, mapRuleStoreError(err)
 	}
 	// best-effort: rule updated; reload failure keeps the engine on
 	// the previous rule set, so log it rather than failing the request.
-	if err := s.reloadRules(ctx); err != nil {
+	if err = s.reloadRules(ctx); err != nil {
 		zap.L().Warn("alert rule engine reload failed after update",
 			zap.Int64("rule_id", m.ID), zap.Error(err))
 	}
@@ -124,7 +128,11 @@ func (s *AlertService) DeleteRule(ctx context.Context, id int64) error {
 
 // ListRecords returns a page of alert records matching the filter and the
 // total count.
-func (s *AlertService) ListRecords(ctx context.Context, page, size int, filter alert.RecordFilter) ([]alert.Record, int64, error) {
+func (s *AlertService) ListRecords(
+	ctx context.Context,
+	page, size int,
+	filter alert.RecordFilter,
+) ([]alert.Record, int64, error) {
 	page, size = httputil.ClampPaging(page, size)
 	storeFilter := prismalert.RecordFilter{
 		Severity: filter.Severity,
@@ -216,7 +224,7 @@ func ruleHandlerToModel(r *alert.Rule) *rule.Record {
 func recordModelToHandler(m prismalert.Record) alert.Record {
 	severity := m.Severity
 	if severity == "" {
-		severity = "warning"
+		severity = string(types.SeverityWarning)
 	}
 	return alert.Record{
 		ID:             m.ID,

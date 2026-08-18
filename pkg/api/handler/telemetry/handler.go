@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -82,7 +83,7 @@ func (h *Handler) SetDataStores(metricStore MetricStoreInjector, logStore LogSto
 // all modes.
 func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
 	page, size := httputil.ParsePaging(arc)
-	filter := Filter{Mode: string(arc.Query("mode"))}
+	filter := Filter{Mode: arc.Query("mode")}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)
@@ -116,11 +117,13 @@ func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "description exceeds maximum length of 1024 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	created, err := h.svc.CreateTask(ctx, &req)
@@ -142,11 +145,13 @@ func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "description exceeds maximum length of 1024 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	req.ID = id
@@ -195,9 +200,9 @@ func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext)
 		api.Fail(arc, err)
 		return
 	}
-	status := "inactive"
+	status := telemetry.MonitorStatusInactive
 	if task.Enabled {
-		status = "active"
+		status = telemetry.MonitorStatusActive
 	}
 	api.Success(arc, monitorStatus{
 		ID:      task.ID,
@@ -219,6 +224,8 @@ type monitorHistoryEntry struct {
 // returns historical metric data points for the monitoring task. When a
 // MetricStore is injected and the task has an AssetID, metrics are queried
 // from the persistent store; otherwise an empty list is returned.
+//
+//nolint:dupl // monitors history and logs share handler shape but query distinct stores and entry types
 func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -266,9 +273,9 @@ func (h *Handler) ProbeMonitor(ctx context.Context, arc *app.RequestContext) {
 		api.Fail(arc, err)
 		return
 	}
-	status := "inactive"
+	status := telemetry.MonitorStatusInactive
 	if task.Enabled {
-		status = "active"
+		status = telemetry.MonitorStatusActive
 	}
 	api.Success(arc, monitorStatus{
 		ID:      task.ID,
@@ -289,6 +296,8 @@ type monitorLogEntry struct {
 // returns log entries for the monitoring task. When a LogStore is injected
 // and the task has an AssetID, logs are queried from the persistent store;
 // otherwise an empty list is returned.
+//
+//nolint:dupl // monitors history and logs share handler shape but query distinct stores and entry types
 func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -370,15 +379,15 @@ func (h *Handler) DisableMonitor(ctx context.Context, arc *app.RequestContext) {
 // response. Asset-key authentication is enforced by the middleware
 // registered on the route group; the handler itself does not repeat that
 // check. An unknown Kind results in a 400 Bad Request.
-func (h *Handler) Report(ctx context.Context, arc *app.RequestContext) {
-	_ = ctx
+func (h *Handler) Report(_ context.Context, arc *app.RequestContext) {
 	var req Telemetry
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
 	maxSize, ok := kindBodyLimit(req.Kind)
 	if !ok {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "unknown telemetry kind: "+string(req.Kind))
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"unknown telemetry kind: "+string(req.Kind))
 		return
 	}
 	if !readLimitedBody(arc, maxSize) {

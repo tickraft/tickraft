@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -16,8 +19,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/governance"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // Config is the unified configuration for the prism engine and all its
@@ -78,42 +79,121 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 		logger = zap.NewNop()
 	}
 
-	// Create and migrate stores.
-	ruleStore := rule.NewStore(cfg.DB, rule.NewCompiler())
-	if err := ruleStore.Migrate(ctx); err != nil {
-		return nil, fmt.Errorf("prism: migrate rule store: %w", err)
-	}
-
-	recordStore := alert.NewRecordStore(cfg.DB)
-	if err := alert.Migrate(ctx, cfg.DB); err != nil {
-		return nil, fmt.Errorf("prism: migrate alert store: %w", err)
-	}
-
-	channelStore := channel.NewStore(cfg.DB)
-	if err := channelStore.Migrate(ctx); err != nil {
-		return nil, fmt.Errorf("prism: migrate channel store: %w", err)
-	}
-
-	remediationStore := remediation.NewStore(cfg.DB)
-	if err := remediationStore.Migrate(ctx); err != nil {
-		return nil, fmt.Errorf("prism: migrate remediation store: %w", err)
+	stores, err := migrateStores(ctx, cfg.DB)
+	if err != nil {
+		return nil, err
 	}
 
 	// OnAlert callback: use caller-provided or default to record persistence.
 	onAlert := cfg.OnAlert
 	if onAlert == nil {
-		onAlert = func(ctx context.Context, evt alert.Event) {
-			if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
-				logger.Warn("persist alert record",
-					zap.String("type", string(evt.Type)),
-					zap.Int64("asset_id", evt.AssetID),
-					zap.Error(err),
-				)
-			}
+		onAlert = defaultOnAlert(stores.record, logger)
+	}
+
+	engine, err := newDispatchEngine(cfg, logger, onAlert)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load enabled channels from the database into the dispatch engine.
+	if err = loadEnabledChannels(ctx, engine, stores.channel, logger); err != nil {
+		return nil, err
+	}
+
+	// Register the rule engine when enabled.
+	ruleEng, err := rule.Register(ctx, engine, resolveRuleConfig(cfg, logger, stores.rule))
+	if err != nil {
+		return nil, fmt.Errorf("prism: register rule engine: %w", err)
+	}
+
+	// Wire orchestration fields onto the Engine.
+	engine.ruleStore = stores.rule
+	engine.recordStore = stores.record
+	engine.channelStore = stores.channel
+	engine.remediationStore = stores.remediation
+	engine.ruleEngine = ruleEng
+
+	// Create the remediation engine. It subscribes to the same telemetry
+	// and asset events as the alert pipeline and dispatches matching
+	// remediation rules to their operators, persisting each run to the
+	// remediation record store. Started and stopped with the Engine.
+	remediationMgr, err := remediation.New(
+		remediation.WithEventBus(cfg.Bus),
+		remediation.WithStore(stores.remediation),
+		remediation.WithRecordStore(stores.remediation),
+		remediation.WithLogger(logger),
+		remediation.WithOperators(cfg.RemediationOperators...),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("prism: create remediation engine: %w", err)
+	}
+	engine.remediationMgr = remediationMgr
+	if ruleEng != nil {
+		engine.ruleEngineStopFn = func(stopCtx context.Context) error {
+			return ruleEng.Stop(stopCtx)
 		}
 	}
 
-	// Construct the dispatch engine.
+	return engine, nil
+}
+
+// engineStores groups the persistent stores created and migrated by
+// NewFromConfig for the prism Engine and its sub-engines.
+type engineStores struct {
+	rule        *rule.Store
+	record      alert.RecordStore
+	channel     *channel.Store
+	remediation *remediation.Store
+}
+
+// migrateStores creates and migrates the rule, alert record, channel,
+// and remediation stores.
+func migrateStores(ctx context.Context, db *gorm.DB) (*engineStores, error) {
+	ruleStore := rule.NewStore(db, rule.NewCompiler())
+	if err := ruleStore.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("prism: migrate rule store: %w", err)
+	}
+
+	recordStore := alert.NewRecordStore(db)
+	if err := alert.Migrate(ctx, db); err != nil {
+		return nil, fmt.Errorf("prism: migrate alert store: %w", err)
+	}
+
+	channelStore := channel.NewStore(db)
+	if err := channelStore.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("prism: migrate channel store: %w", err)
+	}
+
+	remediationStore := remediation.NewStore(db)
+	if err := remediationStore.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("prism: migrate remediation store: %w", err)
+	}
+
+	return &engineStores{
+		rule:        ruleStore,
+		record:      recordStore,
+		channel:     channelStore,
+		remediation: remediationStore,
+	}, nil
+}
+
+// defaultOnAlert returns the default OnAlert callback that persists each
+// accepted alert to the alert RecordStore.
+func defaultOnAlert(recordStore alert.RecordStore, logger *zap.Logger) OnAlertFunc {
+	return func(ctx context.Context, evt alert.Event) {
+		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+			logger.Warn("persist alert record",
+				zap.String("type", string(evt.Type)),
+				zap.Int64("asset_id", evt.AssetID),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
+// newDispatchEngine constructs the dispatch Engine with the options
+// derived from cfg.
+func newDispatchEngine(cfg Config, logger *zap.Logger, onAlert OnAlertFunc) (*Engine, error) {
 	engineOpts := []Option{
 		WithEventBus(cfg.Bus),
 		WithLogger(logger),
@@ -134,11 +214,15 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prism: create engine: %w", err)
 	}
+	return engine, nil
+}
 
-	// Load enabled channels from the database into the dispatch engine.
+// loadEnabledChannels loads the enabled channels from the database into
+// the dispatch engine.
+func loadEnabledChannels(ctx context.Context, engine *Engine, channelStore *channel.Store, logger *zap.Logger) error {
 	enabledRecords, err := channelStore.ListEnabled(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("prism: list enabled channels: %w", err)
+		return fmt.Errorf("prism: list enabled channels: %w", err)
 	}
 	channels, err := BuildChannelsFromRecords(enabledRecords)
 	if err != nil {
@@ -147,8 +231,12 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	for _, ch := range channels {
 		engine.AddChannel(ch)
 	}
+	return nil
+}
 
-	// Register the rule engine when enabled.
+// resolveRuleConfig normalizes the rule engine configuration with the
+// shared logger, the rule store fallback, and the optional asset store.
+func resolveRuleConfig(cfg Config, logger *zap.Logger, ruleStore *rule.Store) rule.Config {
 	ruleCfg := cfg.RuleConfig
 	if ruleCfg.Logger == nil {
 		ruleCfg.Logger = logger
@@ -159,41 +247,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	if cfg.AssetStore != nil {
 		ruleCfg.AssetStore = cfg.AssetStore
 	}
-
-	ruleEng, err := rule.Register(ctx, engine, ruleCfg)
-	if err != nil {
-		return nil, fmt.Errorf("prism: register rule engine: %w", err)
-	}
-
-	// Wire orchestration fields onto the Engine.
-	engine.ruleStore = ruleStore
-	engine.recordStore = recordStore
-	engine.channelStore = channelStore
-	engine.remediationStore = remediationStore
-	engine.ruleEngine = ruleEng
-
-	// Create the remediation engine. It subscribes to the same telemetry
-	// and asset events as the alert pipeline and dispatches matching
-	// remediation rules to their operators, persisting each run to the
-	// remediation record store. Started and stopped with the Engine.
-	remediationMgr, err := remediation.New(
-		remediation.WithEventBus(cfg.Bus),
-		remediation.WithStore(remediationStore),
-		remediation.WithRecordStore(remediationStore),
-		remediation.WithLogger(logger),
-		remediation.WithOperators(cfg.RemediationOperators...),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("prism: create remediation engine: %w", err)
-	}
-	engine.remediationMgr = remediationMgr
-	if ruleEng != nil {
-		engine.ruleEngineStopFn = func(stopCtx context.Context) error {
-			return ruleEng.Stop(stopCtx)
-		}
-	}
-
-	return engine, nil
+	return ruleCfg
 }
 
 // DefaultGuards returns the baseline governance guard chain for the

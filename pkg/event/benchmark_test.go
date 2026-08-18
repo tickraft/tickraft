@@ -28,7 +28,7 @@ func BenchmarkPublishSubscribe(b *testing.B) {
 	defer sub.Cancel()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{
 			TaskID:      "bench-task",
 			ExecutionID: "bench-exec",
@@ -60,7 +60,7 @@ func BenchmarkSyncPublishSubscribe(b *testing.B) {
 	defer sub.Cancel()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{
 			TaskID: "bench-task",
 		}, WithSync()); err != nil {
@@ -87,7 +87,7 @@ func BenchmarkGenericPublishSubscribe(b *testing.B) {
 	defer sub.Cancel()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := Publish(context.Background(), bus, TypeExecutionTriggered, ExecutionPayload{
 			TaskID: "bench-task",
 		}); err != nil {
@@ -129,7 +129,7 @@ func BenchmarkConcurrentPublish(b *testing.B) {
 
 // BenchmarkEnvelopePool benchmarks the Envelope memory pool.
 func BenchmarkEnvelopePool(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		env := acquireEnvelope()
 		env.Type = TypeExecutionTriggered
 		env.Payload = ExecutionPayload{TaskID: "pool-bench"}
@@ -141,7 +141,7 @@ func BenchmarkEnvelopePool(b *testing.B) {
 func BenchmarkPriorityQueue(b *testing.B) {
 	pq := &priorityQueue{}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		env := &Envelope{Priority: i % 100}
 		heapPush(pq, &queueItem{envelope: env, seq: uint64(i)})
 		if pq.Len() > 100 {
@@ -176,7 +176,7 @@ func BenchmarkThroughput(b *testing.B) {
 
 	b.ResetTimer()
 	start := time.Now()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 			b.Fatalf("publish: %v", err)
 		}

@@ -321,7 +321,8 @@ func initAuth(_ context.Context, rt *runtime) error {
 		jwtSecret = os.Getenv("TICKRAFT_JWT_SECRET")
 	}
 	if jwtSecret == "" {
-		return fmt.Errorf("auth.jwt_secret is required (set auth.jwt_secret in config or TICKRAFT_JWT_SECRET env var): %w", errdefs.ErrInvalidArgument)
+		return fmt.Errorf("auth.jwt_secret is required (set auth.jwt_secret in config "+
+			"or TICKRAFT_JWT_SECRET env var): %w", errdefs.ErrInvalidArgument)
 	}
 
 	blacklistStore := auth.NewBlacklistStore(rt.dbc, rt.cache)

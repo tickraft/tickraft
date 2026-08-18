@@ -37,7 +37,7 @@ func BenchmarkSubmitThroughput(b *testing.B) {
 			wg.Add(b.N)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 					wg.Done()
 					return nil
@@ -88,7 +88,7 @@ func BenchmarkCallerRuns(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := p.Submit(context.Background(), Lambda(func(ctx context.Context) error {
 			return nil
 		})); err != nil {

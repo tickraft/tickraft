@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -274,7 +275,9 @@ func TestSendSuccess(t *testing.T) {
 	if err := ch.Send(context.Background(), sampleAlert()); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if received.AssetID != 42 || len(received.Violations) == 0 || received.Violations[0].Metric == nil || received.Violations[0].Metric.Name != "cpu_usage" {
+	if received.AssetID != 42 || len(received.Violations) == 0 ||
+		received.Violations[0].Metric == nil ||
+		received.Violations[0].Metric.Name != "cpu_usage" {
 		t.Errorf("received alert mismatch: %+v", received)
 	}
 }
@@ -462,7 +465,7 @@ func TestCircuitOpen(t *testing.T) {
 	}
 
 	// Two failed sends open the breaker (threshold 2).
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := ch.Send(context.Background(), sampleAlert()); err == nil {
 			t.Fatalf("send #%d: expected error", i+1)
 		}
@@ -504,7 +507,7 @@ func TestCircuitCooldownHalfOpenSuccess(t *testing.T) {
 
 	// Open the breaker with two failures.
 	fail.Store(true)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if err := ch.Send(context.Background(), sampleAlert()); err == nil {
 			t.Fatal("expected failure")
 		}
@@ -554,7 +557,7 @@ func TestCircuitResetsOnSuccess(t *testing.T) {
 
 	// Two failures (below threshold 3).
 	fail.Store(true)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		_ = ch.Send(context.Background(), sampleAlert())
 	}
 
@@ -566,7 +569,7 @@ func TestCircuitResetsOnSuccess(t *testing.T) {
 
 	// Two more failures should not open the breaker (counter was reset).
 	fail.Store(true)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		_ = ch.Send(context.Background(), sampleAlert())
 	}
 

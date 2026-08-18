@@ -10,6 +10,7 @@
 // the certificate or key file changes on disk; manual reload is exposed via
 // Server.ReloadTLSConfig (called by the POST
 // /api/v1/system/certificates/reload endpoint).
+
 package api
 
 import (
@@ -100,7 +101,7 @@ func (w *tlsWatcher) stop() {
 	<-w.doneCh
 }
 
-// reloadTLSConfig atomically rebuilds and replaces the active TLS
+// ReloadTLSConfig atomically rebuilds and replaces the active TLS
 // configuration from the certificate and key files referenced by
 // s.config. It is called automatically by the fsnotify watcher when either
 // file changes, and manually by the certificate-reload API endpoint. The
@@ -222,7 +223,8 @@ func (s *Server) startTLSFileWatcher() (stop func()) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		hlog.SystemLogger().Warnf("tls watcher: create fsnotify watcher: %v (auto-reload disabled; use the reload API)", err)
+		hlog.SystemLogger().Warnf("tls watcher: create fsnotify watcher: %v "+
+			"(auto-reload disabled; use the reload API)", err)
 		return func() {}
 	}
 
@@ -334,9 +336,9 @@ func uniqueParentDirs(paths ...string) []string {
 // DefaultTLSMinVersion.
 func parseTLSMinVersion(s string) (uint16, error) {
 	switch s {
-	case "", "1.2":
+	case "", DefaultTLSMinVersion:
 		return tls.VersionTLS12, nil
-	case "1.3":
+	case tlsMinVersion13:
 		return tls.VersionTLS13, nil
 	default:
 		return 0, fmt.Errorf("tls_min_version %q: %w", s, ErrTLSInvalidMinVersion)
@@ -371,15 +373,15 @@ func parseTLSCipherSuites(names []string) ([]uint16, error) {
 // NoClientCert to match DefaultTLSClientAuth.
 func parseTLSClientAuth(s string) (tls.ClientAuthType, error) {
 	switch s {
-	case "", "no_client_cert":
+	case "", DefaultTLSClientAuth:
 		return tls.NoClientCert, nil
-	case "request_client_cert":
+	case clientAuthRequestCert:
 		return tls.RequestClientCert, nil
-	case "require_any_client_cert":
+	case clientAuthRequireAnyCert:
 		return tls.RequireAnyClientCert, nil
-	case "verify_client_cert_if_given":
+	case clientAuthVerifyIfGiven:
 		return tls.VerifyClientCertIfGiven, nil
-	case "require_and_verify_client_cert":
+	case clientAuthRequireAndVerify:
 		return tls.RequireAndVerifyClientCert, nil
 	default:
 		return 0, fmt.Errorf("tls_client_auth %q: %w", s, ErrTLSInvalidClientAuth)
@@ -389,7 +391,7 @@ func parseTLSClientAuth(s string) (tls.ClientAuthType, error) {
 // loadCABundle reads a PEM-encoded CA bundle from path and returns it as a
 // *x509.CertPool. An empty file is a configuration error and returns an error.
 func loadCABundle(path string) (*x509.CertPool, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // CA bundle path from operator config
 	if err != nil {
 		return nil, fmt.Errorf("read CA bundle: %w", err)
 	}

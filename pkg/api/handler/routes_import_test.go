@@ -23,7 +23,7 @@ import (
 // through pkg/api -> internal/api, and that chain is owned by the
 // internal api package, not the handler package.
 func TestNoPkgAuthImport(t *testing.T) {
-	out, err := exec.Command("go", "list", "-f", `{{join .Imports "\n"}}`, ".").Output()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-f", `{{join .Imports "\n"}}`, ".").Output()
 	if err != nil {
 		t.Skipf("go list failed (skipping): %v", err)
 	}
@@ -36,7 +36,8 @@ func TestNoPkgAuthImport(t *testing.T) {
 		imp = strings.TrimSpace(imp)
 		for _, f := range forbidden {
 			if imp == f {
-				t.Fatalf("handler package must not directly import %s (handler must remain auth-implementation-agnostic)", f)
+				t.Fatalf("handler package must not directly import %s "+
+					"(handler must remain auth-implementation-agnostic)", f)
 			}
 		}
 	}

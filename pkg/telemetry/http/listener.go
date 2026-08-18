@@ -33,17 +33,24 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 const (
 	// webhookSourceType is the SourceType identifier stamped on telemetry
 	// received through the webhook listener.
 	webhookSourceType = "webhook"
+	// kindTaskStatus is the Kind discriminator for task status telemetry.
+	kindTaskStatus = "task_status"
+	// kindTaskExecutionStatus is the Kind discriminator for task execution
+	// status telemetry.
+	kindTaskExecutionStatus = "task_execution_status"
 	// maxHeartbeatBodySize limits Telemetry{Kind:"heartbeat"} payloads to 1 KiB.
 	maxHeartbeatBodySize = 1 << 10
 	// maxMetricsBodySize limits Telemetry{Kind:"metrics"} payloads to 64 KiB.
@@ -199,7 +206,7 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 
 		// Authentication: HMAC signature when a secret is configured.
 		if h.secret != "" {
-			sig := r.Header.Get("X-Tickraft-Signature")
+			sig := r.Header.Get(httputil.HeaderSignature)
 			if !h.verifySignature(body, sig) {
 				nethttp.Error(w, "invalid signature", nethttp.StatusUnauthorized)
 				return
@@ -214,7 +221,7 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 
 		maxSize, ok := kindLimit(req.Kind)
 		if !ok {
-			nethttp.Error(w, "unknown telemetry kind: "+string(req.Kind), nethttp.StatusBadRequest)
+			nethttp.Error(w, "unknown telemetry kind: "+req.Kind, nethttp.StatusBadRequest)
 			return
 		}
 		if len(body) > maxSize {
@@ -264,9 +271,9 @@ func kindLimit(kind string) (int, bool) {
 		return maxMetricsBodySize, true
 	case string(telemetry.KindLogs):
 		return maxLogsBodySize, true
-	case "task_status":
+	case kindTaskStatus:
 		return maxTaskStatusBodySize, true
-	case "task_execution_status":
+	case kindTaskExecutionStatus:
 		return maxTaskExecStatusBodySize, true
 	default:
 		return 0, false
@@ -284,7 +291,7 @@ func kindLimit(kind string) (int, bool) {
 // and is not implemented here.
 func validateRequest(req *telemetryRequest) string {
 	switch req.Kind {
-	case "task_status":
+	case kindTaskStatus:
 		// task_id and status are required.
 		if req.TaskID <= 0 {
 			return "invalid request: missing required field: task_id"
@@ -292,7 +299,7 @@ func validateRequest(req *telemetryRequest) string {
 		if req.Status == "" {
 			return "invalid request: missing required field: status"
 		}
-	case "task_execution_status":
+	case kindTaskExecutionStatus:
 		// task_id, execution_id and status are required.
 		if req.TaskID <= 0 {
 			return "invalid request: missing required field: task_id"
@@ -364,13 +371,19 @@ type reportRequest struct {
 // resolveTelemetry resolves the asset identity and builds a Telemetry.
 // It returns (telemetry, httpStatus, true) on success, or (nil, httpStatus, false)
 // when the asset cannot be resolved.
-func (h *Listener) resolveTelemetry(ctx context.Context, req *reportRequest, body []byte, remoteAddr string) (*telemetry.Telemetry, int, bool) {
+func (h *Listener) resolveTelemetry(
+	ctx context.Context,
+	req *reportRequest,
+	body []byte,
+	remoteAddr string,
+) (*telemetry.Telemetry, int, bool) {
 	assetID := req.AssetID
 	assetType := types.AssetTypeDevice
 	tenantID := req.TenantID
 
 	// Resolve via explicit asset_id first, then asset_key lookup.
-	if assetID > 0 && h.store != nil {
+	switch {
+	case assetID > 0 && h.store != nil:
 		a, lookupErr := h.store.GetByID(ctx, assetID)
 		if lookupErr != nil || a == nil {
 			h.logger.Warn("http listener: asset id not found",
@@ -381,7 +394,7 @@ func (h *Listener) resolveTelemetry(ctx context.Context, req *reportRequest, bod
 		}
 		assetType = a.AssetType
 		tenantID = a.TenantID
-	} else if assetID <= 0 && req.AssetKey != "" && h.store != nil {
+	case assetID <= 0 && req.AssetKey != "" && h.store != nil:
 		a, lookupErr := h.store.GetByKey(ctx, req.TenantID, req.AssetKey)
 		if lookupErr != nil || a == nil {
 			h.logger.Warn("http listener: asset key not found",
@@ -394,7 +407,7 @@ func (h *Listener) resolveTelemetry(ctx context.Context, req *reportRequest, bod
 		assetID = a.ID
 		assetType = a.AssetType
 		tenantID = a.TenantID
-	} else if assetID <= 0 {
+	case assetID <= 0:
 		// No secret and no usable asset identity: reject.
 		if h.secret == "" {
 			return nil, nethttp.StatusBadRequest, false

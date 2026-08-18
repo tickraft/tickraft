@@ -20,14 +20,21 @@ const (
 	OpExecute // 2
 )
 
+// String representations of the Operation values, used for JSON
+// serialization and parsing.
+const (
+	opProbeName   = "probe"
+	opExecuteName = "execute"
+)
+
 // String returns the human-readable string representation of Operation.
 // OpProbe returns "probe", OpExecute returns "execute".
 func (o Operation) String() string {
 	switch o {
 	case OpProbe:
-		return "probe"
+		return opProbeName
 	case OpExecute:
-		return "execute"
+		return opExecuteName
 	default:
 		return "unknown"
 	}
@@ -91,9 +98,9 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch s {
-	case "probe":
+	case opProbeName:
 		*o = OpProbe
-	case "execute":
+	case opExecuteName:
 		*o = OpExecute
 	default:
 		return ErrInvalidOperation
@@ -106,18 +113,18 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 // Unrecognized strings return ErrInvalidOperation.
 func ParseOperation(s string) (Operation, error) {
 	switch s {
-	case "", "execute":
+	case "", opExecuteName:
 		return OpExecute, nil
-	case "probe":
+	case opProbeName:
 		return OpProbe, nil
 	default:
 		return 0, ErrInvalidOperation
 	}
 }
 
-// parseOperation is the package-internal convenience version of
+// operationOrDefault is the package-internal convenience version of
 // ParseOperation. On parse failure it falls back to OpExecute.
-func parseOperation(s string) Operation {
+func operationOrDefault(s string) Operation {
 	op, err := ParseOperation(s)
 	if err != nil {
 		return OpExecute

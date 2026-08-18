@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/user"
-	"gorm.io/gorm"
 )
 
 // blacklistStore is the GORM-backed implementation of BlacklistStore.

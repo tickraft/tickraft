@@ -21,6 +21,15 @@ import (
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
+// Recognized SQLite PRAGMA keys, kept as constants so the settings list and
+// the validation switch share the same literals.
+const (
+	pragmaBusyTimeout = "busy_timeout"
+	pragmaCacheSize   = "cache_size"
+	pragmaJournalMode = "journal_mode"
+	pragmaSynchronous = "synchronous"
+)
+
 // openSQLite creates a GORM database instance for SQLite3 with optimized
 // PRAGMA settings and a tuned connection pool.
 func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
@@ -34,7 +43,7 @@ func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
 	// In-memory databases (":memory:") are rejected by Parse for production
 	// DSNs. Tests that construct Config directly may still use ":memory:" for
 	// isolated, fast test execution.
-	if cfg.Addr != ":memory:" {
+	if cfg.Addr != memoryAddr {
 		if _, err := os.Stat(filepath.Dir(cfg.Addr)); err != nil {
 			if !os.IsNotExist(err) {
 				return nil, fmt.Errorf("db: check sqlite3 directory: %w", err)
@@ -56,7 +65,7 @@ func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("db: open sqlite3: %w", err)
 	}
 
-	if err := applySQLitePragmas(dbc, cfg.Params); err != nil {
+	if err = applySQLitePragmas(dbc, cfg.Params); err != nil {
 		closeOnErr(dbc)
 		return nil, err
 	}
@@ -75,27 +84,7 @@ func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
 	// In-memory databases (":memory:") are an exception: each connection
 	// gets its own private database, so MaxOpenConns must be 1 to ensure
 	// all queries share the same in-memory state.
-	maxOpen := 4
-	if cfg.Addr == ":memory:" {
-		maxOpen = 1
-	}
-	if v, ok := cfg.Params["max_open_conns"]; ok && v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			maxOpen = n
-		}
-	}
-	maxIdle := maxOpen
-	if v, ok := cfg.Params["max_idle_conns"]; ok && v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			maxIdle = n
-		}
-	}
-	connMaxLifetime := time.Hour
-	if v, ok := cfg.Params["conn_max_lifetime"]; ok && v != "" {
-		if d, err := time.ParseDuration(v); err == nil && d > 0 {
-			connMaxLifetime = d
-		}
-	}
+	maxOpen, maxIdle, connMaxLifetime := sqlitePoolSettings(cfg)
 	sqlDB.SetMaxOpenConns(maxOpen)
 	sqlDB.SetMaxIdleConns(maxIdle)
 	sqlDB.SetConnMaxLifetime(connMaxLifetime)
@@ -107,6 +96,34 @@ func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
 		zap.Duration("conn_max_lifetime", connMaxLifetime),
 	)
 	return dbc, nil
+}
+
+// sqlitePoolSettings derives the connection pool tuning for SQLite from cfg:
+// the max open / max idle connection counts and the connection max lifetime.
+// Unrecognized or invalid override values fall back to the defaults.
+func sqlitePoolSettings(cfg Config) (maxOpen, maxIdle int, connMaxLifetime time.Duration) {
+	maxOpen = 4
+	if cfg.Addr == memoryAddr {
+		maxOpen = 1
+	}
+	if v, ok := cfg.Params["max_open_conns"]; ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxOpen = n
+		}
+	}
+	maxIdle = maxOpen
+	if v, ok := cfg.Params["max_idle_conns"]; ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			maxIdle = n
+		}
+	}
+	connMaxLifetime = time.Hour
+	if v, ok := cfg.Params["conn_max_lifetime"]; ok && v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			connMaxLifetime = d
+		}
+	}
+	return maxOpen, maxIdle, connMaxLifetime
 }
 
 // closeOnErr closes the underlying sql.DB of a *gorm.DB on the error cleanup
@@ -130,10 +147,10 @@ func applySQLitePragmas(dbc *gorm.DB, params map[string]string) error {
 		key   string
 		value string
 	}{
-		{"busy_timeout", paramOrDefault(params, "busy_timeout", "5000")},
-		{"cache_size", paramOrDefault(params, "cache_size", "-2000")},
-		{"journal_mode", paramOrDefault(params, "journal_mode", "WAL")},
-		{"synchronous", paramOrDefault(params, "synchronous", "NORMAL")},
+		{pragmaBusyTimeout, paramOrDefault(params, pragmaBusyTimeout, "5000")},
+		{pragmaCacheSize, paramOrDefault(params, pragmaCacheSize, "-2000")},
+		{pragmaJournalMode, paramOrDefault(params, pragmaJournalMode, "WAL")},
+		{pragmaSynchronous, paramOrDefault(params, pragmaSynchronous, "NORMAL")},
 	}
 
 	for _, s := range settings {
@@ -142,7 +159,7 @@ func applySQLitePragmas(dbc *gorm.DB, params map[string]string) error {
 			return err
 		}
 		stmt := fmt.Sprintf("PRAGMA %s = %s", s.key, val)
-		if err := dbc.Exec(stmt).Error; err != nil {
+		if err = dbc.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("db: execute pragma %q: %w", stmt, err)
 		}
 	}
@@ -161,19 +178,19 @@ func applySQLitePragmas(dbc *gorm.DB, params map[string]string) error {
 // Returns the normalized value or an error if the value is not recognized.
 func validatePragmaValue(key, value string) (string, error) {
 	switch key {
-	case "busy_timeout", "cache_size":
+	case pragmaBusyTimeout, pragmaCacheSize:
 		if _, err := strconv.Atoi(value); err != nil {
 			return "", fmt.Errorf("db: invalid %s %q: must be an integer", key, value)
 		}
 		return value, nil
-	case "journal_mode":
+	case pragmaJournalMode:
 		mode := strings.ToUpper(value)
 		switch mode {
 		case "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF":
 			return mode, nil
 		}
 		return "", fmt.Errorf("db: invalid journal_mode %q", value)
-	case "synchronous":
+	case pragmaSynchronous:
 		syn := strings.ToUpper(value)
 		switch syn {
 		case "OFF", "NORMAL", "FULL", "EXTRA", "0", "1", "2", "3":

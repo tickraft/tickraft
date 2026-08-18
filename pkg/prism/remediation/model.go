@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // TriggerType identifies the category of event that activates a remediation
@@ -17,13 +19,13 @@ type TriggerType string
 const (
 	// TriggerMetric activates on metric threshold breaches
 	// (event.TypeTelemetryMetricExceeded).
-	TriggerMetric TriggerType = "metric"
+	TriggerMetric TriggerType = TriggerType(types.EventKindMetric)
 	// TriggerLog activates on log keyword matches
 	// (event.TypeTelemetryLogMatched).
-	TriggerLog TriggerType = "log"
+	TriggerLog TriggerType = TriggerType(types.EventKindLog)
 	// TriggerStatusChange activates on asset status transitions
 	// (event.TypeAssetStatusChanged).
-	TriggerStatusChange TriggerType = "status_change"
+	TriggerStatusChange TriggerType = TriggerType(types.EventKindStatusChange)
 )
 
 // RuleStatus is the operational status of a remediation rule.
@@ -78,7 +80,7 @@ type Rule struct {
 	Cooldown int `gorm:"column:cooldown;not null;default:300" json:"cooldown"`
 	// CircuitBreakerThreshold is the consecutive failure count after which
 	// the circuit breaker trips and pauses the rule.
-	CircuitBreakerThreshold int `gorm:"column:circuit_breaker_threshold;not null;default:5" json:"circuit_breaker_threshold"`
+	CircuitBreakerThreshold int `gorm:"column:circuit_breaker_threshold;not null;default:5" json:"circuit_breaker_threshold"` //nolint:revive // struct tag cannot be line-wrapped
 	// Enabled indicates whether the rule participates in evaluation.
 	Enabled bool `gorm:"column:enabled;not null;default:true" json:"enabled"`
 	// Status is the operational status of the rule: active or paused.

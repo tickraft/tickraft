@@ -8,8 +8,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/asset"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/asset"
 )
 
 // Config is the configuration input to Register. The zero-value

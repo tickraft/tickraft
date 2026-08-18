@@ -23,7 +23,8 @@ func TestCompile_DefaultMaxComparisons(t *testing.T) {
 	}
 
 	// 4 comparisons exceed the default limit of 3.
-	fourCmps := `alert.metrics["cpu"] > 80 && alert.metrics["mem"] > 90 && alert.metrics["disk"] > 70 && alert.metrics["net"] > 50`
+	fourCmps := `alert.metrics["cpu"] > 80 && alert.metrics["mem"] > 90 && alert.metrics["disk"] > 70 ` +
+		`&& alert.metrics["net"] > 50`
 	_, err := c.Compile(SceneMetric, fourCmps)
 	if err == nil {
 		t.Fatal("expected compile error for 4 comparisons under default limit, got nil")
@@ -39,7 +40,8 @@ func TestCompile_DefaultMaxComparisons(t *testing.T) {
 func TestCompile_RaisedMaxComparisons(t *testing.T) {
 	c := NewCompilerWithConfig(CompilerConfig{MaxComparisons: 6})
 	// 4 comparisons exceed the default but fit under the raised limit.
-	expr := `alert.metrics["cpu"] > 80 && alert.metrics["mem"] > 90 && alert.metrics["disk"] > 70 && alert.metrics["net"] > 50`
+	expr := `alert.metrics["cpu"] > 80 && alert.metrics["mem"] > 90 && alert.metrics["disk"] > 70 ` +
+		`&& alert.metrics["net"] > 50`
 	if _, err := c.Compile(SceneMetric, expr); err != nil {
 		t.Fatalf("expected 4-comparison expression to compile under raised limit 6, got %v", err)
 	}
@@ -90,7 +92,8 @@ func TestCompile_EqualityCountedAsComparison(t *testing.T) {
 	}
 
 	// Four equality checks exceed the limit.
-	expr = `alert.severity == "critical" && alert.keyword == "oom" && alert.source == "10.0.0.1" && alert.content == "x"`
+	expr = `alert.severity == "critical" && alert.keyword == "oom" && alert.source == "10.0.0.1" ` +
+		`&& alert.content == "x"`
 	_, err := c.Compile(SceneMetric, expr)
 	if err == nil {
 		t.Fatal("expected compile error for 4 equality comparisons under default limit, got nil")
@@ -112,7 +115,8 @@ func TestCompile_MixedOperatorsCountedTogether(t *testing.T) {
 	}
 
 	// 2 ordering + 2 equality = 4 comparisons, over the limit.
-	expr = `alert.metrics["cpu"] > 80 && alert.metrics["mem"] >= 90 && alert.severity == "critical" && alert.keyword == "oom"`
+	expr = `alert.metrics["cpu"] > 80 && alert.metrics["mem"] >= 90 && alert.severity == "critical" ` +
+		`&& alert.keyword == "oom"`
 	_, err := c.Compile(SceneMetric, expr)
 	if err == nil {
 		t.Fatal("expected compile error for 4 mixed comparisons, got nil")
@@ -211,7 +215,8 @@ func TestCompile_MaxComparisonsAcrossScenes(t *testing.T) {
 		{
 			name:  "remediation",
 			scene: SceneRemediation,
-			expr:  `remediation.metric_value > 80 && remediation.threshold > 0 && remediation.asset_id > 0 && remediation.metric_value > 0`,
+			expr: `remediation.metric_value > 80 && remediation.threshold > 0 && remediation.asset_id > 0 ` +
+				`&& remediation.metric_value > 0`,
 		},
 	}
 	for _, tc := range cases {

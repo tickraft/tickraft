@@ -10,9 +10,10 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/task"
-	"go.uber.org/zap"
 )
 
 // proberTaskIDOffset separates prober task IDs from regular scheduled task
@@ -58,7 +59,13 @@ func WithProberMonitorStore(store *MonitorStore) ProberOption {
 // executor registry, and optional configuration. The variadic options allow
 // callers to inject a MonitorStore for point persistence without changing
 // the positional signature.
-func NewProberService(sched task.Manager, execReg *executor.Registry, manager *Manager, logger *zap.Logger, opts ...ProberOption) *ProberService {
+func NewProberService(
+	sched task.Manager,
+	execReg *executor.Registry,
+	manager *Manager,
+	logger *zap.Logger,
+	opts ...ProberOption,
+) *ProberService {
 	s := &ProberService{
 		sched:   sched,
 		execReg: execReg,
@@ -138,11 +145,12 @@ func (s *ProberService) Start(ctx context.Context) error {
 		return fmt.Errorf("prober start: load active points: %w", err)
 	}
 	registered := 0
-	for _, p := range points {
+	for i := range points {
+		p := &points[i]
 		if !p.Enabled {
 			continue
 		}
-		if err := s.RegisterPoint(ctx, p); err != nil {
+		if err := s.RegisterPoint(ctx, *p); err != nil {
 			s.logger.Warn("prober start: register point",
 				zap.Int64("point_id", p.ID),
 				zap.String("type", p.Type),
@@ -185,6 +193,8 @@ func pointToProbeTask(point MonitorPoint) task.Task {
 		metadata["interval"] = interval.String()
 	case task.ScheduleTypeCron:
 		metadata["cron_expr"] = cronExpr
+	case task.ScheduleTypeOnce, task.ScheduleTypeEvent:
+		// Monitor points never produce one-shot or event-driven schedules.
 	}
 	return task.Task{
 		ID:           proberTaskID(point.ID),

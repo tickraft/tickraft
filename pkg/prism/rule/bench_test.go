@@ -64,7 +64,7 @@ func BenchmarkEngineMatchManyRules(b *testing.B) {
 		b.Run(fmt.Sprintf("%d_rules", n), func(b *testing.B) {
 			eng := NewEngine(zap.NewNop())
 			rules := make([]Rule, n)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				rules[i] = Rule{
 					ID:         int64(i + 1),
 					TenantID:   1,
@@ -88,7 +88,7 @@ func BenchmarkEngineMatchManyRules(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = eng.MatchMetric(ctx, env)
 			}
 		})
@@ -115,7 +115,7 @@ func BenchmarkCompileCache(b *testing.B) {
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_, _ = expr.Run(program, env)
 		}
 	})
@@ -123,7 +123,7 @@ func BenchmarkCompileCache(b *testing.B) {
 	b.Run("recompile", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			program, err := compiler.Compile(SceneMetric, expression)
 			if err != nil {
 				b.Fatalf("Compile: %v", err)
@@ -184,7 +184,7 @@ func BenchmarkTaskMatch(b *testing.B) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	rules := make([]Rule, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		rules[i] = Rule{
 			ID:         int64(i + 1),
 			TenantID:   1,
@@ -206,7 +206,7 @@ func BenchmarkTaskMatch(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = eng.MatchTask(ctx, env)
 	}
 }

@@ -12,8 +12,9 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // Engine is the rule matching core. It owns the per-scene rule
@@ -74,17 +75,17 @@ func NewEngineWithConfig(logger *zap.Logger, cfg CompilerConfig) *Engine {
 // bad rule does not poison the whole batch. The new rule set and
 // program cache are committed atomically under the write lock.
 func (e *Engine) Load(ctx context.Context, rules []Rule) error {
-	taskRules, probeRules, metricRules, remediationRules, programs, err := e.compileAll(ctx, rules)
+	compiled, err := e.compileAll(ctx, rules)
 	if err != nil {
 		return err
 	}
 
 	e.mu.Lock()
-	e.taskRules = taskRules
-	e.probeRules = probeRules
-	e.metricRules = metricRules
-	e.remediationRules = remediationRules
-	e.programs = programs
+	e.taskRules = compiled.task
+	e.probeRules = compiled.probe
+	e.metricRules = compiled.metric
+	e.remediationRules = compiled.remediation
+	e.programs = compiled.programs
 	e.mu.Unlock()
 
 	// Drop cached violation sub-programs compiled for the previous rule
@@ -96,10 +97,10 @@ func (e *Engine) Load(ctx context.Context, rules []Rule) error {
 	}
 
 	e.logger.Info("rule engine loaded",
-		zap.Int("task_rules", len(taskRules)),
-		zap.Int("probe_rules", len(probeRules)),
-		zap.Int("metric_rules", len(metricRules)),
-		zap.Int("remediation_rules", len(remediationRules)))
+		zap.Int("task_rules", len(compiled.task)),
+		zap.Int("probe_rules", len(compiled.probe)),
+		zap.Int("metric_rules", len(compiled.metric)),
+		zap.Int("remediation_rules", len(compiled.remediation)))
 	return nil
 }
 
@@ -301,19 +302,31 @@ func (e *Engine) match(ctx context.Context, scene Scene, env any) []int64 {
 	return matched
 }
 
+// compiledRules groups the per-scene rule slices and the shared program
+// cache produced by compileAll.
+type compiledRules struct {
+	task        []Rule
+	probe       []Rule
+	metric      []Rule
+	remediation []Rule
+	programs    map[int64]*vm.Program
+}
+
 // compileAll groups rules by scene, compiles each expression through
 // the Compiler, and returns the per-scene slices plus the shared
 // program cache. Compilation failures are logged and the offending
 // rule is skipped. A nil input slice yields empty (non-nil) per-scene
 // slices so subsequent Match calls do not allocate.
-func (e *Engine) compileAll(ctx context.Context, rules []Rule) ([]Rule, []Rule, []Rule, []Rule, map[int64]*vm.Program, error) {
+func (e *Engine) compileAll(ctx context.Context, rules []Rule) (compiledRules, error) {
 	_ = ctx
 
-	taskRules := make([]Rule, 0)
-	probeRules := make([]Rule, 0)
-	metricRules := make([]Rule, 0)
-	remediationRules := make([]Rule, 0)
-	programs := make(map[int64]*vm.Program, len(rules))
+	compiled := compiledRules{
+		task:        make([]Rule, 0),
+		probe:       make([]Rule, 0),
+		metric:      make([]Rule, 0),
+		remediation: make([]Rule, 0),
+		programs:    make(map[int64]*vm.Program, len(rules)),
+	}
 
 	for _, r := range rules {
 		program, err := e.compiler.Compile(r.Scene, r.Expression)
@@ -328,23 +341,23 @@ func (e *Engine) compileAll(ctx context.Context, rules []Rule) ([]Rule, []Rule, 
 
 		switch r.Scene {
 		case SceneTask:
-			taskRules = append(taskRules, r)
+			compiled.task = append(compiled.task, r)
 		case SceneProbe:
-			probeRules = append(probeRules, r)
+			compiled.probe = append(compiled.probe, r)
 		case SceneMetric:
-			metricRules = append(metricRules, r)
+			compiled.metric = append(compiled.metric, r)
 		case SceneRemediation:
-			remediationRules = append(remediationRules, r)
+			compiled.remediation = append(compiled.remediation, r)
 		default:
 			e.logger.Warn("skip rule with unknown scene",
 				zap.Int64("rule_id", r.ID),
 				zap.String("scene", string(r.Scene)))
 			continue
 		}
-		programs[r.ID] = program
+		compiled.programs[r.ID] = program
 	}
 
-	return taskRules, probeRules, metricRules, remediationRules, programs, nil
+	return compiled, nil
 }
 
 // runReloadLoop periodically calls Reload from the Store until ctx

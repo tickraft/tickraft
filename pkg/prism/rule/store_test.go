@@ -259,7 +259,8 @@ func TestStore_UpdateRejectsInvalidExpression(t *testing.T) {
 		t.Fatalf("Get after rejected Update: %v", err)
 	}
 	if got.Expression != original.Expression {
-		t.Errorf("Expression = %q, want original %q (rejected Update must not mutate state)", got.Expression, original.Expression)
+		t.Errorf("Expression = %q, want original %q (rejected Update must not mutate state)",
+			got.Expression, original.Expression)
 	}
 }
 
@@ -274,9 +275,30 @@ func TestStore_ListEnabled_Ordering(t *testing.T) {
 	ctx := context.Background()
 
 	// Three rules with priorities 5, 10, 5 (in creation/ID order).
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "p5-a", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 5})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "p10", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 10})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "p5-b", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 5})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "p5-a",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   5,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "p10",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   10,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "p5-b",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   5,
+	})
 
 	got, err := store.ListEnabled(ctx, 0, SceneMetric)
 	if err != nil {
@@ -297,8 +319,8 @@ func TestStore_ListEnabled_Ordering(t *testing.T) {
 // namesOf extracts the Name slice from a Record slice for assertion messages.
 func namesOf(ms []Record) []string {
 	out := make([]string, len(ms))
-	for i, m := range ms {
-		out[i] = m.Name
+	for i := range ms {
+		out[i] = ms[i].Name
 	}
 	return out
 }
@@ -309,9 +331,30 @@ func TestStore_ListEnabled_SceneFilter(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "metric", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "task", Scene: string(SceneTask), Expression: "task.priority > 0", Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "probe", Scene: string(SceneProbe), Expression: `report.log_content contains "x"`, Enabled: true, Priority: 1})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "metric",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "task",
+		Scene:      string(SceneTask),
+		Expression: "task.priority > 0",
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "probe",
+		Scene:      string(SceneProbe),
+		Expression: `report.log_content contains "x"`,
+		Enabled:    true,
+		Priority:   1,
+	})
 
 	for _, tc := range []struct {
 		scene Scene
@@ -346,8 +389,22 @@ func TestStore_ListEnabled_EnabledFilter(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "on", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	off := mustCreateRule(t, store, &Record{TenantID: 1, Name: "off", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "on",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	off := mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "off",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
 	off.Enabled = false
 	if err := store.Update(ctx, off); err != nil {
 		t.Fatalf("Update to disable: %v", err)
@@ -372,9 +429,30 @@ func TestStore_ListEnabled_TenantFilter(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "t1-a", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "t1-b", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 2, Name: "t2-a", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "t1-a",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "t1-b",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   2,
+		Name:       "t2-a",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
 
 	// tenantID=1 → 2 rules.
 	gotT1, err := store.ListEnabled(ctx, 1, SceneMetric)
@@ -410,8 +488,22 @@ func TestStore_ListEnabled_ExcludesSoftDeleted(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	keep := mustCreateRule(t, store, &Record{TenantID: 1, Name: "keep", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "delete", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
+	keep := mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "keep",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "delete",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
 
 	if err := store.Delete(ctx, keep.ID, keep.TenantID); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -612,10 +704,31 @@ func TestStore_ReloadIntoEngine(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "cpu", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 80`, Enabled: true, Priority: 10})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "mem", Scene: string(SceneMetric), Expression: `alert.metrics["mem"] > 90`, Enabled: true, Priority: 5})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "cpu",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 80`,
+		Enabled:    true,
+		Priority:   10,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "mem",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["mem"] > 90`,
+		Enabled:    true,
+		Priority:   5,
+	})
 	// Disabled rule must not be reloaded.
-	disabled := mustCreateRule(t, store, &Record{TenantID: 1, Name: "disabled", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
+	disabled := mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "disabled",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
 	disabled.Enabled = false
 	if err := store.Update(ctx, disabled); err != nil {
 		t.Fatalf("Update to disable: %v", err)
@@ -737,7 +850,10 @@ func TestStore_DeleteThenRecreate(t *testing.T) {
 		t.Errorf("second.ID = %d, want a new ID (not the deleted %d)", second.ID, firstID)
 	}
 	if second.ID <= firstID {
-		t.Errorf("second.ID (%d) should be greater than firstID (%d) since soft-delete retains the row", second.ID, firstID)
+		t.Errorf(
+			"second.ID (%d) should be greater than firstID (%d) since soft-delete retains the row",
+			second.ID, firstID,
+		)
 	}
 
 	// Sanity: only the second rule is retrievable.
@@ -756,8 +872,22 @@ func TestStore_MultiTenantIsolation(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	t1 := mustCreateRule(t, store, &Record{TenantID: 1, Name: "t1-only", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 2, Name: "t2-only", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
+	t1 := mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "t1-only",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   2,
+		Name:       "t2-only",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
 
 	// Tenant 1 sees only t1-only.
 	gotT1, err := store.ListEnabled(ctx, 1, SceneMetric)
@@ -790,10 +920,38 @@ func TestStore_ListEnabledAcrossAllScenes(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "task-1", Scene: string(SceneTask), Expression: "task.priority > 0", Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "probe-1", Scene: string(SceneProbe), Expression: `report.log_content contains "x"`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "metric-1", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 0`, Enabled: true, Priority: 1})
-	mustCreateRule(t, store, &Record{TenantID: 1, Name: "remediation-1", Scene: string(SceneRemediation), Expression: "remediation.metric_value > 0", Enabled: true, Priority: 1})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "task-1",
+		Scene:      string(SceneTask),
+		Expression: "task.priority > 0",
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "probe-1",
+		Scene:      string(SceneProbe),
+		Expression: `report.log_content contains "x"`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "metric-1",
+		Scene:      string(SceneMetric),
+		Expression: `alert.metrics["cpu"] > 0`,
+		Enabled:    true,
+		Priority:   1,
+	})
+	mustCreateRule(t, store, &Record{
+		TenantID:   1,
+		Name:       "remediation-1",
+		Scene:      string(SceneRemediation),
+		Expression: "remediation.metric_value > 0",
+		Enabled:    true,
+		Priority:   1,
+	})
 
 	// Each scene reports 1 rule; the engine's Reload drains all four.
 	total := 0

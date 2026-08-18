@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // FailedEvent is the persistence model for the event_failed_events table. It
@@ -48,7 +49,7 @@ type failedEventStore struct {
 
 // NewFailedEventStore creates a failedEventStore backed by the given
 // database. The caller is responsible for running Migrate before first use.
-func NewFailedEventStore(dbc *gorm.DB) *failedEventStore {
+func NewFailedEventStore(dbc *gorm.DB) *failedEventStore { //nolint:revive // returning the unexported concrete type is intentional; consumers use the exported interface
 	return &failedEventStore{dbc: dbc}
 }
 

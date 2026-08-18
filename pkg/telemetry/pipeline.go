@@ -9,10 +9,11 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
-	"go.uber.org/zap"
 )
 
 // processLoop is the main loop that drains the telemetry channel and
@@ -164,6 +165,13 @@ func (m *Manager) processReport(ctx context.Context, t *Telemetry) {
 		}
 	}
 
+	m.aggregateAndPersist(ctx, t)
+}
+
+// aggregateAndPersist aggregates the telemetry's metrics and persists its
+// log content. Metrics are aggregated when an aggregator is configured;
+// log content is persisted directly (logs are not aggregated).
+func (m *Manager) aggregateAndPersist(ctx context.Context, t *Telemetry) {
 	// Aggregate metrics when an aggregator is configured.
 	if m.aggregator != nil && len(t.Metrics) > 0 {
 		metrics := make([]Metric, 0, len(t.Metrics))
@@ -226,11 +234,16 @@ func (m *Manager) persistAggregated(ctx context.Context, am *aggregatedMetric) {
 		return
 	}
 	models := []CollectMetric{
-		{TenantID: am.tenantID, AssetID: am.assetID, MetricName: am.metricName + "_avg", MetricValue: am.avg, Timestamp: am.windowEnd},
-		{TenantID: am.tenantID, AssetID: am.assetID, MetricName: am.metricName + "_max", MetricValue: am.max, Timestamp: am.windowEnd},
-		{TenantID: am.tenantID, AssetID: am.assetID, MetricName: am.metricName + "_min", MetricValue: am.min, Timestamp: am.windowEnd},
-		{TenantID: am.tenantID, AssetID: am.assetID, MetricName: am.metricName + "_count", MetricValue: float64(am.count), Timestamp: am.windowEnd},
-		{TenantID: am.tenantID, AssetID: am.assetID, MetricName: am.metricName + "_sum", MetricValue: am.sum, Timestamp: am.windowEnd},
+		{TenantID: am.tenantID, AssetID: am.assetID,
+			MetricName: am.metricName + "_avg", MetricValue: am.avg, Timestamp: am.windowEnd},
+		{TenantID: am.tenantID, AssetID: am.assetID,
+			MetricName: am.metricName + "_max", MetricValue: am.max, Timestamp: am.windowEnd},
+		{TenantID: am.tenantID, AssetID: am.assetID,
+			MetricName: am.metricName + "_min", MetricValue: am.min, Timestamp: am.windowEnd},
+		{TenantID: am.tenantID, AssetID: am.assetID,
+			MetricName: am.metricName + "_count", MetricValue: float64(am.count), Timestamp: am.windowEnd},
+		{TenantID: am.tenantID, AssetID: am.assetID,
+			MetricName: am.metricName + "_sum", MetricValue: am.sum, Timestamp: am.windowEnd},
 	}
 	if err := m.persistence.PersistMetrics(ctx, models); err != nil {
 		m.logger.Error("failed to persist aggregated metrics",

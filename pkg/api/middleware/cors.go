@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
@@ -44,8 +45,8 @@ func CORS(allowedOrigins []string) app.HandlerFunc {
 			"Authorization",
 			httputil.HeaderAPIKey,
 			httputil.HeaderRequestID,
-			"X-Tickraft-Locale",
-			"X-Tickraft-Asset-Key",
+			httputil.HeaderLocale,
+			httputil.HeaderAssetKey,
 		}, ",")
 
 		if len(originSet) > 0 {

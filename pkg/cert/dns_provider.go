@@ -81,7 +81,7 @@ func (NoopDNSProvider) CleanUp(_ context.Context, _, _, _ string) error {
 
 // Timeout returns zero values for both interval and timeout, signalling the
 // caller to use its own defaults.
-func (NoopDNSProvider) Timeout() (time.Duration, time.Duration) {
+func (NoopDNSProvider) Timeout() (interval, timeout time.Duration) {
 	return 0, 0
 }
 

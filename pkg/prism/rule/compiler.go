@@ -150,7 +150,7 @@ func (c *Compiler) Compile(scene Scene, expression string) (*vm.Program, error) 
 
 	program, err := expr.Compile(expression, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrRuleCompileFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrRuleCompileFailed, err)
 	}
 	return program, nil
 }
@@ -191,7 +191,7 @@ func (c *Compiler) CompileSub(scene Scene, source string) (*vm.Program, error) {
 
 	program, err := expr.Compile(source, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrRuleCompileFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrRuleCompileFailed, err)
 	}
 	return program, nil
 }
@@ -227,8 +227,11 @@ func (c *Compiler) checkComparisons(expression string) error {
 	}
 	tree, err := parser.Parse(expression)
 	if err != nil {
-		// Defer to expr.Compile for the canonical parse-error message.
-		return nil
+		// Defer to expr.Compile for the canonical parse-error message:
+		// parse errors are intentionally deferred to expr.Compile, which
+		// re-parses and surfaces the canonical ErrRuleCompileFailed-wrapped
+		// diagnostics.
+		return nil //nolint:nilerr // parse errors are intentionally deferred to expr.Compile
 	}
 	count := countComparisons(tree.Node)
 	if count > c.maxComparisons {
@@ -264,6 +267,7 @@ type countComparisonVisitor struct {
 	onMatch func()
 }
 
+//nolint:gocritic // implements the expr-lang ast.Visitor interface whose signature is fixed
 func (v *countComparisonVisitor) Visit(node *ast.Node) {
 	if node == nil || *node == nil {
 		return

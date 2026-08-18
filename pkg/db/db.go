@@ -12,8 +12,19 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/db/errmap"
+)
+
+// Shared driver and address literals used across the package.
+const (
+	// driverSQLite3 is the canonical driver name for the builtin SQLite3
+	// driver registered at init time.
+	driverSQLite3 = "sqlite3"
+	// memoryAddr is the special SQLite address that selects a private
+	// in-memory database; rejected by Parse, allowed for direct test Configs.
+	memoryAddr = ":memory:"
 )
 
 // Credential holds the authentication credentials for a database connection.
@@ -60,23 +71,23 @@ type Config struct {
 func Parse(dsn string) (Config, error) {
 	if dsn == "" {
 		return Config{}, errmap.ErrDSNRequired
-	} else if strings.Contains(dsn, ":memory:") {
+	} else if strings.Contains(dsn, memoryAddr) {
 		return Config{}, errmap.ErrMemoryNotSupported
 	}
 
 	if !strings.Contains(dsn, "://") {
-		return Config{Driver: "sqlite3", Addr: dsn}, nil
+		return Config{Driver: driverSQLite3, Addr: dsn}, nil
 	}
 
 	parts := strings.SplitN(dsn, "://", 2)
 	scheme, rest := parts[0], parts[1]
 	switch scheme {
-	case "sqlite", "sqlite3":
+	case "sqlite", driverSQLite3:
 		address, params := SplitURLQuery(rest)
 		if address == "" {
 			return Config{}, errmap.ErrDSNRequired
 		}
-		return Config{Driver: "sqlite3", Addr: address, Params: params}, nil
+		return Config{Driver: driverSQLite3, Addr: address, Params: params}, nil
 	default:
 		return Config{}, fmt.Errorf("%w: scheme %q", errmap.ErrUnsupportedDriver, scheme)
 	}
@@ -85,18 +96,18 @@ func Parse(dsn string) (Config, error) {
 // SplitURLQuery splits a DSN body (the part after "scheme://") into the
 // address component and a params map parsed from the query string. Returns
 // nil params when the input contains no "?" separator.
-func SplitURLQuery(s string) (string, map[string]string) {
+func SplitURLQuery(s string) (address string, params map[string]string) {
 	idx := strings.Index(s, "?")
 	if idx < 0 {
 		return s, nil
 	}
-	address := s[:idx]
+	address = s[:idx]
 	queryPart := s[idx+1:]
 	if queryPart == "" {
 		return address, nil
 	}
-	params := make(map[string]string)
-	for _, pair := range strings.Split(queryPart, "&") {
+	params = make(map[string]string)
+	for pair := range strings.SplitSeq(queryPart, "&") {
 		if pair == "" {
 			continue
 		}
@@ -232,14 +243,14 @@ func Close(dbc *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("db: get underlying sql.DB for close: %w", err)
 	}
-	if err := sqlDB.Close(); err != nil {
+	if err = sqlDB.Close(); err != nil {
 		return fmt.Errorf("db: close sql.DB: %w", err)
 	}
 	return nil
 }
 
 func init() {
-	if err := Register("sqlite3", openSQLite); err != nil {
+	if err := Register(driverSQLite3, openSQLite); err != nil {
 		panic(err) // init-time registration failure is a programming error
 	}
 	// Additional drivers may be registered by downstream repositories via

@@ -88,6 +88,7 @@ func (s *ConsistentHashShardStrategy) Owns(taskID int64) bool {
 	if s.total <= 1 {
 		return true
 	}
+	//nolint:gosec // modulo result is bounded by the shard count, always fits int
 	return int(fnv1a64(strconv.FormatInt(taskID, 10))%uint64(s.total)) == s.index
 }
 
@@ -102,7 +103,7 @@ const (
 // keeping the hot-path ConsistentHashShardStrategy.Owns allocation-free.
 func fnv1a64(s string) uint64 {
 	h := uint64(fnv64Offset)
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		h ^= uint64(s[i])
 		h *= fnv64Prime
 	}

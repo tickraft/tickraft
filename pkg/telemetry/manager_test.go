@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/timewheel"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // --- Mock implementations for manager testing ---
@@ -90,9 +91,7 @@ func (s *mgrMockStore) List(_ context.Context, page, size int, _ asset.ListFilte
 	for _, r := range s.assets {
 		all = append(all, r)
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
@@ -101,9 +100,7 @@ func (s *mgrMockStore) List(_ context.Context, page, size int, _ asset.ListFilte
 		return nil, total, nil
 	}
 	end := offset + size
-	if end > int(total) {
-		end = int(total)
-	}
+	end = min(end, int(total))
 	return all[offset:end], total, nil
 }
 
@@ -140,7 +137,8 @@ func (s *mgrMockStore) ExistsByKey(_ context.Context, key string) (bool, error) 
 	return false, nil
 }
 
-func (s *mgrMockStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
+func (s *mgrMockStore) ListKeyset(_ context.Context,
+	_ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
 	return pagination.PageResult[*asset.Asset]{}, nil
 }
 
@@ -301,10 +299,11 @@ func TestEmitterEmitStatusChange(t *testing.T) {
 	defer bus.Close()
 
 	received := make(chan event.StatusChangePayload, 1)
-	_, _ = event.Subscribe[event.StatusChangePayload](bus, event.TypeAssetStatusChanged, func(_ context.Context, e event.Event[event.StatusChangePayload]) error {
-		received <- e.Payload
-		return nil
-	})
+	_, _ = event.Subscribe[event.StatusChangePayload](bus, event.TypeAssetStatusChanged,
+		func(_ context.Context, e event.Event[event.StatusChangePayload]) error {
+			received <- e.Payload
+			return nil
+		})
 
 	em := newEmitter(bus, zap.NewNop())
 
@@ -339,10 +338,11 @@ func TestEmitterEmitMetricAlert(t *testing.T) {
 	defer bus.Close()
 
 	received := make(chan event.MetricExceededPayload, 1)
-	_, _ = event.Subscribe[event.MetricExceededPayload](bus, event.TypeTelemetryMetricExceeded, func(_ context.Context, e event.Event[event.MetricExceededPayload]) error {
-		received <- e.Payload
-		return nil
-	})
+	_, _ = event.Subscribe[event.MetricExceededPayload](bus, event.TypeTelemetryMetricExceeded,
+		func(_ context.Context, e event.Event[event.MetricExceededPayload]) error {
+			received <- e.Payload
+			return nil
+		})
 
 	em := newEmitter(bus, zap.NewNop())
 
@@ -374,10 +374,11 @@ func TestEmitterEmitLogAlert(t *testing.T) {
 	defer bus.Close()
 
 	received := make(chan event.LogMatchedPayload, 1)
-	_, _ = event.Subscribe[event.LogMatchedPayload](bus, event.TypeTelemetryLogMatched, func(_ context.Context, e event.Event[event.LogMatchedPayload]) error {
-		received <- e.Payload
-		return nil
-	})
+	_, _ = event.Subscribe[event.LogMatchedPayload](bus, event.TypeTelemetryLogMatched,
+		func(_ context.Context, e event.Event[event.LogMatchedPayload]) error {
+			received <- e.Payload
+			return nil
+		})
 
 	em := newEmitter(bus, zap.NewNop())
 
@@ -408,18 +409,20 @@ func TestEmitterEmitAlerts(t *testing.T) {
 	var logCount int
 	var mu sync.Mutex
 
-	_, _ = event.Subscribe[event.MetricExceededPayload](bus, event.TypeTelemetryMetricExceeded, func(_ context.Context, _ event.Event[event.MetricExceededPayload]) error {
-		mu.Lock()
-		metricCount++
-		mu.Unlock()
-		return nil
-	})
-	_, _ = event.Subscribe[event.LogMatchedPayload](bus, event.TypeTelemetryLogMatched, func(_ context.Context, _ event.Event[event.LogMatchedPayload]) error {
-		mu.Lock()
-		logCount++
-		mu.Unlock()
-		return nil
-	})
+	_, _ = event.Subscribe[event.MetricExceededPayload](bus, event.TypeTelemetryMetricExceeded,
+		func(_ context.Context, _ event.Event[event.MetricExceededPayload]) error {
+			mu.Lock()
+			metricCount++
+			mu.Unlock()
+			return nil
+		})
+	_, _ = event.Subscribe[event.LogMatchedPayload](bus, event.TypeTelemetryLogMatched,
+		func(_ context.Context, _ event.Event[event.LogMatchedPayload]) error {
+			mu.Lock()
+			logCount++
+			mu.Unlock()
+			return nil
+		})
 
 	em := newEmitter(bus, zap.NewNop())
 
@@ -701,7 +704,7 @@ func TestStateManagerRunTimeout(t *testing.T) {
 	// Send heartbeats every 500ms for ~4 seconds. The renewed entry
 	// always stays at least 2 slots ahead of the wheel pointer, so
 	// onTimeout must not fire during this period.
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		sm.UpdateActive(1)
 		time.Sleep(500 * time.Millisecond)
 	}

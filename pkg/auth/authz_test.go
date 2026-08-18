@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 const testJWTSecret = "test-secret-that-is-at-least-32-bytes-long!"
@@ -105,6 +106,7 @@ func TestLogin_Success(t *testing.T) {
 }
 
 func TestLogin_InvalidUsername(t *testing.T) {
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	svc, _, _, _ := newTestService(t)
 
 	_, err := svc.Login(context.Background(), "ab", "Password1")
@@ -119,6 +121,7 @@ func TestLogin_InvalidUsername(t *testing.T) {
 }
 
 func TestLogin_UserNotFound(t *testing.T) {
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	svc, _, _, _ := newTestService(t)
 
 	_, err := svc.Login(context.Background(), "nonexistent", "Password1")
@@ -142,7 +145,7 @@ func TestLogin_RateLimiting(t *testing.T) {
 	seedUser(t, users, "admin", "Password1")
 
 	// Fail 5 times to trigger lockout.
-	for i := 0; i < auth.MaxLoginFails; i++ {
+	for range auth.MaxLoginFails {
 		_, _ = svc.Login(context.Background(), "admin", "WrongPass1")
 	}
 
@@ -224,6 +227,7 @@ func TestRefreshToken_Success(t *testing.T) {
 }
 
 func TestRefreshToken_InvalidToken(t *testing.T) {
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	svc, _, _, _ := newTestService(t)
 
 	_, err := svc.RefreshToken(context.Background(), "invalid-token")
@@ -290,6 +294,7 @@ func TestChangePassword_WeakNewPassword(t *testing.T) {
 }
 
 func TestCreateAPIKey_Success(t *testing.T) {
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	svc, _, _, _ := newTestService(t)
 
 	raw, info, err := svc.CreateAPIKey(context.Background(), "test-key", nil)
@@ -314,6 +319,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 }
 
 func TestListAPIKeys_Success(t *testing.T) {
+	//nolint:dogsled // test only needs the service; the other constructor results are intentionally discarded
 	svc, _, _, _ := newTestService(t)
 
 	_, _, err := svc.CreateAPIKey(context.Background(), "key1", nil)
@@ -414,7 +420,7 @@ func TestLogin_RateLimitResetOnSuccess(t *testing.T) {
 	seedUser(t, users, "admin", "Password1")
 
 	// Fail 4 times (one below threshold).
-	for i := 0; i < auth.MaxLoginFails-1; i++ {
+	for range auth.MaxLoginFails - 1 {
 		_, _ = svc.Login(context.Background(), "admin", "WrongPass1")
 	}
 
@@ -425,7 +431,7 @@ func TestLogin_RateLimitResetOnSuccess(t *testing.T) {
 	}
 
 	// Now fail 4 more times — should NOT be locked (counter was reset).
-	for i := 0; i < auth.MaxLoginFails-1; i++ {
+	for range auth.MaxLoginFails - 1 {
 		_, _ = svc.Login(context.Background(), "admin", "WrongPass1")
 	}
 
@@ -475,7 +481,7 @@ func TestCleanupExpiredFails(t *testing.T) {
 }
 
 // TestCleanupGoroutine verifies that the background cleanup goroutine
-// periodically removes stale entries when started via startCleanupLoop.
+// periodically removes stale entries when started via launchCleanupLoop.
 func TestCleanupGoroutine(t *testing.T) {
 	svc := auth.NewServiceForCleanupTest()
 	// Use a short interval for testing.

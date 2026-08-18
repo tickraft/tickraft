@@ -27,7 +27,7 @@ func TestNewSendError(t *testing.T) {
 	if !se.Retryable {
 		t.Errorf("Retryable: got false, want true")
 	}
-	if se.Err != inner {
+	if !errors.Is(se.Err, inner) {
 		t.Errorf("Err: got %v, want %v", se.Err, inner)
 	}
 }
@@ -75,7 +75,7 @@ func TestSendErrorErrorWithNilErr(t *testing.T) {
 func TestSendErrorUnwrap(t *testing.T) {
 	inner := fmt.Errorf("timeout")
 	se := NewSendError("webhook", true, inner)
-	if unwrapped := se.Unwrap(); unwrapped != inner {
+	if unwrapped := se.Unwrap(); !errors.Is(unwrapped, inner) {
 		t.Errorf("Unwrap(): got %v, want %v", unwrapped, inner)
 	}
 }
@@ -123,7 +123,7 @@ func TestSendErrorErrorsAs(t *testing.T) {
 	if !target.Retryable {
 		t.Errorf("Retryable: got false, want true")
 	}
-	if target.Err != inner {
+	if !errors.Is(target.Err, inner) {
 		t.Errorf("Err: got %v, want %v", target.Err, inner)
 	}
 }

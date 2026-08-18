@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -36,7 +37,7 @@ const (
 // by the API key ID in the request context) are allowed: API keys are machine
 // credentials issued only by admins. This is a critical security measure:
 // fail-closed, not fail-open.
-func RequirePermission(action string, assetType string) app.HandlerFunc {
+func RequirePermission(action, assetType string) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		claims, ok := httputil.GetUserClaims(arc)
 		if !ok || claims == nil {
@@ -61,6 +62,6 @@ func RequirePermission(action string, assetType string) app.HandlerFunc {
 // checkPermission checks whether the given role permits the specified action on
 // the asset type, validating directly from the JWT claims' role field via
 // the default RBAC policy.
-func checkPermission(c context.Context, role int, action string, assetType string) bool {
+func checkPermission(_ context.Context, role int, action, assetType string) bool {
 	return auth.DefaultPolicy().Check(role, action, assetType)
 }

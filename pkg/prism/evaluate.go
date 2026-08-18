@@ -7,8 +7,9 @@ package prism
 import (
 	"context"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // Matcher evaluates whether an alert event should be dispatched to channels.
@@ -125,7 +126,12 @@ func match(ctx context.Context, rule Matcher, evt alert.Event, logger *zap.Logge
 // prism engine. A panic is recovered, logged at error level, and
 // treated as returning no violations so the alert evaluation continues with
 // the remaining rules. The returned slice may be nil.
-func matchWithViolations(ctx context.Context, vm ViolationMatcher, evt alert.Event, logger *zap.Logger) (violations []alert.Violation) {
+func matchWithViolations(
+	ctx context.Context,
+	vm ViolationMatcher,
+	evt alert.Event,
+	logger *zap.Logger,
+) (violations []alert.Violation) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("rule MatchWithViolations panicked",

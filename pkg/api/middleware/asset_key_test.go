@@ -14,15 +14,16 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
 // newAssetKeyTestEngine builds a route engine with the given asset-key
 // middleware and a downstream handler that records whether it was called.
-func newAssetKeyTestEngine(mw app.HandlerFunc) (*route.Engine, *bool) {
+func newAssetKeyTestEngine(mw app.HandlerFunc) (engine *route.Engine, called *bool) {
 	var handlerCalled bool
-	engine := route.NewEngine(config.NewOptions([]config.Option{}))
+	engine = route.NewEngine(config.NewOptions([]config.Option{}))
 	engine.Use(mw)
 	engine.POST("/", func(ctx context.Context, arc *app.RequestContext) {
 		handlerCalled = true

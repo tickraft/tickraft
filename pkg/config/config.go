@@ -8,6 +8,20 @@ import (
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/db"
+	"github.com/tickraft/tickraft/pkg/types"
+)
+
+// Default values applied by the various SetDefaults methods, kept as
+// unexported constants so the defaults and the validation whitelists share
+// the same literals. Log level values come from pkg/types (the single
+// source of truth for that vocabulary); only the logger mode vocabulary,
+// which is separate from log levels, is defined here.
+const (
+	defaultServerAddr    = ":6153"
+	defaultAdminUsername = "admin"
+	logModeDebug         = "debug"
+	localeZhHans         = "zh-Hans"
+	localeEnUS           = "en-US"
 )
 
 // Config is the top-level configuration for the tickraft single-process deployment.
@@ -300,7 +314,7 @@ func (c *Config) SetDefaults() {
 
 // SetDefaults populates ServerConfig with default values.
 func (c *ServerConfig) SetDefaults() {
-	c.Addr = ":6153"
+	c.Addr = defaultServerAddr
 	c.EnableCORS = true
 	c.EnableAccessLog = true
 	c.MaxHeaderBytes = 1048576
@@ -328,15 +342,15 @@ func (c *DatabaseConfig) SetDefaults() {
 // SetDefaults populates AuthConfig with default values.
 func (c *AuthConfig) SetDefaults() {
 	c.TokenTTL = Duration(24 * time.Hour)
-	c.AdminUsername = "admin"
+	c.AdminUsername = defaultAdminUsername
 	// JWTSecret has no default; it is a required field.
 	// AdminPassword defaults to empty (random password generated at startup).
 }
 
 // SetDefaults populates LoggerConfig with default values.
 func (c *LoggerConfig) SetDefaults() {
-	c.Level = "info"
-	c.Mode = "debug"
+	c.Level = string(types.LogLevelInfo)
+	c.Mode = logModeDebug
 	c.RetentionDays = 30
 }
 
@@ -347,6 +361,6 @@ func (c *LoggerConfig) SetDefaults() {
 // callers may extend this list at startup after registering
 // additional locale packs.
 func (c *I18nConfig) SetDefaults() {
-	c.DefaultLocale = "zh-Hans"
-	c.SupportedLocales = []string{"zh-Hans", "en-US"}
+	c.DefaultLocale = localeZhHans
+	c.SupportedLocales = []string{localeZhHans, localeEnUS}
 }

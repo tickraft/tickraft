@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
@@ -18,7 +20,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/governance"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
-	"go.uber.org/zap"
 )
 
 // defaultNotificationPoolSize is the worker count used when no pool size is
@@ -320,16 +321,18 @@ func (e *Engine) Start(ctx context.Context) error {
 	// Subscribe to telemetry alert events. Each handler normalizes the
 	// typed payload into an Event and dispatches it through the
 	// rule engine and notification channels.
-	if _, err := event.Subscribe[event.MetricExceededPayload](e.bus, event.TypeTelemetryMetricExceeded, func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
-		e.dispatch(runCtx, metricPayloadToAlert(ev))
-		return nil
-	}); err != nil {
+	if _, err := event.Subscribe[event.MetricExceededPayload](e.bus, event.TypeTelemetryMetricExceeded,
+		func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
+			e.onBusEvent(runCtx, metricPayloadToAlert(ev))
+			return nil
+		}); err != nil {
 		return fmt.Errorf("prism: subscribe to metric exceeded events: %w", err)
 	}
-	if _, err := event.Subscribe[event.LogMatchedPayload](e.bus, event.TypeTelemetryLogMatched, func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
-		e.dispatch(runCtx, logPayloadToAlert(ev))
-		return nil
-	}); err != nil {
+	if _, err := event.Subscribe(e.bus, event.TypeTelemetryLogMatched,
+		func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
+			e.onBusEvent(runCtx, logPayloadToAlert(ev))
+			return nil
+		}); err != nil {
 		return fmt.Errorf("prism: subscribe to log matched events: %w", err)
 	}
 	// Subscribe to asset status-change events. A transition to an abnormal
@@ -339,14 +342,15 @@ func (e *Engine) Start(ctx context.Context) error {
 	// noise for recoveries. A heartbeat-loss transition (Source == "timeout",
 	// published by telemetry.MarkOffline) is mapped to TypeHeartbeat; every
 	// other abnormal transition is mapped to TypeStatus.
-	if _, err := event.Subscribe[event.StatusChangePayload](e.bus, event.TypeAssetStatusChanged, func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
-		evt, ok := statusPayloadToAlert(ev)
-		if !ok {
+	if _, err := event.Subscribe(e.bus, event.TypeAssetStatusChanged,
+		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
+			evt, ok := statusPayloadToAlert(ev)
+			if !ok {
+				return nil
+			}
+			e.onBusEvent(runCtx, evt)
 			return nil
-		}
-		e.dispatch(runCtx, evt)
-		return nil
-	}); err != nil {
+		}); err != nil {
 		return fmt.Errorf("prism: subscribe to status change events: %w", err)
 	}
 

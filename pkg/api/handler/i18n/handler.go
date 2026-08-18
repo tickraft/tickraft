@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package i18n exposes locale listing endpoints backed by the shared i18n
+// registry, letting the frontend discover available languages before
+// authentication.
 package i18n
 
 import (
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/i18n"
 )

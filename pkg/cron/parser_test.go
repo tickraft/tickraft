@@ -395,7 +395,7 @@ func TestManagerAddRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	crontab.Add(1, sched, Lambda(func(_ context.Context) {
+	_ = crontab.Add(1, sched, Lambda(func(_ context.Context) {
 		select {
 		case called <- struct{}{}:
 		default:

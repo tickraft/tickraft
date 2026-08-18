@@ -14,7 +14,7 @@ import (
 func seedAssets(hs *harness, token string, n int) []int64 {
 	hs.t.Helper()
 	ids := make([]int64, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		assetType := "device"
 		if i%2 == 1 {
 			assetType = "service"

@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // RecordAlert creates alert records for each violation carried by the event.
@@ -42,7 +44,7 @@ func RecordAlert(ctx context.Context, recordStore RecordStore, evt Event) error 
 func ViolationToRecord(v Violation, triggeredAt time.Time) *Record {
 	severity := v.Severity
 	if severity == "" {
-		severity = "warning"
+		severity = string(types.SeverityWarning)
 	}
 	ruleName := v.Source
 	var value float64
@@ -63,7 +65,7 @@ func ViolationToRecord(v Violation, triggeredAt time.Time) *Record {
 		Severity:    severity,
 		Value:       value,
 		Message:     message,
-		Status:      "firing",
+		Status:      StatusFiring,
 		TriggeredAt: triggeredAt,
 	}
 }

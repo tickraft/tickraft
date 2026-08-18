@@ -75,7 +75,7 @@ func TestAggregatorMultipleGroups(t *testing.T) {
 	}
 
 	received := make(map[string]*aggregatedMetric)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		select {
 		case am := <-agg.FlushCh():
 			key := fmt.Sprintf("%d:%s", am.assetID, am.metricName)
@@ -195,7 +195,7 @@ func bufferKeyOld(assetID int64, metricName string, windowStart time.Time) strin
 func BenchmarkBufferKeyOld(b *testing.B) {
 	b.ReportAllocs()
 	ts := time.Unix(1700000000, 123456789)
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = bufferKeyOld(12345, "cpu_usage", ts)
 	}
 }
@@ -205,7 +205,7 @@ func BenchmarkBufferKeyOld(b *testing.B) {
 func BenchmarkBufferKey(b *testing.B) {
 	b.ReportAllocs()
 	ts := time.Unix(1700000000, 123456789)
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = bufferKey(12345, "cpu_usage", ts)
 	}
 }
@@ -254,43 +254,43 @@ func TestBufferKeyEquivalence(t *testing.T) {
 // TestMetricBufferCap verifies that the buffer respects its capacity by
 // dropping the oldest point and preserving the most recent data when full.
 func TestMetricBufferCap(t *testing.T) {
-	const cap = 5
+	const capacity = 5
 	b := &metricBuffer{
 		assetID:    1,
 		metricName: "cpu",
-		maxPoints:  cap,
+		maxPoints:  capacity,
 		logger:     zap.NewNop(),
 	}
 
 	// Fill the buffer to capacity.
-	for i := 0; i < cap; i++ {
+	for i := range capacity {
 		b.add(float64(i))
 	}
-	if len(b.points) != cap {
-		t.Fatalf("expected %d points, got %d", cap, len(b.points))
+	if len(b.points) != capacity {
+		t.Fatalf("expected %d points, got %d", capacity, len(b.points))
 	}
 
 	// Add one more — the oldest (0.0) should be evicted.
 	b.add(99.0)
-	if len(b.points) != cap {
-		t.Fatalf("expected %d points after overflow, got %d", cap, len(b.points))
+	if len(b.points) != capacity {
+		t.Fatalf("expected %d points after overflow, got %d", capacity, len(b.points))
 	}
 	if b.points[0] != 1.0 {
 		t.Errorf("expected oldest remaining point to be 1.0, got %v", b.points[0])
 	}
-	if b.points[cap-1] != 99.0 {
-		t.Errorf("expected newest point to be 99.0, got %v", b.points[cap-1])
+	if b.points[capacity-1] != 99.0 {
+		t.Errorf("expected newest point to be 99.0, got %v", b.points[capacity-1])
 	}
 	if b.overflowCount != 1 {
 		t.Errorf("expected overflowCount=1, got %d", b.overflowCount)
 	}
 
 	// Add several more and verify the buffer never exceeds the cap.
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		b.add(float64(100 + i))
 	}
-	if len(b.points) != cap {
-		t.Errorf("expected %d points after sustained overflow, got %d", cap, len(b.points))
+	if len(b.points) != capacity {
+		t.Errorf("expected %d points after sustained overflow, got %d", capacity, len(b.points))
 	}
 	// The most recent 5 values should be 115, 116, 117, 118, 119.
 	for i, want := range []float64{115, 116, 117, 118, 119} {
@@ -309,7 +309,7 @@ func TestMetricBufferCapDefault(t *testing.T) {
 		logger:     zap.NewNop(),
 		// maxPoints intentionally left zero to exercise the default path.
 	}
-	for i := 0; i < DefaultMetricBufferCap+5; i++ {
+	for i := range DefaultMetricBufferCap + 5 {
 		b.add(float64(i))
 	}
 	if len(b.points) != DefaultMetricBufferCap {

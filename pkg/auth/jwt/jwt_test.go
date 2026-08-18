@@ -45,7 +45,7 @@ func TestParseExpired(t *testing.T) {
 	}
 
 	_, err = Parse(token, testSecret)
-	if err != ErrTokenExpired {
+	if !errors.Is(err, ErrTokenExpired) {
 		t.Errorf("Parse() error = %v, want ErrTokenExpired", err)
 	}
 }
@@ -57,14 +57,14 @@ func TestParseInvalidSecret(t *testing.T) {
 	}
 
 	_, err = Parse(token, "wrong-secret")
-	if err != ErrTokenInvalid {
+	if !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("Parse() error = %v, want ErrTokenInvalid", err)
 	}
 }
 
 func TestParseInvalidToken(t *testing.T) {
 	_, err := Parse("invalid.token.string", testSecret)
-	if err != ErrTokenInvalid {
+	if !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("Parse() error = %v, want ErrTokenInvalid", err)
 	}
 }
@@ -202,13 +202,13 @@ func TestValidateTokenRejectsWrongType(t *testing.T) {
 
 	// Access token should not pass as refresh token.
 	_, err = mgr.ValidateToken(pair.AccessToken, TokenTypeRefresh)
-	if err != ErrTokenInvalid {
+	if !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("ValidateToken(access as refresh) error = %v, want ErrTokenInvalid", err)
 	}
 
 	// Refresh token should not pass as access token.
 	_, err = mgr.ValidateToken(pair.RefreshToken, TokenTypeAccess)
-	if err != ErrTokenInvalid {
+	if !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("ValidateToken(refresh as access) error = %v, want ErrTokenInvalid", err)
 	}
 }
@@ -239,7 +239,7 @@ func TestValidateTokenRejectsBlacklisted(t *testing.T) {
 
 	// Validate after blacklisting.
 	_, err = mgr.ValidateToken(pair.AccessToken, TokenTypeAccess)
-	if err != ErrTokenInBlacklist {
+	if !errors.Is(err, ErrTokenInBlacklist) {
 		t.Errorf("ValidateToken(after blacklist) error = %v, want ErrTokenInBlacklist", err)
 	}
 }
@@ -398,7 +398,7 @@ func TestValidateTokenRejectsExpiredToken(t *testing.T) {
 	}
 
 	_, err = mgr.ValidateToken(expiredToken, TokenTypeAccess)
-	if err != ErrTokenExpired {
+	if !errors.Is(err, ErrTokenExpired) {
 		t.Errorf("ValidateToken(expired) error = %v, want ErrTokenExpired", err)
 	}
 }

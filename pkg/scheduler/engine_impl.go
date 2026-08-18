@@ -10,9 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/cron"
 	"github.com/tickraft/tickraft/pkg/timewheel"
-	"go.uber.org/zap"
 )
 
 // defaultWheelWorkerSize is the worker pool size used by the internal time

@@ -123,7 +123,10 @@ func WithTelemetryReportHandler(h telemetry.ReportHandler) RouteOption {
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil to
 // disable the corresponding query path.
-func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector, logStore telemetry.LogStoreInjector) RouteOption {
+func WithTelemetryDataStores(
+	metricStore telemetry.MetricStoreInjector,
+	logStore telemetry.LogStoreInjector,
+) RouteOption {
 	return func(c *routeConfig) {
 		c.telemetryMetricStore = metricStore
 		c.telemetryLogStore = logStore

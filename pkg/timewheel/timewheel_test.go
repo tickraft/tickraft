@@ -209,7 +209,7 @@ func TestConcurrentAddRemove(t *testing.T) {
 	var wg sync.WaitGroup
 	const goroutines = 100
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -392,7 +392,7 @@ func TestPoolRejectionNoDeadlock(t *testing.T) {
 	// be held by the pool (1 running + 1 queued); the rest are
 	// rejected after submitTimeout without blocking the tick loop.
 	const total = 50
-	for i := 0; i < total; i++ {
+	for range total {
 		wheel.Add(1*time.Second, cb)
 	}
 

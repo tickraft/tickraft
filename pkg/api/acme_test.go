@@ -5,6 +5,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -435,10 +436,10 @@ func TestMemoryACMECertStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCert: %v", err)
 	}
-	if string(gotCert) != string(wantCert) {
+	if !bytes.Equal(gotCert, wantCert) {
 		t.Errorf("cert: got %q, want %q", gotCert, wantCert)
 	}
-	if string(gotKey) != string(wantKey) {
+	if !bytes.Equal(gotKey, wantKey) {
 		t.Errorf("key: got %q, want %q", gotKey, wantKey)
 	}
 
@@ -451,7 +452,7 @@ func TestMemoryACMECertStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCert (after replace): %v", err)
 	}
-	if string(gotCert) != string(newCert) {
+	if !bytes.Equal(gotCert, newCert) {
 		t.Errorf("cert after replace: got %q, want %q", gotCert, newCert)
 	}
 }
@@ -481,7 +482,7 @@ func TestMemoryACMECertStoreAccountKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadAccountKey: %v", err)
 	}
-	if string(got) != string(want) {
+	if !bytes.Equal(got, want) {
 		t.Errorf("account key: got %q, want %q", got, want)
 	}
 }
@@ -539,7 +540,7 @@ func TestEncodePEMChain(t *testing.T) {
 // PEM-encoded certificate and private key. This helper is local to the test
 // package so the parsePEMCertificate test can exercise the parser against a
 // real certificate without depending on the cmd package.
-func generateTestSelfSignedCertPEM(domain string) ([]byte, []byte, error) {
+func generateTestSelfSignedCertPEM(domain string) (certPEM, keyPEM []byte, err error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
@@ -575,7 +576,7 @@ func generateTestSelfSignedCertPEM(domain string) ([]byte, []byte, error) {
 		return nil, nil, err
 	}
 
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 	return certPEM, keyPEM, nil
 }

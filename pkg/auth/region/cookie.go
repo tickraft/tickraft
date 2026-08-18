@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package region implements signed region cookies that carry the region a
+// request originated from, together with HMAC key rotation for verifying
+// cookies signed under older keys.
 package region
 
 import (

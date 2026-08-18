@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
@@ -73,7 +75,12 @@ func (a *serviceAdapter) Login(ctx context.Context, username, password string) (
 }
 
 // Logout blacklists the access token and optionally the refresh token.
-func (a *serviceAdapter) Logout(ctx context.Context, accessJTI string, accessExpireAt time.Time, refreshToken string) error {
+func (a *serviceAdapter) Logout(
+	ctx context.Context,
+	accessJTI string,
+	accessExpireAt time.Time,
+	refreshToken string,
+) error {
 	return a.service.Logout(ctx, accessJTI, accessExpireAt, refreshToken)
 }
 
@@ -90,12 +97,20 @@ func (a *serviceAdapter) RefreshToken(ctx context.Context, refreshToken string) 
 }
 
 // ChangePassword changes the user's password.
-func (a *serviceAdapter) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword, currentJTI string) error {
+func (a *serviceAdapter) ChangePassword(
+	ctx context.Context,
+	userID int64,
+	oldPassword, newPassword, currentJTI string,
+) error {
 	return a.service.ChangePassword(ctx, userID, oldPassword, newPassword, currentJTI)
 }
 
 // CreateAPIKey generates a new API key and returns the raw key plus metadata.
-func (a *serviceAdapter) CreateAPIKey(ctx context.Context, name string, expiredAt *time.Time) (string, *user.APIKey, error) {
+func (a *serviceAdapter) CreateAPIKey(
+	ctx context.Context,
+	name string,
+	expiredAt *time.Time,
+) (string, *user.APIKey, error) {
 	return a.service.CreateAPIKey(ctx, name, expiredAt)
 }
 
@@ -123,7 +138,11 @@ func (a *serviceAdapter) GetProfile(ctx context.Context, userID int64) (*authapi
 // UpdateProfile updates the profile of the current user identified by userID.
 // It delegates to the auth service and projects the updated user.User into a
 // handler-layer UserProfile.
-func (a *serviceAdapter) UpdateProfile(ctx context.Context, userID int64, req *authapi.UpdateProfileRequest) (*authapi.UserProfile, error) {
+func (a *serviceAdapter) UpdateProfile(
+	ctx context.Context,
+	userID int64,
+	req *authapi.UpdateProfileRequest,
+) (*authapi.UserProfile, error) {
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
 	}
@@ -240,7 +259,8 @@ func WithTelemetryReportHandler(h telemetry.ReportHandler) RegisterOption {
 
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil.
-func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector, logStore telemetry.LogStoreInjector) RegisterOption {
+func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector,
+	logStore telemetry.LogStoreInjector) RegisterOption {
 	return func(c *registerConfig) {
 		c.telemetryMetricStore = metricStore
 		c.telemetryLogStore = logStore
@@ -277,15 +297,15 @@ func WithCertificateHandler(h *certificates.Handler) RegisterOption {
 	return func(c *registerConfig) { c.certificateHandler = h }
 }
 
-// WithI18nHandler provides the I18nHandler for the locale listing API
-// at /api/v1/i18n/locales. When omitted, the i18n route group is not
-// registered.
 // WithWSHandler provides the WebSocket handler for the /ws realtime
 // push endpoint. When omitted, the route is not registered.
 func WithWSHandler(h *wsapi.Handler) RegisterOption {
 	return func(c *registerConfig) { c.wsHandler = h }
 }
 
+// WithI18nHandler provides the I18nHandler for the locale listing API
+// at /api/v1/i18n/locales. When omitted, the i18n route group is not
+// registered.
 func WithI18nHandler(h *i18n.Handler) RegisterOption {
 	return func(c *registerConfig) { c.i18nHandler = h }
 }
@@ -309,6 +329,54 @@ func RegisterRoutes(
 	assetKeyGetter func(ctx context.Context, key string) (bool, error),
 	opts ...RegisterOption,
 ) error {
+	if err := validateRegisterArgs(server, jwtMgr, service); err != nil {
+		return err
+	}
+
+	getter := assetKeyGetter
+	if getter == nil {
+		getter = denyAllAssetKeys
+	}
+
+	keyGetter := newAPIKeyGetter(service)
+
+	// Build middleware instances using the auth/jwt packages.
+	authMW := middleware.NewAnyAuth(jwtMgr, keyGetter)
+	assetKeyMW := middleware.NewAssetKeyMiddleware(getter)
+
+	// Wrap *auth.Service in the adapter to satisfy authapi.Service.
+	adapter := &serviceAdapter{service: service}
+
+	// Apply registrations.
+	rc := &registerConfig{}
+	for _, opt := range opts {
+		opt(rc)
+	}
+
+	// Validate that all required domain services are injected. The
+	// open-source edition runs as a single standalone process where every
+	// component (server, worker, prism) is co-located, so every service
+	// must be non-nil. A nil value indicates a wiring bug that would leave
+	// the deployment with incomplete routes.
+	if missing := missingServices(rc); len(missing) > 0 {
+		return fmt.Errorf("router: missing required services: %s",
+			strings.Join(missing, ", "))
+	}
+
+	handlerOpts := buildHandlerOptions(rc, authMW, assetKeyMW, adapter)
+
+	// Register all routes via the handler package with injected middleware.
+	if err := handler.RegisterRoutes(server, handlerOpts...); err != nil {
+		return fmt.Errorf("router: %w", err)
+	}
+
+	return nil
+}
+
+// validateRegisterArgs returns an error when any mandatory RegisterRoutes
+// argument is nil. These arguments back routes and middleware that are always
+// registered, so a nil value would produce a runtime panic on first use.
+func validateRegisterArgs(server *api.Server, jwtMgr *jwt.JWT, service *auth.Service) error {
 	if server == nil {
 		return fmt.Errorf("router: server is nil")
 	}
@@ -318,22 +386,20 @@ func RegisterRoutes(
 	if service == nil {
 		return fmt.Errorf("router: auth service is nil")
 	}
+	return nil
+}
 
-	getter := assetKeyGetter
-	if getter == nil {
-		getter = denyAllAssetKeys
-	}
-
-	// Build API key keyGetter for combined auth middleware. A short-TTL
-	// cache fronts the per-request DB lookup: API key metadata changes
-	// rarely, and the lookup sits on every authenticated request with an
-	// API key. Revocations take effect within the TTL window.
+// newAPIKeyGetter builds the API key keyGetter for the combined auth
+// middleware. A short-TTL cache fronts the per-request DB lookup: API key
+// metadata changes rarely, and the lookup sits on every authenticated request
+// with an API key. Revocations take effect within the TTL window.
+func newAPIKeyGetter(service *auth.Service) func(ctx context.Context, keyHash string) (*apikey.Info, error) {
 	const apiKeyCacheTTL = 30 * time.Second
 	var (
 		apiKeyCacheMu sync.Mutex
 		apiKeyCache   = make(map[string]apiKeyCacheEntry)
 	)
-	keyGetter := func(ctx context.Context, keyHash string) (*apikey.Info, error) {
+	return func(ctx context.Context, keyHash string) (*apikey.Info, error) {
 		now := time.Now()
 		apiKeyCacheMu.Lock()
 		if e, ok := apiKeyCache[keyHash]; ok && now.Before(e.expiresAt) {
@@ -365,25 +431,14 @@ func RegisterRoutes(
 		apiKeyCacheMu.Unlock()
 		return info, nil
 	}
+}
 
-	// Build middleware instances using the auth/jwt packages.
-	authMW := middleware.NewAnyAuth(jwtMgr, keyGetter)
-	assetKeyMW := middleware.NewAssetKeyMiddleware(getter)
-
-	// Wrap *auth.Service in the adapter to satisfy authapi.Service.
-	adapter := &serviceAdapter{service: service}
-
-	// Apply registrations.
-	rc := &registerConfig{}
-	for _, opt := range opts {
-		opt(rc)
-	}
-
-	// Validate that all required domain services are injected. The
-	// open-source edition runs as a single standalone process where every
-	// component (server, worker, prism) is co-located, so every service
-	// must be non-nil. A nil value indicates a wiring bug that would leave
-	// the deployment with incomplete routes.
+// missingServices lists the required domain services that were not injected
+// via RegisterOption. The open-source edition runs as a single standalone
+// process where every component (server, worker, prism) is co-located, so
+// every service must be non-nil. A nil value indicates a wiring bug that
+// would leave the deployment with incomplete routes.
+func missingServices(rc *registerConfig) []string {
 	var missing []string
 	if rc.taskSvc == nil {
 		missing = append(missing, "task service")
@@ -409,14 +464,18 @@ func RegisterRoutes(
 	if rc.assetHandler == nil {
 		missing = append(missing, "asset handler")
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("router: missing required services: %s",
-			strings.Join(missing, ", "))
-	}
+	return missing
+}
 
-	// Build the RouteOption list with all validated services guaranteed
-	// non-nil. Genuinely optional handlers (healthz, readyz, certificates,
-	// i18n) remain conditional.
+// buildHandlerOptions assembles the handler.RouteOption list from the
+// validated register config and middleware. Required services are guaranteed
+// non-nil by the caller; genuinely optional handlers (healthz, readyz,
+// certificates, i18n) remain conditional.
+func buildHandlerOptions(
+	rc *registerConfig,
+	authMW, assetKeyMW app.HandlerFunc,
+	adapter *serviceAdapter,
+) []handler.RouteOption {
 	handlerOpts := []handler.RouteOption{
 		handler.WithJWTAuth(authMW),
 		handler.WithAssetKeyAuth(assetKeyMW),
@@ -449,13 +508,7 @@ func RegisterRoutes(
 	if rc.wsHandler != nil {
 		handlerOpts = append(handlerOpts, handler.WithWSHandler(rc.wsHandler))
 	}
-
-	// Register all routes via the handler package with injected middleware.
-	if err := handler.RegisterRoutes(server, handlerOpts...); err != nil {
-		return fmt.Errorf("router: %w", err)
-	}
-
-	return nil
+	return handlerOpts
 }
 
 // Compile-time assertion that serviceAdapter satisfies authapi.Service.

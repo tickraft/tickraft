@@ -20,7 +20,7 @@ import (
 // errdefs.ErrXxx) so that errors.Is(err, errdefs.ErrXxx) returns true
 // uniformly and this mapper recognizes the variant without needing a
 // per-domain case.
-func mapError(err error) (int, int, string) {
+func mapError(err error) (httpStatus, code int, msg string) {
 	if err == nil {
 		return http.StatusInternalServerError, errdefs.CodeInternal, "internal error"
 	}

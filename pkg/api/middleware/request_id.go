@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
@@ -29,7 +30,7 @@ func RequestID() app.HandlerFunc {
 func generateRequestID() string {
 	var buf [16]byte
 	for i := range buf {
-		buf[i] = byte(rand.IntN(256))
+		buf[i] = byte(rand.IntN(256)) //nolint:gosec // non-crypto RNG is fine for request IDs
 	}
 	return hex.EncodeToString(buf[:])
 }

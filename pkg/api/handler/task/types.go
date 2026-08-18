@@ -42,9 +42,9 @@ type Filter struct {
 
 // Execution represents a single execution record of a task.
 type Execution struct {
-	ID        int64      `json:"id"`
-	TaskID    int64      `json:"task_id"`
-	TaskName  string     `json:"task_name,omitempty"`
+	ID       int64  `json:"id"`
+	TaskID   int64  `json:"task_id"`
+	TaskName string `json:"task_name,omitempty"`
 	// ExecutorType is the executor that produced the record
 	// (http, tcp, local, webhook, icmp).
 	ExecutorType string `json:"executor_type,omitempty"`
@@ -105,7 +105,8 @@ type Service interface {
 	ResumeTask(ctx context.Context, id int64) error
 	// ListExecutions returns a page of executions matching the filter and the
 	// total count. taskID <= 0 matches executions of all tasks.
-	ListExecutions(ctx context.Context, taskID int64, page, size int, filter ExecutionFilter) ([]Execution, int64, error)
+	ListExecutions(ctx context.Context, taskID int64, page, size int,
+		filter ExecutionFilter) ([]Execution, int64, error)
 	// GetExecution returns a single execution record by ID. A positive taskID
 	// additionally requires the record to belong to that task.
 	GetExecution(ctx context.Context, taskID, id int64) (*Execution, error)

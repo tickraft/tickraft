@@ -37,6 +37,20 @@ var templateIDPattern = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 // extended custom-template stores should call it before persisting a
 // user-created template.
 func Validate(t Template) error {
+	if err := validateIdentity(t); err != nil {
+		return err
+	}
+	if err := validateVariables(t); err != nil {
+		return err
+	}
+	if err := validateStyles(t); err != nil {
+		return err
+	}
+	return validateTranslations(t)
+}
+
+// validateIdentity checks the template ID, Name, and AlertType.
+func validateIdentity(t Template) error {
 	if t.ID == "" {
 		return errEmptyTemplateID
 	}
@@ -49,11 +63,23 @@ func Validate(t Template) error {
 	if !IsValidAlertType(t.AlertType) {
 		return fmt.Errorf("template: invalid AlertType %q", t.AlertType)
 	}
+	return nil
+}
+
+// validateVariables checks that every declared variable name matches
+// variableNamePattern.
+func validateVariables(t Template) error {
 	for _, v := range t.Variables {
 		if !variableNamePattern.MatchString(v) {
 			return fmt.Errorf("template: invalid variable name %q (must match %s)", v, variableNamePattern.String())
 		}
 	}
+	return nil
+}
+
+// validateStyles checks that at least one style is declared and every
+// style is recognized.
+func validateStyles(t Template) error {
 	if len(t.Styles) == 0 {
 		return errors.New("template: at least one Style is required")
 	}
@@ -62,6 +88,14 @@ func Validate(t Template) error {
 			return fmt.Errorf("template: invalid Style %q", s)
 		}
 	}
+	return nil
+}
+
+// validateTranslations checks that at least one translation exists, the
+// default locale (i18n.DefaultLocale) translation is mandatory so that
+// fallback always produces readable output, and every translation has a
+// title and description key for every declared style.
+func validateTranslations(t Template) error {
 	if len(t.Translations) == 0 {
 		return errors.New("template: at least one translation is required")
 	}

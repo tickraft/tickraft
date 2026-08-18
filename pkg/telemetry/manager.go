@@ -11,12 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
 	"github.com/tickraft/tickraft/pkg/timewheel"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // Compile-time assertion that Manager implements Collector.

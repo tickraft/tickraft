@@ -263,7 +263,8 @@ func TestNonGenericPublishSubscribe(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{TaskID: "task-001"}); err != nil {
+	payload := ExecutionPayload{TaskID: "task-001"}
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, payload); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 

@@ -52,11 +52,46 @@ func TestEngine_LoadAndGroupByScene(t *testing.T) {
 
 	rules := []Rule{
 		{ID: 1, Name: "task-priority", Scene: SceneTask, Expression: "task.priority > 5", Priority: 10, Enabled: true},
-		{ID: 2, Name: "probe-error", Scene: SceneProbe, Expression: `report.log_content contains "error"`, Priority: 10, Enabled: true},
-		{ID: 3, Name: "probe-warn", Scene: SceneProbe, Expression: `report.log_content contains "warn"`, Priority: 5, Enabled: true},
-		{ID: 4, Name: "metric-cpu", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 80`, Priority: 10, Enabled: true},
-		{ID: 5, Name: "metric-mem", Scene: SceneMetric, Expression: `alert.metrics["mem"] > 90`, Priority: 5, Enabled: true},
-		{ID: 6, Name: "metric-disk", Scene: SceneMetric, Expression: `alert.metrics["disk"] > 70`, Priority: 1, Enabled: true},
+		{
+			ID:         2,
+			Name:       "probe-error",
+			Scene:      SceneProbe,
+			Expression: `report.log_content contains "error"`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         3,
+			Name:       "probe-warn",
+			Scene:      SceneProbe,
+			Expression: `report.log_content contains "warn"`,
+			Priority:   5,
+			Enabled:    true,
+		},
+		{
+			ID:         4,
+			Name:       "metric-cpu",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["cpu"] > 80`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         5,
+			Name:       "metric-mem",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["mem"] > 90`,
+			Priority:   5,
+			Enabled:    true,
+		},
+		{
+			ID:         6,
+			Name:       "metric-disk",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["disk"] > 70`,
+			Priority:   1,
+			Enabled:    true,
+		},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
 		t.Fatalf("Load: %v", err)
@@ -75,7 +110,9 @@ func TestEngine_LoadAndGroupByScene(t *testing.T) {
 	}
 
 	// Metric scene: cpu=95 matches all three metric rules.
-	metricMatched := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 95, "mem": 95, "disk": 95}}})
+	metricMatched := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{
+		Metrics: map[string]float64{"cpu": 95, "mem": 95, "disk": 95},
+	}})
 	if len(metricMatched) != 3 {
 		t.Errorf("MatchMetric = %v, want 3 ids", metricMatched)
 	}
@@ -83,7 +120,9 @@ func TestEngine_LoadAndGroupByScene(t *testing.T) {
 	// Scene isolation: a metric env must never trigger the task rule.
 	// All three metric keys are provided so all three metric rules match,
 	// and the task rule (ID 1) is never evaluated against the metric env.
-	if got := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 100, "mem": 100, "disk": 100}}}); len(got) != 3 {
+	if got := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{
+		Metrics: map[string]float64{"cpu": 100, "mem": 100, "disk": 100},
+	}}); len(got) != 3 {
 		t.Errorf("MatchMetric leaked task rule: %v", got)
 	}
 }
@@ -128,7 +167,9 @@ func TestEngine_MatchEmpty(t *testing.T) {
 	eng := NewEngine(zap.NewNop())
 
 	// Fresh engine: no rules loaded.
-	if got := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 90}}}); len(got) != 0 {
+	if got := eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{
+		Metrics: map[string]float64{"cpu": 90},
+	}}); len(got) != 0 {
 		t.Errorf("MatchMetric on fresh engine = %v, want empty", got)
 	}
 
@@ -170,7 +211,7 @@ func TestEngine_ProgramCacheReused(t *testing.T) {
 	}
 
 	// Repeated matches must not alter the cache or recompile programs.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_ = eng.MatchMetric(ctx, MetricMatchEnv{Alert: AlertView{Metrics: map[string]float64{"cpu": 95, "mem": 95}}})
 	}
 	eng.mu.RLock()
@@ -250,8 +291,24 @@ func TestEngine_Reload(t *testing.T) {
 
 	// Reload from a store carrying different rules; the old rule is replaced.
 	store := &stubRuleStore{rules: []Record{
-		{ID: 10, TenantID: 1, Name: "s-metric", Scene: string(SceneMetric), Expression: `alert.metrics["cpu"] > 50`, Enabled: true, Priority: 5},
-		{ID: 11, TenantID: 1, Name: "s-task", Scene: string(SceneTask), Expression: "task.priority > 1", Enabled: true, Priority: 5},
+		{
+			ID:         10,
+			TenantID:   1,
+			Name:       "s-metric",
+			Scene:      string(SceneMetric),
+			Expression: `alert.metrics["cpu"] > 50`,
+			Enabled:    true,
+			Priority:   5,
+		},
+		{
+			ID:         11,
+			TenantID:   1,
+			Name:       "s-task",
+			Scene:      string(SceneTask),
+			Expression: "task.priority > 1",
+			Enabled:    true,
+			Priority:   5,
+		},
 	}}
 	if err := eng.Reload(ctx, store); err != nil {
 		t.Fatalf("Reload: %v", err)
@@ -320,11 +377,11 @@ func TestEngine_ConcurrentMatch(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 	start := make(chan struct{})
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			<-start
-			for i := 0; i < 50; i++ {
+			for range 50 {
 				matched := eng.MatchMetric(ctx, MetricMatchEnv{
 					Alert: AlertView{Metrics: map[string]float64{"cpu": 90}},
 				})

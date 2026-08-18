@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -21,7 +22,10 @@ import (
 // X-Tickraft-API-Key header. The keyGetter function looks up the key information by its
 // SHA-256 hash. If permission is non-empty, the middleware also checks that
 // permission via the default RBAC policy.
-func NewAPIKeyAuth(keyGetter func(ctx context.Context, keyHash string) (*apikey.Info, error), permission string) app.HandlerFunc {
+func NewAPIKeyAuth(
+	keyGetter func(ctx context.Context, keyHash string) (*apikey.Info, error),
+	permission string,
+) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		rawKey := string(arc.GetHeader(httputil.HeaderAPIKey))
 		if rawKey == "" {

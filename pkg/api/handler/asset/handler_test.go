@@ -15,13 +15,14 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 // assetBasePath is the route prefix registered by routes.go for the
@@ -33,12 +34,11 @@ const assetBasePath = "/api/v1/assets"
 type testProvider struct{}
 
 func (testProvider) Ceiling(t quota.Type) int {
-	if t == quota.TypeHost {
-		return 1000
-	}
 	// Return CE-equivalent values for known types so the test provider
 	// behaves like the real DefaultProvider without importing internal/quota.
 	switch t {
+	case quota.TypeHost:
+		return 1000
 	case quota.TypeDevice, quota.TypeProber, quota.TypeScheduledTask:
 		return 20
 	case quota.TypeRemediation:
@@ -47,6 +47,11 @@ func (testProvider) Ceiling(t quota.Type) int {
 		return 60
 	case quota.TypeDailyEvents:
 		return 100000
+	case quota.TypeAsset, quota.TypeTeamMember, quota.TypeCustomField,
+		quota.TypeIngestionMetricTPS, quota.TypeIngestionEventTPS,
+		quota.TypeConcurrentTasks, quota.TypeAPIMinute, quota.TypeAPIDaily,
+		quota.TypeAPIConcurrent:
+		return 0
 	default:
 		return 0
 	}
@@ -209,7 +214,7 @@ func TestAssetHandlerCreateDeviceQuotaExceeded(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed the store with the maximum allowed number of device resources.
-	for i := 0; i < maxDeviceQuota; i++ {
+	for i := range maxDeviceQuota {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeDevice,
 			AssetKey:  "dev-" + itoa(int64(i)),
@@ -240,7 +245,7 @@ func TestAssetHandlerCreateDeviceAtQuotaBoundary(t *testing.T) {
 	engine, _ := newAssetTestEngine(t)
 
 	// Create devices up to the cap via the API; all must succeed.
-	for i := 0; i < maxDeviceQuota; i++ {
+	for i := range maxDeviceQuota {
 		body := fmt.Sprintf(`{"asset_type":"device","asset_key":"dev-%d","name":"device-%d"}`, i, i)
 		w := doRequest(engine, "POST", assetBasePath, []byte(body))
 		if w.Code != http.StatusOK {
@@ -265,7 +270,7 @@ func TestAssetHandlerCreateNonDeviceNotQuotaLimited(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed the store with more than maxDeviceQuota host resources.
-	for i := 0; i < maxDeviceQuota+5; i++ {
+	for i := range maxDeviceQuota + 5 {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeHost,
 			AssetKey:  "host-" + itoa(int64(i)),
@@ -312,7 +317,7 @@ func TestAssetHandlerListWithItems(t *testing.T) {
 	engine, store := newAssetTestEngine(t)
 	ctx := context.Background()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := store.Create(ctx, &assetstore.Asset{
 			AssetType: types.AssetTypeHost,
 			AssetKey:  "host-" + string(rune('A'+i)),
@@ -398,7 +403,8 @@ func TestAssetHandlerUpdateSuccess(t *testing.T) {
 
 	created := createAssetViaAPI(t, engine, `{"asset_type":"host","asset_key":"host-1","name":"old"}`)
 
-	w := doRequest(engine, "PUT", assetBasePath+"/"+itoa(created.ID), []byte(`{"asset_type":"host","asset_key":"host-1","name":"new","status":"normal"}`))
+	w := doRequest(engine, "PUT", assetBasePath+"/"+itoa(created.ID),
+		[]byte(`{"asset_type":"host","asset_key":"host-1","name":"new","status":"normal"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusOK, w.Body.String())
 	}

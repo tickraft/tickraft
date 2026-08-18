@@ -136,7 +136,7 @@ func TestRecordSuccessResetsFailureCount(t *testing.T) {
 func TestFailuresOpenBreaker(t *testing.T) {
 	cb := New(Config{FailureThreshold: 3, Cooldown: 50 * time.Millisecond, HalfOpenMax: 1})
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if !cb.Allow() {
 			t.Fatalf("Allow() #%d: got false, want true", i)
 		}
@@ -154,7 +154,7 @@ func TestFailuresOpenBreaker(t *testing.T) {
 // threshold keep the breaker closed.
 func TestFailuresBelowThresholdStayClosed(t *testing.T) {
 	cb := New(Config{FailureThreshold: 5, Cooldown: 50 * time.Millisecond, HalfOpenMax: 1})
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		cb.RecordFailure()
 	}
 	if cb.State() != StateClosed {
@@ -202,7 +202,7 @@ func TestHalfOpenRecordSuccessCloses(t *testing.T) {
 	cb := New(Config{FailureThreshold: 3, Cooldown: 50 * time.Millisecond, HalfOpenMax: 1})
 
 	// Open the breaker with 3 failures.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		cb.RecordFailure()
 	}
 	if cb.State() != StateOpen {
@@ -275,7 +275,7 @@ func TestHalfOpenMaxAdmission(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 
 	// First 3 probes are admitted.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if !cb.Allow() {
 			t.Fatalf("Allow() #%d: got false, want true", i)
 		}
@@ -353,11 +353,11 @@ func TestConcurrentAccess(t *testing.T) {
 	cb := New(Config{FailureThreshold: 10, Cooldown: 20 * time.Millisecond, HalfOpenMax: 2})
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				if cb.Allow() {
 					// Simulate work then record a result. Mix of success/failure.
 					if j%3 == 0 {
@@ -383,11 +383,11 @@ func TestConcurrentAllowOnly(t *testing.T) {
 	cb.RecordFailure() // open the breaker
 
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 50; j++ {
+			for range 50 {
 				_ = cb.Allow()
 			}
 		}()

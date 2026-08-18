@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 func loadRegistry(t *testing.T) i18n.Registry {
@@ -31,13 +32,16 @@ func TestNewFormatter_NilLogger(t *testing.T) {
 	if f == nil {
 		t.Fatal("NewFormatter returned nil")
 	}
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	msg := f.Format(context.Background(), alert, i18n.FormatOptions{Locale: "en-US"})
+	msg := f.Format(context.Background(), evt, i18n.FormatOptions{Locale: "en-US"})
 	if msg.Title == "" {
 		t.Error("formatter produced empty title")
 	}
@@ -60,14 +64,17 @@ func TestNewFormatter_NilRegistry(t *testing.T) {
 func TestBuild_Defaults(t *testing.T) {
 	r := loadRegistry(t)
 	f := NewFormatter(r, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg := Build(alert, "https://app.example.com", f)
+	msg := Build(evt, "https://app.example.com", f)
 	if !strings.Contains(msg.Title, "cpu_usage") {
 		t.Errorf("Build title should contain metric name: %q", msg.Title)
 	}
@@ -86,13 +93,16 @@ func TestBuild_NilFormatter(t *testing.T) {
 	// When f is nil, Build should construct a default formatter backed by
 	// an empty registry. The output will contain fallback key names rather
 	// than rendered text, but the call must not panic.
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	msg := Build(alert, "", nil)
+	msg := Build(evt, "", nil)
 	if msg.Title == "" {
 		t.Error("Build with nil formatter should still produce a non-empty title (fallback key)")
 	}
@@ -101,14 +111,17 @@ func TestBuild_NilFormatter(t *testing.T) {
 func TestBuildWithOpts_CustomLocale(t *testing.T) {
 	r := loadRegistry(t)
 	f := NewFormatter(r, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg := BuildWithOpts(alert, i18n.FormatOptions{
+	msg := BuildWithOpts(evt, i18n.FormatOptions{
 		Locale: "zh-Hans",
 		Style:  i18n.StyleConcise,
 	}, f)
@@ -121,13 +134,18 @@ func TestBuildWithOpts_CustomLocale(t *testing.T) {
 }
 
 func TestBuildWithOpts_NilFormatter(t *testing.T) {
-	alert := alert.Event{
-		Type:       alert.TypeLog,
-		AssetID:    10,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeLog,
+		AssetID:   10,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "OOM", Content: "out of memory"},
+			Source:   "10.0.0.1",
+		}},
 	}
-	msg := BuildWithOpts(alert, i18n.FormatOptions{Locale: "en-US"}, nil)
+	msg := BuildWithOpts(evt, i18n.FormatOptions{Locale: "en-US"}, nil)
 	if msg.Title == "" {
 		t.Error("BuildWithOpts with nil formatter should produce a non-empty title")
 	}
@@ -136,16 +154,19 @@ func TestBuildWithOpts_NilFormatter(t *testing.T) {
 func TestBuildWithOpts_StyleVariants(t *testing.T) {
 	r := loadRegistry(t)
 	f := NewFormatter(r, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
-	concise := BuildWithOpts(alert, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleConcise}, f)
-	detailed := BuildWithOpts(alert, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleDetailed}, f)
-	technical := BuildWithOpts(alert, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleTechnical}, f)
+	concise := BuildWithOpts(evt, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleConcise}, f)
+	detailed := BuildWithOpts(evt, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleDetailed}, f)
+	technical := BuildWithOpts(evt, i18n.FormatOptions{Locale: "en-US", Style: i18n.StyleTechnical}, f)
 
 	if concise.Title == detailed.Title {
 		t.Error("concise and detailed titles should differ")
@@ -163,13 +184,16 @@ func TestBuildWithOpts_RTLDirection(t *testing.T) {
 		"alert.metric.description.concise": "{{.current_value}}",
 	}))
 	f := NewFormatter(r, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	msg := BuildWithOpts(alert, i18n.FormatOptions{Locale: "ar", Style: i18n.StyleConcise}, f)
+	msg := BuildWithOpts(evt, i18n.FormatOptions{Locale: "ar", Style: i18n.StyleConcise}, f)
 	if msg.Direction != i18n.RTL {
 		t.Errorf("ar direction = %q, want rtl", msg.Direction)
 	}

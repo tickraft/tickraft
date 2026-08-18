@@ -5,19 +5,19 @@
 package email
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/mail"
 	"strings"
 	"time"
 
-	"crypto/tls"
+	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
 	"github.com/tickraft/tickraft/pkg/retry"
-	"go.uber.org/zap"
 )
 
 // Default configuration values applied when the corresponding Config field is
@@ -31,6 +31,12 @@ const (
 	defaultCircuitCooldown  = 30 * time.Second
 	retryMaxBackoff         = 30 * time.Second
 	heloDomain              = "localhost"
+)
+
+// SASL mechanism names advertised by the supported AuthType values.
+const (
+	authPlain = "plain"
+	authLogin = "LOGIN"
 )
 
 // TLSMode controls the TLS strategy used when connecting to the SMTP server.
@@ -90,7 +96,7 @@ const (
 func (a AuthType) String() string {
 	switch a {
 	case AuthTypePlain:
-		return "plain"
+		return authPlain
 	case AuthTypeLogin:
 		return "login"
 	case AuthTypeCramMD5:
@@ -386,9 +392,7 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 
 	base := o.cfg.RetryBaseInterval
 	maxBackoff := retryMaxBackoff
-	if maxBackoff < base {
-		maxBackoff = base
-	}
+	maxBackoff = max(maxBackoff, base)
 	backoff, err := retry.NewExponential(
 		base,
 		maxBackoff,

@@ -460,13 +460,13 @@ func TestMemoryPoolReuse(t *testing.T) {
 	defer sub.Cancel()
 
 	// Publish multiple events to verify the memory pool works correctly.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 			t.Fatalf("publish %d: %v", i, err)
 		}
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		select {
 		case <-received:
 		case <-time.After(2 * time.Second):
@@ -491,7 +491,7 @@ func TestConcurrentPublish(t *testing.T) {
 
 	const n = 200
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -526,7 +526,7 @@ func TestQueueFullDrop(t *testing.T) {
 	defer sub.Cancel()
 
 	// Publish 2 events to fill the queue.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 			t.Fatalf("publish %d: %v", i, err)
 		}

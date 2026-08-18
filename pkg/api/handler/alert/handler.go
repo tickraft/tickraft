@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package alert exposes the alert rule and record CRUD endpoints of the
+// prism alert engine.
 package alert
 
 import (
@@ -64,11 +66,13 @@ func (h *Handler) CreateAlertRule(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "description exceeds maximum length of 1024 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	created, err := h.svc.CreateRule(ctx, &req)
@@ -90,11 +94,13 @@ func (h *Handler) UpdateAlertRule(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "description exceeds maximum length of 1024 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	req.ID = id
@@ -130,7 +136,8 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	if v := arc.Query("from"); v != "" {
 		parsed, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'from' timestamp, expected RFC3339 format")
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid 'from' timestamp, expected RFC3339 format")
 			return
 		}
 		filter.From = parsed
@@ -138,7 +145,8 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	if v := arc.Query("to"); v != "" {
 		parsed, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid 'to' timestamp, expected RFC3339 format")
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid 'to' timestamp, expected RFC3339 format")
 			return
 		}
 		filter.To = parsed

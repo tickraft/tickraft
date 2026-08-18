@@ -14,6 +14,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
@@ -173,9 +174,9 @@ func TestNewTrustedProxyMiddlewareDoesNotPanic(t *testing.T) {
 
 // newTrustedProxyTestEngine builds a route engine with the given middleware
 // and a handler that records the resolved client IP via httputil.GetClientIP.
-func newTrustedProxyTestEngine(mw app.HandlerFunc) (*route.Engine, *string) {
+func newTrustedProxyTestEngine(mw app.HandlerFunc) (engine *route.Engine, clientIP *string) {
 	var recorded string
-	engine := route.NewEngine(config.NewOptions([]config.Option{}))
+	engine = route.NewEngine(config.NewOptions([]config.Option{}))
 	engine.Use(mw)
 	engine.GET("/", func(ctx context.Context, arc *app.RequestContext) {
 		recorded = httputil.GetClientIP(arc)

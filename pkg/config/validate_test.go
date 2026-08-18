@@ -390,7 +390,6 @@ func TestValidate_RetentionDaysDefaultFallback(t *testing.T) {
 		{"negative", -5},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			c := newValidConfig()
 			c.Logger.RetentionDays = tc.got
@@ -546,7 +545,6 @@ func TestValidate_AdminUsernameInvalid(t *testing.T) {
 		strings.Repeat("a", 65), // too long
 	}
 	for _, name := range cases {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			c := newValidConfig()
 			c.Auth.AdminUsername = name

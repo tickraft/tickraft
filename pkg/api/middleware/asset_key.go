@@ -9,13 +9,10 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
-
-// assetKeyHeader is the HTTP header used to authenticate telemetry report
-// endpoints. The value must be a valid asset key issued by the system.
-const assetKeyHeader = "X-Tickraft-Asset-Key"
 
 // NewAssetKeyMiddleware returns a middleware that validates the
 // X-Tickraft-Asset-Key header for telemetry report authentication.
@@ -32,7 +29,7 @@ const assetKeyHeader = "X-Tickraft-Asset-Key"
 //   - Internal error from getter: 500 with code 50000 (CodeInternal).
 func NewAssetKeyMiddleware(getter func(ctx context.Context, key string) (bool, error)) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
-		key := string(arc.GetHeader(assetKeyHeader))
+		key := string(arc.GetHeader(httputil.HeaderAssetKey))
 		if key == "" {
 			httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeAssetKeyMissing, "missing asset key")
 			arc.Abort()
@@ -41,7 +38,8 @@ func NewAssetKeyMiddleware(getter func(ctx context.Context, key string) (bool, e
 
 		valid, err := getter(ctx, key)
 		if err != nil {
-			httputil.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal, "asset key validation error")
+			httputil.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal,
+				"asset key validation error")
 			arc.Abort()
 			return
 		}

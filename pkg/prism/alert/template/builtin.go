@@ -11,8 +11,9 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/tickraft/tickraft/pkg/prism/alert/template/builtin"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert/template/builtin"
 )
 
 // templateFile is the intermediate struct used to unmarshal a TOML template

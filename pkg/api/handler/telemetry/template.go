@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -203,7 +205,7 @@ func (h *TemplateHandler) UpdateTemplate(ctx context.Context, arc *app.RequestCo
 	existing.ExecutorType = req.ExecutorType
 	existing.Config = string(req.Config)
 
-	if err := h.store.Update(ctx, existing); err != nil {
+	if err = h.store.Update(ctx, existing); err != nil {
 		if errors.Is(err, errdefs.ErrConflict) {
 			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "template name already exists")
 			return
@@ -244,7 +246,7 @@ func (h *TemplateHandler) DeleteTemplate(ctx context.Context, arc *app.RequestCo
 		api.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates cannot be deleted")
 		return
 	}
-	if err := h.store.Delete(ctx, id); err != nil {
+	if err = h.store.Delete(ctx, id); err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
@@ -298,7 +300,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	// The body is optional: callers may POST with an empty body to apply the
 	// template as-is. Distinguish EOF (empty body, acceptable) from actual JSON
 	// parsing errors (which should return 400).
-	if err := arc.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+	if err = arc.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
 		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request body")
 		return
 	}
@@ -306,7 +308,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	// Parse the template config into a map for merging.
 	cfg := make(map[string]any)
 	if t.Config != "" {
-		if err := json.Unmarshal([]byte(t.Config), &cfg); err != nil {
+		if err = json.Unmarshal([]byte(t.Config), &cfg); err != nil {
 			api.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal,
 				fmt.Sprintf("invalid template config: %v", err))
 			return
@@ -314,9 +316,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	}
 	// Shallow-merge overrides: top-level keys in Overrides replace the
 	// corresponding keys in the template config.
-	for k, v := range req.Overrides {
-		cfg[k] = v
-	}
+	maps.Copy(cfg, req.Overrides)
 
 	// Derive a schedule from the config interval when available.
 	schedule := deriveSchedule(cfg)

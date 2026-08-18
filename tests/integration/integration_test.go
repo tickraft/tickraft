@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/executor"
@@ -30,7 +32,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/task"
 	collectapi "github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -135,9 +136,7 @@ func (s *mockAssetStore) List(_ context.Context, page, size int, _ asset.ListFil
 	for _, r := range s.resources {
 		all = append(all, r)
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
@@ -146,9 +145,7 @@ func (s *mockAssetStore) List(_ context.Context, page, size int, _ asset.ListFil
 		return nil, total, nil
 	}
 	end := offset + size
-	if end > int(total) {
-		end = int(total)
-	}
+	end = min(end, int(total))
 	return all[offset:end], total, nil
 }
 
@@ -185,7 +182,9 @@ func (s *mockAssetStore) ExistsByKey(_ context.Context, key string) (bool, error
 	return false, nil
 }
 
-func (s *mockAssetStore) ListKeyset(_ context.Context, _ pagination.PageRequest) (pagination.PageResult[*asset.Asset], error) {
+func (s *mockAssetStore) ListKeyset(
+	_ context.Context, _ pagination.PageRequest,
+) (pagination.PageResult[*asset.Asset], error) {
 	return pagination.PageResult[*asset.Asset]{}, nil
 }
 
@@ -248,7 +247,8 @@ func (s *mockMetricStore) SaveMetricsBatch(_ context.Context, metrics []*collect
 	return nil
 }
 
-func (s *mockMetricStore) QueryMetrics(_ context.Context, _ int64, _ int64, _ string, _ time.Time, _ time.Time, _ int) ([]collectapi.CollectMetric, error) {
+func (s *mockMetricStore) QueryMetrics(_ context.Context, _ int64, _ int64, _ string,
+	_ time.Time, _ time.Time, _ int) ([]collectapi.CollectMetric, error) {
 	return nil, nil
 }
 
@@ -281,7 +281,8 @@ func (s *mockLogStore) SaveLogsBatch(_ context.Context, logs []*collectapi.Colle
 	return nil
 }
 
-func (s *mockLogStore) QueryLogs(_ context.Context, _ int64, _ int64, _ string, _ time.Time, _ time.Time, _ int) ([]collectapi.CollectLog, error) {
+func (s *mockLogStore) QueryLogs(_ context.Context, _ int64, _ int64, _ string,
+	_ time.Time, _ time.Time, _ int) ([]collectapi.CollectLog, error) {
 	return nil, nil
 }
 
@@ -368,10 +369,11 @@ func TestFaultRemediationLoop(t *testing.T) {
 
 	// Subscribe to ExecutionCompleted to verify the full chain.
 	completedCh := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		completedCh <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			completedCh <- ev
+			return nil
+		})
 
 	// --- Set up Collector ---
 	store := newMockAssetStore()
@@ -643,10 +645,11 @@ func TestExecutorRunnerIntegration(t *testing.T) {
 
 	// --- Subscribe to ExecutionCompleted events ---
 	completedCh := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		completedCh <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			completedCh <- ev
+			return nil
+		})
 
 	// --- Publish an ExecutionTriggered event ---
 	wantTaskID := int64(200)
@@ -768,15 +771,17 @@ func TestShardDistribution(t *testing.T) {
 
 	// Subscribe to ExecutionTriggered on each bus.
 	triggered0 := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](bus0, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered0 <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](bus0, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered0 <- ev
+			return nil
+		})
 	triggered1 := make(chan event.Event[event.ExecutionPayload], 10)
-	_, _ = event.Subscribe[event.ExecutionPayload](bus1, event.TypeExecutionTriggered, func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-		triggered1 <- ev
-		return nil
-	})
+	_, _ = event.Subscribe[event.ExecutionPayload](bus1, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered1 <- ev
+			return nil
+		})
 
 	// Register tasks on both schedulers with "once" schedule (fires immediately).
 	// In a real deployment, both nodes load the same tasks from the DB.

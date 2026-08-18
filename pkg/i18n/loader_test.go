@@ -17,7 +17,7 @@ import (
 // writingTempDir creates a temp directory, writes the given files (map of
 // relative path -> content), and returns the directory path. The cleanup
 // function removes the directory.
-func writingTempDir(t *testing.T, files map[string]string) (string, func()) {
+func writingTempDir(t *testing.T, files map[string]string) (dir string, cleanup func()) {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "i18n-loader-*")
 	if err != nil {
@@ -25,16 +25,16 @@ func writingTempDir(t *testing.T, files map[string]string) (string, func()) {
 	}
 	for path, content := range files {
 		full := filepath.Join(dir, path)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			os.RemoveAll(dir)
+		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+			_ = os.RemoveAll(dir)
 			t.Fatalf("MkdirAll(%s): %v", filepath.Dir(full), err)
 		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			os.RemoveAll(dir)
+		if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+			_ = os.RemoveAll(dir)
 			t.Fatalf("WriteFile(%s): %v", full, err)
 		}
 	}
-	return dir, func() { os.RemoveAll(dir) }
+	return dir, func() { _ = os.RemoveAll(dir) }
 }
 
 func TestLoader_LoadToRegistry_TOML(t *testing.T) {
@@ -173,7 +173,7 @@ title = "Old Title"`,
 	// Modify file.
 	newContent := `[alert.metric]
 title = "New Title"`
-	if err := os.WriteFile(filepath.Join(dir, "en-US.toml"), []byte(newContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "en-US.toml"), []byte(newContent), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -219,7 +219,7 @@ title = "Original"`,
 	time.Sleep(100 * time.Millisecond)
 
 	// Write invalid TOML.
-	if err := os.WriteFile(filepath.Join(dir, "en-US.toml"), []byte("not = valid = toml = ="), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "en-US.toml"), []byte("not = valid = toml = ="), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)

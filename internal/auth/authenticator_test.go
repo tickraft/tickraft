@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/internal/auth"
 	authcore "github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 const testSecret = "this-is-a-very-long-secret-key-32bytes"

@@ -47,7 +47,6 @@ func TestValidateUsername(t *testing.T) {
 		{"slash", "user/1", true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateUsername(tc.input)
 			if tc.wantErr {

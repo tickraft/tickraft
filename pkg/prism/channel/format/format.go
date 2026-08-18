@@ -7,9 +7,10 @@ package format
 import (
 	"context"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 // NewFormatter creates the default Formatter backed by the given
@@ -28,16 +29,16 @@ func NewFormatter(r i18n.Registry, logger *zap.Logger) i18n.Formatter {
 	return i18n.NewDefaultFormatter(r, logger)
 }
 
-// Build renders alert with default options (Locale=i18n.DefaultLocale, Style=detailed) and
+// Build renders evt with default options (Locale=i18n.DefaultLocale, Style=detailed) and
 // the given frontendBaseURL. It is the convenience entry point for channels
 // that do not need per-recipient locale customization. Channels that need to
 // honor a recipient's locale or style preference should call BuildWithOpts
 // instead.
-func Build(alert alert.Event, frontendBaseURL string, f i18n.Formatter) i18n.FormattedMessage {
+func Build(evt alert.Event, frontendBaseURL string, f i18n.Formatter) i18n.FormattedMessage {
 	if f == nil {
 		f = NewFormatter(nil, nil)
 	}
-	return f.Format(context.Background(), alert, i18n.FormatOptions{
+	return f.Format(context.Background(), evt, i18n.FormatOptions{
 		Locale:          i18n.DefaultLocale,
 		Style:           i18n.StyleDetailed,
 		FrontendBaseURL: frontendBaseURL,
@@ -49,9 +50,9 @@ func Build(alert alert.Event, frontendBaseURL string, f i18n.Formatter) i18n.For
 // settings. When f is nil, a default Formatter backed by an empty Registry
 // is used; this produces English output with the built-in fallback keys,
 // which is useful for unit tests but not for production.
-func BuildWithOpts(alert alert.Event, opts i18n.FormatOptions, f i18n.Formatter) i18n.FormattedMessage {
+func BuildWithOpts(evt alert.Event, opts i18n.FormatOptions, f i18n.Formatter) i18n.FormattedMessage {
 	if f == nil {
 		f = NewFormatter(nil, nil)
 	}
-	return f.Format(context.Background(), alert, opts)
+	return f.Format(context.Background(), evt, opts)
 }

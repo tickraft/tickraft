@@ -17,6 +17,8 @@ import (
 // cron expression fields.
 type ParseOption int
 
+// Constants for the cron parser option bit flags, each enabling an optional
+// or required cron expression field.
 const (
 	Second         ParseOption = 1 << iota // Seconds field, default 0
 	SecondOptional                         // Optional seconds field, default 0
@@ -52,6 +54,14 @@ var fieldBounds = []struct {
 	{1, 12}, // month
 	{0, 7},  // day of week (0 and 7 both represent Sunday)
 }
+
+// fieldPlaces lists the spec field parse options in canonical order,
+// matching the field order in fieldBounds.
+var fieldPlaces = []ParseOption{Second, Minute, Hour, Dom, Month, Dow}
+
+// fieldDefaults lists the default token applied to each field when the
+// field is absent or optional.
+var fieldDefaults = []string{"0", "0", "0", "*", "*", "*"}
 
 // Parser is a configurable cron expression parser.
 type Parser struct {
@@ -115,25 +125,9 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 
 	// Extract timezone prefix
-	loc := time.Local
-	if strings.HasPrefix(spec, "TZ=") || strings.HasPrefix(spec, "CRON_TZ=") {
-		parts := strings.SplitN(spec, " ", 2)
-		var tzStr string
-		if strings.HasPrefix(parts[0], "TZ=") {
-			tzStr = strings.TrimPrefix(parts[0], "TZ=")
-		} else {
-			tzStr = strings.TrimPrefix(parts[0], "CRON_TZ=")
-		}
-		var err error
-		loc, err = time.LoadLocation(tzStr)
-		if err != nil {
-			return nil, fmt.Errorf("cron: provided bad location %s: %w", tzStr, err)
-		}
-		if len(parts) > 1 {
-			spec = parts[1]
-		} else {
-			spec = ""
-		}
+	spec, loc, err := extractTimezone(spec)
+	if err != nil {
+		return nil, err
 	}
 
 	// Handle @ descriptors
@@ -148,99 +142,90 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	fields := strings.Fields(spec)
 
 	// Calculate expected field count
-	places := []ParseOption{Second, Minute, Hour, Dom, Month, Dow}
-	defaults := []string{"0", "0", "0", "*", "*", "*"}
-
-	minFields := 0
-	maxFields := 0
-	for _, place := range places {
-		if p.options&place > 0 {
-			minFields++
-			maxFields++
-		}
-	}
-	if p.options&SecondOptional > 0 {
-		maxFields++
-	}
-	if p.options&DowOptional > 0 {
-		maxFields++
-	}
-
+	minFields, maxFields := p.fieldCount()
 	if len(fields) < minFields || len(fields) > maxFields {
 		return nil, fmt.Errorf("cron: expected %d to %d fields, got %d", minFields, maxFields, len(fields))
 	}
 
-	// Parse each field
+	sched, err := p.parseSpecFields(fields, loc)
+	if err != nil {
+		return nil, err
+	}
+	return sched, nil
+}
+
+// extractTimezone strips an optional "TZ=" or "CRON_TZ=" prefix from
+// spec and returns the remaining spec together with the parsed
+// location. When no prefix is present the spec is returned unchanged
+// with time.Local.
+func extractTimezone(spec string) (string, *time.Location, error) {
+	loc := time.Local
+	if !strings.HasPrefix(spec, "TZ=") && !strings.HasPrefix(spec, "CRON_TZ=") {
+		return spec, loc, nil
+	}
+	parts := strings.SplitN(spec, " ", 2)
+	var tzStr string
+	if strings.HasPrefix(parts[0], "TZ=") {
+		tzStr = strings.TrimPrefix(parts[0], "TZ=")
+	} else {
+		tzStr = strings.TrimPrefix(parts[0], "CRON_TZ=")
+	}
+	loc, err := time.LoadLocation(tzStr)
+	if err != nil {
+		return "", nil, fmt.Errorf("cron: provided bad location %s: %w", tzStr, err)
+	}
+	if len(parts) > 1 {
+		return parts[1], loc, nil
+	}
+	return "", loc, nil
+}
+
+// fieldCount returns the minimum and maximum number of spec fields
+// accepted under the parser's options.
+func (p Parser) fieldCount() (minCount, maxCount int) {
+	for _, place := range fieldPlaces {
+		if p.options&place > 0 {
+			minCount++
+			maxCount++
+		}
+	}
+	if p.options&SecondOptional > 0 {
+		maxCount++
+	}
+	if p.options&DowOptional > 0 {
+		maxCount++
+	}
+	return minCount, maxCount
+}
+
+// parseSpecFields parses each spec field into the schedule bitmasks and
+// validates the resulting schedule.
+func (p Parser) parseSpecFields(fields []string, loc *time.Location) (*specSchedule, error) {
+	minFields, _ := p.fieldCount()
 	sched := &specSchedule{loc: loc}
 	extraFields := len(fields) - minFields
 	domIsQuestion := false
 	dowIsQuestion := false
 
 	fieldIndex := 0
-	for i, place := range places {
-		var token string
-		if p.options&place > 0 {
-			token = fields[fieldIndex]
-			fieldIndex++
-		} else if (place == Second && p.options&SecondOptional > 0) ||
-			(place == Dow && p.options&DowOptional > 0) {
-			if extraFields > 0 {
-				token = fields[fieldIndex]
-				fieldIndex++
-				extraFields--
-			} else {
-				token = defaults[i]
-			}
-		} else {
-			token = defaults[i]
-		}
+	for i, place := range fieldPlaces {
+		token, nextFieldIndex, nextExtraFields := p.pickToken(i, place, fields, fieldIndex, extraFields)
+		fieldIndex = nextFieldIndex
+		extraFields = nextExtraFields
 
-		// Reject L, W, # characters (case insensitive)
-		upper := strings.ToUpper(token)
-		if strings.ContainsAny(upper, "LW#") {
-			return nil, fmt.Errorf("cron: unsupported syntax: %s contains L, W, or #", token)
+		fieldDomQuestion, fieldDowQuestion, err := checkToken(token, i)
+		if err != nil {
+			return nil, err
 		}
-
-		// ? only allowed in DOM (index 3) and DOW (index 5)
-		if token == "?" && i != 3 && i != 5 {
-			return nil, fmt.Errorf("cron: ? is only allowed in day-of-month and day-of-week fields")
-		}
-
-		// Track ? for mutual exclusion check
-		if token == "?" {
-			if i == 3 {
-				domIsQuestion = true
-			}
-			if i == 5 {
-				dowIsQuestion = true
-			}
-		}
+		domIsQuestion = domIsQuestion || fieldDomQuestion
+		dowIsQuestion = dowIsQuestion || fieldDowQuestion
 
 		mask, err := parseField(token, fieldBounds[i].min, fieldBounds[i].max, i)
 		if err != nil {
 			return nil, err
 		}
 
-		switch i {
-		case 0:
-			sched.sec = mask
-		case 1:
-			sched.min = mask
-		case 2:
-			sched.hour = uint32(mask)
-		case 3:
-			sched.dom = uint32(mask)
-			if token == "*" || token == "?" {
-				sched.domStar = true
-			}
-		case 4:
-			sched.month = uint16(mask)
-		case 5:
-			sched.dow = uint8(mask)
-			if token == "*" || token == "?" {
-				sched.dowStar = true
-			}
-		}
+		applyFieldMask(sched, token, i, mask)
 	}
 
 	// DOM and DOW cannot both be ?
@@ -249,26 +234,110 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 
 	// Validate non-zero fields
-	if sched.sec == 0 {
-		return nil, fmt.Errorf("cron: seconds field cannot be empty")
-	}
-	if sched.min == 0 {
-		return nil, fmt.Errorf("cron: minutes field cannot be empty")
-	}
-	if sched.hour == 0 {
-		return nil, fmt.Errorf("cron: hours field cannot be empty")
-	}
-	if sched.dom == 0 {
-		return nil, fmt.Errorf("cron: day-of-month field cannot be empty")
-	}
-	if sched.month == 0 {
-		return nil, fmt.Errorf("cron: month field cannot be empty")
-	}
-	if sched.dow == 0 {
-		return nil, fmt.Errorf("cron: day-of-week field cannot be empty")
+	if err := validateScheduleMasks(sched); err != nil {
+		return nil, err
 	}
 
 	return sched, nil
+}
+
+// pickToken selects the raw spec token for the field at index i and
+// returns the token together with the updated field index and remaining
+// optional-field count.
+func (p Parser) pickToken(
+	i int,
+	place ParseOption,
+	fields []string,
+	fieldIndex int,
+	extraFields int,
+) (token string, nextFieldIndex, nextExtraFields int) {
+	switch {
+	case p.options&place > 0:
+		return fields[fieldIndex], fieldIndex + 1, extraFields
+	case (place == Second && p.options&SecondOptional > 0) ||
+		(place == Dow && p.options&DowOptional > 0):
+		if extraFields > 0 {
+			return fields[fieldIndex], fieldIndex + 1, extraFields - 1
+		}
+		return fieldDefaults[i], fieldIndex, extraFields
+	default:
+		return fieldDefaults[i], fieldIndex, extraFields
+	}
+}
+
+// checkToken validates a single field token and reports whether the
+// day-of-month (index 3) or day-of-week (index 5) token is "?".
+func checkToken(token string, i int) (domIsQuestion, dowIsQuestion bool, err error) {
+	// Reject L, W, # characters (case insensitive)
+	upper := strings.ToUpper(token)
+	if strings.ContainsAny(upper, "LW#") {
+		return false, false, fmt.Errorf("cron: unsupported syntax: %s contains L, W, or #", token)
+	}
+
+	// ? only allowed in DOM (index 3) and DOW (index 5)
+	if token == "?" && i != 3 && i != 5 {
+		return false, false, fmt.Errorf("cron: ? is only allowed in day-of-month and day-of-week fields")
+	}
+
+	// Track ? for mutual exclusion check
+	if token == "?" {
+		if i == 3 {
+			domIsQuestion = true
+		}
+		if i == 5 {
+			dowIsQuestion = true
+		}
+	}
+	return domIsQuestion, dowIsQuestion, nil
+}
+
+// applyFieldMask stores the parsed bitmask for the field at index i and
+// marks the day-of-month/day-of-week star flags for "*" or "?" tokens.
+func applyFieldMask(sched *specSchedule, token string, i int, mask uint64) {
+	switch i {
+	case 0:
+		sched.sec = mask
+	case 1:
+		sched.min = mask
+	case 2:
+		sched.hour = mask
+	case 3:
+		sched.dom = mask
+		if token == "*" || token == "?" {
+			sched.domStar = true
+		}
+	case 4:
+		sched.month = mask
+	case 5:
+		sched.dow = mask
+		if token == "*" || token == "?" {
+			sched.dowStar = true
+		}
+	}
+}
+
+// validateScheduleMasks rejects schedules in which any parsed field
+// mask is empty.
+func validateScheduleMasks(sched *specSchedule) error {
+	if sched.sec == 0 {
+		return fmt.Errorf("cron: seconds field cannot be empty")
+	}
+	if sched.min == 0 {
+		return fmt.Errorf("cron: minutes field cannot be empty")
+	}
+	if sched.hour == 0 {
+		return fmt.Errorf("cron: hours field cannot be empty")
+	}
+	if sched.dom == 0 {
+		return fmt.Errorf("cron: day-of-month field cannot be empty")
+	}
+	if sched.month == 0 {
+		return fmt.Errorf("cron: month field cannot be empty")
+	}
+	if sched.dow == 0 {
+		return fmt.Errorf("cron: day-of-week field cannot be empty")
+	}
+	return nil
 }
 
 func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
@@ -288,7 +357,7 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 			hour:    1 << 0,
 			dom:     1 << 1,
 			month:   1 << 1,
-			dow:     uint8(allBits(0, 7)),
+			dow:     allBits(0, 7),
 			dowStar: true,
 			loc:     loc,
 		}, nil
@@ -299,8 +368,8 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 			min:     1 << 0,
 			hour:    1 << 0,
 			dom:     1 << 1,
-			month:   uint16(allBits(1, 12)),
-			dow:     uint8(allBits(0, 7)),
+			month:   allBits(1, 12),
+			dow:     allBits(0, 7),
 			dowStar: true,
 			loc:     loc,
 		}, nil
@@ -310,8 +379,8 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 			sec:     1 << 0,
 			min:     1 << 0,
 			hour:    1 << 0,
-			dom:     uint32(allBits(1, 31)),
-			month:   uint16(allBits(1, 12)),
+			dom:     allBits(1, 31),
+			month:   allBits(1, 12),
 			dow:     1 << 0,
 			domStar: true,
 			loc:     loc,
@@ -322,9 +391,9 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 			sec:     1 << 0,
 			min:     1 << 0,
 			hour:    1 << 0,
-			dom:     uint32(allBits(1, 31)),
-			month:   uint16(allBits(1, 12)),
-			dow:     uint8(allBits(0, 7)),
+			dom:     allBits(1, 31),
+			month:   allBits(1, 12),
+			dow:     allBits(0, 7),
 			domStar: true,
 			dowStar: true,
 			loc:     loc,
@@ -334,10 +403,10 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 		return &specSchedule{
 			sec:     1 << 0,
 			min:     1 << 0,
-			hour:    uint32(allBits(0, 23)),
-			dom:     uint32(allBits(1, 31)),
-			month:   uint16(allBits(1, 12)),
-			dow:     uint8(allBits(0, 7)),
+			hour:    allBits(0, 23),
+			dom:     allBits(1, 31),
+			month:   allBits(1, 12),
+			dow:     allBits(0, 7),
 			domStar: true,
 			dowStar: true,
 			loc:     loc,
@@ -351,10 +420,10 @@ func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
 	}
 }
 
-func parseField(token string, min, max, index int) (uint64, error) {
+func parseField(token string, minVal, maxVal, index int) (uint64, error) {
 	token = strings.TrimSpace(token)
 	if token == "*" || token == "?" {
-		return allBits(min, max), nil
+		return allBits(minVal, maxVal), nil
 	}
 
 	mask := uint64(0)
@@ -364,78 +433,110 @@ func parseField(token string, min, max, index int) (uint64, error) {
 			return 0, fmt.Errorf("cron: invalid empty token")
 		}
 
-		step := 1
-		hasStep := false
-		if strings.Contains(part, "/") {
-			pieces := strings.Split(part, "/")
-			if len(pieces) != 2 {
-				return 0, fmt.Errorf("cron: invalid step syntax: %s", part)
-			}
-			part = strings.TrimSpace(pieces[0])
-			if part == "" {
-				part = "*"
-			}
-			stepValue, err := strconv.Atoi(pieces[1])
-			if err != nil || stepValue <= 0 {
-				return 0, fmt.Errorf("cron: invalid step value: %s", pieces[1])
-			}
-			step = stepValue
-			hasStep = true
+		rangePart, step, hasStep, err := parseStep(part)
+		if err != nil {
+			return 0, err
 		}
 
-		var start, end int
-		if part == "*" || part == "?" {
-			start, end = min, max
-		} else if strings.Contains(part, "-") {
-			rangePieces := strings.Split(part, "-")
-			if len(rangePieces) != 2 {
-				return 0, fmt.Errorf("cron: invalid range syntax: %s", part)
-			}
-			var err error
-			start, err = parseValue(rangePieces[0], min, max, index)
-			if err != nil {
-				return 0, err
-			}
-			end, err = parseValue(rangePieces[1], min, max, index)
-			if err != nil {
-				return 0, err
-			}
-			if start > end {
-				if index == 5 {
-					for value := start; value <= max; value += step {
-						mask |= bitFor(value)
-					}
-					for value := min; value <= end; value += step {
-						mask |= bitFor(value)
-					}
-					continue
-				}
-				return 0, fmt.Errorf("cron: range start cannot be greater than end: %s", part)
-			}
-		} else {
-			value, err := parseValue(part, min, max, index)
-			if err != nil {
-				return 0, err
-			}
-			if hasStep {
-				start, end = value, max
-			} else {
-				start, end = value, value
-			}
+		start, end, wrapped, err := parseBounds(rangePart, minVal, maxVal, index, hasStep)
+		if err != nil {
+			return 0, err
 		}
 
-		for value := start; value <= end; value += step {
-			mask |= bitFor(value)
+		if wrapped {
+			// Day-of-week wrap-around range (e.g. FRI-MON): fill from
+			// start to maxVal and from minVal to end as two segments.
+			mask = fillRange(mask, start, maxVal, step)
+			mask = fillRange(mask, minVal, end, step)
+			continue
 		}
+
+		mask = fillRange(mask, start, end, step)
 	}
 
 	return mask, nil
 }
 
-func parseValue(token string, min, max, index int) (int, error) {
+// parseStep splits a "value/step" token into its range part and step.
+// It returns the range part (with an empty left side normalized to "*"),
+// the step value, and whether a step was present.
+func parseStep(part string) (rangePart string, step int, hasStep bool, err error) {
+	if !strings.Contains(part, "/") {
+		return part, 1, false, nil
+	}
+	pieces := strings.Split(part, "/")
+	if len(pieces) != 2 {
+		return "", 0, false, fmt.Errorf("cron: invalid step syntax: %s", part)
+	}
+	rangePart = strings.TrimSpace(pieces[0])
+	if rangePart == "" {
+		rangePart = "*"
+	}
+	stepValue, convErr := strconv.Atoi(pieces[1])
+	if convErr != nil || stepValue <= 0 {
+		return "", 0, false, fmt.Errorf("cron: invalid step value: %s", pieces[1])
+	}
+	return rangePart, stepValue, true, nil
+}
+
+// parseBounds resolves a single comma-separated part into its inclusive
+// value range. For the day-of-week wrap-around range (start > end, e.g.
+// FRI-MON) it returns wrapped=true; the caller must fill that range as
+// two segments. When hasStep is set a single value extends to maxVal.
+func parseBounds(
+	part string,
+	minVal, maxVal, index int,
+	hasStep bool,
+) (start, end int, wrapped bool, err error) {
+	switch {
+	case part == "*" || part == "?":
+		return minVal, maxVal, false, nil
+	case strings.Contains(part, "-"):
+		rangePieces := strings.Split(part, "-")
+		if len(rangePieces) != 2 {
+			return 0, 0, false, fmt.Errorf("cron: invalid range syntax: %s", part)
+		}
+		var rangeErr error
+		start, rangeErr = parseValue(rangePieces[0], minVal, maxVal, index)
+		if rangeErr != nil {
+			return 0, 0, false, rangeErr
+		}
+		end, rangeErr = parseValue(rangePieces[1], minVal, maxVal, index)
+		if rangeErr != nil {
+			return 0, 0, false, rangeErr
+		}
+		if start > end {
+			if index == 5 {
+				return start, end, true, nil
+			}
+			return 0, 0, false, fmt.Errorf("cron: range start cannot be greater than end: %s", part)
+		}
+		return start, end, false, nil
+	default:
+		value, valueErr := parseValue(part, minVal, maxVal, index)
+		if valueErr != nil {
+			return 0, 0, false, valueErr
+		}
+		if hasStep {
+			return value, maxVal, false, nil
+		}
+		return value, value, false, nil
+	}
+}
+
+// fillRange sets the bits for every value in [start, end] with the
+// given step and returns the updated mask.
+func fillRange(mask uint64, start, end, step int) uint64 {
+	for value := start; value <= end; value += step {
+		mask |= bitFor(value)
+	}
+	return mask
+}
+
+func parseValue(token string, minVal, maxVal, index int) (int, error) {
 	token = strings.TrimSpace(strings.ToUpper(token))
 	if token == "*" || token == "?" {
-		return min, nil
+		return minVal, nil
 	}
 
 	if index == 4 {
@@ -461,17 +562,17 @@ func parseValue(token string, min, max, index int) (int, error) {
 		return 0, nil
 	}
 
-	if value < min || value > max {
+	if value < minVal || value > maxVal {
 		return 0, fmt.Errorf("cron: value %d out of range for field %d", value, index)
 	}
 	return value, nil
 }
 
-func allBits(min, max int) uint64 {
-	if min > max || max-min+1 >= 64 {
+func allBits(minVal, maxVal int) uint64 {
+	if minVal > maxVal || maxVal-minVal+1 >= 64 {
 		return ^uint64(0)
 	}
-	return ((uint64(1) << uint(max-min+1)) - 1) << uint(min)
+	return ((uint64(1) << uint(maxVal-minVal+1)) - 1) << uint(minVal)
 }
 
 func bitFor(value int) uint64 {
@@ -482,8 +583,8 @@ func bitMatch(mask uint64, value int) bool {
 	return mask&(uint64(1)<<uint(value)) != 0
 }
 
-func nextSetBit(mask uint64, from, max int) (int, bool) {
-	if from > max {
+func nextSetBit(mask uint64, from, maxVal int) (int, bool) {
+	if from > maxVal {
 		return 0, false
 	}
 	shifted := mask >> uint(from)
@@ -492,7 +593,7 @@ func nextSetBit(mask uint64, from, max int) (int, bool) {
 	}
 	pos := bits.TrailingZeros64(shifted)
 	value := from + pos
-	if value > max {
+	if value > maxVal {
 		return 0, false
 	}
 	return value, true

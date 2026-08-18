@@ -143,7 +143,7 @@ func TestRegexMatcherInvalidPattern(t *testing.T) {
 }
 
 func TestMatcherInterface(t *testing.T) {
-	var matchers []Matcher
+	matchers := make([]Matcher, 0, 2)
 	matchers = append(matchers, ExactMatcher{Type: TypeExecutionTriggered})
 
 	regexM, err := NewRegexMatcher(`execution\.\w+`)

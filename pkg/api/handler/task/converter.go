@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package task exposes the scheduled task management endpoints and the
+// conversion between the handler-layer and domain task views.
 package task
 
 import (
@@ -33,15 +35,20 @@ import (
 
 // Metadata key constants. These keys persist handler-only fields inside
 // the task domain Task.Metadata so the handler -> domain -> handler round trip
-// does not lose core data.
+// does not lose core data. The "enabled" key is defined by the task domain
+// (task.MetadataKeyEnabled) as the shared persistence contract.
 const (
 	metaKeyName        = "name"
 	metaKeyDescription = "description"
 	metaKeySchedule    = "schedule"
-	metaKeyEnabled     = "enabled"
 	metaKeyCreatedAt   = "created_at"
 	metaKeyUpdatedAt   = "updated_at"
 )
+
+// metaKeyEnabled aliases task.MetadataKeyEnabled, the persistence contract
+// owned by the task domain, so the converter and this package's tests share
+// a single definition of the key.
+const metaKeyEnabled = task.MetadataKeyEnabled
 
 // Config key constants. These keys carry the task-domain-only runtime
 // fields inside handler Task.Config so they can be expressed in the handler

@@ -94,13 +94,13 @@ func TestMain(m *testing.M) {
 // sequentially, so shared state is acceptable; each test logs in with its
 // own credentials and creates its own resources.
 func newHarness(t *testing.T) *harness {
+	t.Helper()
 	if h != nil {
 		// Refresh the cached test handle so Fatalf calls land on the
 		// currently running test instead of the one that booted the server.
 		h.t = t
 		return h
 	}
-	t.Helper()
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -121,8 +121,8 @@ func newHarness(t *testing.T) *harness {
 
 	lru := cache.NewLRU(1024, 5*time.Minute)
 	userStore := user.NewStore(dbc, lru)
-	seedUser(t, ctx, userStore, viewerUsername, viewerPassword, "viewer@example.com", 0)
-	seedUser(t, ctx, userStore, developerName, developerPasswd, "developer@example.com", 1)
+	seedUser(ctx, t, userStore, viewerUsername, viewerPassword, "viewer@example.com", 0)
+	seedUser(ctx, t, userStore, developerName, developerPasswd, "developer@example.com", 1)
 
 	// Auth stack: blacklist + JWT with a fixed secret.
 	blacklistStore := auth.NewBlacklistStore(dbc, lru)
@@ -234,7 +234,7 @@ func newHarness(t *testing.T) *harness {
 	// HTTP server on an ephemeral port. api.Server does not expose its
 	// listener, so reserve a free port up front (racy in principle, fine in
 	// practice for a test process).
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("reserve port: %v", err)
 	}
@@ -294,7 +294,7 @@ func (hs *harness) shutdown() {
 	hs.authz.Close()
 }
 
-func seedUser(t *testing.T, ctx context.Context, store user.Store, username, pwd, email string, role int64) {
+func seedUser(ctx context.Context, t *testing.T, store user.Store, username, pwd, email string, role int64) {
 	t.Helper()
 	hash, err := password.Hash(pwd)
 	if err != nil {
@@ -309,7 +309,11 @@ func waitHealthy(t *testing.T, baseURL string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(baseURL + "/healthz")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/healthz", http.NoBody)
+		if err != nil {
+			t.Fatalf("build healthz request: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -340,7 +344,7 @@ func (hs *harness) do(method, path string, body any, token string) (int, *respon
 		}
 		reader = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequest(method, hs.baseURL+path, reader)
+	req, err := http.NewRequestWithContext(hs.t.Context(), method, hs.baseURL+path, reader)
 	if err != nil {
 		hs.t.Fatalf("build request %s %s: %v", method, path, err)
 	}
@@ -371,7 +375,7 @@ func (hs *harness) do(method, path string, body any, token string) (int, *respon
 // X-Tickraft-API-Key header.
 func (hs *harness) doAPIKey(method, path, apiKey string) (int, *response) {
 	hs.t.Helper()
-	req, err := http.NewRequest(method, hs.baseURL+path, nil)
+	req, err := http.NewRequestWithContext(hs.t.Context(), method, hs.baseURL+path, http.NoBody)
 	if err != nil {
 		hs.t.Fatalf("build request %s %s: %v", method, path, err)
 	}

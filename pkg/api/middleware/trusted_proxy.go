@@ -5,6 +5,7 @@
 // This file implements the trusted-proxy middleware (design doc chapter 5):
 // resolving the real client IP from X-Forwarded-For only when the direct
 // peer is inside a configured CIDR allowlist.
+
 package middleware
 
 import (
@@ -14,6 +15,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 

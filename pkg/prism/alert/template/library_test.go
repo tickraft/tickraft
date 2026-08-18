@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"go.uber.org/zap"
 )
 
 func sampleTemplate() Template {
@@ -25,20 +26,23 @@ func sampleTemplate() Template {
 		Variables:   []string{"metric_name", "current_value", "threshold", "asset_name"},
 		Translations: map[string]map[string]string{
 			"en-US": {
-				"title.concise":         "Alert: {{.metric_name}}",
-				"title.detailed":        "CPU alert: {{.metric_name}} at {{.current_value}}",
-				"title.technical":       "ALERT[metric] {{.metric_name}}={{.current_value}}",
-				"description.concise":   "{{.metric_name}} = {{.current_value}}",
-				"description.detailed":  "Asset {{.asset_name}} CPU usage is {{.current_value}}, exceeding threshold {{.threshold}}.",
-				"description.technical": "metric={{.metric_name}} value={{.current_value}} threshold={{.threshold}} op={{.operator}}",
+				"title.concise":       "Alert: {{.metric_name}}",
+				"title.detailed":      "CPU alert: {{.metric_name}} at {{.current_value}}",
+				"title.technical":     "ALERT[metric] {{.metric_name}}={{.current_value}}",
+				"description.concise": "{{.metric_name}} = {{.current_value}}",
+				"description.detailed": "Asset {{.asset_name}} CPU usage is {{.current_value}}, exceeding " +
+					"threshold {{.threshold}}.",
+				"description.technical": "metric={{.metric_name}} value={{.current_value}} " +
+					"threshold={{.threshold}} op={{.operator}}",
 			},
 			"zh-Hans": {
-				"title.concise":         "告警：{{.metric_name}}",
-				"title.detailed":        "CPU 告警：{{.metric_name}} 达到 {{.current_value}}",
-				"title.technical":       "ALERT[metric] {{.metric_name}}={{.current_value}}",
-				"description.concise":   "{{.metric_name}} = {{.current_value}}",
-				"description.detailed":  "资产 {{.asset_name}} CPU 使用率 {{.current_value}}，超过阈值 {{.threshold}}。",
-				"description.technical": "metric={{.metric_name}} value={{.current_value}} threshold={{.threshold}} op={{.operator}}",
+				"title.concise":        "告警：{{.metric_name}}",
+				"title.detailed":       "CPU 告警：{{.metric_name}} 达到 {{.current_value}}",
+				"title.technical":      "ALERT[metric] {{.metric_name}}={{.current_value}}",
+				"description.concise":  "{{.metric_name}} = {{.current_value}}",
+				"description.detailed": "资产 {{.asset_name}} CPU 使用率 {{.current_value}}，超过阈值 {{.threshold}}。",
+				"description.technical": "metric={{.metric_name}} value={{.current_value}} " +
+					"threshold={{.threshold}} op={{.operator}}",
 			},
 		},
 		Styles:       []string{StyleConcise, StyleDetailed, StyleTechnical},
@@ -121,7 +125,8 @@ func TestNewBuiltinLibrary_EachCallIsIndependent(t *testing.T) {
 	l1 := NewBuiltinLibrary(zap.NewNop())
 	l2 := NewBuiltinLibrary(zap.NewNop())
 	if len(l1.List()) != len(l2.List()) {
-		t.Fatalf("NewBuiltinLibrary should be idempotent: l1 has %d templates, l2 has %d", len(l1.List()), len(l2.List()))
+		t.Fatalf("NewBuiltinLibrary should be idempotent: l1 has %d templates, l2 has %d",
+			len(l1.List()), len(l2.List()))
 	}
 	// Mutate l1 with a brand-new template ID; l2 must remain unaffected.
 	custom := sampleTemplate()
@@ -218,14 +223,17 @@ func TestRenderer_RenderMetricEnglish(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID:      "cpu_high",
 		Locale:          "en-US",
 		Style:           StyleDetailed,
@@ -259,14 +267,17 @@ func TestRenderer_RenderMetricChinese(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "zh-Hans",
 		Style:      StyleConcise,
@@ -287,15 +298,18 @@ func TestRenderer_RenderLocaleFallback(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
 	// ja is not in the template; should fall back to en-US.
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "ja",
 		Style:      StyleDetailed,
@@ -326,15 +340,18 @@ func TestRenderer_RenderLanguageOnlyFallback(t *testing.T) {
 	lib.Register(tpl)
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
 	// zh-Hans should fall back to zh.
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "zh-Hans",
 		Style:      StyleDetailed,
@@ -350,12 +367,12 @@ func TestRenderer_RenderLanguageOnlyFallback(t *testing.T) {
 func TestRenderer_RenderTemplateNotFound(t *testing.T) {
 	lib := NewLibrary(zap.NewNop())
 	r := NewRenderer(lib, nil, zap.NewNop())
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeMetric,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	_, err := r.Render(context.Background(), alert, RenderOptions{TemplateID: "nonexistent"})
+	_, err := r.Render(context.Background(), evt, RenderOptions{TemplateID: "nonexistent"})
 	if !errors.Is(err, ErrTemplateNotFound) {
 		t.Errorf("Render with unknown template should return ErrTemplateNotFound, got %v", err)
 	}
@@ -368,12 +385,12 @@ func TestRenderer_RenderTranslationMissing(t *testing.T) {
 	tpl.Translations = nil
 	lib.Register(tpl)
 	r := NewRenderer(lib, nil, zap.NewNop())
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeMetric,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	_, err := r.Render(context.Background(), alert, RenderOptions{TemplateID: "cpu_high"})
+	_, err := r.Render(context.Background(), evt, RenderOptions{TemplateID: "cpu_high"})
 	if !errors.Is(err, ErrTranslationMissing) {
 		t.Errorf("Render with no translations should return ErrTranslationMissing, got %v", err)
 	}
@@ -385,12 +402,12 @@ func TestRenderer_RenderMissingStyleKey(t *testing.T) {
 	delete(tpl.Translations["en-US"], "title.concise")
 	lib.Register(tpl)
 	r := NewRenderer(lib, nil, zap.NewNop())
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeMetric,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	_, err := r.Render(context.Background(), alert, RenderOptions{
+	_, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "en-US",
 		Style:      StyleConcise,
@@ -404,14 +421,17 @@ func TestRenderer_RenderDefaultOptions(t *testing.T) {
 	lib := NewLibrary(zap.NewNop())
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 	// Empty Locale and Style should default to i18n.DefaultLocale and "detailed".
-	msg, err := r.Render(context.Background(), alert, RenderOptions{TemplateID: "cpu_high"})
+	msg, err := r.Render(context.Background(), evt, RenderOptions{TemplateID: "cpu_high"})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -432,13 +452,16 @@ func TestRenderer_RenderWithRegistry(t *testing.T) {
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, reg, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "en-US",
 	})
@@ -467,13 +490,16 @@ func TestRenderer_RenderRTLDirection(t *testing.T) {
 	lib.Register(tpl)
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "ar",
 		Style:      StyleConcise,
@@ -509,13 +535,18 @@ func TestRenderer_RenderLogAlert(t *testing.T) {
 	lib.Register(tpl)
 	r := NewRenderer(lib, nil, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeLog,
-		AssetID:    10,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeLog,
+		AssetID:   10,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "OOM", Content: "out of memory"},
+			Source:   "10.0.0.1",
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "log_keyword",
 		Locale:     "en-US",
 		Style:      StyleDetailed,
@@ -535,13 +566,16 @@ func TestRenderer_RenderEmptyFrontendBaseURL(t *testing.T) {
 	lib := NewLibrary(zap.NewNop())
 	lib.Register(sampleTemplate())
 	r := NewRenderer(lib, nil, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
-	msg, err := r.Render(context.Background(), alert, RenderOptions{
+	msg, err := r.Render(context.Background(), evt, RenderOptions{
 		TemplateID: "cpu_high",
 		Locale:     "en-US",
 	})
@@ -555,12 +589,12 @@ func TestRenderer_RenderEmptyFrontendBaseURL(t *testing.T) {
 
 func TestRenderer_NilLibrary(t *testing.T) {
 	r := NewRenderer(nil, nil, zap.NewNop())
-	alert := alert.Event{
+	evt := alert.Event{
 		Type:      alert.TypeMetric,
 		AssetID:   1,
 		Timestamp: time.Now(),
 	}
-	_, err := r.Render(context.Background(), alert, RenderOptions{TemplateID: "cpu_high"})
+	_, err := r.Render(context.Background(), evt, RenderOptions{TemplateID: "cpu_high"})
 	if !errors.Is(err, ErrTemplateNotFound) {
 		t.Errorf("Render with nil library should return ErrTemplateNotFound, got %v", err)
 	}

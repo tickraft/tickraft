@@ -27,7 +27,8 @@ type MetricStore interface {
 	// If metricName is non-empty, results are filtered by metric name.
 	// The limit parameter caps the number of returned entries; a value of 0
 	// applies a default limit of 1000.
-	QueryMetrics(ctx context.Context, tenantID, assetID int64, metricName string, start, end time.Time, limit int) ([]CollectMetric, error)
+	QueryMetrics(ctx context.Context, tenantID, assetID int64, metricName string,
+		start, end time.Time, limit int) ([]CollectMetric, error)
 }
 
 // LogStore persists log entries.
@@ -47,5 +48,6 @@ type LogStore interface {
 	// If level is non-empty, results are filtered by log level.
 	// The limit parameter caps the number of returned entries; a value of 0
 	// applies a default limit of 1000.
-	QueryLogs(ctx context.Context, tenantID, assetID int64, level string, start, end time.Time, limit int) ([]CollectLog, error)
+	QueryLogs(ctx context.Context, tenantID, assetID int64, level string,
+		start, end time.Time, limit int) ([]CollectLog, error)
 }

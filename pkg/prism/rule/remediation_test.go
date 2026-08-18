@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	a "github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	a "github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // remediationEnv builds a RemediationMatchEnv carrying the supplied fields on
@@ -74,9 +75,30 @@ func TestEngine_MatchRemediation_MultipleRules(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	rules := []Rule{
-		{ID: 1, Name: "critical-cpu", Scene: SceneRemediation, Expression: `remediation.metric_value > 90 && remediation.severity == "critical"`, Priority: 10, Enabled: true},
-		{ID: 2, Name: "warning-cpu", Scene: SceneRemediation, Expression: `remediation.metric_value > 80 && remediation.severity == "warning"`, Priority: 5, Enabled: true},
-		{ID: 3, Name: "any-cpu", Scene: SceneRemediation, Expression: `remediation.metric_value > 70`, Priority: 1, Enabled: true},
+		{
+			ID:         1,
+			Name:       "critical-cpu",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 90 && remediation.severity == "critical"`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         2,
+			Name:       "warning-cpu",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 80 && remediation.severity == "warning"`,
+			Priority:   5,
+			Enabled:    true,
+		},
+		{
+			ID:         3,
+			Name:       "any-cpu",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 70`,
+			Priority:   1,
+			Enabled:    true,
+		},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
 		t.Fatalf("Load: %v", err)
@@ -117,8 +139,22 @@ func TestEngine_MatchRemediation_DisabledRuleSkipped(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	rules := []Rule{
-		{ID: 1, Name: "enabled", Scene: SceneRemediation, Expression: `remediation.metric_value > 80`, Priority: 10, Enabled: true},
-		{ID: 2, Name: "disabled", Scene: SceneRemediation, Expression: `remediation.metric_value > 80`, Priority: 5, Enabled: false},
+		{
+			ID:         1,
+			Name:       "enabled",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 80`,
+			Priority:   10,
+			Enabled:    true,
+		},
+		{
+			ID:         2,
+			Name:       "disabled",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 80`,
+			Priority:   5,
+			Enabled:    false,
+		},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
 		t.Fatalf("Load: %v", err)
@@ -135,7 +171,13 @@ func TestEngine_MatchRemediation_SceneIsolation(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	rules := []Rule{
-		{ID: 1, Name: "remediation-rule", Scene: SceneRemediation, Expression: `remediation.metric_value > 80`, Enabled: true},
+		{
+			ID:         1,
+			Name:       "remediation-rule",
+			Scene:      SceneRemediation,
+			Expression: `remediation.metric_value > 80`,
+			Enabled:    true,
+		},
 		{ID: 2, Name: "metric-rule", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 80`, Enabled: true},
 	}
 	if err := eng.Load(ctx, rules); err != nil {
@@ -388,7 +430,15 @@ func TestEngine_Reload_RemediationScene(t *testing.T) {
 	eng := NewEngine(zap.NewNop())
 
 	store := &stubRuleStore{rules: []Record{
-		{ID: 100, TenantID: 1, Name: "dynamic-remediation", Scene: string(SceneRemediation), Expression: `remediation.metric_value > 70`, Enabled: true, Priority: 5},
+		{
+			ID:         100,
+			TenantID:   1,
+			Name:       "dynamic-remediation",
+			Scene:      string(SceneRemediation),
+			Expression: `remediation.metric_value > 70`,
+			Enabled:    true,
+			Priority:   5,
+		},
 	}}
 	if err := eng.Reload(ctx, store); err != nil {
 		t.Fatalf("Reload: %v", err)

@@ -9,11 +9,12 @@ import (
 	"errors"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
-	"go.uber.org/zap"
 )
 
 // RunMigrate opens the database from dbCfg, runs AutoMigrate, and logs the

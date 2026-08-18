@@ -119,15 +119,11 @@ func (s *Store) ListEnabled(ctx context.Context, tenantID int64, scene Scene) ([
 // API endpoints. page starts at 1; size is the maximum number of items
 // returned. Soft-deleted rows are excluded.
 func (s *Store) List(ctx context.Context, page, size int) ([]*Record, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {

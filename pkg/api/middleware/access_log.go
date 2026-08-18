@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
+
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 

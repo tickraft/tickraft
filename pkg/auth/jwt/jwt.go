@@ -82,8 +82,8 @@ func SignToken(userID, tenantID int64, role int, username, secret string, expiry
 
 // Parse parses and validates a JWT token string using the given secret.
 // Returns the claims if the token is valid.
-func Parse(tokenString string, secret string) (*Claims, error) {
-	token, err := jwtgo.ParseWithClaims(tokenString, &Claims{}, func(token *jwtgo.Token) (interface{}, error) {
+func Parse(tokenString, secret string) (*Claims, error) {
+	token, err := jwtgo.ParseWithClaims(tokenString, &Claims{}, func(token *jwtgo.Token) (any, error) {
 		if _, ok := token.Method.(*jwtgo.SigningMethodHMAC); !ok {
 			return nil, ErrTokenInvalid
 		}
@@ -199,7 +199,7 @@ func (jwt *JWT) GenerateTokenPair(claims UserClaims) (*TokenPair, error) {
 
 // ValidateToken parses and validates a token string, ensuring it matches the
 // expected tokenType and is not in the blacklist.
-func (jwt *JWT) ValidateToken(tokenStr string, tokenType string) (*UserClaims, error) {
+func (jwt *JWT) ValidateToken(tokenStr, tokenType string) (*UserClaims, error) {
 	claims, err := Parse(tokenStr, jwt.config.Secret)
 	if err != nil {
 		return nil, err

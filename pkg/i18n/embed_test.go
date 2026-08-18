@@ -53,7 +53,7 @@ func TestEmbeddedFS_ChineseTranslations(t *testing.T) {
 	}
 
 	tr := r.Resolve("zh-Hans")
-	if got := tr.T("_meta.native_name"); got != "简体中文" {
+	if got := tr.T("_meta.native_name"); got != displayZhHans {
 		t.Errorf("zh-Hans _meta.native_name = %q, want 简体中文", got)
 	}
 	if got := tr.T("level.critical"); got != "严重" {
@@ -114,7 +114,7 @@ func TestEmbeddedFS_NativeNamesInList(t *testing.T) {
 	if nativeNames["en-US"] != "English" {
 		t.Errorf("en-US native name = %q, want English", nativeNames["en-US"])
 	}
-	if nativeNames["zh-Hans"] != "简体中文" {
+	if nativeNames["zh-Hans"] != displayZhHans {
 		t.Errorf("zh-Hans native name = %q, want 简体中文", nativeNames["zh-Hans"])
 	}
 }

@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 func loadBuiltinRegistry(t *testing.T) Registry {
@@ -28,15 +29,18 @@ func TestDefaultFormatter_MetricAlertEnglish(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		TenantID:   1,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		TenantID:  1,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{
+	msg := f.Format(context.Background(), evt, FormatOptions{
 		Locale:          "en-US",
 		Style:           StyleDetailed,
 		FrontendBaseURL: "https://app.example.com",
@@ -69,15 +73,18 @@ func TestDefaultFormatter_MetricAlertChinese(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		TenantID:   1,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		TenantID:  1,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{
+	msg := f.Format(context.Background(), evt, FormatOptions{
 		Locale: "zh-Hans",
 		Style:  StyleDetailed,
 	})
@@ -97,15 +104,20 @@ func TestDefaultFormatter_LogAlertEnglish(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeLog,
-		AssetID:    10,
-		TenantID:   1,
-		Timestamp:  time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindLog, Severity: "error", Log: &alert.LogContext{Keyword: "OOM", Content: "out of memory"}, Source: "10.0.0.1"}},
+	evt := alert.Event{
+		Type:      alert.TypeLog,
+		AssetID:   10,
+		TenantID:  1,
+		Timestamp: time.Date(2026, 7, 5, 12, 30, 0, 0, time.UTC),
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindLog,
+			Severity: "error",
+			Log:      &alert.LogContext{Keyword: "OOM", Content: "out of memory"},
+			Source:   "10.0.0.1",
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{
+	msg := f.Format(context.Background(), evt, FormatOptions{
 		Locale: "en-US",
 		Style:  StyleConcise,
 	})
@@ -125,16 +137,19 @@ func TestDefaultFormatter_StyleVariants(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 90, Threshold: 80},
+		}},
 	}
 
-	concise := f.Format(context.Background(), alert, FormatOptions{Locale: "en-US", Style: StyleConcise})
-	detailed := f.Format(context.Background(), alert, FormatOptions{Locale: "en-US", Style: StyleDetailed})
-	technical := f.Format(context.Background(), alert, FormatOptions{Locale: "en-US", Style: StyleTechnical})
+	concise := f.Format(context.Background(), evt, FormatOptions{Locale: "en-US", Style: StyleConcise})
+	detailed := f.Format(context.Background(), evt, FormatOptions{Locale: "en-US", Style: StyleDetailed})
+	technical := f.Format(context.Background(), evt, FormatOptions{Locale: "en-US", Style: StyleTechnical})
 
 	if concise.Title == detailed.Title {
 		t.Errorf("concise and detailed titles should differ")
@@ -151,15 +166,18 @@ func TestDefaultFormatter_DefaultOptions(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
 	// Empty Locale and Style should default to "zh-Hans" (DefaultLocale) and "detailed".
-	msg := f.Format(context.Background(), alert, FormatOptions{})
+	msg := f.Format(context.Background(), evt, FormatOptions{})
 	if msg.Direction != LTR {
 		t.Errorf("default direction = %q, want ltr", msg.Direction)
 	}
@@ -172,15 +190,18 @@ func TestDefaultFormatter_LocaleFallback(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
 	// fr-FR is not registered; should fall back to the default locale (zh-Hans).
-	msg := f.Format(context.Background(), alert, FormatOptions{Locale: "fr-FR"})
+	msg := f.Format(context.Background(), evt, FormatOptions{Locale: "fr-FR"})
 	if msg.Title == "" {
 		t.Errorf("fallback title should be non-empty")
 	}
@@ -193,14 +214,17 @@ func TestDefaultFormatter_EmptyFrontendBaseURL(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{
+	msg := f.Format(context.Background(), evt, FormatOptions{
 		Locale:          "en-US",
 		FrontendBaseURL: "",
 	})
@@ -213,15 +237,18 @@ func TestDefaultFormatter_FieldsPopulated(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, zap.NewNop())
 
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    42,
-		TenantID:   1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   42,
+		TenantID:  1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 92.5, Threshold: 80.0},
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{Locale: "en-US"})
+	msg := f.Format(context.Background(), evt, FormatOptions{Locale: "en-US"})
 	if len(msg.Fields) == 0 {
 		t.Errorf("fields should be populated")
 	}
@@ -239,14 +266,17 @@ func TestDefaultFormatter_RTLDirection(t *testing.T) {
 	}))
 
 	f := NewDefaultFormatter(r, zap.NewNop())
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 
-	msg := f.Format(context.Background(), alert, FormatOptions{Locale: "ar", Style: StyleConcise})
+	msg := f.Format(context.Background(), evt, FormatOptions{Locale: "ar", Style: StyleConcise})
 	if msg.Direction != RTL {
 		t.Errorf("ar direction = %q, want rtl", msg.Direction)
 	}
@@ -255,14 +285,17 @@ func TestDefaultFormatter_RTLDirection(t *testing.T) {
 func TestDefaultFormatter_NilLogger(t *testing.T) {
 	r := loadBuiltinRegistry(t)
 	f := NewDefaultFormatter(r, nil)
-	alert := alert.Event{
-		Type:       alert.TypeMetric,
-		AssetID:    1,
-		Timestamp:  time.Now(),
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80}}},
+	evt := alert.Event{
+		Type:      alert.TypeMetric,
+		AssetID:   1,
+		Timestamp: time.Now(),
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Name: "cpu", Value: 90, Threshold: 80},
+		}},
 	}
 	// Should not panic with nil logger.
-	msg := f.Format(context.Background(), alert, FormatOptions{Locale: "en-US"})
+	msg := f.Format(context.Background(), evt, FormatOptions{Locale: "en-US"})
 	if msg.Title == "" {
 		t.Errorf("title should be non-empty even with nil logger")
 	}
@@ -301,19 +334,26 @@ func TestRenderTemplate_ValidSubstitution(t *testing.T) {
 }
 
 func TestInferMetricLevel_Critical(t *testing.T) {
-	alert := alert.Event{
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Severity: "critical", Metric: &alert.MetricContext{Value: 200, Threshold: 100}}},
+	evt := alert.Event{
+		Violations: []alert.Violation{{
+			Kind:     alert.ViolationKindMetric,
+			Severity: "critical",
+			Metric:   &alert.MetricContext{Value: 200, Threshold: 100},
+		}},
 	}
-	if got := inferMetricLevel(alert); got != "critical" {
+	if got := inferMetricLevel(evt); got != "critical" {
 		t.Errorf("inferMetricLevel(severity=critical) = %q, want critical", got)
 	}
 }
 
 func TestInferMetricLevel_Warning(t *testing.T) {
-	alert := alert.Event{
-		Violations: []alert.Violation{{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Value: 110, Threshold: 100}}},
+	evt := alert.Event{
+		Violations: []alert.Violation{{
+			Kind:   alert.ViolationKindMetric,
+			Metric: &alert.MetricContext{Value: 110, Threshold: 100},
+		}},
 	}
-	if got := inferMetricLevel(alert); got != "warning" {
+	if got := inferMetricLevel(evt); got != "warning" {
 		t.Errorf("inferMetricLevel(above threshold) = %q, want warning", got)
 	}
 }

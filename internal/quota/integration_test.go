@@ -83,11 +83,11 @@ func TestIntegrationConcurrentCeilingAndSetProvider(t *testing.T) {
 	}
 
 	// 50 goroutines calling Ceiling concurrently.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				_ = pkgquota.Ceiling(pkgquota.TypeDevice)
 				_ = pkgquota.Ceiling(pkgquota.TypeProber)
 			}
@@ -95,7 +95,7 @@ func TestIntegrationConcurrentCeilingAndSetProvider(t *testing.T) {
 	}
 
 	// 10 goroutines switching providers concurrently.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()

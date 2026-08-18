@@ -74,12 +74,12 @@ func (b *metricBuffer) add(value float64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	cap := b.maxPoints
-	if cap <= 0 {
-		cap = DefaultMetricBufferCap
+	capacity := b.maxPoints
+	if capacity <= 0 {
+		capacity = DefaultMetricBufferCap
 	}
 
-	if len(b.points) >= cap {
+	if len(b.points) >= capacity {
 		// Option A: drop the oldest point to preserve recent data.
 		copy(b.points, b.points[1:])
 		b.points[len(b.points)-1] = value
@@ -88,7 +88,7 @@ func (b *metricBuffer) add(value float64) {
 			b.logger.Warn("metric buffer overflow, dropping oldest point",
 				zap.Int64("asset_id", b.assetID),
 				zap.String("metric_name", b.metricName),
-				zap.Int("cap", cap),
+				zap.Int("cap", capacity),
 				zap.Int64("overflow_count", b.overflowCount),
 			)
 		}
@@ -109,16 +109,12 @@ func (b *metricBuffer) compute() *aggregatedMetric {
 	}
 
 	sum := 0.0
-	max := b.points[0]
-	min := b.points[0]
+	maxVal := b.points[0]
+	minVal := b.points[0]
 	for _, p := range b.points {
 		sum += p
-		if p > max {
-			max = p
-		}
-		if p < min {
-			min = p
-		}
+		maxVal = max(maxVal, p)
+		minVal = min(minVal, p)
 	}
 	count := int64(len(b.points))
 	am := &aggregatedMetric{
@@ -126,8 +122,8 @@ func (b *metricBuffer) compute() *aggregatedMetric {
 		tenantID:    b.tenantID,
 		metricName:  b.metricName,
 		avg:         sum / float64(count),
-		max:         max,
-		min:         min,
+		max:         maxVal,
+		min:         minVal,
 		count:       count,
 		sum:         sum,
 		windowStart: b.windowStart,
@@ -185,7 +181,7 @@ func (a *Aggregator) SetMaxBufferPoints(n int) {
 
 // FlushCh returns the read-only channel that receives aggregated metrics.
 // Consumers must drain this channel to avoid drops.
-func (a *Aggregator) FlushCh() <-chan *aggregatedMetric {
+func (a *Aggregator) FlushCh() <-chan *aggregatedMetric { //nolint:revive // returning the unexported concrete type is intentional; consumers use the exported interface
 	return a.flushCh
 }
 
@@ -208,7 +204,8 @@ func (a *Aggregator) Aggregate(_ context.Context, assetID int64, metrics []Metri
 			maxPoints:   a.maxBufferPoints,
 			logger:      a.logger,
 		})
-		bufAny.(*metricBuffer).add(m.Value) //nolint:errcheck // type guaranteed by construction: only *metricBuffer is stored in buffers map
+		// Type guaranteed by construction: only *metricBuffer is stored in buffers map.
+		bufAny.(*metricBuffer).add(m.Value) //nolint:errcheck // safe: buffers map only ever stores *metricBuffer
 	}
 }
 
@@ -228,7 +225,8 @@ var bufferKeyBufPool = sync.Pool{
 // strconv.AppendInt on a pooled []byte buffer instead of fmt.Sprintf to
 // avoid reflection and intermediate string allocations on the hot path.
 func bufferKey(assetID int64, metricName string, windowStart time.Time) string {
-	bp := bufferKeyBufPool.Get().(*[]byte) //nolint:errcheck // type guaranteed by construction: pool only stores *[]byte
+	// Type guaranteed by construction: pool only stores *[]byte.
+	bp := bufferKeyBufPool.Get().(*[]byte) //nolint:errcheck // safe: pool only ever stores *[]byte
 	b := (*bp)[:0]
 
 	b = strconv.AppendInt(b, assetID, 10)
@@ -294,7 +292,8 @@ func (a *Aggregator) run(ctx context.Context) {
 // flushExpired flushes all buffers whose window end has passed.
 func (a *Aggregator) flushExpired(now time.Time) {
 	a.buffers.Range(func(key, val any) bool {
-		buf := val.(*metricBuffer) //nolint:errcheck // type guaranteed by construction: only *metricBuffer is stored in buffers map
+		// Type guaranteed by construction: only *metricBuffer is stored in buffers map.
+		buf := val.(*metricBuffer) //nolint:errcheck // safe: buffers map only ever stores *metricBuffer
 		if !now.Before(buf.windowEnd) {
 			a.buffers.Delete(key)
 			if am := buf.compute(); am != nil {
@@ -309,7 +308,8 @@ func (a *Aggregator) flushExpired(now time.Time) {
 func (a *Aggregator) flushAll() {
 	a.buffers.Range(func(key, val any) bool {
 		a.buffers.Delete(key)
-		if am := val.(*metricBuffer).compute(); am != nil { //nolint:errcheck // type guaranteed by construction: only *metricBuffer is stored in buffers map
+		// Type guaranteed by construction: only *metricBuffer is stored in buffers map.
+		if am := val.(*metricBuffer).compute(); am != nil { //nolint:errcheck // safe: map only holds *metricBuffer
 			a.send(am)
 		}
 		return true

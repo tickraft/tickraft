@@ -10,11 +10,12 @@ import (
 	"strconv"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/types"
-	"gorm.io/gorm"
 )
 
 // store implements Store backed by a GORM database connection. It persists
@@ -78,7 +79,7 @@ func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetSt
 	result := s.dbc.WithContext(ctx).
 		Model(&Asset{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":         string(status),
 			"last_active_at": activeAt,
 		})
@@ -92,15 +93,11 @@ func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetSt
 // ID, plus the total count. page starts at 1; size is clamped between 1 and
 // 100. A zero-value filter returns all assets.
 func (s *store) List(ctx context.Context, page, size int, filter ListFilter) ([]*Asset, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size <= 0 {
 		size = 20
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	query := s.dbc.WithContext(ctx).Model(&Asset{})
 	if filter.Keyword != "" {
@@ -157,7 +154,7 @@ func (s *store) ListKeyset(ctx context.Context, req pagination.PageRequest) (pag
 	}
 
 	var assets []*Asset
-	if err := q.Find(&assets).Error; err != nil {
+	if err = q.Find(&assets).Error; err != nil {
 		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", errmap.MapError(err))
 	}
 

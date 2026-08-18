@@ -16,6 +16,7 @@ import (
 	prismengine "github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/prism/rule"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // startPrismEngine creates and starts the prism engine via NewFromConfig,
@@ -26,7 +27,9 @@ import (
 // The callers may override the governance guard chain, rule
 // configuration, or OnAlert callback by constructing a prism.Config
 // directly and calling prism.NewFromConfig instead of using this helper.
-func startPrismEngine(ctx context.Context, rt *runtime,
+func startPrismEngine(
+	ctx context.Context,
+	rt *runtime,
 	notificationPoolSize int,
 ) (stopFunc, error) {
 	engine, err := prismengine.NewFromConfig(ctx, prismengine.Config{
@@ -46,8 +49,9 @@ func startPrismEngine(ctx context.Context, rt *runtime,
 		// operator names must match the executor_type values accepted by
 		// the remediation rule API.
 		RemediationOperators: []remediation.Operator{
-			remediation.NewExecutorOperator("webhook", webhook.New(webhook.WithLogger(rt.logger)), rt.logger),
-			remediation.NewExecutorOperator("http", httpprober.New(10*time.Second), rt.logger),
+			remediation.NewExecutorOperator(string(types.ExecutorWebhook),
+				webhook.New(webhook.WithLogger(rt.logger)), rt.logger),
+			remediation.NewExecutorOperator(string(types.ExecutorHTTP), httpprober.New(10*time.Second), rt.logger),
 		},
 	})
 	if err != nil {

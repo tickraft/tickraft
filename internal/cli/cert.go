@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tickraft/tickraft/pkg/cert"
 )
 
@@ -90,7 +91,7 @@ func runSelfSign(domain string, days int, output, keyType string) error {
 
 	// Read the on-disk certificate so the printed fingerprint matches the
 	// written bytes exactly.
-	certPEM, err := os.ReadFile(certPath)
+	certPEM, err := os.ReadFile(certPath) //nolint:gosec // operator-specified certificate path
 	if err != nil {
 		return fmt.Errorf("read generated certificate: %w", err)
 	}

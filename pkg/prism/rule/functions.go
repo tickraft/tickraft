@@ -79,15 +79,15 @@ var inRangeFn = expr.Function(
 		if !ok {
 			return nil, fmt.Errorf("inRange: value must be numeric, got %T", params[0])
 		}
-		min, ok := toFloat64(params[1])
+		lo, ok := toFloat64(params[1])
 		if !ok {
 			return nil, fmt.Errorf("inRange: min must be numeric, got %T", params[1])
 		}
-		max, ok := toFloat64(params[2])
+		hi, ok := toFloat64(params[2])
 		if !ok {
 			return nil, fmt.Errorf("inRange: max must be numeric, got %T", params[2])
 		}
-		return value >= min && value <= max, nil
+		return value >= lo && value <= hi, nil
 	},
 	new(func(float64, float64, float64) bool),
 )

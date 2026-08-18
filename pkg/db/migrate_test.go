@@ -10,11 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func newTestDB(t *testing.T) *gorm.DB {

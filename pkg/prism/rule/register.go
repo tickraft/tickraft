@@ -8,14 +8,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
-// RuleTarget is the minimal interface rule.Register needs from the prism
+// Target is the minimal interface rule.Register needs from the prism
 // engine. It is defined here (at the consumption site) so the rule package
 // does not need to import prism, avoiding a circular dependency.
-type RuleTarget interface {
+type Target interface {
 	AddRule(m alert.Matcher)
 }
 
@@ -41,7 +42,7 @@ type RuleTarget interface {
 // launches engine.runReloadLoop in a background goroutine. The goroutine
 // is tied to a cancellable context derived from ctx, so it exits when
 // either ctx is cancelled or Engine.Stop is called.
-func Register(ctx context.Context, target RuleTarget, cfg Config) (*Engine, error) {
+func Register(ctx context.Context, target Target, cfg Config) (*Engine, error) {
 	if !cfg.IsEnabled() {
 		return nil, nil
 	}

@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/event"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // emitter publishes typed events through the event bus.
@@ -89,7 +91,7 @@ func (e *emitter) EmitAlerts(ctx context.Context, alerts []AlertContext, assetID
 	detectedAt := time.Now().UnixNano()
 	for _, alert := range alerts {
 		switch alert.Level {
-		case "critical", "warning":
+		case string(types.SeverityCritical), string(types.SeverityWarning):
 			e.EmitMetricAlert(ctx, event.MetricExceededPayload{
 				AssetID:     assetIDStr,
 				TenantID:    tenantIDStr,

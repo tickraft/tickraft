@@ -6,12 +6,13 @@ package user
 
 import (
 	"context"
-	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"time"
 
+	"gorm.io/gorm"
+
+	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/db/errmap"
-	"gorm.io/gorm"
 )
 
 // store is the GORM-backed implementation of Store.
@@ -83,7 +84,7 @@ func (s *store) Create(ctx context.Context, username, passwordHash, email string
 }
 
 // Update updates user fields specified in the data map.
-func (s *store) Update(ctx context.Context, id int64, data map[string]interface{}) error {
+func (s *store) Update(ctx context.Context, id int64, data map[string]any) error {
 	if err := ValidateID(id); err != nil {
 		return err
 	}
@@ -153,7 +154,8 @@ func NewAPIKeyStore(dbc *gorm.DB, c *cache.LRUCache) APIKeyStore {
 var _ APIKeyStore = (*apiKeyStore)(nil)
 
 // Create creates a new API key and returns the new key ID.
-func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash string, expiredAt *time.Time) (int64, error) {
+func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash string,
+	expiredAt *time.Time) (int64, error) {
 	if err := ValidateAPIKeyName(name); err != nil {
 		return 0, err
 	}
@@ -180,9 +182,7 @@ func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash strin
 // total count of rows. page is 1-based; size is the maximum number of rows
 // returned. The caller is responsible for clamping size to an upper bound.
 func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64, error) {
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size < 1 {
 		size = 20
 	}

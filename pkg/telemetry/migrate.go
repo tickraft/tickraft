@@ -82,7 +82,8 @@ func migrateLegacyCollectConfigs(ctx context.Context, dbc *gorm.DB, logger *zap.
 	}
 
 	points := make([]MonitorPoint, 0, len(configs))
-	for _, c := range configs {
+	for i := range configs {
+		c := configs[i]
 		proberType := c.CollectType
 		if proberType == "" {
 			proberType = "icmp"

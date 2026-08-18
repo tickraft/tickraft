@@ -57,7 +57,7 @@ func BenchmarkASTParseCache(b *testing.B) {
 
 	b.Run("cached", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			// Simulate a cache lookup: just use the pre-parsed tree.
 			_ = cachedTree
 		}
@@ -65,7 +65,7 @@ func BenchmarkASTParseCache(b *testing.B) {
 
 	b.Run("reparse", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_, _ = parser.Parse(expression)
 		}
 	})
@@ -112,7 +112,8 @@ func BenchmarkExtractSingleEvalVsDoubleEval(b *testing.B) {
 		},
 		{
 			"five_conditions_conjunction",
-			`alert.metrics["cpu"] > 90 && alert.metrics["mem"] > 85 && alert.metrics["disk"] > 80 && alert.metrics["net"] > 70 && alert.metrics["load"] > 5`,
+			`alert.metrics["cpu"] > 90 && alert.metrics["mem"] > 85 && alert.metrics["disk"] > 80 ` +
+				`&& alert.metrics["net"] > 70 && alert.metrics["load"] > 5`,
 			map[string]float64{"cpu": 95, "mem": 88, "disk": 90, "net": 75, "load": 6},
 		},
 	}
@@ -135,7 +136,7 @@ func BenchmarkExtractSingleEvalVsDoubleEval(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = ext.Extract(ctx, rule, env, true)
 			}
 		})
@@ -147,7 +148,7 @@ func BenchmarkExtractSingleEvalVsDoubleEval(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = ext.Extract(ctx, rule, env, false)
 			}
 		})
@@ -194,7 +195,7 @@ func BenchmarkMatchWithViolationsCachedVsUncached(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_ = eng.MatchMetricWithViolations(ctx, env)
 		}
 	})
@@ -212,7 +213,7 @@ func BenchmarkMatchWithViolationsCachedVsUncached(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			// Reset caches to simulate uncached, no-fast-path behavior.
 			ext.Reset()
 			_ = ext.Extract(ctx, rules[0], env, false)
@@ -243,7 +244,7 @@ func BenchmarkExtractCacheWarmup(b *testing.B) {
 
 	b.Run("cold_start", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			ext := NewViolationExtractor(NewCompiler())
 			_ = ext.Extract(ctx, rule, env, true)
 		}
@@ -255,7 +256,7 @@ func BenchmarkExtractCacheWarmup(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_ = ext.Extract(ctx, rule, env, true)
 		}
 	})
@@ -276,7 +277,7 @@ func BenchmarkMatchWithViolationsScaling(b *testing.B) {
 		b.Run(fmt.Sprintf("%d_compound_rules", n), func(b *testing.B) {
 			eng := NewEngine(zap.NewNop())
 			rules := make([]Rule, n)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				rules[i] = Rule{
 					ID:         int64(i + 1),
 					TenantID:   1,
@@ -297,7 +298,7 @@ func BenchmarkMatchWithViolationsScaling(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = eng.MatchMetricWithViolations(ctx, env)
 			}
 		})
@@ -333,7 +334,7 @@ func BenchmarkRunVsExtract(b *testing.B) {
 
 	b.Run("expr_run_only", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_, _ = expr.Run(program, env)
 		}
 	})
@@ -344,7 +345,7 @@ func BenchmarkRunVsExtract(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_ = ext.Extract(ctx, rule, env, true)
 		}
 	})
@@ -355,7 +356,7 @@ func BenchmarkRunVsExtract(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			_, _ = expr.Run(program, env)
 			_ = ext.Extract(ctx, rule, env, true)
 		}

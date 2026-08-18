@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/event"
 	"go.uber.org/zap"
+
+	"github.com/tickraft/tickraft/pkg/event"
 )
 
 // fakeStore is an in-memory RuleStore for testing the manager decision logic
@@ -34,7 +35,7 @@ func newFakeStore(rules ...*Rule) *fakeStore {
 	}
 }
 
-func (s *fakeStore) GetRules(_ context.Context, _ int64, _ int64, _ string) ([]*Rule, error) {
+func (s *fakeStore) GetRules(_ context.Context, _, _ int64, _ string) ([]*Rule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Return deep copies reflecting the latest persisted status/metadata so
@@ -58,7 +59,7 @@ func (s *fakeStore) GetRules(_ context.Context, _ int64, _ int64, _ string) ([]*
 	return out, nil
 }
 
-func (s *fakeStore) UpdateRuleStatus(_ context.Context, ruleID int64, status string, metadata string) error {
+func (s *fakeStore) UpdateRuleStatus(_ context.Context, ruleID int64, status, metadata string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.status[ruleID] = status
@@ -178,10 +179,10 @@ func TestManagerCircuitBreakerPausesAfterThreshold(t *testing.T) {
 
 	// Trigger 3 consecutive failures. The circuit breaker should trip after
 	// the 3rd failure and pause the rule.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		m.handle(context.Background(), EventContext{Type: string(TriggerMetric), AssetID: 1})
 		deadline := time.Now().Add(time.Second)
-		for op.callCount() < i+1 && time.Now().Before(deadline) {
+		for op.callCount() <= i && time.Now().Before(deadline) {
 			time.Sleep(5 * time.Millisecond)
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -219,7 +220,7 @@ func TestManagerSuccessResetsCircuitBreaker(t *testing.T) {
 	m := newTestManager(t, store, op)
 
 	// Two failures (below threshold).
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		m.handle(context.Background(), EventContext{Type: string(TriggerMetric), AssetID: 1})
 		time.Sleep(30 * time.Millisecond)
 	}
@@ -313,12 +314,13 @@ func TestManagerPublishesLifecycleEvents(t *testing.T) {
 
 	var gotMu sync.Mutex
 	got := map[event.Type]bool{}
-	_, _ = event.Subscribe[RunPayload](bus, event.TypeRemediationCompleted, func(_ context.Context, ev event.Event[RunPayload]) error {
-		gotMu.Lock()
-		got[ev.Type] = ev.Payload.Success
-		gotMu.Unlock()
-		return nil
-	})
+	_, _ = event.Subscribe[RunPayload](bus, event.TypeRemediationCompleted,
+		func(_ context.Context, ev event.Event[RunPayload]) error {
+			gotMu.Lock()
+			got[ev.Type] = ev.Payload.Success
+			gotMu.Unlock()
+			return nil
+		})
 
 	m, err := New(
 		WithStore(store),

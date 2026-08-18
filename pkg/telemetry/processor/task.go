@@ -13,11 +13,12 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // Task handles heartbeat telemetry for task assets.
@@ -75,7 +76,7 @@ func (p *Task) Process(ctx context.Context, t *telemetry.Telemetry) (*telemetry.
 	var alerts []telemetry.AlertContext
 	if currStatus == types.AssetStatusAbnormal {
 		alerts = append(alerts, telemetry.AlertContext{
-			Level:   "warning",
+			Level:   string(types.SeverityWarning),
 			Title:   "Task Abnormal",
 			Message: fmt.Sprintf("Task %d reported abnormal status", t.AssetID),
 		})
@@ -103,7 +104,7 @@ func inferTaskStatus(t *telemetry.Telemetry) types.AssetStatus {
 	case types.AssetStatusNormal, types.AssetStatusAbnormal, types.AssetStatusOffline:
 		return t.Status
 	default:
-		// A task reporting in is alive.
+		// Unknown still counts as alive: a task reporting in is up.
 		return types.AssetStatusNormal
 	}
 }

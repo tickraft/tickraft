@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/executor/local"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // defaultOperatorTimeout is the default execution timeout for a remediation
@@ -61,7 +62,7 @@ func NewLocalOperator(exec *local.Executor, opts ...OperatorOption) *LocalOperat
 }
 
 // Name returns the operator identifier, matching Rule.ExecutorType "local".
-func (o *LocalOperator) Name() string { return "local" }
+func (o *LocalOperator) Name() string { return localExecutorName }
 
 // Execute runs the configured local command. A non-nil error indicates an
 // infrastructure failure; a nil error with Success=false indicates the

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package remediation exposes the remediation rule and record CRUD
+// endpoints of the prism engine.
 package remediation
 
 import (
@@ -63,7 +65,8 @@ func (h *Handler) CreateRemediationRule(ctx context.Context, arc *app.RequestCon
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if req.TriggerEventType == "" {
@@ -93,7 +96,8 @@ func (h *Handler) UpdateRemediationRule(ctx context.Context, arc *app.RequestCon
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name exceeds maximum length of 255 characters")
+		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			"name exceeds maximum length of 255 characters")
 		return
 	}
 	req.ID = id
@@ -123,7 +127,7 @@ func (h *Handler) DeleteRemediationRule(ctx context.Context, arc *app.RequestCon
 // filter: triggered/started/completed/skipped/failed).
 func (h *Handler) ListRemediationRecords(ctx context.Context, arc *app.RequestContext) {
 	page, size := httputil.ParsePaging(arc)
-	status := string(arc.Query("status"))
+	status := arc.Query("status")
 	items, total, err := h.svc.ListRecords(ctx, page, size, status)
 	if err != nil {
 		api.Fail(arc, err)

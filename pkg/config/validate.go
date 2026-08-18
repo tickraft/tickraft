@@ -12,14 +12,21 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/tickraft/tickraft/pkg/types"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
-// Supported log levels.
-var supportedLogLevels = []string{"debug", "info", "warn", "error"}
+// Supported log levels, derived from the pkg/types.LogLevel constants,
+// which are the single source of truth for the level vocabulary.
+var supportedLogLevels = []string{
+	string(types.LogLevelDebug),
+	string(types.LogLevelInfo),
+	string(types.LogLevelWarn),
+	string(types.LogLevelError),
+}
 
 // Supported logging modes.
-var supportedLogModes = []string{"debug", "release"}
+var supportedLogModes = []string{logModeDebug, "release"}
 
 // Validate checks the Config for required fields, valid enum values, parseable
 // durations, valid listen addresses, and non-negative pool sizes. It returns a
@@ -77,7 +84,8 @@ func (c *DatabaseConfig) validate() error {
 
 func (c *AuthConfig) validate() error {
 	if c.JWTSecret == "" {
-		return fmt.Errorf("config: auth.jwt_secret is required (set it directly or use ${TICKRAFT_JWT_SECRET} env var interpolation in your config file)")
+		return fmt.Errorf("config: auth.jwt_secret is required (set it directly or use ${TICKRAFT_JWT_SECRET} " +
+			"env var interpolation in your config file)")
 	}
 	if len(c.JWTSecret) < 32 {
 		return fmt.Errorf("config: auth.jwt_secret must be at least 32 bytes, got %d", len(c.JWTSecret))
@@ -130,7 +138,8 @@ func (c *ServerConfig) validate() error {
 	// config layer does not depend on crypto/tls.
 	if c.TLSEnabled && !c.ACME.Enabled {
 		if c.TLSCertFile == "" || c.TLSKeyFile == "" {
-			return fmt.Errorf("config: server.tls_cert_file and server.tls_key_file are required when tls_enabled is true and acme.enabled is false")
+			return fmt.Errorf("config: server.tls_cert_file and server.tls_key_file are required when tls_enabled " +
+				"is true and acme.enabled is false")
 		}
 	}
 	if c.ACME.Enabled {
@@ -188,7 +197,8 @@ func (c *I18nConfig) validate() error {
 	// align with the Registry fallback chain.
 	if len(c.SupportedLocales) > 0 {
 		if !localeListContains(c.SupportedLocales, c.DefaultLocale) {
-			return fmt.Errorf("config: i18n.default_locale %q must be listed in i18n.supported_locales", c.DefaultLocale)
+			return fmt.Errorf("config: i18n.default_locale %q must be listed in i18n.supported_locales",
+				c.DefaultLocale)
 		}
 	}
 	return nil

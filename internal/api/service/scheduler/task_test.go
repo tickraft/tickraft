@@ -11,14 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/scheduler"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // ctx is a reusable background context for service-layer tests.
@@ -40,7 +41,7 @@ func closeUnderlyingDB(t *testing.T, dbc *gorm.DB) {
 // assertErrorCoder verifies that err is non-nil, matches the expected sentinel
 // via errors.Is, and reports the expected HTTP status and business code
 // through the errdefs.ErrorCoder interface.
-func assertErrorCoder(t *testing.T, err error, sentinel error, wantStatus, wantCode int) {
+func assertErrorCoder(t *testing.T, err, sentinel error, wantStatus, wantCode int) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("expected error matching %v, got nil", sentinel)
@@ -354,8 +355,8 @@ func TestSchedulerTaskService(t *testing.T) {
 		if items[0].TaskID != taskID {
 			t.Errorf("TaskID = %d, want %d", items[0].TaskID, taskID)
 		}
-		if items[0].Status != "running" {
-			t.Errorf("Status = %q, want %q", items[0].Status, "running")
+		if items[0].Status != statusRunning {
+			t.Errorf("Status = %q, want %q", items[0].Status, statusRunning)
 		}
 		if items[0].StartedAt.IsZero() {
 			t.Error("StartedAt is zero, want non-zero")
@@ -479,7 +480,7 @@ func TestSchedulerTaskService_IDMonotonicity(t *testing.T) {
 	defer cleanup()
 
 	var prevID int64
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		created, err := svc.CreateTask(ctx, &task.Task{
 			Name:     "mono-task",
 			Executor: "http",
@@ -612,14 +613,14 @@ func TestSchedulerTaskService_ExecutionToHandler(t *testing.T) {
 		e := &schedtask.Execution{
 			ID:        1,
 			TaskID:    10,
-			Status:    "running",
+			Status:    statusRunning,
 			StartedAt: time.Now(),
 		}
 		h := executionToHandler(e)
 		if h.FinishedAt != nil {
 			t.Errorf("FinishedAt = %v, want nil for zero time", *h.FinishedAt)
 		}
-		if h.ID != 1 || h.TaskID != 10 || h.Status != "running" {
+		if h.ID != 1 || h.TaskID != 10 || h.Status != statusRunning {
 			t.Errorf("converted = %+v, want id=1 taskID=10 status=running", h)
 		}
 	})

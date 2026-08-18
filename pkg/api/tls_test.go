@@ -413,12 +413,24 @@ func TestIsTLSFileEvent(t *testing.T) {
 		event fsnotify.Event
 		want  bool
 	}{
-		{name: "write on cert file", event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Write}, want: true},
-		{name: "create on key file", event: fsnotify.Event{Name: "/etc/tickraft/certs/server.key", Op: fsnotify.Create}, want: true},
-		{name: "rename on cert file", event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Rename}, want: true},
-		{name: "chmod on cert file ignored", event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Chmod}, want: false},
-		{name: "write on unrelated file", event: fsnotify.Event{Name: "/etc/tickraft/certs/other.txt", Op: fsnotify.Write}, want: false},
-		{name: "write on unclean path matches cleaned", event: fsnotify.Event{Name: "/etc/tickraft/certs/../certs/server.crt", Op: fsnotify.Write}, want: true},
+		{name: "write on cert file",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Write},
+			want:  true},
+		{name: "create on key file",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/server.key", Op: fsnotify.Create},
+			want:  true},
+		{name: "rename on cert file",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Rename},
+			want:  true},
+		{name: "chmod on cert file ignored",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/server.crt", Op: fsnotify.Chmod},
+			want:  false},
+		{name: "write on unrelated file",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/other.txt", Op: fsnotify.Write},
+			want:  false},
+		{name: "write on unclean path matches cleaned",
+			event: fsnotify.Event{Name: "/etc/tickraft/certs/../certs/server.crt", Op: fsnotify.Write},
+			want:  true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

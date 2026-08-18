@@ -6,18 +6,134 @@ version: "2"
 
 run:
   go: "1.26"
+  timeout: 5m
+  tests: true
+  modules-download-mode: mod
 
 linters:
+  default: standard
   enable:
+    # Existing linters
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - gocritic
+    - goconst
+    - gosec
+    - intrange
+    - loggercheck
     - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+
+    # Additional recommended linters
+    - gocyclo             # cyclomatic complexity check
+    - predeclared         # detects constants that could be replaced with predeclared ones
+    - thelper             # suggests using t.Helper() in test helpers
+
   settings:
     errcheck:
       check-type-assertions: true
+      check-blank: false              # allow _ = err in tests
+
+    gocritic:
+      enabled-tags:
+        - performance
+        - diagnostic
+        - style
+      # ruleguard check is auto-enabled by the settings below
+      settings:
+        ruleguard:
+          rules: .golangci/gorules.go
+          failOn: all
+      disabled-checks:
+        # Event/domain structs passed by value is a design choice (immutable semantics)
+        - hugeParam
+        - commentFormatting
+
+    forbidigo:
+      forbid:
+        # math.Max/Min are float64-only; use the Go 1.21+ builtin min/max
+        # which works for any ordered type. nolint if NaN semantics required.
+        - pattern: ^math\.Max$
+          msg: use the builtin max() instead — math.Max is float64-only
+        - pattern: ^math\.Min$
+          msg: use the builtin min() instead — math.Min is float64-only
+
+    gocyclo:
+      min-complexity: 15
+
+    exhaustive:
+      # Switches with a default clause intentionally handle remaining enum
+      # members; only flag switches that lack both the cases and a default.
+      default-signifies-exhaustive: true
+
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: context-as-argument
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: error-strings
+        - name: error-return
+        - name: unexported-return
+        - name: line-length-limit
+          arguments: [120]
+        - name: blank-imports
+        - name: confusing-naming
+        - name: receiver-naming
+        - name: time-naming
+        - name: use-any
+        # Note: get-return is intentionally omitted — REST handlers named
+        # Get* (e.g. GetTask) write responses via request context and do not
+        # return values, which is the framework convention, not a getter misuse.
+
+    dupl:
+      threshold: 150
+
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+
   exclusions:
     rules:
-      - linters:
+      - path: _test\.go
+        linters:
           - errcheck
-        path: _test\.go
+          - dupl
+          - goconst
+          - whitespace
+          - gocyclo
+          - gosec
+          - bodyclose
+
+      # Allow special cases in main packages
+      - path: cmd/
+        linters:
+          - gocyclo
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/tickraft/tickraft
 
 issues:
   max-issues-per-linter: 0

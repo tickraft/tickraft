@@ -9,14 +9,19 @@ import (
 	"fmt"
 	"strconv"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
+
+// metadataTrue is the marker value written into alert metadata maps for
+// boolean flags. Extracted as a package-level constant to satisfy goconst.
+const metadataTrue = "true"
 
 // Compile-time assertions that the adapters satisfy the
 // interfaces they extend. Failures surface at build time
@@ -160,12 +165,12 @@ func buildProbeAlerts(matched []int64) []telemetry.AlertContext {
 	metadata := make(map[string]string, len(matched)+1)
 	for _, id := range matched {
 		idStr := strconv.FormatInt(id, 10)
-		metadata["rule_id_"+idStr] = "true"
+		metadata["rule_id_"+idStr] = metadataTrue
 	}
 	metadata["rule_ids"] = strconv.FormatInt(int64(len(matched)), 10)
 
 	return []telemetry.AlertContext{{
-		Level:    "warning",
+		Level:    string(types.SeverityWarning),
 		Title:    "Probe Rule Matched",
 		Message:  fmt.Sprintf("probe_matcher: %d rule(s) matched, ids=[%s]", len(matched), joinInt64(matched, ",")),
 		Metadata: metadata,

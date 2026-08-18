@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package builtin embeds the built-in alert template TOML files so the
+// default template library ships inside the binary without external
+// file dependencies.
 package builtin
 
 import "embed"

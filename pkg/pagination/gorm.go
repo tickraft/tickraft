@@ -43,9 +43,9 @@ import (
 //	q := pagination.Apply(
 //	    dbc.WithContext(ctx).Model(&Asset{}).Where("tenant_id = ?", tenantID),
 //	    req, pagination.Cursor{Column: "id", Direction: pagination.Desc})
-func Apply(q *gorm.DB, req PageRequest, cur Cursor) (*gorm.DB, error) {
-	if q == nil {
-		return nil, fmt.Errorf("pagination: nil query")
+func Apply(dbc *gorm.DB, req PageRequest, cur Cursor) (*gorm.DB, error) {
+	if dbc == nil {
+		return nil, fmt.Errorf("pagination: nil database handle")
 	}
 	if cur.Column == "" {
 		return nil, fmt.Errorf("pagination: cursor column is required")
@@ -66,10 +66,8 @@ func Apply(q *gorm.DB, req PageRequest, cur Cursor) (*gorm.DB, error) {
 	if !req.IsKeyset() {
 		// Offset mode (default).
 		page := req.Page
-		if page < 1 {
-			page = 1
-		}
-		return q.Order(orderClause).Limit(size).Offset((page - 1) * size), nil
+		page = max(page, 1)
+		return dbc.Order(orderClause).Limit(size).Offset((page - 1) * size), nil
 	}
 
 	// Keyset mode: range scan resuming after the cursor value.
@@ -83,23 +81,23 @@ func Apply(q *gorm.DB, req PageRequest, cur Cursor) (*gorm.DB, error) {
 				ErrInvalidCursor, cur.Column, cur.Column2, cur.Direction)
 		}
 		if decoded.Value != "" {
-			q = applyKeysetPredicate(q, cur, decoded, op)
+			dbc = applyKeysetPredicate(dbc, cur, decoded, op)
 		}
 	}
 
-	return q.Order(orderClause).Limit(size), nil
+	return dbc.Order(orderClause).Limit(size), nil
 }
 
 // applyKeysetPredicate adds the range predicate that resumes after the
 // decoded cursor value. For a single-column keyset this is a simple
 // comparison; for a composite keyset it is the tuple comparison
 // described in [Apply].
-func applyKeysetPredicate(q *gorm.DB, cur, decoded Cursor, op string) *gorm.DB {
+func applyKeysetPredicate(dbc *gorm.DB, cur, decoded Cursor, op string) *gorm.DB {
 	if cur.Column2 == "" || decoded.Value2 == "" {
-		return q.Where(fmt.Sprintf("%s %s ?", cur.Column, op), decoded.Value)
+		return dbc.Where(fmt.Sprintf("%s %s ?", cur.Column, op), decoded.Value)
 	}
 	// Composite keyset: (col op v1) OR (col = v1 AND col2 op v2).
-	return q.Where(
+	return dbc.Where(
 		fmt.Sprintf("(%s %s ?) OR (%s = ? AND %s %s ?)",
 			cur.Column, op, cur.Column, cur.Column2, op),
 		decoded.Value, decoded.Value, decoded.Value2,

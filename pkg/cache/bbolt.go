@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -74,7 +75,7 @@ func NewBbolt(path string, defaultTTL time.Duration) (*BboltCache, error) {
 		defaultTTL = 5 * time.Minute
 	}
 
-	db, err := bbolt.Open(path, 0600, &bbolt.Options{Timeout: 600 * time.Second})
+	db, err := bbolt.Open(path, 0o600, &bbolt.Options{Timeout: 600 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("cache: open bbolt %q: %w", path, err)
 	}
@@ -143,7 +144,7 @@ func (c *BboltCache) Get(ctx context.Context, key string) ([]byte, bool) {
 		// goroutine lifecycle: bounded — performs a single bbolt Delete transaction
 		// and exits. Tracked by c.wg so Close() can drain in-flight calls; new
 		// calls observe the closed flag and short-circuit.
-		go c.deleteKey(context.Background(), key)
+		go c.deleteKey(context.Background(), key) //nolint:gosec // deletion must outlive the caller request context
 		return nil, false
 	}
 
@@ -356,7 +357,7 @@ func (c *BboltCache) GetWithTTL(ctx context.Context, key string) ([]byte, time.D
 	if now.After(expireAt) {
 		// goroutine lifecycle: bounded — performs a single bbolt Delete transaction
 		// and exits. Tracked by c.wg so Close() can drain in-flight calls.
-		go c.deleteKey(context.Background(), key)
+		go c.deleteKey(context.Background(), key) //nolint:gosec // deletion must outlive the caller request context
 		return nil, 0, false
 	}
 
@@ -377,9 +378,10 @@ func (c *BboltCache) DeleteByPrefix(ctx context.Context, prefix string) {
 			return nil
 		}
 		cursor := bucket.Cursor()
+		prefixBytes := []byte(prefix)
 		// The cursor value is unused for prefix-based deletion; the key alone
 		// determines membership.
-		for k, _ := cursor.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = cursor.Next() {
+		for k, _ := cursor.Seek(prefixBytes); k != nil && strings.HasPrefix(string(k), prefix); k, _ = cursor.Next() {
 			if err := cursor.Delete(); err != nil {
 				return err
 			}
@@ -469,7 +471,12 @@ func decodeEntry(data []byte) (value []byte, expireAt time.Time, ok bool) {
 	if len(data) < entryHeaderSize {
 		return nil, time.Time{}, false
 	}
-	expireAt = time.Unix(0, int64(binary.LittleEndian.Uint64(data[:entryHeaderSize])))
+	stored := binary.LittleEndian.Uint64(data[:entryHeaderSize])
+	if stored > math.MaxInt64 {
+		// Corrupt timestamp: treat as already expired so the entry is deleted.
+		stored = 0
+	}
+	expireAt = time.Unix(0, int64(stored))
 	value = data[entryHeaderSize:]
 	return value, expireAt, true
 }

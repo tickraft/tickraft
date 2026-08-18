@@ -44,12 +44,16 @@ type Info struct {
 	ExpiredAt *time.Time
 }
 
-// Role constants matching user.User.Role field values.
+// Role constants matching user.User.Role and jwt.Claims.Role field values.
 //
-// These are intentionally untyped int constants so they can be used
-// directly in map[int] indexes and assigned to int / int64 fields
-// (e.g. user.User.Role) without conversion. pkg/types.Role is the
-// typed counterpart for new code that wants compile-time type safety.
+// These mirror the pkg/types.Role typed constants (the canonical
+// definition of the role values) but are intentionally untyped so they
+// can be used directly in map[int]/map[int64] indexes and assigned to
+// int and int64 fields (e.g. user.User.Role, user.Store.Create's role
+// parameter) without conversion. Untyped constants cannot reference the
+// typed pkg/types values, so this set is defined independently and must
+// be kept in sync with pkg/types. New code that wants compile-time type
+// safety should use pkg/types.Role instead.
 const (
 	// RoleVisitor represents a read-only user role (viewer).
 	RoleVisitor = 0

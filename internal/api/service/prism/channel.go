@@ -117,7 +117,8 @@ func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
 	}
 	ch, err := prismcore.BuildChannelFromRecord(m)
 	if err != nil {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, fmt.Sprintf("build channel: %v", err))
+		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+			fmt.Sprintf("build channel: %v", err))
 	}
 	evt := prismalert.Event{
 		Type:      prismalert.TypeMetric,

@@ -16,6 +16,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/quota"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // RemediationService implements remediation.Service using the
@@ -55,7 +56,11 @@ func (s *RemediationService) GetRule(ctx context.Context, id int64) (*remediatio
 }
 
 // UpdateRule updates an existing remediation rule identified by ID.
-func (s *RemediationService) UpdateRule(ctx context.Context, id int64, req *remediation.Rule) (*remediation.Rule, error) {
+func (s *RemediationService) UpdateRule(
+	ctx context.Context,
+	id int64,
+	req *remediation.Rule,
+) (*remediation.Rule, error) {
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
 	}
@@ -86,7 +91,11 @@ func (s *RemediationService) DeleteRule(ctx context.Context, id int64) error {
 
 // ListRecords returns a page of remediation dispatch records and the total
 // count, optionally filtered by lifecycle status.
-func (s *RemediationService) ListRecords(ctx context.Context, page, size int, status string) ([]remediation.Record, int64, error) {
+func (s *RemediationService) ListRecords(
+	ctx context.Context,
+	page, size int,
+	status string,
+) ([]remediation.Record, int64, error) {
 	page, size = httputil.ClampPaging(page, size)
 	models, total, err := s.store.ListRecords(ctx, size, (page-1)*size, status)
 	if err != nil {
@@ -112,9 +121,9 @@ var validTriggerEventTypes = map[string]struct{}{
 // remediation rule API. They must match the operator names registered with
 // the remediation engine (local, webhook, http).
 var validExecutorTypes = map[string]struct{}{
-	"local":   {},
-	"webhook": {},
-	"http":    {},
+	string(types.ExecutorLocal):   {},
+	string(types.ExecutorWebhook): {},
+	string(types.ExecutorHTTP):    {},
 }
 
 // validateRule checks the closed-set fields of a remediation rule request.

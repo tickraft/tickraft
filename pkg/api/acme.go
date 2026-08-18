@@ -19,6 +19,7 @@
 // In both modes, every successful certificate acquisition atomically reloads
 // the server's TLS configuration via the configured TLSReloader (typically
 // *api.Server.ReloadTLSConfig), achieving zero-downtime rotation.
+
 package api
 
 import (
@@ -221,11 +222,11 @@ func (m *ACMEManager) RequestCertificate(ctx context.Context, domain string) ([]
 	}
 
 	store := m.certStoreOrMemory()
-	if err := store.StoreCert(ctx, domain, certPEM, keyPEM); err != nil {
+	if err = store.StoreCert(ctx, domain, certPEM, keyPEM); err != nil {
 		return nil, fmt.Errorf("store certificate: %w", err)
 	}
 
-	if _, err := m.Reloader.ReloadTLSConfig(); err != nil {
+	if _, err = m.Reloader.ReloadTLSConfig(); err != nil {
 		return nil, fmt.Errorf("reload tls config: %w", err)
 	}
 
@@ -249,7 +250,7 @@ func (m *ACMEManager) RenewIfNeeded(ctx context.Context, domain string) error {
 	}
 
 	if certPEM == nil {
-		_, err := m.RequestCertificate(ctx, domain)
+		_, err = m.RequestCertificate(ctx, domain)
 		return err
 	}
 
@@ -334,8 +335,8 @@ func (m *ACMEManager) accountKeyOrGenerate(ctx context.Context) (crypto.Signer, 
 		return nil, fmt.Errorf("load account key: %w", err)
 	}
 	if keyDER != nil {
-		key, err := x509.ParsePKCS8PrivateKey(keyDER)
-		if err != nil {
+		var key any
+		if key, err = x509.ParsePKCS8PrivateKey(keyDER); err != nil {
 			return nil, fmt.Errorf("parse stored account key: %w", err)
 		}
 		signer, ok := key.(crypto.Signer)
@@ -354,7 +355,7 @@ func (m *ACMEManager) accountKeyOrGenerate(ctx context.Context) (crypto.Signer, 
 	if err != nil {
 		return nil, fmt.Errorf("marshal account key: %w", err)
 	}
-	if err := store.StoreAccountKey(ctx, der); err != nil {
+	if err = store.StoreAccountKey(ctx, der); err != nil {
 		return nil, fmt.Errorf("store account key: %w", err)
 	}
 	m.accountKey = key
@@ -382,7 +383,12 @@ func (m *ACMEManager) acmeClient(ctx context.Context) (*acme.Client, error) {
 // given domain using the given provider to fulfill the challenge. It returns
 // the PEM-encoded certificate chain and the PEM-encoded private key of the
 // freshly generated cert key (not the account key).
-func (m *ACMEManager) authorizeAndIssue(ctx context.Context, client *acme.Client, provider ACMEProvider, domain string) ([]byte, []byte, error) {
+func (m *ACMEManager) authorizeAndIssue(
+	ctx context.Context,
+	client *acme.Client,
+	provider ACMEProvider,
+	domain string,
+) (certPEM, keyPEM []byte, err error) {
 	// Register the account if not already registered. acme.Register
 	// returns ErrAccountAlreadyExists when the key is already registered,
 	// which is benign and can be ignored.
@@ -403,43 +409,12 @@ func (m *ACMEManager) authorizeAndIssue(ctx context.Context, client *acme.Client
 	// order cannot be fulfilled; the caller should fall back to a
 	// different challenge type or directory.
 	for _, authzURL := range order.AuthzURLs {
-		authz, err := client.GetAuthorization(ctx, authzURL)
-		if err != nil {
-			return nil, nil, fmt.Errorf("get authorization %q: %w", authzURL, err)
-		}
-		challenge := pickACMEChallenge(string(provider.ChallengeType()), authz.Challenges)
-		if challenge == nil {
-			return nil, nil, fmt.Errorf("authorization %q does not offer challenge %q",
-				authzURL, provider.ChallengeType())
-		}
-
-		response, err := m.computeChallengeResponse(client, provider.ChallengeType(), challenge.Token)
-		if err != nil {
-			return nil, nil, fmt.Errorf("compute challenge response: %w", err)
-		}
-
-		cleanup, err := provider.FulfillChallenge(ctx, ACMEChallengeParams{
-			Domain:     domain,
-			Token:      challenge.Token,
-			Response:   response,
-			AccountKey: m.accountKey,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("fulfill challenge: %w", err)
-		}
-		if cleanup != nil {
-			defer cleanup()
-		}
-
-		if _, err := client.Accept(ctx, challenge); err != nil {
-			return nil, nil, fmt.Errorf("accept challenge: %w", err)
-		}
-		if _, err := client.WaitAuthorization(ctx, authzURL); err != nil {
-			return nil, nil, fmt.Errorf("wait authorization: %w", err)
+		if err = m.authorizeDomain(ctx, client, provider, domain, authzURL); err != nil {
+			return nil, nil, err
 		}
 	}
 
-	if _, err := client.WaitOrder(ctx, order.URI); err != nil {
+	if _, err = client.WaitOrder(ctx, order.URI); err != nil {
 		return nil, nil, fmt.Errorf("wait order: %w", err)
 	}
 
@@ -467,13 +442,65 @@ func (m *ACMEManager) authorizeAndIssue(ctx context.Context, client *acme.Client
 		return nil, nil, fmt.Errorf("create cert: empty chain")
 	}
 
-	certPEM := encodePEMChain("CERTIFICATE", derChain)
+	certPEM = encodePEMChain("CERTIFICATE", derChain)
 	keyDER, err := x509.MarshalPKCS8PrivateKey(certKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal cert key: %w", err)
 	}
-	keyPEM := encodePEM("PRIVATE KEY", keyDER)
+	keyPEM = encodePEM("PRIVATE KEY", keyDER)
 	return certPEM, keyPEM, nil
+}
+
+// authorizeDomain fulfills a single order authorization: it fetches the
+// authorization from the ACME server, selects a challenge of the provider's
+// type, computes the challenge response, asks the provider to fulfill the
+// challenge, and waits until the ACME server marks the authorization valid.
+// The provider's cleanup callback (when non-nil) is deferred so it runs as
+// soon as the authorization completes or fails, keeping the defer scoped to
+// this single authorization rather than the whole order flow.
+func (m *ACMEManager) authorizeDomain(
+	ctx context.Context,
+	client *acme.Client,
+	provider ACMEProvider,
+	domain string,
+	authzURL string,
+) error {
+	authz, err := client.GetAuthorization(ctx, authzURL)
+	if err != nil {
+		return fmt.Errorf("get authorization %q: %w", authzURL, err)
+	}
+	challenge := pickACMEChallenge(string(provider.ChallengeType()), authz.Challenges)
+	if challenge == nil {
+		return fmt.Errorf("authorization %q does not offer challenge %q",
+			authzURL, provider.ChallengeType())
+	}
+
+	response, err := m.computeChallengeResponse(client, provider.ChallengeType(), challenge.Token)
+	if err != nil {
+		return fmt.Errorf("compute challenge response: %w", err)
+	}
+
+	cleanup, err := provider.FulfillChallenge(ctx, ACMEChallengeParams{
+		Domain:     domain,
+		Token:      challenge.Token,
+		Response:   response,
+		AccountKey: m.accountKey,
+	})
+	if err != nil {
+		return fmt.Errorf("fulfill challenge: %w", err)
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	if _, err = client.Accept(ctx, challenge); err != nil {
+		return fmt.Errorf("accept challenge: %w", err)
+	}
+
+	if _, err = client.WaitAuthorization(ctx, authzURL); err != nil {
+		return fmt.Errorf("wait authorization: %w", err)
+	}
+	return nil
 }
 
 // computeChallengeResponse returns the challenge response value the provider
@@ -483,7 +510,11 @@ func (m *ACMEManager) authorizeAndIssue(ctx context.Context, client *acme.Client
 // _acme-challenge.<domain>). The value is computed by the ACME client from
 // the account key and the challenge token so the provider does not need
 // direct access to either.
-func (m *ACMEManager) computeChallengeResponse(client *acme.Client, challengeType ACMEChallenge, token string) (string, error) {
+func (m *ACMEManager) computeChallengeResponse(
+	client *acme.Client,
+	challengeType ACMEChallenge,
+	token string,
+) (string, error) {
 	switch challengeType {
 	case ACMEChallengeHTTP01:
 		return client.HTTP01ChallengeResponse(token)

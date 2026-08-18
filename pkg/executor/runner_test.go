@@ -8,18 +8,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
 	"github.com/tickraft/tickraft/pkg/timewheel"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -157,10 +159,11 @@ func publishTrigger(bus event.Bus, payload event.ExecutionPayload, opts ...event
 // the returned channel.
 func subscribeCompleted(bus event.Bus) <-chan event.Event[event.ExecutionPayload] {
 	ch := make(chan event.Event[event.ExecutionPayload], 1)
-	_, err := event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted, func(_ context.Context, e event.Event[event.ExecutionPayload]) error {
-		ch <- e
-		return nil
-	})
+	_, err := event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted,
+		func(_ context.Context, e event.Event[event.ExecutionPayload]) error {
+			ch <- e
+			return nil
+		})
 	if err != nil {
 		panic(fmt.Sprintf("subscribeCompleted: %v", err))
 	}
@@ -308,7 +311,7 @@ func TestRunnerPublishesTaskCompleted(t *testing.T) {
 	if types.AssetStatus(ev.Payload.Status) != types.AssetStatusNormal {
 		t.Errorf("payload.Status: got %q, want %q", ev.Payload.Status, types.AssetStatusNormal)
 	}
-	if ev.Payload.StatusCode != 200 {
+	if ev.Payload.StatusCode != http.StatusOK {
 		t.Errorf("payload.StatusCode: got %d, want 200", ev.Payload.StatusCode)
 	}
 	if ev.Payload.Output != "ok" {
@@ -516,7 +519,7 @@ func TestRunnerSavesExecutionRecord(t *testing.T) {
 	if rec.Status != types.AssetStatusNormal {
 		t.Errorf("record.Status: got %q, want %q", rec.Status, types.AssetStatusNormal)
 	}
-	if rec.StatusCode != 200 {
+	if rec.StatusCode != http.StatusOK {
 		t.Errorf("record.StatusCode: got %d, want 200", rec.StatusCode)
 	}
 	if rec.Output != "ok" {
@@ -745,10 +748,11 @@ func TestRunnerPoolCallerRuns(t *testing.T) {
 	// Use a generously buffered channel so A/B completion events do not
 	// block the dispatch loop after C's event has been consumed.
 	completed := make(chan event.Event[event.ExecutionPayload], 8)
-	_, err = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted, func(_ context.Context, e event.Event[event.ExecutionPayload]) error {
-		completed <- e
-		return nil
-	})
+	_, err = event.Subscribe[event.ExecutionPayload](bus, event.TypeExecutionCompleted,
+		func(_ context.Context, e event.Event[event.ExecutionPayload]) error {
+			completed <- e
+			return nil
+		})
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}

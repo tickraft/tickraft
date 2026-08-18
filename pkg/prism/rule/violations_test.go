@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/tickraft/tickraft/pkg/asset"
 	a "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/types"
-	"go.uber.org/zap"
 )
 
 // metricEnv builds a MetricMatchEnv carrying the supplied related-metric values
@@ -303,7 +304,7 @@ func TestViolationExtractor_SubProgramCacheReused(t *testing.T) {
 	}
 
 	// Repeated matches must not grow the cache.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_ = eng.MatchMetricWithViolations(ctx, env)
 	}
 	eng.extractor.mu.Lock()
@@ -367,7 +368,7 @@ func TestViolationExtractor_Concurrent(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	rules := make([]Rule, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		rules = append(rules, Rule{
 			ID:         int64(i + 1),
 			Scene:      SceneMetric,
@@ -386,11 +387,11 @@ func TestViolationExtractor_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 	start := make(chan struct{})
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			<-start
-			for i := 0; i < 20; i++ {
+			for range 20 {
 				violations := eng.MatchMetricWithViolations(ctx, env)
 				// Each of the 10 rules matches with 2 conditions, so 20
 				// violations per call. Intentionally not t.Errorf to
@@ -415,7 +416,13 @@ func TestMetricMatcher_MatchWithViolations_Compound(t *testing.T) {
 	ctx := context.Background()
 	eng := NewEngine(zap.NewNop())
 	if err := eng.Load(ctx, []Rule{
-		{ID: 1, Name: "cpu-and-mem", Scene: SceneMetric, Expression: `alert.metrics["cpu"] > 90 && alert.metrics["mem"] > 85`, Enabled: true},
+		{
+			ID:         1,
+			Name:       "cpu-and-mem",
+			Scene:      SceneMetric,
+			Expression: `alert.metrics["cpu"] > 90 && alert.metrics["mem"] > 85`,
+			Enabled:    true,
+		},
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -483,7 +490,13 @@ func TestMetricMatcher_MatchWithViolations_AssetEnrichment(t *testing.T) {
 		// Two comparison sub-conditions: a numeric metric threshold and a
 		// string equality on asset.name. Both yield Violations; only the
 		// numeric one has non-zero Value/Threshold.
-		{ID: 1, Name: "host-and-cpu", Scene: SceneMetric, Expression: `asset.name == "my-host" && alert.metrics["cpu"] > 80`, Enabled: true},
+		{
+			ID:         1,
+			Name:       "host-and-cpu",
+			Scene:      SceneMetric,
+			Expression: `asset.name == "my-host" && alert.metrics["cpu"] > 80`,
+			Enabled:    true,
+		},
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}

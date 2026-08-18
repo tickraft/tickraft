@@ -22,6 +22,17 @@ const (
 // the Registry. It is always registered by NewRegistry.
 const DefaultLocale = "zh-Hans"
 
+// localeEnUS is the builtin English locale tag.
+const localeEnUS = "en-US"
+
+// scriptHans is the script subtag of the default (Simplified Chinese)
+// locale, used when constructing fallback Locales.
+const scriptHans = "Hans"
+
+// displayZhHans is the native display name of the default (Simplified
+// Chinese) locale.
+const displayZhHans = "简体中文"
+
 // LocaleMeta describes a supported locale for API exposure. Extended
 // editions extend the builtin set with additional LocaleMeta entries via
 // Registry.Register at startup.
@@ -39,8 +50,8 @@ type LocaleMeta struct {
 // callers may extend this list by registering additional
 // locale bundles via Registry.Register.
 var BuiltinLocales = []LocaleMeta{
-	{Tag: "zh-Hans", NativeName: "简体中文", Direction: LTR},
-	{Tag: "en-US", NativeName: "English", Direction: LTR},
+	{Tag: DefaultLocale, NativeName: displayZhHans, Direction: LTR},
+	{Tag: localeEnUS, NativeName: "English", Direction: LTR},
 }
 
 // rtlLanguages is the set of languages rendered right-to-left. The set is
@@ -94,17 +105,17 @@ func Parse(tag string) Locale {
 	trimmed := strings.TrimSpace(tag)
 	trimmed = strings.Trim(trimmed, "-")
 	if trimmed == "" {
-		return Locale{Tag: DefaultLocale, Language: "zh", Script: "Hans"}
+		return Locale{Tag: DefaultLocale, Language: "zh", Script: scriptHans}
 	}
 
 	parts := strings.Split(trimmed, "-")
 	if len(parts) == 0 {
-		return Locale{Tag: DefaultLocale, Language: "zh", Script: "Hans"}
+		return Locale{Tag: DefaultLocale, Language: "zh", Script: scriptHans}
 	}
 
 	lang := strings.ToLower(parts[0])
 	if !isValidLanguage(lang) {
-		return Locale{Tag: DefaultLocale, Language: "zh", Script: "Hans"}
+		return Locale{Tag: DefaultLocale, Language: "zh", Script: scriptHans}
 	}
 
 	loc := Locale{Language: lang}
