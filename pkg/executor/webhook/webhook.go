@@ -33,31 +33,37 @@ type Option interface {
 	apply(*Executor)
 }
 
-type funcOption func(*Executor)
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
 
-func (f funcOption) apply(e *Executor) { f(e) }
+func (o loggerOption) apply(e *Executor) {
+	if o.logger != nil {
+		e.logger = o.logger
+	}
+}
 
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(e *Executor) {
-		if logger != nil {
-			e.logger = logger
-		}
-	})
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
+// httpClientOption sets the HTTP client.
+type httpClientOption struct {
+	client *http.Client
 }
+
+func (o httpClientOption) apply(e *Executor) { e.client = o.client }
 
 // WithHTTPClient sets the HTTP client.
-func WithHTTPClient(client *http.Client) Option {
-	return funcOption(func(e *Executor) { e.client = client })
-}
+func WithHTTPClient(client *http.Client) Option { return httpClientOption{client: client} }
 
 // New creates a new webhook executor.
-func New(opts ...Option) *Executor {
+func New(options ...Option) *Executor {
 	e := &Executor{
 		client: httpx.NewPoolClient(httpx.Config{Timeout: 30 * time.Second}),
 		logger: zap.NewNop(),
 	}
-	for _, o := range opts {
+	for _, o := range options {
 		o.apply(e)
 	}
 	return e

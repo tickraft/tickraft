@@ -101,7 +101,21 @@ type Manager struct {
 }
 
 // Option configures a Manager.
-type Option func(*Manager)
+type Option interface {
+	apply(*Manager)
+}
+
+// dnsProviderOption sets the DNS-01 challenge provider.
+type dnsProviderOption struct {
+	p DNSProvider
+}
+
+func (o dnsProviderOption) apply(m *Manager) {
+	if o.p == nil {
+		return
+	}
+	m.dnsProvider = o.p
+}
 
 // WithDNSProvider sets the DNS-01 challenge provider. Pass nil to keep the
 // NoopDNSProvider default.
@@ -111,21 +125,14 @@ type Option func(*Manager)
 // issuance:
 //
 //	mgr := cert.NewManager(cert.WithDNSProvider(myDNSProvider))
-func WithDNSProvider(p DNSProvider) Option {
-	return func(m *Manager) {
-		if p == nil {
-			return
-		}
-		m.dnsProvider = p
-	}
-}
+func WithDNSProvider(p DNSProvider) Option { return dnsProviderOption{p: p} }
 
 // NewManager creates a new Manager with the given options. When no DNS
 // provider option is supplied, the NoopDNSProvider default is used.
-func NewManager(opts ...Option) *Manager {
+func NewManager(options ...Option) *Manager {
 	m := &Manager{dnsProvider: NoopDNSProvider{}}
-	for _, opt := range opts {
-		opt(m)
+	for _, o := range options {
+		o.apply(m)
 	}
 	return m
 }

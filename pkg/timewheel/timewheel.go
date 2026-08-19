@@ -73,11 +73,11 @@ type Wheel interface {
 // count is sanitized to a positive value, but the error is returned
 // rather than panicking to honor the "no panic in business logic"
 // rule.
-func New(opts ...Option) (Wheel, error) {
+func New(options ...Option) (Wheel, error) {
 	cfg := config{
 		workerSize: defaultWorkerSize,
 	}
-	for _, o := range opts {
+	for _, o := range options {
 		o.apply(&cfg)
 	}
 	if cfg.workerSize <= 0 {

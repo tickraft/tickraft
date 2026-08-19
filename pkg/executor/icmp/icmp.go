@@ -43,26 +43,33 @@ type Executor struct {
 var _ executor.Executor = (*Executor)(nil)
 
 // Option configures the ICMP prober.
-type Option func(*Executor)
+type Option interface {
+	apply(*Executor)
+}
 
-// WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return func(e *Executor) {
-		if logger != nil {
-			e.logger = logger
-		}
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(e *Executor) {
+	if o.logger != nil {
+		e.logger = o.logger
 	}
 }
 
+// WithLogger sets the structured logger.
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
 // New creates a new ICMP prober with the given timeout.
 // A non-positive timeout defaults to 5 seconds at probe time.
-func New(timeout time.Duration, opts ...Option) *Executor {
+func New(timeout time.Duration, options ...Option) *Executor {
 	e := &Executor{
 		timeout: timeout,
 		logger:  zap.NewNop(),
 	}
-	for _, opt := range opts {
-		opt(e)
+	for _, o := range options {
+		o.apply(e)
 	}
 	return e
 }

@@ -70,18 +70,27 @@ func TestAlertRulesCRUD(t *testing.T) {
 	}
 }
 
+// seedAlertRecordParams describes the alert record fields inserted by
+// seedAlertRecord.
+type seedAlertRecordParams struct {
+	ruleName    string
+	severity    string
+	status      string
+	triggeredAt time.Time
+}
+
 // seedAlertRecord inserts an alert record directly through the record store
 // (records are normally produced by the prism engine at runtime).
-func seedAlertRecord(hs *harness, ruleID int64, ruleName, severity, status string, triggeredAt time.Time) int64 {
+func seedAlertRecord(hs *harness, ruleID int64, params seedAlertRecordParams) int64 {
 	hs.t.Helper()
 	rec := &prismalert.Record{
 		RuleID:      ruleID,
-		RuleName:    ruleName,
-		Severity:    severity,
+		RuleName:    params.ruleName,
+		Severity:    params.severity,
 		Value:       91.5,
 		Message:     "httpapi seeded record",
-		Status:      status,
-		TriggeredAt: triggeredAt,
+		Status:      params.status,
+		TriggeredAt: params.triggeredAt,
 	}
 	if err := hs.prismEngine.RecordStore().Create(context.Background(), rec); err != nil {
 		hs.t.Fatalf("seed alert record: %v", err)
@@ -96,8 +105,18 @@ func TestAlertRecordsFlow(t *testing.T) {
 	token := hs.login(adminUsername, adminPassword)
 
 	now := time.Now().UTC()
-	idFiring := seedAlertRecord(hs, 1, "httpapi-rule", "critical", "firing", now)
-	idResolved := seedAlertRecord(hs, 1, "httpapi-rule", "warning", "resolved", now.Add(-2*time.Hour))
+	idFiring := seedAlertRecord(hs, 1, seedAlertRecordParams{
+		ruleName:    "httpapi-rule",
+		severity:    "critical",
+		status:      "firing",
+		triggeredAt: now,
+	})
+	idResolved := seedAlertRecord(hs, 1, seedAlertRecordParams{
+		ruleName:    "httpapi-rule",
+		severity:    "warning",
+		status:      "resolved",
+		triggeredAt: now.Add(-2 * time.Hour),
+	})
 
 	// Severity filter.
 	pd := hs.listPage(token, "/api/v1/prism/alert/records?page=1&page_size=50&severity=critical")

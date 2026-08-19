@@ -147,11 +147,11 @@ func (m *ProbeMatcher) Process(
 // stay consistent with the other processors
 // (MetricThreshold, LogAlert).
 func (m *ProbeMatcher) OnTimeout(ctx context.Context, assetID int64) error {
-	return telemetry.MarkOffline(
-		ctx, m.store, m.bus, m.logger,
-		assetID, m.Type(),
-		"probe_matcher: asset timeout",
-	)
+	return telemetry.MarkOffline(ctx, m.store, m.bus, m.logger, telemetry.OfflineParams{
+		AssetID:   assetID,
+		AssetType: m.Type(),
+		Reason:    "probe_matcher: asset timeout",
+	})
 }
 
 // buildProbeAlerts converts the matched rule ID slice into a single

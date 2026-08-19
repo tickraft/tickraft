@@ -7,7 +7,6 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -27,13 +26,7 @@ func (NoopMetricStore) SaveMetric(_ context.Context, _ *CollectMetric) error { r
 func (NoopMetricStore) SaveMetricsBatch(_ context.Context, _ []*CollectMetric) error { return nil }
 
 // QueryMetrics returns an empty slice.
-func (NoopMetricStore) QueryMetrics(
-	_ context.Context,
-	_, _ int64,
-	_ string,
-	_, _ time.Time,
-	_ int,
-) ([]CollectMetric, error) {
+func (NoopMetricStore) QueryMetrics(_ context.Context, _ MetricQuery) ([]CollectMetric, error) {
 	return nil, nil
 }
 
@@ -52,7 +45,7 @@ func (NoopLogStore) SaveLog(_ context.Context, _ *CollectLog) error { return nil
 func (NoopLogStore) SaveLogsBatch(_ context.Context, _ []*CollectLog) error { return nil }
 
 // QueryLogs returns an empty slice.
-func (NoopLogStore) QueryLogs(_ context.Context, _, _ int64, _ string, _, _ time.Time, _ int) ([]CollectLog, error) {
+func (NoopLogStore) QueryLogs(_ context.Context, _ LogQuery) ([]CollectLog, error) {
 	return nil, nil
 }
 
@@ -90,22 +83,17 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 }
 
 // QueryMetrics queries metrics for an asset within a time range.
-// If metricName is non-empty, results are filtered by metric name.
-// The limit parameter caps the number of returned entries; a value <= 0
+// If q.MetricName is non-empty, results are filtered by metric name.
+// The q.Limit field caps the number of returned entries; a value <= 0
 // applies a default limit of 1000.
 // Results are ordered by timestamp ascending.
-func (s *metricStore) QueryMetrics(
-	ctx context.Context,
-	tenantID, assetID int64,
-	metricName string,
-	start, end time.Time,
-	limit int,
-) ([]CollectMetric, error) {
+func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, error) {
 	query := s.dbc.WithContext(ctx).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", tenantID, assetID, start, end)
-	if metricName != "" {
-		query = query.Where("metric_name = ?", metricName)
+		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", q.TenantID, q.AssetID, q.Start, q.End)
+	if q.MetricName != "" {
+		query = query.Where("metric_name = ?", q.MetricName)
 	}
+	limit := q.Limit
 	if limit <= 0 {
 		limit = 1000
 	}
@@ -150,19 +138,19 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 }
 
 // QueryLogs queries logs for an asset within a time range.
-// If level is non-empty, results are filtered by log level.
-// The limit parameter caps the number of returned entries; a value of 0
+// If q.Level is non-empty, results are filtered by log level.
+// The q.Limit field caps the number of returned entries; a value <= 0
 // applies a default limit of 1000.
 // Results are ordered by timestamp descending (newest first).
-func (s *logStore) QueryLogs(ctx context.Context, tenantID, assetID int64, level string,
-	start, end time.Time, limit int) ([]CollectLog, error) {
+func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, error) {
 	query := s.dbc.WithContext(ctx).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", tenantID, assetID, start, end)
+		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", q.TenantID, q.AssetID, q.Start, q.End)
 
-	if level != "" {
-		query = query.Where("level = ?", level)
+	if q.Level != "" {
+		query = query.Where("level = ?", q.Level)
 	}
 
+	limit := q.Limit
 	if limit <= 0 {
 		limit = 1000
 	}

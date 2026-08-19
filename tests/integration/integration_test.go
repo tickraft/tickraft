@@ -247,8 +247,7 @@ func (s *mockMetricStore) SaveMetricsBatch(_ context.Context, metrics []*collect
 	return nil
 }
 
-func (s *mockMetricStore) QueryMetrics(_ context.Context, _ int64, _ int64, _ string,
-	_ time.Time, _ time.Time, _ int) ([]collectapi.CollectMetric, error) {
+func (s *mockMetricStore) QueryMetrics(_ context.Context, _ collectapi.MetricQuery) ([]collectapi.CollectMetric, error) {
 	return nil, nil
 }
 
@@ -281,8 +280,7 @@ func (s *mockLogStore) SaveLogsBatch(_ context.Context, logs []*collectapi.Colle
 	return nil
 }
 
-func (s *mockLogStore) QueryLogs(_ context.Context, _ int64, _ int64, _ string,
-	_ time.Time, _ time.Time, _ int) ([]collectapi.CollectLog, error) {
+func (s *mockLogStore) QueryLogs(_ context.Context, _ collectapi.LogQuery) ([]collectapi.CollectLog, error) {
 	return nil, nil
 }
 

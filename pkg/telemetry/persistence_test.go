@@ -41,8 +41,7 @@ func (s *mockMetricStore) SaveMetricsBatch(_ context.Context, metrics []*Collect
 	return nil
 }
 
-func (s *mockMetricStore) QueryMetrics(_ context.Context, _, _ int64, _ string,
-	_, _ time.Time, _ int) ([]CollectMetric, error) {
+func (s *mockMetricStore) QueryMetrics(_ context.Context, _ MetricQuery) ([]CollectMetric, error) {
 	return nil, nil
 }
 
@@ -79,7 +78,7 @@ func (s *mockLogStore) SaveLogsBatch(_ context.Context, logs []*CollectLog) erro
 	return nil
 }
 
-func (s *mockLogStore) QueryLogs(_ context.Context, _, _ int64, _ string, _, _ time.Time, _ int) ([]CollectLog, error) {
+func (s *mockLogStore) QueryLogs(_ context.Context, _ LogQuery) ([]CollectLog, error) {
 	return nil, nil
 }
 

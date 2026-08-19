@@ -39,41 +39,50 @@ type Option interface {
 	apply(*Executor)
 }
 
-type funcOption func(*Executor)
+// timeoutOption sets the maximum execution duration.
+type timeoutOption time.Duration
 
-func (f funcOption) apply(e *Executor) { f(e) }
+func (o timeoutOption) apply(e *Executor) { e.timeout = time.Duration(o) }
 
 // WithTimeout sets the maximum execution duration.
-func WithTimeout(timeout time.Duration) Option {
-	return funcOption(func(e *Executor) { e.timeout = timeout })
+func WithTimeout(timeout time.Duration) Option { return timeoutOption(timeout) }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(e *Executor) {
+	if o.logger != nil {
+		e.logger = o.logger
+	}
 }
 
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(e *Executor) {
-		if logger != nil {
-			e.logger = logger
-		}
-	})
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
+// allowedCommandsOption restricts the executor to the given command paths.
+type allowedCommandsOption struct {
+	paths []string
 }
+
+func (o allowedCommandsOption) apply(e *Executor) { e.allowedCmds = o.paths }
 
 // WithAllowedCommands restricts the executor to only run commands whose path
 // matches one of the given prefixes. An empty list (the default) allows all
 // commands, preserving the default behavior. Typical prefixes are directory
 // paths like "/usr/local/bin/", "/opt/tickraft/bin/", or exact binary paths
 // like "/usr/bin/curl".
-func WithAllowedCommands(paths ...string) Option {
-	return funcOption(func(e *Executor) { e.allowedCmds = paths })
-}
+func WithAllowedCommands(paths ...string) Option { return allowedCommandsOption{paths: paths} }
 
 // New creates a new local script executor with sensible defaults.
 // The default timeout is 300 seconds and the default logger is a no-op logger.
-func New(opts ...Option) *Executor {
+func New(options ...Option) *Executor {
 	e := &Executor{
 		timeout: defaultTimeout,
 		logger:  zap.NewNop(),
 	}
-	for _, o := range opts {
+	for _, o := range options {
 		o.apply(e)
 	}
 	return e

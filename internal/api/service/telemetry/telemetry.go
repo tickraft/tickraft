@@ -50,27 +50,37 @@ type Service struct {
 }
 
 // Option configures a Service at construction time.
-type Option func(*Service)
+type Option interface {
+	apply(*Service)
+}
+
+// pointHandlersOption injects the point upsert/delete callbacks.
+type pointHandlersOption struct {
+	upsert PointUpsertHandler
+	del    PointDeleteHandler
+}
+
+func (o pointHandlersOption) apply(s *Service) {
+	s.onPointUpsert = o.upsert
+	s.onPointDelete = o.del
+}
 
 // WithPointHandlers injects callbacks that are invoked after a monitoring
 // point is created/updated or deleted. These are used to wire the
 // ProberService so active points are scheduled in real time.
 func WithPointHandlers(upsert PointUpsertHandler, del PointDeleteHandler) Option {
-	return func(s *Service) {
-		s.onPointUpsert = upsert
-		s.onPointDelete = del
-	}
+	return pointHandlersOption{upsert: upsert, del: del}
 }
 
 // NewService creates a database-backed telemetry Service from the given
 // MonitorStore. If logger is nil, a no-op logger is used.
-func NewService(store *telemetry.MonitorStore, logger *zap.Logger, opts ...Option) *Service {
+func NewService(store *telemetry.MonitorStore, logger *zap.Logger, options ...Option) *Service {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	s := &Service{store: store, logger: logger}
-	for _, opt := range opts {
-		opt(s)
+	for _, o := range options {
+		o.apply(s)
 	}
 	return s
 }

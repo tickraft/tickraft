@@ -95,7 +95,11 @@ func (p *Device) Process(ctx context.Context, t *telemetry.Telemetry) (*telemetr
 // OnTimeout handles the device timeout scenario by marking the asset offline
 // and publishing a status-change event.
 func (p *Device) OnTimeout(ctx context.Context, assetID int64) error {
-	return telemetry.MarkOffline(ctx, p.store, p.bus, p.logger, assetID, types.AssetTypeDevice, "device timeout")
+	return telemetry.MarkOffline(ctx, p.store, p.bus, p.logger, telemetry.OfflineParams{
+		AssetID:   assetID,
+		AssetType: types.AssetTypeDevice,
+		Reason:    "device timeout",
+	})
 }
 
 // lookupStatus returns the currently persisted status for the given asset,

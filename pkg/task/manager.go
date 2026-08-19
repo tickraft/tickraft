@@ -76,38 +76,65 @@ type Options struct {
 	ShardManager *scheduler.ShardManager
 }
 
-type funcOption func(*Options)
+// engineOption sets the timing engine that the Service uses for scheduling
+// callbacks.
+type engineOption struct {
+	e scheduler.Engine
+}
 
-func (f funcOption) apply(o *Options) { f(o) }
+func (o engineOption) apply(opts *Options) { opts.Engine = o.e }
 
 // WithEngine sets the timing engine that the Service uses for
 // scheduling callbacks. This option is required.
-func WithEngine(e scheduler.Engine) Option {
-	return funcOption(func(o *Options) { o.Engine = e })
+func WithEngine(e scheduler.Engine) Option { return engineOption{e: e} }
+
+// eventBusOption sets the event bus for publishing task trigger events and
+// subscribing to task completion events.
+type eventBusOption struct {
+	b event.Bus
 }
+
+func (o eventBusOption) apply(opts *Options) { opts.Bus = o.b }
 
 // WithEventBus sets the event bus for publishing task trigger events and
 // subscribing to task completion events. If not set, a new bus is created
 // internally and closed on Stop.
-func WithEventBus(b event.Bus) Option {
-	return funcOption(func(o *Options) { o.Bus = b })
+func WithEventBus(b event.Bus) Option { return eventBusOption{b: b} }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	l *zap.Logger
 }
 
+func (o loggerOption) apply(opts *Options) { opts.Logger = o.l }
+
 // WithLogger sets the structured logger. Defaults to a no-op logger.
-func WithLogger(l *zap.Logger) Option {
-	return funcOption(func(o *Options) { o.Logger = l })
+func WithLogger(l *zap.Logger) Option { return loggerOption{l: l} }
+
+// storeOption configures the Store used to persist task configurations
+// across restarts.
+type storeOption struct {
+	s Store
 }
+
+func (o storeOption) apply(opts *Options) { opts.Store = o.s }
 
 // WithStore configures the Store used to persist task configurations
 // across restarts. Passing nil disables persistence.
-func WithStore(s Store) Option {
-	return funcOption(func(o *Options) { o.Store = s })
+func WithStore(s Store) Option { return storeOption{s: s} }
+
+// shardManagerOption sets the shard manager for distributed task ownership
+// filtering.
+type shardManagerOption struct {
+	sm *scheduler.ShardManager
 }
+
+func (o shardManagerOption) apply(opts *Options) { opts.ShardManager = o.sm }
 
 // WithShardManager sets the shard manager for distributed task ownership
 // filtering. If not set, all tasks are owned (no sharding).
 func WithShardManager(sm *scheduler.ShardManager) Option {
-	return funcOption(func(o *Options) { o.ShardManager = sm })
+	return shardManagerOption{sm: sm}
 }
 
 // NewService creates a new Service with the given options.
@@ -119,29 +146,29 @@ func WithShardManager(sm *scheduler.ShardManager) Option {
 //
 // All options are optional except that at most one Engine may be provided.
 // Returns an error if the internal engine cannot be initialized.
-func NewService(opts ...Option) (*Service, error) {
-	o := &Options{
+func NewService(options ...Option) (*Service, error) {
+	opts := &Options{
 		Logger: zap.NewNop(),
 	}
-	for _, opt := range opts {
-		opt.apply(o)
+	for _, o := range options {
+		o.apply(opts)
 	}
 
 	// Create a default engine if none was provided.
 	ownEngine := false
-	if o.Engine == nil {
-		eng, err := scheduler.NewEngine(scheduler.WithEngineLogger(o.Logger))
+	if opts.Engine == nil {
+		eng, err := scheduler.NewEngine(scheduler.WithEngineLogger(opts.Logger))
 		if err != nil {
 			return nil, fmt.Errorf("task: create engine: %w", err)
 		}
 		if err := eng.Start(context.Background()); err != nil {
 			return nil, fmt.Errorf("task: start engine: %w", err)
 		}
-		o.Engine = eng
+		opts.Engine = eng
 		ownEngine = true
 	}
 
-	bus := o.Bus
+	bus := opts.Bus
 	ownBus := false
 	if bus == nil {
 		bus = event.NewBus()
@@ -149,14 +176,14 @@ func NewService(opts ...Option) (*Service, error) {
 	}
 
 	m := &Service{
-		engine:           o.Engine,
+		engine:           opts.Engine,
 		ownEngine:        ownEngine,
-		store:            o.Store,
+		store:            opts.Store,
 		deps:             newDependencyChecker(),
-		shardManager:     o.ShardManager,
+		shardManager:     opts.ShardManager,
 		bus:              bus,
 		ownBus:           ownBus,
-		logger:           o.Logger,
+		logger:           opts.Logger,
 		tasks:            make(map[int64]Task),
 		scheds:           make(map[int64]cron.Schedule),
 		scheduleTypes:    make(map[int64]ScheduleType),

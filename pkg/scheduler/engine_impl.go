@@ -62,14 +62,21 @@ type engineOptions struct {
 	Logger *zap.Logger
 }
 
-type funcEngineOption func(*engineOptions)
+// loggerOption sets the structured logger for the Engine.
+type loggerOption struct {
+	logger *zap.Logger
+}
 
-func (f funcEngineOption) apply(o *engineOptions) { f(o) }
+func (o loggerOption) apply(e *engineOptions) {
+	if o.logger != nil {
+		e.Logger = o.logger
+	}
+}
 
 // WithEngineLogger sets the structured logger for the Engine.
 // The default logger is a no-op logger.
 func WithEngineLogger(l *zap.Logger) EngineOption {
-	return funcEngineOption(func(o *engineOptions) { o.Logger = l })
+	return loggerOption{logger: l}
 }
 
 // NewEngine creates a new Engine with the given options. The time wheel is
@@ -80,12 +87,12 @@ func WithEngineLogger(l *zap.Logger) EngineOption {
 // timewheel.New for details). The error path is unreachable in practice
 // but is returned rather than panicking to honor the "no panic in business
 // logic" rule.
-func NewEngine(opts ...EngineOption) (Engine, error) {
-	o := &engineOptions{
+func NewEngine(options ...EngineOption) (Engine, error) {
+	opts := &engineOptions{
 		Logger: zap.NewNop(),
 	}
-	for _, opt := range opts {
-		opt.apply(o)
+	for _, o := range options {
+		o.apply(opts)
 	}
 
 	wheel, err := timewheel.NewWheel(defaultWheelWorkerSize)
@@ -95,7 +102,7 @@ func NewEngine(opts ...EngineOption) (Engine, error) {
 
 	return &engine{
 		wheel:     wheel,
-		logger:    o.Logger,
+		logger:    opts.Logger,
 		entries:   make(map[int64]timewheel.EntryID),
 		scheds:    make(map[int64]cron.Schedule),
 		callbacks: make(map[int64]Callback),

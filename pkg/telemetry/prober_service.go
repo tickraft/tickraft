@@ -47,12 +47,22 @@ type ProberService struct {
 }
 
 // ProberOption configures a ProberService at construction time.
-type ProberOption func(*ProberService)
+type ProberOption interface {
+	apply(*ProberService)
+}
+
+// proberMonitorStoreOption injects a MonitorStore for querying and
+// persisting active monitoring points.
+type proberMonitorStoreOption struct {
+	store *MonitorStore
+}
+
+func (o proberMonitorStoreOption) apply(s *ProberService) { s.store = o.store }
 
 // WithProberMonitorStore injects a MonitorStore for querying and persisting
 // active monitoring points.
 func WithProberMonitorStore(store *MonitorStore) ProberOption {
-	return func(s *ProberService) { s.store = store }
+	return proberMonitorStoreOption{store: store}
 }
 
 // NewProberService creates a ProberService with the given task engine,
@@ -64,7 +74,7 @@ func NewProberService(
 	execReg *executor.Registry,
 	manager *Manager,
 	logger *zap.Logger,
-	opts ...ProberOption,
+	options ...ProberOption,
 ) *ProberService {
 	s := &ProberService{
 		sched:   sched,
@@ -72,8 +82,8 @@ func NewProberService(
 		manager: manager,
 		logger:  logger,
 	}
-	for _, opt := range opts {
-		opt(s)
+	for _, o := range options {
+		o.apply(s)
 	}
 	return s
 }

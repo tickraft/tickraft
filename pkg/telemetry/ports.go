@@ -9,6 +9,24 @@ import (
 	"time"
 )
 
+// MetricQuery specifies the filtering criteria for QueryMetrics.
+// A zero-value Limit applies a default cap of 1000 returned entries.
+type MetricQuery struct {
+	// TenantID filters results to metrics belonging to this tenant.
+	TenantID int64
+	// AssetID filters results to metrics reported by this asset.
+	AssetID int64
+	// MetricName filters results by metric name when non-empty.
+	MetricName string
+	// Start is the inclusive lower bound of the query time range.
+	Start time.Time
+	// End is the inclusive upper bound of the query time range.
+	End time.Time
+	// Limit caps the number of returned entries; a value <= 0 applies
+	// a default limit of 1000.
+	Limit int
+}
+
 // MetricStore persists metric data points.
 //
 // This is the persistence port for the metric sub-domain. The GORM-backed
@@ -24,11 +42,28 @@ type MetricStore interface {
 	// database round-trip. An empty slice is a no-op.
 	SaveMetricsBatch(ctx context.Context, metrics []*CollectMetric) error
 	// QueryMetrics queries metrics for an asset within a time range.
-	// If metricName is non-empty, results are filtered by metric name.
-	// The limit parameter caps the number of returned entries; a value of 0
+	// If q.MetricName is non-empty, results are filtered by metric name.
+	// The q.Limit field caps the number of returned entries; a value <= 0
 	// applies a default limit of 1000.
-	QueryMetrics(ctx context.Context, tenantID, assetID int64, metricName string,
-		start, end time.Time, limit int) ([]CollectMetric, error)
+	QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, error)
+}
+
+// LogQuery specifies the filtering criteria for QueryLogs.
+// A zero-value Limit applies a default cap of 1000 returned entries.
+type LogQuery struct {
+	// TenantID filters results to logs belonging to this tenant.
+	TenantID int64
+	// AssetID filters results to logs reported by this asset.
+	AssetID int64
+	// Level filters results by log level when non-empty.
+	Level string
+	// Start is the inclusive lower bound of the query time range.
+	Start time.Time
+	// End is the inclusive upper bound of the query time range.
+	End time.Time
+	// Limit caps the number of returned entries; a value <= 0 applies
+	// a default limit of 1000.
+	Limit int
 }
 
 // LogStore persists log entries.
@@ -45,9 +80,8 @@ type LogStore interface {
 	// round-trip. An empty slice is a no-op.
 	SaveLogsBatch(ctx context.Context, logs []*CollectLog) error
 	// QueryLogs queries logs for an asset within a time range.
-	// If level is non-empty, results are filtered by log level.
-	// The limit parameter caps the number of returned entries; a value of 0
+	// If q.Level is non-empty, results are filtered by log level.
+	// The q.Limit field caps the number of returned entries; a value <= 0
 	// applies a default limit of 1000.
-	QueryLogs(ctx context.Context, tenantID, assetID int64, level string,
-		start, end time.Time, limit int) ([]CollectLog, error)
+	QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, error)
 }

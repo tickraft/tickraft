@@ -347,24 +347,44 @@ func (s *Service) GetProfile(ctx context.Context, userID int64) (*user.User, err
 	return s.users.GetByID(ctx, userID)
 }
 
+// UpdateProfileParams carries the optional profile fields to apply in an
+// UpdateProfile call. Each field is a pointer; a nil pointer leaves the
+// corresponding profile field unchanged.
+type UpdateProfileParams struct {
+	// Nickname is the new display name to apply, or nil to leave the
+	// current nickname unchanged.
+	Nickname *string
+
+	// Email is the new email address to apply, or nil to leave the
+	// current email unchanged.
+	Email *string
+
+	// Language is the new locale code to apply, or nil to leave the
+	// current language unchanged.
+	Language *string
+
+	// AlertFormatStyle is the new alert formatting style to apply, or
+	// nil to leave the current alert format style unchanged.
+	AlertFormatStyle *string
+}
+
 // UpdateProfile updates the profile fields of the user identified by userID.
-// Only non-nil pointer arguments are applied; nil pointers leave the
-// corresponding field unchanged. It returns the updated user after the
-// change is persisted.
-func (s *Service) UpdateProfile(ctx context.Context, userID int64,
-	nickname, email, language, alertFormatStyle *string) (*user.User, error) {
+// Only non-nil fields of p are applied; nil fields leave the corresponding
+// profile field unchanged. It returns the updated user after the change is
+// persisted.
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, p UpdateProfileParams) (*user.User, error) {
 	data := make(map[string]any)
-	if nickname != nil {
-		data["nickname"] = *nickname
+	if p.Nickname != nil {
+		data["nickname"] = *p.Nickname
 	}
-	if email != nil {
-		data["email"] = *email
+	if p.Email != nil {
+		data["email"] = *p.Email
 	}
-	if language != nil {
-		data["language"] = *language
+	if p.Language != nil {
+		data["language"] = *p.Language
 	}
-	if alertFormatStyle != nil {
-		data["alert_format_style"] = *alertFormatStyle
+	if p.AlertFormatStyle != nil {
+		data["alert_format_style"] = *p.AlertFormatStyle
 	}
 	if len(data) == 0 {
 		// Nothing to update; return the current user without a write.

@@ -220,11 +220,11 @@ func (c Config) Validate() error {
 // after the Config and may override Config fields or inject a custom logger
 // and TLS configuration.
 type Option interface {
-	apply(*options)
+	apply(*emailOptions)
 }
 
-// options is the internal builder that merges a Config with Option overrides.
-type options struct {
+// emailOptions is the internal builder that merges a Config with Option overrides.
+type emailOptions struct {
 	cfg       Config
 	logger    *zap.Logger
 	tlsConfig *tls.Config
@@ -232,104 +232,208 @@ type options struct {
 	library   template.Library
 }
 
-type funcOption func(*options)
+// hostOption overrides the SMTP server host.
+type hostOption struct {
+	host string
+}
 
-func (f funcOption) apply(o *options) { f(o) }
+func (o hostOption) apply(options *emailOptions) { options.cfg.Host = o.host }
 
 // WithHost overrides the SMTP server host.
 func WithHost(host string) Option {
-	return funcOption(func(o *options) { o.cfg.Host = host })
+	return hostOption{host: host}
 }
+
+// portOption overrides the SMTP server port.
+type portOption struct {
+	port int
+}
+
+func (o portOption) apply(options *emailOptions) { options.cfg.Port = o.port }
 
 // WithPort overrides the SMTP server port.
 func WithPort(port int) Option {
-	return funcOption(func(o *options) { o.cfg.Port = port })
+	return portOption{port: port}
 }
+
+// timeoutOption overrides the maximum duration for a complete send operation.
+type timeoutOption struct {
+	d time.Duration
+}
+
+func (o timeoutOption) apply(options *emailOptions) { options.cfg.Timeout = o.d }
 
 // WithTimeout overrides the maximum duration for a complete send
 // operation, including dial, TLS handshake, authentication, and message
 // transmission.
 func WithTimeout(d time.Duration) Option {
-	return funcOption(func(o *options) { o.cfg.Timeout = d })
+	return timeoutOption{d: d}
+}
+
+// credentialsOption sets the authentication username and password.
+type credentialsOption struct {
+	username string
+	password string
+}
+
+func (o credentialsOption) apply(options *emailOptions) {
+	options.cfg.Username = o.username
+	options.cfg.Password = o.password
 }
 
 // WithCredentials sets the authentication username and password.
 func WithCredentials(username, password string) Option {
-	return funcOption(func(o *options) {
-		o.cfg.Username = username
-		o.cfg.Password = password
-	})
+	return credentialsOption{username: username, password: password}
 }
+
+// fromOption overrides the sender email address.
+type fromOption struct {
+	from string
+}
+
+func (o fromOption) apply(options *emailOptions) { options.cfg.From = o.from }
 
 // WithFrom overrides the sender email address.
 func WithFrom(from string) Option {
-	return funcOption(func(o *options) { o.cfg.From = from })
+	return fromOption{from: from}
 }
+
+// toOption overrides the recipient list.
+type toOption struct {
+	to []string
+}
+
+func (o toOption) apply(options *emailOptions) { options.cfg.To = o.to }
 
 // WithTo overrides the recipient list.
 func WithTo(to ...string) Option {
-	return funcOption(func(o *options) { o.cfg.To = to })
+	return toOption{to: to}
 }
+
+// tlsModeOption overrides the TLS mode.
+type tlsModeOption struct {
+	mode TLSMode
+}
+
+func (o tlsModeOption) apply(options *emailOptions) { options.cfg.TLSMode = o.mode }
 
 // WithTLSMode overrides the TLS mode.
 func WithTLSMode(mode TLSMode) Option {
-	return funcOption(func(o *options) { o.cfg.TLSMode = mode })
+	return tlsModeOption{mode: mode}
 }
+
+// authTypeOption overrides the authentication mechanism.
+type authTypeOption struct {
+	authType AuthType
+}
+
+func (o authTypeOption) apply(options *emailOptions) { options.cfg.AuthType = o.authType }
 
 // WithAuthType overrides the authentication mechanism.
 func WithAuthType(authType AuthType) Option {
-	return funcOption(func(o *options) { o.cfg.AuthType = authType })
+	return authTypeOption{authType: authType}
 }
+
+// htmlModeOption enables or disables HTML email mode.
+type htmlModeOption struct {
+	enabled bool
+}
+
+func (o htmlModeOption) apply(options *emailOptions) { options.cfg.HTMLMode = o.enabled }
 
 // WithHTMLMode enables or disables HTML email mode.
 func WithHTMLMode(enabled bool) Option {
-	return funcOption(func(o *options) { o.cfg.HTMLMode = enabled })
+	return htmlModeOption{enabled: enabled}
+}
+
+// retryOption overrides the retry configuration.
+type retryOption struct {
+	maxAttempts  int
+	baseInterval time.Duration
+}
+
+func (o retryOption) apply(options *emailOptions) {
+	options.cfg.RetryMaxAttempts = o.maxAttempts
+	options.cfg.RetryBaseInterval = o.baseInterval
 }
 
 // WithRetry overrides the retry configuration: maxAttempts is the total
 // number of attempts (including the first) and baseInterval is the base for
 // exponential backoff.
 func WithRetry(maxAttempts int, baseInterval time.Duration) Option {
-	return funcOption(func(o *options) {
-		o.cfg.RetryMaxAttempts = maxAttempts
-		o.cfg.RetryBaseInterval = baseInterval
-	})
+	return retryOption{maxAttempts: maxAttempts, baseInterval: baseInterval}
+}
+
+// circuitBreakerOption overrides the circuit breaker configuration.
+type circuitBreakerOption struct {
+	failureThreshold int
+	cooldown         time.Duration
+}
+
+func (o circuitBreakerOption) apply(options *emailOptions) {
+	options.cfg.CircuitFailureThreshold = o.failureThreshold
+	options.cfg.CircuitCooldown = o.cooldown
 }
 
 // WithCircuitBreaker overrides the circuit breaker configuration:
 // failureThreshold is the consecutive failure count that opens the breaker
 // and cooldown is how long it stays open.
 func WithCircuitBreaker(failureThreshold int, cooldown time.Duration) Option {
-	return funcOption(func(o *options) {
-		o.cfg.CircuitFailureThreshold = failureThreshold
-		o.cfg.CircuitCooldown = cooldown
-	})
+	return circuitBreakerOption{failureThreshold: failureThreshold, cooldown: cooldown}
 }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(options *emailOptions) { options.logger = o.logger }
 
 // WithLogger sets the structured logger. When not set, a no-op logger is
 // used.
 func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *options) { o.logger = logger })
+	return loggerOption{logger: logger}
 }
+
+// tlsConfigOption injects a custom TLS configuration.
+type tlsConfigOption struct {
+	tlsCfg *tls.Config
+}
+
+func (o tlsConfigOption) apply(options *emailOptions) { options.tlsConfig = o.tlsCfg }
 
 // withTLSConfig is an unexported option for injecting a custom TLS
 // configuration, primarily for testing with self-signed certificates.
 func withTLSConfig(tlsCfg *tls.Config) Option {
-	return funcOption(func(o *options) { o.tlsConfig = tlsCfg })
+	return tlsConfigOption{tlsCfg: tlsCfg}
 }
+
+// formatterOption injects a locale-aware Formatter used to render alert messages.
+type formatterOption struct {
+	f i18n.Formatter
+}
+
+func (o formatterOption) apply(options *emailOptions) { options.formatter = o.f }
 
 // WithFormatter injects a locale-aware Formatter used to render alert
 // messages. When not set, buildMessage uses the default Formatter from
 // pkg/prism/channel/format backed by the built-in i18n asset bundle.
 func WithFormatter(f i18n.Formatter) Option {
-	return funcOption(func(o *options) { o.formatter = f })
+	return formatterOption{f: f}
 }
+
+// libraryOption injects a template Library used for template-based rendering.
+type libraryOption struct {
+	l template.Library
+}
+
+func (o libraryOption) apply(options *emailOptions) { options.library = o.l }
 
 // WithLibrary injects a template Library used for template-based rendering.
 // When set and alert.TemplateID is non-empty, buildMessage calls
 // Library.Render instead of Formatter.Format.
 func WithLibrary(l template.Library) Option {
-	return funcOption(func(o *options) { o.library = l })
+	return libraryOption{l: l}
 }
 
 // applyDefaults replaces zero or negative Config fields with default values.
@@ -360,37 +464,37 @@ func applyDefaults(c *Config) {
 //
 // Returns an error if the effective configuration is invalid or the retry
 // backoff cannot be constructed.
-func New(cfg Config, opts ...Option) (*Channel, error) {
-	o := &options{cfg: cfg}
-	for _, opt := range opts {
-		opt.apply(o)
+func New(cfg Config, options ...Option) (*Channel, error) {
+	opts := &emailOptions{cfg: cfg}
+	for _, o := range options {
+		o.apply(opts)
 	}
-	applyDefaults(&o.cfg)
+	applyDefaults(&opts.cfg)
 
-	logger := o.logger
+	logger := opts.logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
 	// Propagate injected Formatter and Library from options into the Config
 	// so that buildMessage can access them without a separate Channel field.
-	if o.formatter != nil {
-		o.cfg.Formatter = o.formatter
+	if opts.formatter != nil {
+		opts.cfg.Formatter = opts.formatter
 	}
-	if o.library != nil {
-		o.cfg.Library = o.library
+	if opts.library != nil {
+		opts.cfg.Library = opts.library
 	}
 	// When no Formatter is injected, construct a default one backed by the
 	// built-in i18n bundle. This avoids re-loading the bundle on every Send
 	// call and keeps renderAlert on the hot path allocation-free.
-	if o.cfg.Formatter == nil {
-		o.cfg.Formatter = buildDefaultFormatter(logger)
+	if opts.cfg.Formatter == nil {
+		opts.cfg.Formatter = buildDefaultFormatter(logger)
 	}
-	if err := o.cfg.Validate(); err != nil {
+	if err := opts.cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	base := o.cfg.RetryBaseInterval
+	base := opts.cfg.RetryBaseInterval
 	maxBackoff := retryMaxBackoff
 	maxBackoff = max(maxBackoff, base)
 	backoff, err := retry.NewExponential(
@@ -402,7 +506,7 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 		return nil, fmt.Errorf("email: build backoff: %w", err)
 	}
 	r, err := retry.New(
-		retry.WithMaxAttempts(o.cfg.RetryMaxAttempts),
+		retry.WithMaxAttempts(opts.cfg.RetryMaxAttempts),
 		retry.WithBackoff(backoff),
 		retry.WithRetryable(isRetryableErr),
 	)
@@ -411,20 +515,20 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 	}
 
 	breaker := circuitbreaker.New(circuitbreaker.Config{
-		FailureThreshold: o.cfg.CircuitFailureThreshold,
-		Cooldown:         o.cfg.CircuitCooldown,
+		FailureThreshold: opts.cfg.CircuitFailureThreshold,
+		Cooldown:         opts.cfg.CircuitCooldown,
 	})
 
 	// Copy the recipient slice to prevent external mutation.
-	recipients := make([]string, len(o.cfg.To))
-	copy(recipients, o.cfg.To)
-	o.cfg.To = recipients
+	recipients := make([]string, len(opts.cfg.To))
+	copy(recipients, opts.cfg.To)
+	opts.cfg.To = recipients
 
 	return &Channel{
-		config:    o.cfg,
+		config:    opts.cfg,
 		cb:        breaker,
 		retry:     r,
 		logger:    logger,
-		tlsConfig: o.tlsConfig,
+		tlsConfig: opts.tlsConfig,
 	}, nil
 }

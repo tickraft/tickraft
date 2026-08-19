@@ -83,48 +83,84 @@ type runnerOptions struct {
 	wheel          timewheel.Wheel
 }
 
-type funcOption func(*runnerOptions)
+// executorRegistryOption sets the executor registry.
+type executorRegistryOption struct {
+	registry *Registry
+}
 
-func (f funcOption) apply(o *runnerOptions) { f(o) }
+func (o executorRegistryOption) apply(opts *runnerOptions) { opts.registry = o.registry }
 
 // WithExecutorRegistry sets the executor registry.
 func WithExecutorRegistry(registry *Registry) Option {
-	return funcOption(func(o *runnerOptions) { o.registry = registry })
+	return executorRegistryOption{registry: registry}
 }
+
+// workerPoolSizeOption sets the max concurrent executions for the default
+// worker pool.
+type workerPoolSizeOption int
+
+func (o workerPoolSizeOption) apply(opts *runnerOptions) { opts.workerPoolSize = int(o) }
 
 // WithWorkerPoolSize sets the max concurrent executions for the default
 // worker pool. Default is 100. This option is ignored when [WithPool] is
 // used to inject an explicit pool; in that case the injected pool's worker
 // count governs concurrency.
-func WithWorkerPoolSize(n int) Option {
-	return funcOption(func(o *runnerOptions) { o.workerPoolSize = n })
+func WithWorkerPoolSize(n int) Option { return workerPoolSizeOption(n) }
+
+// poolOption injects an explicit pool for task dispatch.
+type poolOption struct {
+	p pool.Pool
 }
+
+func (o poolOption) apply(opts *runnerOptions) { opts.pool = o.p }
 
 // WithPool injects an explicit [pool.Pool] for task dispatch. The caller
 // retains ownership of the pool and is responsible for shutting it down;
 // the runner's Stop method will not close an injected pool. When this
 // option is not set, the runner creates a default pool internally and
 // closes it on Stop.
-func WithPool(p pool.Pool) Option {
-	return funcOption(func(o *runnerOptions) { o.pool = p })
+func WithPool(p pool.Pool) Option { return poolOption{p: p} }
+
+// eventBusOption sets the event bus for subscribing to trigger events and
+// publishing completion events.
+type eventBusOption struct {
+	bus event.Bus
 }
+
+func (o eventBusOption) apply(opts *runnerOptions) { opts.bus = o.bus }
 
 // WithEventBus sets the event bus for subscribing to trigger events and
 // publishing completion events.
-func WithEventBus(bus event.Bus) Option {
-	return funcOption(func(o *runnerOptions) { o.bus = bus })
+func WithEventBus(bus event.Bus) Option { return eventBusOption{bus: bus} }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
 }
 
+func (o loggerOption) apply(opts *runnerOptions) { opts.logger = o.logger }
+
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *runnerOptions) { o.logger = logger })
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
+// recordStoreOption sets the record store for persisting execution records.
+type recordStoreOption struct {
+	store RecordStore
 }
+
+func (o recordStoreOption) apply(opts *runnerOptions) { opts.records = o.store }
 
 // WithRecordStore sets the record store for persisting execution records.
 // If not set, a no-op store is used.
-func WithRecordStore(store RecordStore) Option {
-	return funcOption(func(o *runnerOptions) { o.records = store })
+func WithRecordStore(store RecordStore) Option { return recordStoreOption{store: store} }
+
+// timeWheelOption injects a time wheel used to schedule asynchronous retry
+// delays.
+type timeWheelOption struct {
+	wheel timewheel.Wheel
 }
+
+func (o timeWheelOption) apply(opts *runnerOptions) { opts.wheel = o.wheel }
 
 // WithTimeWheel injects a [timewheel.Wheel] used to schedule asynchronous
 // retry delays. When a wheel is provided, task execution uses
@@ -136,9 +172,7 @@ func WithRecordStore(store RecordStore) Option {
 // The caller owns the wheel's lifecycle: the runner neither starts nor stops
 // it. The caller must start the wheel before publishing trigger events and
 // stop it after stopping the runner.
-func WithTimeWheel(wheel timewheel.Wheel) Option {
-	return funcOption(func(o *runnerOptions) { o.wheel = wheel })
-}
+func WithTimeWheel(wheel timewheel.Wheel) Option { return timeWheelOption{wheel: wheel} }
 
 // defaultWorkerPoolSize is the worker count used when no pool is injected
 // and WithWorkerPoolSize is not set. It matches the previous semaphore
@@ -158,30 +192,30 @@ const defaultWorkerPoolSize = 100
 // initialized. This path is unreachable in practice because the worker
 // count is sanitized to a positive value, but the error is returned
 // rather than panicking to honor the "no panic in business logic" rule.
-func New(opts ...Option) (Runner, error) {
-	o := &runnerOptions{
+func New(options ...Option) (Runner, error) {
+	opts := &runnerOptions{
 		registry:       NewRegistry(),
 		workerPoolSize: defaultWorkerPoolSize,
 		logger:         zap.NewNop(),
 		records:        noopRecordStore{},
 	}
-	for _, opt := range opts {
-		opt.apply(o)
+	for _, o := range options {
+		o.apply(opts)
 	}
 
 	r := &runner{
-		registry: o.registry,
-		bus:      o.bus,
-		logger:   o.logger,
-		records:  o.records,
-		wheel:    o.wheel,
+		registry: opts.registry,
+		bus:      opts.bus,
+		logger:   opts.logger,
+		records:  opts.records,
+		wheel:    opts.wheel,
 	}
 
-	if o.pool != nil {
-		r.pool = o.pool
+	if opts.pool != nil {
+		r.pool = opts.pool
 		r.poolOwned = false
 	} else {
-		workers := o.workerPoolSize
+		workers := opts.workerPoolSize
 		if workers <= 0 {
 			workers = runtime.NumCPU() * 2
 		}

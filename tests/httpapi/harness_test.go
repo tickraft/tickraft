@@ -121,8 +121,18 @@ func newHarness(t *testing.T) *harness {
 
 	lru := cache.NewLRU(1024, 5*time.Minute)
 	userStore := user.NewStore(dbc, lru)
-	seedUser(ctx, t, userStore, viewerUsername, viewerPassword, "viewer@example.com", 0)
-	seedUser(ctx, t, userStore, developerName, developerPasswd, "developer@example.com", 1)
+	seedUser(ctx, t, userStore, seedUserParams{
+		username: viewerUsername,
+		pwd:      viewerPassword,
+		email:    "viewer@example.com",
+		role:     0,
+	})
+	seedUser(ctx, t, userStore, seedUserParams{
+		username: developerName,
+		pwd:      developerPasswd,
+		email:    "developer@example.com",
+		role:     1,
+	})
 
 	// Auth stack: blacklist + JWT with a fixed secret.
 	blacklistStore := auth.NewBlacklistStore(dbc, lru)
@@ -294,14 +304,22 @@ func (hs *harness) shutdown() {
 	hs.authz.Close()
 }
 
-func seedUser(ctx context.Context, t *testing.T, store user.Store, username, pwd, email string, role int64) {
+// seedUserParams describes the user fields used when seeding test users.
+type seedUserParams struct {
+	username string
+	pwd      string
+	email    string
+	role     int64
+}
+
+func seedUser(ctx context.Context, t *testing.T, store user.Store, params seedUserParams) {
 	t.Helper()
-	hash, err := password.Hash(pwd)
+	hash, err := password.Hash(params.pwd)
 	if err != nil {
-		t.Fatalf("hash password for %s: %v", username, err)
+		t.Fatalf("hash password for %s: %v", params.username, err)
 	}
-	if _, err := store.Create(ctx, username, hash, email, role); err != nil {
-		t.Fatalf("seed user %s: %v", username, err)
+	if _, err := store.Create(ctx, params.username, hash, params.email, params.role); err != nil {
+		t.Fatalf("seed user %s: %v", params.username, err)
 	}
 }
 

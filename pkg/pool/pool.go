@@ -104,13 +104,13 @@ type pool struct {
 // min(workers, 4) workers eagerly and grows the rest lazily as the
 // queue fills. It returns an error if the configured worker count or
 // queue size is not positive.
-func New(opts ...Option) (Pool, error) {
+func New(options ...Option) (Pool, error) {
 	cfg := config{
 		workers:         runtime.NumCPU(),
 		queueSize:       defaultQueueSize,
 		rejectionPolicy: RejectionAbort,
 	}
-	for _, o := range opts {
+	for _, o := range options {
 		o.apply(&cfg)
 	}
 	if cfg.workers <= 0 {

@@ -34,35 +34,38 @@ type OperatorOption interface {
 	apply(*LocalOperator)
 }
 
-type operatorOption func(*LocalOperator)
+// operatorLoggerOption sets the structured logger for a LocalOperator.
+type operatorLoggerOption struct {
+	logger *zap.Logger
+}
 
-func (f operatorOption) apply(o *LocalOperator) { f(o) }
+func (o operatorLoggerOption) apply(op *LocalOperator) {
+	if o.logger != nil {
+		op.logger = o.logger
+	}
+}
 
 // WithOperatorLogger sets the structured logger.
 func WithOperatorLogger(logger *zap.Logger) OperatorOption {
-	return operatorOption(func(o *LocalOperator) {
-		if logger != nil {
-			o.logger = logger
-		}
-	})
+	return operatorLoggerOption{logger: logger}
 }
 
 // NewLocalOperator creates a LocalOperator wrapping the given local executor.
 // When exec is nil a default local executor is constructed.
-func NewLocalOperator(exec *local.Executor, opts ...OperatorOption) *LocalOperator {
-	o := &LocalOperator{logger: zap.NewNop()}
+func NewLocalOperator(exec *local.Executor, options ...OperatorOption) *LocalOperator {
+	op := &LocalOperator{logger: zap.NewNop()}
 	if exec == nil {
-		exec = local.New(local.WithLogger(o.logger))
+		exec = local.New(local.WithLogger(op.logger))
 	}
-	o.exec = exec
-	for _, opt := range opts {
-		opt.apply(o)
+	op.exec = exec
+	for _, o := range options {
+		o.apply(op)
 	}
-	return o
+	return op
 }
 
 // Name returns the operator identifier, matching Rule.ExecutorType "local".
-func (o *LocalOperator) Name() string { return localExecutorName }
+func (op *LocalOperator) Name() string { return localExecutorName }
 
 // Execute runs the configured local command. A non-nil error indicates an
 // infrastructure failure; a nil error with Success=false indicates the

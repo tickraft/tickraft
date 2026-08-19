@@ -281,8 +281,7 @@ func (l *Loader) Watch(ctx context.Context, dir string, r Registry) error {
 	// reload. This avoids double-reloads when editors save via temp file
 	// rename (which produces Write + Create events in quick succession).
 	const debounce = 200 * time.Millisecond
-	pending := make(map[string]time.Time)
-	var mu sync.Mutex
+	pending := &pendingEvents{events: make(map[string]time.Time)}
 
 	reload := func(path string) {
 		ext := strings.ToLower(filepath.Ext(path))
@@ -325,18 +324,31 @@ func (l *Loader) Watch(ctx context.Context, dir string, r Registry) error {
 	// goroutine lifecycle: bound to ctx, exits on ctx.Done() or when the
 	// fsnotify watcher channels are closed (which happens when watcher.Close
 	// runs in the deferred cleanup above).
-	go l.watchLoop(ctx, watcher, pending, &mu, reload, debounce)
+	go l.watchLoop(ctx, watcher, pending, reload, debounce)
 
 	<-ctx.Done()
 	return nil
+}
+
+// pendingEvents is the set of files with reloads awaiting debounce,
+// guarded by mu. Watch owns the instance and shares it with the watch
+// loop goroutine through a pointer, so the mutex is never copied.
+type pendingEvents struct {
+	mu     sync.Mutex
+	events map[string]time.Time
 }
 
 // watchLoop consumes fsnotify events until ctx is cancelled or the watcher
 // channels are closed. It coalesces rapid write events for the same file
 // into a single reload: events are recorded in pending (guarded by mu) and
 // reloaded once they have aged past debounce.
-func (l *Loader) watchLoop(ctx context.Context, watcher *fsnotify.Watcher,
-	pending map[string]time.Time, mu *sync.Mutex, reload func(string), debounce time.Duration) {
+func (l *Loader) watchLoop(
+	ctx context.Context,
+	watcher *fsnotify.Watcher,
+	pending *pendingEvents,
+	reload func(string),
+	debounce time.Duration,
+) {
 	debounceTimer := time.NewTimer(debounce)
 	debounceTimer.Stop()
 	defer debounceTimer.Stop()
@@ -353,10 +365,10 @@ func (l *Loader) watchLoop(ctx context.Context, watcher *fsnotify.Watcher,
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
 				continue
 			}
-			mu.Lock()
-			pending[event.Name] = time.Now()
+			pending.mu.Lock()
+			pending.events[event.Name] = time.Now()
 			debounceTimer.Reset(debounce)
-			mu.Unlock()
+			pending.mu.Unlock()
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -365,18 +377,18 @@ func (l *Loader) watchLoop(ctx context.Context, watcher *fsnotify.Watcher,
 				zap.Error(err),
 			)
 		case <-debounceTimer.C:
-			mu.Lock()
+			pending.mu.Lock()
 			now := time.Now()
-			for path, t := range pending {
+			for path, t := range pending.events {
 				if now.Sub(t) >= debounce {
-					delete(pending, path)
+					delete(pending.events, path)
 					reload(path)
 				}
 			}
-			if len(pending) > 0 {
+			if len(pending.events) > 0 {
 				debounceTimer.Reset(debounce)
 			}
-			mu.Unlock()
+			pending.mu.Unlock()
 		}
 	}
 }

@@ -29,48 +29,63 @@ const (
 )
 
 // Option configures an HTTP prober at construction time.
-type Option func(*Executor)
+type Option interface {
+	apply(*Executor)
+}
+
+// methodOption sets the HTTP method for the probe request.
+type methodOption string
+
+func (o methodOption) apply(h *Executor) {
+	if string(o) != "" {
+		h.method = string(o)
+	}
+}
 
 // WithMethod sets the HTTP method for the probe request.
 // An empty value is ignored, leaving the default (GET).
-func WithMethod(method string) Option {
-	return func(h *Executor) {
-		if method != "" {
-			h.method = method
-		}
-	}
+func WithMethod(method string) Option { return methodOption(method) }
+
+// headersOption sets the HTTP request headers to send with each probe.
+type headersOption struct {
+	headers map[string]string
 }
+
+func (o headersOption) apply(h *Executor) { h.headers = o.headers }
 
 // WithHeaders sets the HTTP request headers to send with each probe.
-func WithHeaders(headers map[string]string) Option {
-	return func(h *Executor) {
-		h.headers = headers
-	}
-}
+func WithHeaders(headers map[string]string) Option { return headersOption{headers: headers} }
+
+// bodyOption sets the HTTP request body for each probe.
+type bodyOption string
+
+func (o bodyOption) apply(h *Executor) { h.body = string(o) }
 
 // WithBody sets the HTTP request body for each probe.
-func WithBody(body string) Option {
-	return func(h *Executor) {
-		h.body = body
-	}
-}
+func WithBody(body string) Option { return bodyOption(body) }
+
+// expectStatusOption sets the expected HTTP response status code.
+type expectStatusOption int
+
+func (o expectStatusOption) apply(h *Executor) { h.expectStatus = int(o) }
 
 // WithExpectStatus sets the expected HTTP response status code.
 // A value of 0 (the default) accepts any 2xx status as normal.
-func WithExpectStatus(code int) Option {
-	return func(h *Executor) {
-		h.expectStatus = code
+func WithExpectStatus(code int) Option { return expectStatusOption(code) }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(h *Executor) {
+	if o.logger != nil {
+		h.logger = o.logger
 	}
 }
 
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return func(h *Executor) {
-		if logger != nil {
-			h.logger = logger
-		}
-	}
-}
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
 
 // Executor sends HTTP requests to check endpoint availability and measure
 // response time. It implements the executor.Executor interface and is safe
@@ -91,7 +106,7 @@ var _ executor.Executor = (*Executor)(nil)
 // New creates a new HTTP prober with the given timeout and options.
 // Defaults: method GET, expectStatus 0 (any 2xx is normal).
 // A non-positive timeout defaults to 10 seconds.
-func New(timeout time.Duration, opts ...Option) *Executor {
+func New(timeout time.Duration, options ...Option) *Executor {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
@@ -108,8 +123,8 @@ func New(timeout time.Duration, opts ...Option) *Executor {
 		}),
 		logger: zap.NewNop(),
 	}
-	for _, opt := range opts {
-		opt(h)
+	for _, o := range options {
+		o.apply(h)
 	}
 	return h
 }

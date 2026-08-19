@@ -37,10 +37,10 @@ import (
 // must be non-nil; this function returns an error listing all missing
 // services so the caller can fail startup instead of silently registering
 // routes backed by nil services.
-func RegisterRoutes(server *api.Server, opts ...RouteOption) error {
+func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	cfg := &routeConfig{}
-	for _, opt := range opts {
-		opt(cfg)
+	for _, o := range options {
+		o.apply(cfg)
 	}
 
 	if err := validateRouteConfig(cfg); err != nil {

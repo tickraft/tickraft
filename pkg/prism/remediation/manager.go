@@ -71,10 +71,10 @@ type Manager struct {
 
 // Option configures a Manager.
 type Option interface {
-	apply(*options)
+	apply(*managerOptions)
 }
 
-type options struct {
+type managerOptions struct {
 	bus       event.Bus
 	store     RuleStore
 	records   RecordStore
@@ -84,50 +84,98 @@ type options struct {
 	execPool  pool.Pool
 }
 
-type funcOption func(*options)
+// eventBusOption sets the event bus used to subscribe to alert events.
+type eventBusOption struct {
+	bus event.Bus
+}
 
-func (f funcOption) apply(o *options) { f(o) }
+func (o eventBusOption) apply(options *managerOptions) { options.bus = o.bus }
 
 // WithEventBus sets the event bus used to subscribe to alert events.
 func WithEventBus(bus event.Bus) Option {
-	return funcOption(func(o *options) { o.bus = bus })
+	return eventBusOption{bus: bus}
 }
+
+// ruleStoreOption sets the rule store used to load and update remediation rules.
+type ruleStoreOption struct {
+	store RuleStore
+}
+
+func (o ruleStoreOption) apply(options *managerOptions) { options.store = o.store }
 
 // WithStore sets the rule store used to load and update remediation rules.
 func WithStore(store RuleStore) Option {
-	return funcOption(func(o *options) { o.store = store })
+	return ruleStoreOption{store: store}
 }
+
+// recordStoreOption sets the store used to persist remediation dispatch records.
+type recordStoreOption struct {
+	records RecordStore
+}
+
+//修复recordStoreOption.apply方法中的参数类型不匹配问题
+
+func (o recordStoreOption) apply(options *managerOptions) { options.records = o.records }
 
 // WithRecordStore sets the store used to persist remediation dispatch
 // records. When set, every dispatch lifecycle transition (triggered,
 // started, completed, failed, skipped) is persisted for the records API.
 func WithRecordStore(store RecordStore) Option {
-	return funcOption(func(o *options) { o.records = store })
+	return recordStoreOption{records: store}
 }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(options *managerOptions) { options.logger = o.logger }
 
 // WithLogger sets the structured logger.
 func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *options) { o.logger = logger })
+	return loggerOption{logger: logger}
+}
+
+// operatorsOption registers additional operators.
+type operatorsOption struct {
+	ops []Operator
+}
+
+func (o operatorsOption) apply(options *managerOptions) {
+	options.operators = append(options.operators, o.ops...)
 }
 
 // WithOperators registers operators in addition to the default LocalOperator.
 // callers may use this to inject remote operators (ssh, mysql, ...).
 func WithOperators(ops ...Operator) Option {
-	return funcOption(func(o *options) { o.operators = append(o.operators, ops...) })
+	return operatorsOption{ops: ops}
 }
+
+// executionPoolSizeOption sets the worker pool size bounding concurrent
+// remediation executions.
+type executionPoolSizeOption int
+
+func (o executionPoolSizeOption) apply(options *managerOptions) { options.poolSize = int(o) }
 
 // WithExecutionPoolSize sets the worker pool size bounding concurrent
 // remediation executions. A non-positive value defaults to 4. Ignored when
 // WithPool injects an externally-owned pool.
 func WithExecutionPoolSize(n int) Option {
-	return funcOption(func(o *options) { o.poolSize = n })
+	return executionPoolSizeOption(n)
 }
+
+// poolOption injects an externally-owned worker pool for remediation execution.
+type poolOption struct {
+	p pool.Pool
+}
+
+func (o poolOption) apply(options *managerOptions) { options.execPool = o.p }
 
 // WithPool injects an externally-owned worker pool for remediation
 // execution. When set, the manager does not create or shut down its own
 // pool; the caller is responsible for the pool lifecycle.
 func WithPool(p pool.Pool) Option {
-	return funcOption(func(o *options) { o.execPool = p })
+	return poolOption{p: p}
 }
 
 // New creates a new remediation Manager with the given options.
@@ -136,30 +184,30 @@ func WithPool(p pool.Pool) Option {
 // registering an operator named "local" via WithOperators. When no execution
 // pool is injected, the manager creates and owns a bounded pool sized by
 // WithExecutionPoolSize (default 4).
-func New(opts ...Option) (*Manager, error) {
-	o := &options{
+func New(options ...Option) (*Manager, error) {
+	opts := &managerOptions{
 		logger:   zap.NewNop(),
 		poolSize: defaultExecutionPoolSize,
 	}
-	for _, opt := range opts {
-		opt.apply(o)
+	for _, o := range options {
+		o.apply(opts)
 	}
-	if o.store == nil {
+	if opts.store == nil {
 		return nil, fmt.Errorf("remediation: %w: rule store is required", errdefs.ErrInvalidArgument)
 	}
 
 	m := &Manager{
-		bus:        o.bus,
-		store:      o.store,
-		records:    o.records,
-		logger:     o.logger,
+		bus:        opts.bus,
+		store:      opts.store,
+		records:    opts.records,
+		logger:     opts.logger,
 		operators:  map[string]Operator{},
 		matchCache: map[string]*vm.Program{},
 		inFlight:   map[string]struct{}{},
 	}
 	// Register the default local operator unless the caller supplied one.
 	hasLocal := false
-	for _, op := range o.operators {
+	for _, op := range opts.operators {
 		if op != nil {
 			m.operators[op.Name()] = op
 			if op.Name() == localExecutorName {
@@ -168,14 +216,14 @@ func New(opts ...Option) (*Manager, error) {
 		}
 	}
 	if !hasLocal {
-		m.operators[localExecutorName] = NewLocalOperator(nil, WithOperatorLogger(o.logger))
+		m.operators[localExecutorName] = NewLocalOperator(nil, WithOperatorLogger(opts.logger))
 	}
 
-	if o.execPool != nil {
-		m.execPool = o.execPool
+	if opts.execPool != nil {
+		m.execPool = opts.execPool
 		m.poolOwned = false
 	} else {
-		size := o.poolSize
+		size := opts.poolSize
 		if size <= 0 {
 			size = defaultExecutionPoolSize
 		}

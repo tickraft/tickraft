@@ -242,7 +242,12 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 	if h.metricStore != nil && task.AssetID > 0 {
 		end := time.Now()
 		start := end.AddDate(0, 0, -7) // last 7 days
-		metrics, qErr := h.metricStore.QueryMetrics(ctx, 0, task.AssetID, "", start, end, size)
+		metrics, qErr := h.metricStore.QueryMetrics(ctx, telemetry.MetricQuery{
+			AssetID: task.AssetID,
+			Start:   start,
+			End:     end,
+			Limit:   size,
+		})
 		if qErr != nil {
 			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
 			return
@@ -314,7 +319,12 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	if h.logStore != nil && task.AssetID > 0 {
 		end := time.Now()
 		start := end.AddDate(0, 0, -7) // last 7 days
-		entries, qErr := h.logStore.QueryLogs(ctx, 0, task.AssetID, "", start, end, size)
+		entries, qErr := h.logStore.QueryLogs(ctx, telemetry.LogQuery{
+			AssetID: task.AssetID,
+			Start:   start,
+			End:     end,
+			Limit:   size,
+		})
 		if qErr != nil {
 			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
 			return

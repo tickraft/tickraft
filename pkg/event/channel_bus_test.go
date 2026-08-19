@@ -641,7 +641,7 @@ func TestWithJitter_Clamp(t *testing.T) {
 
 	for _, tt := range tests {
 		cfg := &subscribeConfig{}
-		WithJitter(tt.input)(cfg)
+		WithJitter(tt.input).apply(cfg)
 		if cfg.jitter != tt.expect {
 			t.Errorf("WithJitter(%v): got %v, want %v", tt.input, cfg.jitter, tt.expect)
 		}

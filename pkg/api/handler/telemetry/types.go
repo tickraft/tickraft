@@ -18,25 +18,13 @@ import (
 // injection via WithTelemetryDataStores. It mirrors telemetry.MetricStore's
 // query method.
 type MetricStoreInjector interface {
-	QueryMetrics(
-		ctx context.Context,
-		tenantID, assetID int64,
-		metricName string,
-		start, end time.Time,
-		limit int,
-	) ([]telemetry.CollectMetric, error)
+	QueryMetrics(ctx context.Context, q telemetry.MetricQuery) ([]telemetry.CollectMetric, error)
 }
 
 // LogStoreInjector is the interface a log store must satisfy for injection
 // via WithTelemetryDataStores. It mirrors telemetry.LogStore's query method.
 type LogStoreInjector interface {
-	QueryLogs(
-		ctx context.Context,
-		tenantID, assetID int64,
-		level string,
-		start, end time.Time,
-		limit int,
-	) ([]telemetry.CollectLog, error)
+	QueryLogs(ctx context.Context, q telemetry.LogQuery) ([]telemetry.CollectLog, error)
 }
 
 // Task represents a telemetry collection task definition. Each task

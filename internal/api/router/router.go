@@ -146,7 +146,12 @@ func (a *serviceAdapter) UpdateProfile(
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
 	}
-	u, err := a.service.UpdateProfile(ctx, userID, req.Nickname, req.Email, req.Language, req.AlertFormatStyle)
+	u, err := a.service.UpdateProfile(ctx, userID, auth.UpdateProfileParams{
+		Nickname:         req.Nickname,
+		Email:            req.Email,
+		Language:         req.Language,
+		AlertFormatStyle: req.AlertFormatStyle,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +181,9 @@ func denyAllAssetKeys(_ context.Context, _ string) (bool, error) {
 // RegisterOption configures route registration with additional handlers and
 // services beyond the always-present auth middleware. It uses a variadic
 // pattern so existing callers that pass no options continue to work.
-type RegisterOption func(*registerConfig)
+type RegisterOption interface {
+	apply(*registerConfig)
+}
 
 // registerConfig holds handlers and services injected via RegisterOption.
 type registerConfig struct {
@@ -198,95 +205,185 @@ type registerConfig struct {
 	wsHandler              *wsapi.Handler
 }
 
+// taskServiceOption provides the task.Service implementation for task
+// handlers.
+type taskServiceOption struct {
+	svc task.Service
+}
+
+func (o taskServiceOption) apply(c *registerConfig) { c.taskSvc = o.svc }
+
 // WithTaskService provides the task.Service implementation for task
 // handlers. When omitted, the task route group is not registered; the
 // caller must inject a concrete service to persist tasks and drive
 // scheduling.
-func WithTaskService(svc task.Service) RegisterOption {
-	return func(c *registerConfig) { c.taskSvc = svc }
+func WithTaskService(svc task.Service) RegisterOption { return taskServiceOption{svc: svc} }
+
+// alertServiceOption provides the alert.Service implementation for alert
+// handlers.
+type alertServiceOption struct {
+	svc alert.Service
 }
+
+func (o alertServiceOption) apply(c *registerConfig) { c.alertSvc = o.svc }
 
 // WithAlertService provides the alert.Service implementation for alert
 // handlers. When omitted, the handler package falls back to an in-memory
 // implementation.
-func WithAlertService(svc alert.Service) RegisterOption {
-	return func(c *registerConfig) { c.alertSvc = svc }
+func WithAlertService(svc alert.Service) RegisterOption { return alertServiceOption{svc: svc} }
+
+// channelServiceOption provides the channel.Service implementation for
+// notification channel handlers.
+type channelServiceOption struct {
+	svc channel.Service
 }
+
+func (o channelServiceOption) apply(c *registerConfig) { c.channelSvc = o.svc }
 
 // WithChannelService provides the channel.Service implementation for
 // notification channel handlers. When omitted, the handler package falls
 // back to an in-memory implementation.
 func WithChannelService(svc channel.Service) RegisterOption {
-	return func(c *registerConfig) { c.channelSvc = svc }
+	return channelServiceOption{svc: svc}
 }
+
+// remediationRuleServiceOption provides the remediation.Service
+// implementation for self-healing rule handlers.
+type remediationRuleServiceOption struct {
+	svc remediation.Service
+}
+
+func (o remediationRuleServiceOption) apply(c *registerConfig) { c.remediationRuleSvc = o.svc }
 
 // WithRemediationRuleService provides the remediation.Service
 // implementation for self-healing rule handlers. When omitted, the handler
 // package falls back to an in-memory implementation.
 func WithRemediationRuleService(svc remediation.Service) RegisterOption {
-	return func(c *registerConfig) { c.remediationRuleSvc = svc }
+	return remediationRuleServiceOption{svc: svc}
 }
+
+// systemServiceOption provides the system.Service implementation for system
+// handlers.
+type systemServiceOption struct {
+	svc system.Service
+}
+
+func (o systemServiceOption) apply(c *registerConfig) { c.systemSvc = o.svc }
 
 // WithSystemService provides the system.Service implementation for system
 // handlers (config and info endpoints under /api/v1/system). Must always
 // be provided in production; when omitted, the system route group
 // handlers will panic on first request.
-func WithSystemService(svc system.Service) RegisterOption {
-	return func(c *registerConfig) { c.systemSvc = svc }
+func WithSystemService(svc system.Service) RegisterOption { return systemServiceOption{svc: svc} }
+
+// assetHandlerOption provides the AssetHandler for the asset management API.
+type assetHandlerOption struct {
+	h *asset.Handler
 }
+
+func (o assetHandlerOption) apply(c *registerConfig) { c.assetHandler = o.h }
 
 // WithAssetHandler provides the AssetHandler for the asset
 // management API at /api/v1/assets. When omitted, the asset
 // route group is not registered.
-func WithAssetHandler(h *asset.Handler) RegisterOption {
-	return func(c *registerConfig) { c.assetHandler = h }
+func WithAssetHandler(h *asset.Handler) RegisterOption { return assetHandlerOption{h: h} }
+
+// telemetryServiceOption provides the telemetry.Service implementation for
+// the telemetry collection task CRUD API.
+type telemetryServiceOption struct {
+	svc telemetry.Service
 }
+
+func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetrySvc = o.svc }
 
 // WithTelemetryService provides the telemetry.Service implementation for the
 // telemetry collection task CRUD API at /api/v1/telemetry. When omitted, the
 // telemetry CRUD route group is not registered.
 func WithTelemetryService(svc telemetry.Service) RegisterOption {
-	return func(c *registerConfig) { c.telemetrySvc = svc }
+	return telemetryServiceOption{svc: svc}
 }
+
+// telemetryReportHandlerOption provides the ReportHandler for the
+// distributed telemetry report endpoints.
+type telemetryReportHandlerOption struct {
+	h telemetry.ReportHandler
+}
+
+func (o telemetryReportHandlerOption) apply(c *registerConfig) { c.telemetryReportHandler = o.h }
 
 // WithTelemetryReportHandler provides the ReportHandler for the
 // distributed telemetry report endpoints at /api/v1/telemetry/heartbeat,
 // /api/v1/telemetry/metrics, and /api/v1/telemetry/logs. When omitted, the
 // report route group is not registered.
 func WithTelemetryReportHandler(h telemetry.ReportHandler) RegisterOption {
-	return func(c *registerConfig) { c.telemetryReportHandler = h }
+	return telemetryReportHandlerOption{h: h}
+}
+
+// telemetryDataStoresOption provides the MetricStore and LogStore used by
+// the telemetry handler's history/logs endpoints.
+type telemetryDataStoresOption struct {
+	metricStore telemetry.MetricStoreInjector
+	logStore    telemetry.LogStoreInjector
+}
+
+func (o telemetryDataStoresOption) apply(c *registerConfig) {
+	c.telemetryMetricStore = o.metricStore
+	c.telemetryLogStore = o.logStore
 }
 
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil.
 func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector,
 	logStore telemetry.LogStoreInjector) RegisterOption {
-	return func(c *registerConfig) {
-		c.telemetryMetricStore = metricStore
-		c.telemetryLogStore = logStore
-	}
+	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
 }
+
+// templateHandlerOption provides the TemplateHandler for the telemetry
+// template management API.
+type templateHandlerOption struct {
+	h *telemetry.TemplateHandler
+}
+
+func (o templateHandlerOption) apply(c *registerConfig) { c.templateHandler = o.h }
 
 // WithTemplateHandler provides the TemplateHandler for the telemetry
 // template management API at /api/v1/telemetry/templates. When omitted, the
 // template route group is not registered.
 func WithTemplateHandler(h *telemetry.TemplateHandler) RegisterOption {
-	return func(c *registerConfig) { c.templateHandler = h }
+	return templateHandlerOption{h: h}
 }
+
+// healthzHandlerOption provides the HealthzHandler for the /healthz endpoint.
+type healthzHandlerOption struct {
+	h *healthz.Handler
+}
+
+func (o healthzHandlerOption) apply(c *registerConfig) { c.healthzHandler = o.h }
 
 // WithHealthzHandler provides the HealthzHandler for the /healthz endpoint.
 // When omitted, a default stub returning 200 without dependency checks is
 // used.
-func WithHealthzHandler(h *healthz.Handler) RegisterOption {
-	return func(c *registerConfig) { c.healthzHandler = h }
+func WithHealthzHandler(h *healthz.Handler) RegisterOption { return healthzHandlerOption{h: h} }
+
+// readyzHandlerOption provides the ReadyHandler for the /readyz endpoint.
+type readyzHandlerOption struct {
+	h *readyz.Handler
 }
+
+func (o readyzHandlerOption) apply(c *registerConfig) { c.readyzHandler = o.h }
 
 // WithReadyzHandler provides the ReadyHandler for the /readyz endpoint.
 // When omitted, a default stub returning 200 without dependency checks is
 // used.
-func WithReadyzHandler(h *readyz.Handler) RegisterOption {
-	return func(c *registerConfig) { c.readyzHandler = h }
+func WithReadyzHandler(h *readyz.Handler) RegisterOption { return readyzHandlerOption{h: h} }
+
+// certificateHandlerOption provides the CertificateHandler for the
+// certificate reload endpoint.
+type certificateHandlerOption struct {
+	h *certificates.Handler
 }
+
+func (o certificateHandlerOption) apply(c *registerConfig) { c.certificateHandler = o.h }
 
 // WithCertificateHandler provides the CertificateHandler for the
 // POST /api/v1/system/certificates/reload endpoint. When omitted, the
@@ -294,21 +391,32 @@ func WithReadyzHandler(h *readyz.Handler) RegisterOption {
 // *api.Server so it must be created after the server is constructed; the
 // start command (cmd/tickraft/start.go) wires it when TLS is enabled.
 func WithCertificateHandler(h *certificates.Handler) RegisterOption {
-	return func(c *registerConfig) { c.certificateHandler = h }
+	return certificateHandlerOption{h: h}
 }
+
+// wsHandlerOption provides the WebSocket handler for the /ws realtime
+// push endpoint.
+type wsHandlerOption struct {
+	h *wsapi.Handler
+}
+
+func (o wsHandlerOption) apply(c *registerConfig) { c.wsHandler = o.h }
 
 // WithWSHandler provides the WebSocket handler for the /ws realtime
 // push endpoint. When omitted, the route is not registered.
-func WithWSHandler(h *wsapi.Handler) RegisterOption {
-	return func(c *registerConfig) { c.wsHandler = h }
+func WithWSHandler(h *wsapi.Handler) RegisterOption { return wsHandlerOption{h: h} }
+
+// i18nHandlerOption provides the I18nHandler for the locale listing API.
+type i18nHandlerOption struct {
+	h *i18n.Handler
 }
+
+func (o i18nHandlerOption) apply(c *registerConfig) { c.i18nHandler = o.h }
 
 // WithI18nHandler provides the I18nHandler for the locale listing API
 // at /api/v1/i18n/locales. When omitted, the i18n route group is not
 // registered.
-func WithI18nHandler(h *i18n.Handler) RegisterOption {
-	return func(c *registerConfig) { c.i18nHandler = h }
-}
+func WithI18nHandler(h *i18n.Handler) RegisterOption { return i18nHandlerOption{h: h} }
 
 // RegisterRoutes builds all auth middleware and an auth service adapter, then
 // delegates to handler.RegisterRoutes with the appropriate RouteOption values.
@@ -327,7 +435,7 @@ func RegisterRoutes(
 	jwtMgr *jwt.JWT,
 	service *auth.Service,
 	assetKeyGetter func(ctx context.Context, key string) (bool, error),
-	opts ...RegisterOption,
+	options ...RegisterOption,
 ) error {
 	if err := validateRegisterArgs(server, jwtMgr, service); err != nil {
 		return err
@@ -349,8 +457,8 @@ func RegisterRoutes(
 
 	// Apply registrations.
 	rc := &registerConfig{}
-	for _, opt := range opts {
-		opt(rc)
+	for _, o := range options {
+		o.apply(rc)
 	}
 
 	// Validate that all required domain services are injected. The

@@ -93,7 +93,11 @@ func (p *Task) Process(ctx context.Context, t *telemetry.Telemetry) (*telemetry.
 // OnTimeout handles the task timeout scenario by marking the asset offline
 // and publishing a status-change event.
 func (p *Task) OnTimeout(ctx context.Context, assetID int64) error {
-	return telemetry.MarkOffline(ctx, p.store, p.bus, p.logger, assetID, types.AssetTypeTask, "task timeout")
+	return telemetry.MarkOffline(ctx, p.store, p.bus, p.logger, telemetry.OfflineParams{
+		AssetID:   assetID,
+		AssetType: types.AssetTypeTask,
+		Reason:    "task timeout",
+	})
 }
 
 // inferTaskStatus derives the task status from the telemetry. A heartbeat without

@@ -77,67 +77,114 @@ func isHTTPURL(s string) bool {
 // after the Config and may override Config fields or inject a custom HTTP
 // client and logger.
 type Option interface {
-	apply(*options)
+	apply(*webhookOptions)
 }
 
-// options is the internal builder that merges a Config with Option
+// webhookOptions is the internal builder that merges a Config with Option
 // overrides.
-type options struct {
+type webhookOptions struct {
 	cfg    Config
 	client *http.Client
 	logger *zap.Logger
 }
 
-type funcOption func(*options)
+// urlOption overrides the endpoint URL.
+type urlOption struct {
+	url string
+}
 
-func (f funcOption) apply(o *options) { f(o) }
+func (o urlOption) apply(options *webhookOptions) { options.cfg.URL = o.url }
 
 // WithURL overrides the endpoint URL.
 func WithURL(url string) Option {
-	return funcOption(func(o *options) { o.cfg.URL = url })
+	return urlOption{url: url}
 }
+
+// timeoutOption overrides the HTTP client timeout.
+type timeoutOption struct {
+	d time.Duration
+}
+
+func (o timeoutOption) apply(options *webhookOptions) { options.cfg.Timeout = o.d }
 
 // WithTimeout overrides the HTTP client timeout.
 func WithTimeout(d time.Duration) Option {
-	return funcOption(func(o *options) { o.cfg.Timeout = d })
+	return timeoutOption{d: d}
 }
+
+// headersOption overrides the custom HTTP headers added to every request.
+type headersOption struct {
+	headers map[string]string
+}
+
+func (o headersOption) apply(options *webhookOptions) { options.cfg.Headers = o.headers }
 
 // WithHeaders overrides the custom HTTP headers added to every request.
 func WithHeaders(headers map[string]string) Option {
-	return funcOption(func(o *options) { o.cfg.Headers = headers })
+	return headersOption{headers: headers}
 }
+
+// httpClientOption injects a custom HTTP client.
+type httpClientOption struct {
+	client *http.Client
+}
+
+func (o httpClientOption) apply(options *webhookOptions) { options.client = o.client }
 
 // WithHTTPClient injects a custom HTTP client. Useful for tests and for
 // tuning transport parameters. When not set, a new client with the
 // configured timeout is created.
 func WithHTTPClient(client *http.Client) Option {
-	return funcOption(func(o *options) { o.client = client })
+	return httpClientOption{client: client}
+}
+
+// retryOption overrides the retry configuration.
+type retryOption struct {
+	maxAttempts  int
+	baseInterval time.Duration
+}
+
+func (o retryOption) apply(options *webhookOptions) {
+	options.cfg.RetryMaxAttempts = o.maxAttempts
+	options.cfg.RetryBaseInterval = o.baseInterval
 }
 
 // WithRetry overrides the retry configuration: maxAttempts is the total
 // number of attempts (including the first) and baseInterval is the base
 // for exponential backoff.
 func WithRetry(maxAttempts int, baseInterval time.Duration) Option {
-	return funcOption(func(o *options) {
-		o.cfg.RetryMaxAttempts = maxAttempts
-		o.cfg.RetryBaseInterval = baseInterval
-	})
+	return retryOption{maxAttempts: maxAttempts, baseInterval: baseInterval}
+}
+
+// circuitBreakerOption overrides the circuit breaker configuration.
+type circuitBreakerOption struct {
+	failureThreshold int
+	cooldown         time.Duration
+}
+
+func (o circuitBreakerOption) apply(options *webhookOptions) {
+	options.cfg.CircuitFailureThreshold = o.failureThreshold
+	options.cfg.CircuitCooldown = o.cooldown
 }
 
 // WithCircuitBreaker overrides the circuit breaker configuration:
 // failureThreshold is the consecutive failure count that opens the
 // breaker and cooldown is how long it stays open.
 func WithCircuitBreaker(failureThreshold int, cooldown time.Duration) Option {
-	return funcOption(func(o *options) {
-		o.cfg.CircuitFailureThreshold = failureThreshold
-		o.cfg.CircuitCooldown = cooldown
-	})
+	return circuitBreakerOption{failureThreshold: failureThreshold, cooldown: cooldown}
 }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(options *webhookOptions) { options.logger = o.logger }
 
 // WithLogger sets the structured logger. When not set, a no-op logger is
 // used.
 func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *options) { o.logger = logger })
+	return loggerOption{logger: logger}
 }
 
 // applyDefaults replaces zero or negative Config fields with default
@@ -166,29 +213,29 @@ func applyDefaults(c *Config) {
 //
 // Returns an error if the effective configuration is invalid or the
 // retry backoff cannot be constructed.
-func New(cfg Config, opts ...Option) (*Channel, error) {
-	o := &options{cfg: cfg}
-	for _, opt := range opts {
-		opt.apply(o)
+func New(cfg Config, options ...Option) (*Channel, error) {
+	opts := &webhookOptions{cfg: cfg}
+	for _, o := range options {
+		o.apply(opts)
 	}
-	if err := o.cfg.Validate(); err != nil {
+	if err := opts.cfg.Validate(); err != nil {
 		return nil, err
 	}
-	applyDefaults(&o.cfg)
+	applyDefaults(&opts.cfg)
 
-	client := o.client
+	client := opts.client
 	if client == nil {
-		client = httpx.NewPoolClient(httpx.Config{Timeout: o.cfg.Timeout})
+		client = httpx.NewPoolClient(httpx.Config{Timeout: opts.cfg.Timeout})
 	} else if client.Timeout <= 0 {
-		client.Timeout = o.cfg.Timeout
+		client.Timeout = opts.cfg.Timeout
 	}
 
-	logger := o.logger
+	logger := opts.logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
-	base := o.cfg.RetryBaseInterval
+	base := opts.cfg.RetryBaseInterval
 	maxBackoff := retryMaxBackoff
 	maxBackoff = max(maxBackoff, base)
 	backoff, err := retry.NewExponential(
@@ -200,7 +247,7 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 		return nil, fmt.Errorf("webhook: build backoff: %w", err)
 	}
 	r, err := retry.New(
-		retry.WithMaxAttempts(o.cfg.RetryMaxAttempts),
+		retry.WithMaxAttempts(opts.cfg.RetryMaxAttempts),
 		retry.WithBackoff(backoff),
 		retry.WithRetryable(isRetryableSendErr),
 	)
@@ -209,15 +256,15 @@ func New(cfg Config, opts ...Option) (*Channel, error) {
 	}
 
 	breaker := circuitbreaker.New(circuitbreaker.Config{
-		FailureThreshold: o.cfg.CircuitFailureThreshold,
-		Cooldown:         o.cfg.CircuitCooldown,
+		FailureThreshold: opts.cfg.CircuitFailureThreshold,
+		Cooldown:         opts.cfg.CircuitCooldown,
 	})
 
-	headers := make(map[string]string, len(o.cfg.Headers))
-	maps.Copy(headers, o.cfg.Headers)
+	headers := make(map[string]string, len(opts.cfg.Headers))
+	maps.Copy(headers, opts.cfg.Headers)
 
 	return &Channel{
-		cfg:     o.cfg,
+		cfg:     opts.cfg,
 		headers: headers,
 		client:  client,
 		logger:  logger,

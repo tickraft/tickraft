@@ -129,40 +129,64 @@ type Listener struct {
 }
 
 // Option configures a Listener.
-type Option func(*Listener)
+type Option interface {
+	apply(*Listener)
+}
+
+// secretOption sets the HMAC secret for signature verification.
+type secretOption string
+
+func (o secretOption) apply(h *Listener) { h.secret = string(o) }
 
 // WithSecret sets the HMAC secret for signature verification. When empty,
 // signature verification is disabled and asset-key authentication is used.
-func WithSecret(secret string) Option {
-	return func(h *Listener) { h.secret = secret }
+func WithSecret(secret string) Option { return secretOption(secret) }
+
+// storeOption sets the asset store used for asset-key authentication and
+// asset type/tenant resolution.
+type storeOption struct {
+	store asset.Store
 }
+
+func (o storeOption) apply(h *Listener) { h.store = o.store }
 
 // WithStore sets the asset store used for asset-key authentication
 // and asset type/tenant resolution.
-func WithStore(store asset.Store) Option {
-	return func(h *Listener) { h.store = store }
+func WithStore(store asset.Store) Option { return storeOption{store: store} }
+
+// ingestOption sets the ingest callback that forwards parsed Telemetry
+// values to the telemetry pipeline.
+type ingestOption struct {
+	ingest func(context.Context, *telemetry.Telemetry)
 }
+
+func (o ingestOption) apply(h *Listener) { h.ingest = o.ingest }
 
 // WithIngest sets the ingest callback that forwards parsed Telemetry values to
 // the telemetry pipeline. It must be called before the handler methods are
 // invoked; the API router typically sets it during route registration.
 func WithIngest(ingest func(context.Context, *telemetry.Telemetry)) Option {
-	return func(h *Listener) { h.ingest = ingest }
+	return ingestOption{ingest: ingest}
 }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(h *Listener) { h.logger = o.logger }
 
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return func(h *Listener) { h.logger = logger }
-}
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
 
 // New creates a new Listener with the given options.
-func New(opts ...Option) *Listener {
+func New(options ...Option) *Listener {
 	h := &Listener{
 		logger:  zap.NewNop(),
 		counter: &DailyEventCounter{},
 	}
-	for _, opt := range opts {
-		opt(h)
+	for _, o := range options {
+		o.apply(h)
 	}
 	return h
 }

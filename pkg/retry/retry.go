@@ -328,18 +328,30 @@ func (r *Retry) DoAsync(ctx context.Context, op Operation, wheel timewheel.Wheel
 	if onComplete == nil {
 		onComplete = func(error) {}
 	}
-	r.scheduleAttempt(ctx, op, wheel, onComplete, 0, 0)
+	r.scheduleAttempt(ctx, op, wheel, onComplete, attemptPlan{attempt: 0, delay: 0})
 	return nil
 }
 
+// attemptPlan describes a scheduled retry attempt: the 0-based attempt
+// number and the delay to wait before it executes.
+type attemptPlan struct {
+	attempt int
+	delay   time.Duration
+}
+
 // scheduleAttempt registers a wheel callback that executes op for the given
-// attempt after waiting for delay. If op fails and retries remain, the next
-// attempt is scheduled with the backoff delay; otherwise onComplete is
+// attempt after waiting for plan.delay. If op fails and retries remain, the
+// next attempt is scheduled with the backoff delay; otherwise onComplete is
 // invoked with the final result. The context is checked at the start of each
 // callback so cancellation propagates without waiting for the delay to elapse.
-func (r *Retry) scheduleAttempt(ctx context.Context, op Operation, wheel timewheel.Wheel,
-	onComplete func(error), attempt int, delay time.Duration) {
-	wheel.Add(delay, func(timewheel.EntryID) {
+func (r *Retry) scheduleAttempt(
+	ctx context.Context,
+	op Operation,
+	wheel timewheel.Wheel,
+	onComplete func(error),
+	plan attemptPlan,
+) {
+	wheel.Add(plan.delay, func(timewheel.EntryID) {
 		select {
 		case <-ctx.Done():
 			onComplete(ctx.Err())
@@ -347,12 +359,12 @@ func (r *Retry) scheduleAttempt(ctx context.Context, op Operation, wheel timewhe
 		default:
 		}
 		if err := op(); err != nil {
-			if !r.retryable(err) || attempt >= r.maxAttempts-1 {
+			if !r.retryable(err) || plan.attempt >= r.maxAttempts-1 {
 				onComplete(err)
 				return
 			}
-			nextDelay := r.backoff.Next(attempt)
-			r.scheduleAttempt(ctx, op, wheel, onComplete, attempt+1, nextDelay)
+			nextDelay := r.backoff.Next(plan.attempt)
+			r.scheduleAttempt(ctx, op, wheel, onComplete, attemptPlan{attempt: plan.attempt + 1, delay: nextDelay})
 			return
 		}
 		onComplete(nil)

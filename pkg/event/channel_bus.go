@@ -143,14 +143,14 @@ func generateEventID() string {
 // Publish publishes an event to the bus.
 // The default mode is asynchronous: events are pushed onto the priority queue and dispatched by the consumer goroutine.
 // The WithSync option switches to synchronous mode, where the publisher blocks until all Handlers finish.
-func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, opts ...PublishOption) error {
+func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, options ...PublishOption) error {
 	if b.closed.Load() {
 		return ErrBusClosed
 	}
 
 	cfg := &publishConfig{}
-	for _, opt := range opts {
-		opt(cfg)
+	for _, o := range options {
+		o.apply(cfg)
 	}
 
 	env := acquireEnvelope()
@@ -237,14 +237,14 @@ func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, o
 
 // Subscribe registers a subscriber and returns a Subscription.
 // The first time a subscriber is registered for an event type, the consumer goroutine for that type is lazily started.
-func (b *channelBus) Subscribe(eventType Type, handler Handler, opts ...SubscribeOption) (Subscription, error) {
+func (b *channelBus) Subscribe(eventType Type, handler Handler, options ...SubscribeOption) (Subscription, error) {
 	if b.closed.Load() {
 		return nil, ErrBusClosed
 	}
 
 	cfg := &subscribeConfig{}
-	for _, opt := range opts {
-		opt(cfg)
+	for _, o := range options {
+		o.apply(cfg)
 	}
 
 	sub := &subscriber{

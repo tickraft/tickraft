@@ -110,7 +110,9 @@ func Subscribe[T any](bus Bus, eventType Type, handler func(ctx context.Context,
 }
 
 // PublishOption configures event publishing behavior.
-type PublishOption func(*publishConfig)
+type PublishOption interface {
+	apply(*publishConfig)
+}
 
 type publishConfig struct {
 	priority int
@@ -120,43 +122,54 @@ type publishConfig struct {
 	metadata map[string]string
 }
 
+// priorityOption sets the event priority.
+type priorityOption int
+
+func (o priorityOption) apply(c *publishConfig) { c.priority = int(o) }
+
 // WithPriority sets the event priority; higher values mean higher priority.
-func WithPriority(priority int) PublishOption {
-	return func(c *publishConfig) {
-		c.priority = priority
-	}
-}
+func WithPriority(priority int) PublishOption { return priorityOption(priority) }
+
+// syncOption enables synchronous dispatch mode.
+type syncOption struct{}
+
+func (syncOption) apply(c *publishConfig) { c.sync = true }
 
 // WithSync enables synchronous dispatch mode: the publisher blocks until all Handlers finish.
-func WithSync() PublishOption {
-	return func(c *publishConfig) {
-		c.sync = true
-	}
-}
+func WithSync() PublishOption { return syncOption{} }
+
+// eventIDOption sets the event unique identifier.
+type eventIDOption string
+
+func (o eventIDOption) apply(c *publishConfig) { c.eventID = string(o) }
 
 // WithEventID sets the event unique identifier; when not set, the bus generates one automatically.
-func WithEventID(eventID string) PublishOption {
-	return func(c *publishConfig) {
-		c.eventID = eventID
-	}
-}
+func WithEventID(eventID string) PublishOption { return eventIDOption(eventID) }
+
+// tenantIDOption sets the tenant identifier.
+type tenantIDOption string
+
+func (o tenantIDOption) apply(c *publishConfig) { c.tenantID = string(o) }
 
 // WithTenantID sets the tenant identifier, used for sharding and isolation.
-func WithTenantID(tenantID string) PublishOption {
-	return func(c *publishConfig) {
-		c.tenantID = tenantID
-	}
+func WithTenantID(tenantID string) PublishOption { return tenantIDOption(tenantID) }
+
+// metadataOption sets the event metadata.
+type metadataOption struct {
+	metadata map[string]string
 }
+
+func (o metadataOption) apply(c *publishConfig) { c.metadata = o.metadata }
 
 // WithMetadata sets event metadata, carrying key-value context propagated across modules.
 func WithMetadata(metadata map[string]string) PublishOption {
-	return func(c *publishConfig) {
-		c.metadata = metadata
-	}
+	return metadataOption{metadata: metadata}
 }
 
 // SubscribeOption configures subscription behavior.
-type SubscribeOption func(*subscribeConfig)
+type SubscribeOption interface {
+	apply(*subscribeConfig)
+}
 
 type subscribeConfig struct {
 	filter      FilterFunc
@@ -167,27 +180,53 @@ type subscribeConfig struct {
 	syncMode    bool
 }
 
-// WithFilter sets the event filter function; events are delivered only when it returns true.
-func WithFilter(filter FilterFunc) SubscribeOption {
-	return func(c *subscribeConfig) {
-		c.filter = filter
-	}
+// filterOption sets the event filter function.
+type filterOption struct {
+	filter FilterFunc
 }
 
+func (o filterOption) apply(c *subscribeConfig) { c.filter = o.filter }
+
+// WithFilter sets the event filter function; events are delivered only when it returns true.
+func WithFilter(filter FilterFunc) SubscribeOption { return filterOption{filter: filter} }
+
+// timeoutOption sets the Handler execution timeout.
+type timeoutOption time.Duration
+
+func (o timeoutOption) apply(c *subscribeConfig) { c.timeout = time.Duration(o) }
+
 // WithTimeout sets the Handler execution timeout; the Handler's context is cancelled on expiry.
-func WithTimeout(timeout time.Duration) SubscribeOption {
-	return func(c *subscribeConfig) {
-		c.timeout = timeout
-	}
+func WithTimeout(timeout time.Duration) SubscribeOption { return timeoutOption(timeout) }
+
+// retryOption sets the exponential backoff retry strategy.
+type retryOption struct {
+	maxRetries  int
+	baseBackoff time.Duration
+}
+
+func (o retryOption) apply(c *subscribeConfig) {
+	c.maxRetries = o.maxRetries
+	c.baseBackoff = o.baseBackoff
 }
 
 // WithRetry configures an exponential backoff retry strategy.
 // maxRetries is the maximum retry count and baseBackoff is the base backoff interval.
 // The actual backoff interval is baseBackoff * 2^n, where n is the current retry attempt.
 func WithRetry(maxRetries int, baseBackoff time.Duration) SubscribeOption {
-	return func(c *subscribeConfig) {
-		c.maxRetries = maxRetries
-		c.baseBackoff = baseBackoff
+	return retryOption{maxRetries: maxRetries, baseBackoff: baseBackoff}
+}
+
+// jitterOption sets the jitter factor applied to the exponential backoff.
+type jitterOption float64
+
+func (o jitterOption) apply(c *subscribeConfig) {
+	switch {
+	case float64(o) < 0.0:
+		c.jitter = 0.0
+	case float64(o) > 1.0:
+		c.jitter = 1.0
+	default:
+		c.jitter = float64(o)
 	}
 }
 
@@ -198,71 +237,82 @@ func WithRetry(maxRetries int, baseBackoff time.Duration) SubscribeOption {
 // factor=0.3 means partial jitter: backoff is randomized in [0.7*exponential, exponential].
 // The jittered backoff formula is: exponential * (1.0 - factor + factor * rand.Float64()).
 // WithJitter is only effective when combined with WithRetry.
-func WithJitter(factor float64) SubscribeOption {
-	return func(c *subscribeConfig) {
-		switch {
-		case factor < 0.0:
-			c.jitter = 0.0
-		case factor > 1.0:
-			c.jitter = 1.0
-		default:
-			c.jitter = factor
-		}
-	}
-}
+func WithJitter(factor float64) SubscribeOption { return jitterOption(factor) }
+
+// syncModeOption marks the subscriber as synchronous.
+type syncModeOption struct{}
+
+func (syncModeOption) apply(c *subscribeConfig) { c.syncMode = true }
 
 // WithSyncMode marks the subscriber as synchronous: the Handler is invoked directly in the publisher goroutine.
-func WithSyncMode() SubscribeOption {
-	return func(c *subscribeConfig) {
-		c.syncMode = true
+func WithSyncMode() SubscribeOption { return syncModeOption{} }
+
+// Option configures Bus construction.
+type Option interface {
+	apply(*channelBus)
+}
+
+// bufferSizeOption sets the priority queue buffer size.
+type bufferSizeOption int
+
+func (o bufferSizeOption) apply(b *channelBus) {
+	if int(o) > 0 {
+		b.bufferSize = int(o)
 	}
 }
 
-// Option configures Bus construction.
-type Option func(*channelBus)
-
 // WithBufferSize sets the priority queue buffer size; the default is 1024.
-func WithBufferSize(size int) Option {
-	return func(b *channelBus) {
-		if size > 0 {
-			b.bufferSize = size
-		}
+func WithBufferSize(size int) Option { return bufferSizeOption(size) }
+
+// loggerOption sets the zap logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(b *channelBus) {
+	if o.logger != nil {
+		b.logger = o.logger
 	}
 }
 
 // WithLogger sets the zap logger; the default is no-op.
-func WithLogger(logger *zap.Logger) Option {
-	return func(b *channelBus) {
-		if logger != nil {
-			b.logger = logger
-		}
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
+// defaultTimeoutOption sets the default Handler execution timeout.
+type defaultTimeoutOption time.Duration
+
+func (o defaultTimeoutOption) apply(b *channelBus) {
+	if time.Duration(o) > 0 {
+		b.defaultTimeout = time.Duration(o)
 	}
 }
 
 // WithDefaultTimeout sets the default Handler execution timeout; the default is 3 seconds.
-func WithDefaultTimeout(timeout time.Duration) Option {
-	return func(b *channelBus) {
-		if timeout > 0 {
-			b.defaultTimeout = timeout
-		}
+func WithDefaultTimeout(timeout time.Duration) Option { return defaultTimeoutOption(timeout) }
+
+// failedEventStoreOption configures the persistent store for failed events.
+type failedEventStoreOption struct {
+	store FailedEventStore
+}
+
+func (o failedEventStoreOption) apply(b *channelBus) {
+	if o.store != nil {
+		b.failedStore = o.store
 	}
 }
 
 // WithFailedEventStore configures the persistent store for failed events.
 func WithFailedEventStore(store FailedEventStore) Option {
-	return func(b *channelBus) {
-		if store != nil {
-			b.failedStore = store
-		}
-	}
+	return failedEventStoreOption{store: store}
 }
 
+// debugOption enables event lifecycle tracing logs.
+type debugOption bool
+
+func (o debugOption) apply(b *channelBus) { b.debug = bool(o) }
+
 // WithDebug enables event lifecycle tracing logs.
-func WithDebug(enabled bool) Option {
-	return func(b *channelBus) {
-		b.debug = enabled
-	}
-}
+func WithDebug(enabled bool) Option { return debugOption(enabled) }
 
 // Instrumenter is the SPI extension point for event bus observability.
 // This package provides a no-op default; callers
@@ -295,20 +345,25 @@ func (noopInstrumenter) IncRetry(Type, string)                              {}
 func (noopInstrumenter) IncSubscriberCount(Type)                            {}
 func (noopInstrumenter) DecSubscriberCount(Type)                            {}
 
-// WithInstrumenter sets the Instrumenter for observability.
-// The default Instrumenter is a no-op; callers may inject
-// a Prometheus-backed implementation.
-func WithInstrumenter(i Instrumenter) Option {
-	return func(b *channelBus) {
-		if i != nil {
-			b.instrumenter = i
-		}
+// instrumenterOption sets the Instrumenter for observability.
+type instrumenterOption struct {
+	i Instrumenter
+}
+
+func (o instrumenterOption) apply(b *channelBus) {
+	if o.i != nil {
+		b.instrumenter = o.i
 	}
 }
 
+// WithInstrumenter sets the Instrumenter for observability.
+// The default Instrumenter is a no-op; callers may inject
+// a Prometheus-backed implementation.
+func WithInstrumenter(i Instrumenter) Option { return instrumenterOption{i: i} }
+
 // NewBus creates a new event bus instance.
-func NewBus(opts ...Option) Bus {
-	b := &channelBus{
+func NewBus(options ...Option) Bus {
+	bus := &channelBus{
 		subscribers:    make(map[Type][]*subscriber),
 		queues:         make(map[Type]*typeQueue),
 		bufferSize:     defaultBufferSize,
@@ -317,10 +372,10 @@ func NewBus(opts ...Option) Bus {
 		failedStore:    NoopFailedEventStore{},
 		instrumenter:   noopInstrumenter{},
 	}
-	for _, opt := range opts {
-		opt(b)
+	for _, o := range options {
+		o.apply(bus)
 	}
-	return b
+	return bus
 }
 
 // FilterFunc is the event filter function; events are delivered to subscribers only when it returns true.

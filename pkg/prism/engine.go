@@ -85,10 +85,10 @@ type Engine struct {
 
 // Option configures an Engine.
 type Option interface {
-	apply(*options)
+	apply(*engineOptions)
 }
 
-type options struct {
+type engineOptions struct {
 	bus                  event.Bus
 	logger               *zap.Logger
 	notificationPoolSize int
@@ -99,33 +99,65 @@ type options struct {
 	guards               []governance.Guard
 }
 
-type funcOption func(*options)
+// eventBusOption sets the event bus used to subscribe to alert events.
+type eventBusOption struct {
+	bus event.Bus
+}
 
-func (f funcOption) apply(o *options) { f(o) }
+func (o eventBusOption) apply(options *engineOptions) { options.bus = o.bus }
 
 // WithEventBus sets the event bus used to subscribe to alert events.
 func WithEventBus(bus event.Bus) Option {
-	return funcOption(func(o *options) { o.bus = bus })
+	return eventBusOption{bus: bus}
 }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
+}
+
+func (o loggerOption) apply(options *engineOptions) { options.logger = o.logger }
 
 // WithLogger sets the structured logger.
 func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *options) { o.logger = logger })
+	return loggerOption{logger: logger}
+}
+
+// notificationPoolSizeOption sets the goroutine pool size for sending notifications.
+type notificationPoolSizeOption int
+
+func (o notificationPoolSizeOption) apply(options *engineOptions) {
+	options.notificationPoolSize = int(o)
 }
 
 // WithNotificationPoolSize sets the goroutine pool size for sending
 // notifications. A non-positive value defaults to 8. Ignored when
 // WithPool is used to inject an externally-owned pool.
 func WithNotificationPoolSize(n int) Option {
-	return funcOption(func(o *options) { o.notificationPoolSize = n })
+	return notificationPoolSizeOption(n)
 }
+
+// poolOption injects an externally-owned worker pool for notification dispatch.
+type poolOption struct {
+	p pool.Pool
+}
+
+func (o poolOption) apply(options *engineOptions) { options.notifyPool = o.p }
 
 // WithPool injects an externally-owned worker pool for notification
 // dispatch. When set, the engine does not create or shut down its own
 // pool; the caller is responsible for the pool lifecycle.
 func WithPool(p pool.Pool) Option {
-	return funcOption(func(o *options) { o.notifyPool = p })
+	return poolOption{p: p}
 }
+
+// onAlertOption registers a callback invoked when an alert event matches
+// the registered rules.
+type onAlertOption struct {
+	fn OnAlertFunc
+}
+
+func (o onAlertOption) apply(options *engineOptions) { options.onAlert = o.fn }
 
 // WithOnAlert registers a callback invoked when an alert event matches the
 // registered rules (or when no rules are registered). The callback is
@@ -134,8 +166,15 @@ func WithPool(p pool.Pool) Option {
 // store without introducing a dependency from the prism package to the
 // store package.
 func WithOnAlert(fn OnAlertFunc) Option {
-	return funcOption(func(o *options) { o.onAlert = fn })
+	return onAlertOption{fn: fn}
 }
+
+// postGuardHookOption registers a hook invoked after the governance guard chain passes.
+type postGuardHookOption struct {
+	h PostGuardHook
+}
+
+func (o postGuardHookOption) apply(options *engineOptions) { options.postGuardHook = o.h }
 
 // WithPostGuardHook registers a hook invoked after the governance guard chain
 // passes (every guard returned DecisionPass) and before rule evaluation. The
@@ -144,15 +183,36 @@ func WithOnAlert(fn OnAlertFunc) Option {
 // single-process deployment no hook is registered, so Dispatch
 // proceeds directly to rule evaluation.
 func WithPostGuardHook(h PostGuardHook) Option {
-	return funcOption(func(o *options) { o.postGuardHook = h })
+	return postGuardHookOption{h: h}
 }
+
+// deadLetterHandlerOption registers a handler invoked when a notification
+// dispatch fails to be submitted to the worker pool.
+type deadLetterHandlerOption struct {
+	h DeadLetterHandler
+}
+
+func (o deadLetterHandlerOption) apply(options *engineOptions) { options.deadLetterHandler = o.h }
 
 // WithDeadLetterHandler registers a handler invoked when a notification
 // dispatch fails to be submitted to the worker pool (e.g. pool at capacity).
 // The handler may persist the event to a dead-letter queue for later retry.
 // When nil (default), rejected notifications are logged and dropped.
 func WithDeadLetterHandler(h DeadLetterHandler) Option {
-	return funcOption(func(o *options) { o.deadLetterHandler = h })
+	return deadLetterHandlerOption{h: h}
+}
+
+// guardsOption sets the governance guard chain invoked before rule evaluation.
+type guardsOption struct {
+	guards []governance.Guard
+}
+
+func (o guardsOption) apply(options *engineOptions) {
+	for _, g := range o.guards {
+		if g != nil {
+			options.guards = append(options.guards, g)
+		}
+	}
 }
 
 // WithGuards sets the governance guard chain invoked before rule
@@ -161,13 +221,7 @@ func WithDeadLetterHandler(h DeadLetterHandler) Option {
 // deployment the chain is empty, so Dispatch proceeds directly to rule
 // evaluation.
 func WithGuards(guards ...governance.Guard) Option {
-	return funcOption(func(o *options) {
-		for _, g := range guards {
-			if g != nil {
-				o.guards = append(o.guards, g)
-			}
-		}
-	})
+	return guardsOption{guards: guards}
 }
 
 // New creates a new alert Engine with the given options.
@@ -180,29 +234,29 @@ func WithGuards(guards ...governance.Guard) Option {
 // initialized. This path is unreachable in practice because the worker
 // count is sanitized to a positive value, but the error is returned
 // rather than panicking to honor the "no panic in business logic" rule.
-func New(opts ...Option) (*Engine, error) {
-	o := &options{
+func New(options ...Option) (*Engine, error) {
+	opts := &engineOptions{
 		logger:               zap.NewNop(),
 		notificationPoolSize: defaultNotificationPoolSize,
 	}
-	for _, opt := range opts {
-		opt.apply(o)
+	for _, o := range options {
+		o.apply(opts)
 	}
 
-	e := &Engine{
-		bus:               o.bus,
-		logger:            o.logger,
-		onAlert:           o.onAlert,
-		postGuardHook:     o.postGuardHook,
-		deadLetterHandler: o.deadLetterHandler,
-		guards:            o.guards,
+	engine := &Engine{
+		bus:               opts.bus,
+		logger:            opts.logger,
+		onAlert:           opts.onAlert,
+		postGuardHook:     opts.postGuardHook,
+		deadLetterHandler: opts.deadLetterHandler,
+		guards:            opts.guards,
 	}
 
-	if o.notifyPool != nil {
-		e.notifyPool = o.notifyPool
-		e.poolOwned = false
+	if opts.notifyPool != nil {
+		engine.notifyPool = opts.notifyPool
+		engine.poolOwned = false
 	} else {
-		size := o.notificationPoolSize
+		size := opts.notificationPoolSize
 		if size <= 0 {
 			size = defaultNotificationPoolSize
 		}
@@ -216,11 +270,11 @@ func New(opts ...Option) (*Engine, error) {
 			// the "no panic in business logic" rule.
 			return nil, fmt.Errorf("prism: create notification pool: %w", err)
 		}
-		e.notifyPool = p
-		e.poolOwned = true
+		engine.notifyPool = p
+		engine.poolOwned = true
 	}
 
-	return e, nil
+	return engine, nil
 }
 
 // AddChannel registers a notification channel. Channels are notified

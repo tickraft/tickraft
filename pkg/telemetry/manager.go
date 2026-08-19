@@ -91,18 +91,18 @@ type Manager struct {
 // because the wheel's worker count and the IO pool's size are both
 // sanitized to positive values, but the error is returned rather than
 // panicking to honor the "no panic in business logic" rule.
-func newManager(opts ...Option) (*Manager, error) {
-	o := &Options{}
-	for _, opt := range opts {
-		opt.apply(o)
+func newManager(options ...Option) (*Manager, error) {
+	opts := &Options{}
+	for _, o := range options {
+		o.apply(opts)
 	}
 
-	logger := o.Logger
+	logger := opts.Logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
-	bus := o.Bus
+	bus := opts.Bus
 	if bus == nil {
 		bus = event.NewBus()
 	}
@@ -113,40 +113,40 @@ func newManager(opts ...Option) (*Manager, error) {
 	}
 
 	m := &Manager{
-		processorRegistry: o.ProcessorRegistry,
-		store:             o.AssetStore,
+		processorRegistry: opts.ProcessorRegistry,
+		store:             opts.AssetStore,
 		bus:               bus,
-		dbc:               o.DB,
+		dbc:               opts.DB,
 		wheel:             wheel,
 		logger:            logger,
 		telemetryCh:       make(chan *Telemetry, 1024),
-		validator:         NewValidator(o.AssetStore, logger),
-		proberSvc:         o.ProberService,
-		listenerRegistry:  o.ListenerRegistry,
+		validator:         NewValidator(opts.AssetStore, logger),
+		proberSvc:         opts.ProberService,
+		listenerRegistry:  opts.ListenerRegistry,
 	}
 
 	m.state = newStateManager(m.store, m.dbc, m.wheel, m.logger, m.handleTimeout)
 	m.emitter = newEmitter(m.bus, m.logger)
 
 	// Configure aggregation when a positive window is provided.
-	if o.AggregationWindow > 0 {
-		m.aggregator = NewAggregator(o.AggregationWindow, logger)
+	if opts.AggregationWindow > 0 {
+		m.aggregator = NewAggregator(opts.AggregationWindow, logger)
 	}
 
 	// Configure persistence: explicit injection takes precedence, otherwise
 	// auto-create when both stores are provided.
-	if o.Persistence != nil {
-		m.persistence = o.Persistence
-	} else if o.MetricStore != nil && o.LogStore != nil {
-		m.persistence = NewPersistence(o.MetricStore, o.LogStore, logger)
+	if opts.Persistence != nil {
+		m.persistence = opts.Persistence
+	} else if opts.MetricStore != nil && opts.LogStore != nil {
+		m.persistence = NewPersistence(opts.MetricStore, opts.LogStore, logger)
 	}
 
 	// Configure the report processing pool. An injected pool takes
 	// precedence and its lifecycle is owned by the caller. When no pool
 	// is injected a default IO pool is created and the manager owns its
 	// lifecycle, shutting it down on Stop.
-	if o.Pool != nil {
-		m.reportPool = o.Pool
+	if opts.Pool != nil {
+		m.reportPool = opts.Pool
 		m.poolOwned = false
 	} else {
 		reportPool, err := pool.NewIOPool(runtime.NumCPU())

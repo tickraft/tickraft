@@ -50,7 +50,12 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 				zap.Any("panic", rec),
 				zap.Stack("stack"),
 			)
-			r.finish(ctx, req, nil, fmt.Errorf("executor panic: %v", rec), 0, start)
+			r.finish(req, executionOutcome{
+				result:     nil,
+				execErr:    fmt.Errorf("executor panic: %v", rec),
+				retryCount: 0,
+				start:      start,
+			})
 			release()
 		}
 	}()
@@ -63,7 +68,12 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 			zap.String("operation", req.Operation.String()),
 			zap.Error(err),
 		)
-		r.finish(ctx, req, nil, err, 0, start)
+		r.finish(req, executionOutcome{
+			result:     nil,
+			execErr:    err,
+			retryCount: 0,
+			start:      start,
+		})
 		release()
 		return
 	}
@@ -133,7 +143,12 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 		if attempts > 1 {
 			retryCount = attempts - 1
 		}
-		r.finish(ctx, req, lastResult, execErr, retryCount, start)
+		r.finish(req, executionOutcome{
+			result:     lastResult,
+			execErr:    execErr,
+			retryCount: retryCount,
+			start:      start,
+		})
 	}
 
 	r.runWithRetry(ctx, req, retryCfg, execFn, onComplete)
@@ -189,21 +204,24 @@ func (r *runner) runWithRetry(
 	}
 }
 
+// executionOutcome bundles the outcome of a task execution: the final
+// result, the error (if any), the number of retries attempted, and the
+// time the execution started.
+type executionOutcome struct {
+	result     *Result
+	execErr    error
+	retryCount int
+	start      time.Time
+}
+
 // finish saves the execution record and publishes the completion event.
 // retryCount is the number of retries attempted (0 when the task succeeded
 // on the first attempt or when no retry config was applied).
-func (r *runner) finish(
-	_ context.Context,
-	req ExecutionRequest,
-	result *Result,
-	execErr error,
-	retryCount int,
-	start time.Time,
-) {
-	duration := time.Since(start)
+func (r *runner) finish(req ExecutionRequest, outcome executionOutcome) {
+	duration := time.Since(outcome.start)
 	finishedAt := time.Now()
 
-	status, errorMsg := inferStatus(result, execErr)
+	status, errorMsg := inferStatus(outcome.result, outcome.execErr)
 
 	// Save execution record before publishing the completion event so that
 	// by the time any subscriber observes the completion, the record is
@@ -218,16 +236,16 @@ func (r *runner) finish(
 		Operation:    req.Operation,
 		Status:       status,
 		Duration:     duration,
-		RetryCount:   retryCount,
-		StartedAt:    start,
+		RetryCount:   outcome.retryCount,
+		StartedAt:    outcome.start,
 		FinishedAt:   finishedAt,
 		ErrorMsg:     errorMsg,
 		RunID:        req.RunID,
 		TriggerType:  req.TriggerType,
 	}
-	if result != nil {
-		record.StatusCode = result.StatusCode
-		record.Output = result.Body
+	if outcome.result != nil {
+		record.StatusCode = outcome.result.StatusCode
+		record.Output = outcome.result.Body
 	}
 	if saveErr := r.records.Save(record); saveErr != nil {
 		r.logger.Warn("failed to save execution record",
@@ -245,10 +263,10 @@ func (r *runner) finish(
 			Status:      string(status),
 			Error:       errorMsg,
 		}
-		if result != nil {
-			payload.StatusCode = result.StatusCode
-			payload.Output = result.Body
-			payload.Duration = int64(result.Duration)
+		if outcome.result != nil {
+			payload.StatusCode = outcome.result.StatusCode
+			payload.Output = outcome.result.Body
+			payload.Duration = int64(outcome.result.Duration)
 		}
 		if err := event.Publish(context.Background(), r.bus, event.TypeExecutionCompleted,
 			payload, event.WithMetadata(req.Metadata)); err != nil {

@@ -61,18 +61,33 @@ func Sign(claims Claims, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+// SignTokenOptions holds the parameters for signing a JWT token.
+type SignTokenOptions struct {
+	// UserID is the unique identifier of the authenticated user.
+	UserID int64
+	// TenantID is the tenant identifier for multi-tenancy isolation.
+	// The runtime is single-tenant: this field is always 0.
+	TenantID int64
+	// Role is the authorization role of the user (0=visitor 1=developer 2=admin).
+	Role int
+	// Username is the login name of the user.
+	Username string
+	// Expiry is the token lifetime starting from the issue time.
+	Expiry time.Duration
+}
+
 // SignToken creates a signed JWT token with full user info including username
 // and a unique JTI for revocation tracking.
-func SignToken(userID, tenantID int64, role int, username, secret string, expiry time.Duration) (string, error) {
+func SignToken(secret string, opts SignTokenOptions) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:   userID,
-		TenantID: tenantID,
-		Role:     role,
-		Username: username,
+		UserID:   opts.UserID,
+		TenantID: opts.TenantID,
+		Role:     opts.Role,
+		Username: opts.Username,
 		RegisteredClaims: jwtgo.RegisteredClaims{
 			ID:        newJTI(),
-			ExpiresAt: jwtgo.NewNumericDate(now.Add(expiry)),
+			ExpiresAt: jwtgo.NewNumericDate(now.Add(opts.Expiry)),
 			IssuedAt:  jwtgo.NewNumericDate(now),
 			NotBefore: jwtgo.NewNumericDate(now),
 		},

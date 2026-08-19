@@ -81,82 +81,140 @@ type Options struct {
 	ListenerRegistry *ListenerRegistry
 }
 
-type funcOption func(*Options)
+// processorRegistryOption sets the processor registry.
+type processorRegistryOption struct {
+	registry *ProcessorRegistry
+}
 
-func (f funcOption) apply(o *Options) { f(o) }
+func (o processorRegistryOption) apply(opts *Options) { opts.ProcessorRegistry = o.registry }
 
 // WithProcessorRegistry sets the processor registry.
 func WithProcessorRegistry(registry *ProcessorRegistry) Option {
-	return funcOption(func(o *Options) { o.ProcessorRegistry = registry })
+	return processorRegistryOption{registry: registry}
 }
+
+// assetStoreOption sets the asset persistence store.
+type assetStoreOption struct {
+	store asset.Store
+}
+
+func (o assetStoreOption) apply(opts *Options) { opts.AssetStore = o.store }
 
 // WithAssetStore sets the asset persistence store.
-func WithAssetStore(store asset.Store) Option {
-	return funcOption(func(o *Options) { o.AssetStore = store })
+func WithAssetStore(store asset.Store) Option { return assetStoreOption{store: store} }
+
+// eventBusOption sets the event bus for event publishing.
+type eventBusOption struct {
+	bus event.Bus
 }
+
+func (o eventBusOption) apply(opts *Options) { opts.Bus = o.bus }
 
 // WithEventBus sets the event bus for event publishing.
-func WithEventBus(bus event.Bus) Option {
-	return funcOption(func(o *Options) { o.Bus = bus })
+func WithEventBus(bus event.Bus) Option { return eventBusOption{bus: bus} }
+
+// dbOption sets the GORM database instance for persistence.
+type dbOption struct {
+	db *gorm.DB
 }
+
+func (o dbOption) apply(opts *Options) { opts.DB = o.db }
 
 // WithDB sets the GORM database instance for persistence.
-func WithDB(dbc *gorm.DB) Option {
-	return funcOption(func(o *Options) { o.DB = dbc })
+func WithDB(dbc *gorm.DB) Option { return dbOption{db: dbc} }
+
+// loggerOption sets the structured logger.
+type loggerOption struct {
+	logger *zap.Logger
 }
 
+func (o loggerOption) apply(opts *Options) { opts.Logger = o.logger }
+
 // WithLogger sets the structured logger.
-func WithLogger(logger *zap.Logger) Option {
-	return funcOption(func(o *Options) { o.Logger = logger })
-}
+func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
+
+// aggregationWindowOption sets the metric tumbling window duration.
+type aggregationWindowOption time.Duration
+
+func (o aggregationWindowOption) apply(opts *Options) { opts.AggregationWindow = time.Duration(o) }
 
 // WithAggregationWindow sets the metric tumbling window duration. A non-positive
 // value disables aggregation.
-func WithAggregationWindow(d time.Duration) Option {
-	return funcOption(func(o *Options) { o.AggregationWindow = d })
+func WithAggregationWindow(d time.Duration) Option { return aggregationWindowOption(d) }
+
+// metricStoreOption sets the store used to persist metric data points.
+type metricStoreOption struct {
+	store MetricStore
 }
+
+func (o metricStoreOption) apply(opts *Options) { opts.MetricStore = o.store }
 
 // WithMetricStore sets the store used to persist metric data points. When both
 // MetricStore and LogStore are provided, a Persistence layer is created
 // automatically.
-func WithMetricStore(store MetricStore) Option {
-	return funcOption(func(o *Options) { o.MetricStore = store })
+func WithMetricStore(store MetricStore) Option { return metricStoreOption{store: store} }
+
+// logStoreOption sets the store used to persist log entries.
+type logStoreOption struct {
+	store LogStore
 }
+
+func (o logStoreOption) apply(opts *Options) { opts.LogStore = o.store }
 
 // WithLogStore sets the store used to persist log entries. When both MetricStore
 // and LogStore are provided, a Persistence layer is created automatically.
-func WithLogStore(store LogStore) Option {
-	return funcOption(func(o *Options) { o.LogStore = store })
+func WithLogStore(store LogStore) Option { return logStoreOption{store: store} }
+
+// persistenceOption injects a pre-built persistence layer.
+type persistenceOption struct {
+	p *Persistence
 }
+
+func (o persistenceOption) apply(opts *Options) { opts.Persistence = o.p }
 
 // WithPersistence injects a pre-built persistence layer, overriding any
 // MetricStore/LogStore configuration.
-func WithPersistence(p *Persistence) Option {
-	return funcOption(func(o *Options) { o.Persistence = p })
+func WithPersistence(p *Persistence) Option { return persistenceOption{p: p} }
+
+// poolOption injects a worker pool used for concurrent telemetry processing.
+type poolOption struct {
+	p pool.Pool
 }
+
+func (o poolOption) apply(opts *Options) { opts.Pool = o.p }
 
 // WithPool injects a worker pool used for concurrent telemetry processing.
 // When this option is not supplied the manager creates a default IO pool
 // sized to runtime.NumCPU and owns its lifecycle (shutting it down on
 // Stop). An injected pool is never shut down by the manager; the caller
 // retains full lifecycle responsibility.
-func WithPool(p pool.Pool) Option {
-	return funcOption(func(o *Options) { o.Pool = p })
+func WithPool(p pool.Pool) Option { return poolOption{p: p} }
+
+// proberServiceOption injects the active probing coordinator.
+type proberServiceOption struct {
+	svc *ProberService
 }
+
+func (o proberServiceOption) apply(opts *Options) { opts.ProberService = o.svc }
 
 // WithProberService injects the active probing coordinator. When set,
 // the Manager starts the ProberService alongside the listener pipeline
 // and stops it in reverse order on shutdown.
-func WithProberService(svc *ProberService) Option {
-	return funcOption(func(o *Options) { o.ProberService = svc })
+func WithProberService(svc *ProberService) Option { return proberServiceOption{svc: svc} }
+
+// listenerRegistryOption injects the passive listener registry.
+type listenerRegistryOption struct {
+	reg *ListenerRegistry
 }
+
+func (o listenerRegistryOption) apply(opts *Options) { opts.ListenerRegistry = o.reg }
 
 // WithListenerRegistry injects the passive listener registry. When set,
 // the Manager starts all registered ProtocolListeners on Start and stops
 // them on Stop. HTTPListeners in the registry are looked up by the API
 // router layer to mount their handlers on the telemetry endpoint.
 func WithListenerRegistry(reg *ListenerRegistry) Option {
-	return funcOption(func(o *Options) { o.ListenerRegistry = reg })
+	return listenerRegistryOption{reg: reg}
 }
 
 // New creates a new Collector with the given options.
@@ -165,6 +223,6 @@ func WithListenerRegistry(reg *ListenerRegistry) Option {
 // cannot be initialized (see [Manager] / [timewheel.New] for details).
 // The error path is unreachable in practice but is returned rather
 // than panicking to honor the "no panic in business logic" rule.
-func New(opts ...Option) (Collector, error) {
-	return newManager(opts...)
+func New(options ...Option) (Collector, error) {
+	return newManager(options...)
 }

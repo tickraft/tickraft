@@ -97,7 +97,12 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("register routes: %w", err)
 	}
 
-	if err = startACMERenewal(ctx, rt, errCh, srv, &cfg, sc); err != nil {
+	if err = startACMERenewal(ctx, rt, acmeRenewalDeps{
+		errCh: errCh,
+		srv:   srv,
+		cfg:   &cfg,
+		sc:    sc,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -410,6 +415,18 @@ func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 	return []router.RegisterOption{router.WithSystemService(systemSvc)}, nil
 }
 
+// acmeRenewalDeps bundles the server-side dependencies required to start
+// the ACME renewal loop: the error channel reporting loop failures, the
+// Hertz server serving the HTTP-01 challenge and reloading TLS, the
+// mutable server config updated with ACME certificate paths, and the
+// static server settings that gate whether ACME is enabled.
+type acmeRenewalDeps struct {
+	errCh chan<- error
+	srv   *api.Server
+	cfg   *api.ServerConfig
+	sc    config.ServerConfig
+}
+
 // startACMERenewal registers the HTTP-01 challenge handler and starts the
 // ACME renewal loop when ACME auto-issuance is enabled.
 //
@@ -420,20 +437,13 @@ func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 // server shuts down. Failures to issue are logged by the loop and do not
 // abort startup, so a transient ACME server failure cannot take an
 // otherwise-healthy server down.
-func startACMERenewal(
-	ctx context.Context,
-	rt *runtime,
-	errCh chan<- error,
-	srv *api.Server,
-	cfg *api.ServerConfig,
-	sc config.ServerConfig,
-) error {
-	if !sc.TLSEnabled || !sc.ACME.Enabled {
+func startACMERenewal(ctx context.Context, rt *runtime, deps acmeRenewalDeps) error {
+	if !deps.sc.TLSEnabled || !deps.sc.ACME.Enabled {
 		return nil
 	}
 	http01 := api.NewHTTP01Provider()
 	api.SetACMEProvider(http01)
-	srv.Group("").GET(api.HTTP01ChallengePath+":token", http01.Handler)
+	deps.srv.Group("").GET(api.HTTP01ChallengePath+":token", http01.Handler)
 
 	// File-backed ACME cert store so issued certificates and the ACME
 	// account key survive process restarts. The store writes the most
@@ -444,21 +454,21 @@ func startACMERenewal(
 	if err != nil {
 		return fmt.Errorf("create acme cert store: %w", err)
 	}
-	cfg.TLSCertFile = acmeCertStore.ServerCertFile()
-	cfg.TLSKeyFile = acmeCertStore.ServerKeyFile()
+	deps.cfg.TLSCertFile = acmeCertStore.ServerCertFile()
+	deps.cfg.TLSKeyFile = acmeCertStore.ServerKeyFile()
 	// Rebuild the TLS config so the cert paths point at the ACME store.
-	if _, err := srv.ReloadTLSConfig(); err != nil {
+	if _, err := deps.srv.ReloadTLSConfig(); err != nil {
 		// Pre-issuance: the cert files do not exist yet. This is
 		// expected on first start; the ACME loop will create them.
 		rt.logger.Debug("acme: initial tls reload deferred (no cert yet)", zap.Error(err))
 	}
 
 	acmeMgr := &api.ACMEManager{
-		DirectoryURL:  cfg.ACME.DirectoryURL,
-		Email:         cfg.ACME.Email,
-		ChallengeType: cfg.ACME.ChallengeType,
-		Domains:       cfg.ACME.Domains,
-		Reloader:      srv,
+		DirectoryURL:  deps.cfg.ACME.DirectoryURL,
+		Email:         deps.cfg.ACME.Email,
+		ChallengeType: deps.cfg.ACME.ChallengeType,
+		Domains:       deps.cfg.ACME.Domains,
+		Reloader:      deps.srv,
 		CertStore:     acmeCertStore,
 	}
 	acmeCtx, acmeCancel := context.WithCancel(ctx)
@@ -470,14 +480,14 @@ func startACMERenewal(
 		if err := acmeMgr.Run(acmeCtx); err != nil {
 			rt.logger.Error("acme manager exited", zap.Error(err))
 			select {
-			case errCh <- fmt.Errorf("acme manager: %w", err):
+			case deps.errCh <- fmt.Errorf("acme manager: %w", err):
 			default:
 			}
 		}
 		acmeCancel()
 	}()
 	rt.logger.Info("acme manager started",
-		zap.String("directory", cfg.ACME.DirectoryURL),
+		zap.String("directory", deps.cfg.ACME.DirectoryURL),
 		zap.Strings("domains", acmeMgr.Domains),
 	)
 	return nil
@@ -521,8 +531,12 @@ func startMaintenanceLoop(
 	// goroutine lifecycle: bound to maintCtx (cancelled by the returned
 	// stop function); runMaintenanceLoop selects on ctx.Done and exits;
 	// tracked by wg so the stop function can wait for full exit.
-	go runMaintenanceLoop(maintCtx, &wg, rt.logger, blacklistStore,
-		rt.schedulerExecStore, retentionDays, maintenanceInterval)
+	go runMaintenanceLoop(maintCtx, &wg, rt.logger, maintenanceConfig{
+		blacklistStore: blacklistStore,
+		executionStore: rt.schedulerExecStore,
+		retentionDays:  retentionDays,
+		interval:       maintenanceInterval,
+	})
 
 	rt.logger.Info("maintenance loop started",
 		zap.Duration("interval", maintenanceInterval),
@@ -548,6 +562,16 @@ func startMaintenanceLoop(
 	}, nil
 }
 
+// maintenanceConfig bundles the maintenance loop parameters: the token
+// blacklist and execution stores to sweep, the execution log retention
+// window in days, and the interval between sweeps.
+type maintenanceConfig struct {
+	blacklistStore auth.BlacklistStore
+	executionStore task.ExecutionStore
+	retentionDays  int
+	interval       time.Duration
+}
+
 // runMaintenanceLoop periodically executes maintenance sweeps: cleaning up
 // expired token blacklist entries and deleting stale execution logs that
 // exceed the configured retention window. The loop exits when ctx is
@@ -556,20 +580,17 @@ func runMaintenanceLoop(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	logger *zap.Logger,
-	blacklistStore auth.BlacklistStore,
-	executionStore task.ExecutionStore,
-	retentionDays int,
-	interval time.Duration,
+	cfg maintenanceConfig,
 ) {
 	defer wg.Done()
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			runMaintenanceSweep(ctx, logger, blacklistStore, executionStore, retentionDays)
+			runMaintenanceSweep(ctx, logger, cfg.blacklistStore, cfg.executionStore, cfg.retentionDays)
 		}
 	}
 }

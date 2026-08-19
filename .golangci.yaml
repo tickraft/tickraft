@@ -92,6 +92,8 @@ linters:
         - name: unexported-return
         - name: line-length-limit
           arguments: [120]
+        - name: argument-limit
+          arguments: [5]
         - name: blank-imports
         - name: confusing-naming
         - name: receiver-naming
