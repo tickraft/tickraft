@@ -32,7 +32,10 @@ func NewHandler(svc Service) *Handler {
 
 // ListAlertRules handles GET /api/v1/prism/alert/rules.
 func (h *Handler) ListAlertRules(ctx context.Context, arc *app.RequestContext) {
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	items, total, err := h.svc.ListRules(ctx, page, size)
 	if err != nil {
 		api.Fail(arc, err)
@@ -126,9 +129,12 @@ func (h *Handler) DeleteAlertRule(ctx context.Context, arc *app.RequestContext) 
 }
 
 // ListAlertRecords handles GET /api/v1/prism/alert/records. Supported query
-// parameters: page, page_size, severity, status, from and to (RFC3339).
+// parameters: page, size, severity, status, from and to (RFC3339).
 func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext) {
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	filter := RecordFilter{
 		Severity: arc.Query("severity"),
 		Status:   arc.Query("status"),

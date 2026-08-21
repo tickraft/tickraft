@@ -73,7 +73,7 @@ function formToPayload(form: AssetFormData): Partial<Asset> {
 /**
  * Get asset list (paginated).
  *
- * Server-side pagination (page/pageSize, snake-cased to page_size by the
+ * Server-side pagination (page/size, passed through unchanged by the
  * request interceptor) and keyword/assetType/status filtering are applied
  * by the backend.
  */

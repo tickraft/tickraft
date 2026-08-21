@@ -12,15 +12,16 @@ import (
 // Rule represents an alert rule definition backed by an expr-lang
 // expression evaluated by the rule engine.
 type Rule struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Scene       string    `json:"scene"`              // task, probe, metric, remediation
-	Expression  string    `json:"expression"`         // expr-lang source text
-	Priority    int       `json:"priority,omitempty"` // higher fires first
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Expression  string            `json:"expression"`         // expr-lang source text
+	Priority    int               `json:"priority,omitempty"` // higher fires first
+	GroupID     *int64            `json:"group_id,omitempty"` // resource group visibility; nil = tenant-wide
+	Metadata    map[string]string `json:"metadata,omitempty"` // extension key-value pairs
+	Enabled     bool              `json:"enabled"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 // Record represents a historical alert event.

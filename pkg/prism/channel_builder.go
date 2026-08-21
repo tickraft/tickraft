@@ -23,15 +23,15 @@ import (
 // channel Record. It parses the record's Config JSON, looks up a registered
 // channel factory by type, and falls back to the built-in webhook and email
 // implementations.
-func BuildChannelFromRecord(m *channel.Record) (alert.Channel, error) {
-	if m == nil {
+func BuildChannelFromRecord(record *channel.Record) (alert.Channel, error) {
+	if record == nil {
 		return nil, fmt.Errorf("channel: build from nil record")
 	}
 	var cfg channel.Config
-	if err := json.Unmarshal([]byte(m.Config), &cfg); err != nil {
+	if err := json.Unmarshal([]byte(record.Config), &cfg); err != nil {
 		return nil, fmt.Errorf("parse channel config: %w", err)
 	}
-	normalizedType := strings.ToLower(m.Type)
+	normalizedType := strings.ToLower(record.Type)
 	if factory := channel.LookupFactory(normalizedType); factory != nil {
 		return factory(cfg)
 	}
@@ -41,7 +41,7 @@ func BuildChannelFromRecord(m *channel.Record) (alert.Channel, error) {
 	case "email":
 		return buildEmailChannel(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported channel type: %s", m.Type)
+		return nil, fmt.Errorf("unsupported channel type: %s", record.Type)
 	}
 }
 

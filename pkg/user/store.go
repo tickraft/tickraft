@@ -13,6 +13,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // store is the GORM-backed implementation of Store.
@@ -179,13 +180,10 @@ func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash strin
 }
 
 // List returns a page of API keys ordered by ascending ID together with the
-// total count of rows. page is 1-based; size is the maximum number of rows
-// returned. The caller is responsible for clamping size to an upper bound.
+// total count of rows. page is 1-based; size is normalized by
+// pagination.Clamp.
 func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64, error) {
-	page = max(page, 1)
-	if size < 1 {
-		size = 20
-	}
+	page, size = pagination.Clamp(page, size)
 	offset := (page - 1) * size
 
 	var total int64

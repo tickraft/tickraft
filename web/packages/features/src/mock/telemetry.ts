@@ -202,9 +202,9 @@ export default [
   {
     url: '/api/v1/telemetry/monitors',
     method: 'get',
-    response: ({ query }: { query: { page?: string; page_size?: string; mode?: string; keyword?: string; enabled?: string } }) => {
+    response: ({ query }: { query: { page?: string; size?: string; mode?: string; keyword?: string; enabled?: string } }) => {
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       let filtered = [...mockMonitors]
       if (query?.mode) {
         filtered = filtered.filter((m) => m.mode === query.mode)
@@ -223,7 +223,7 @@ export default [
           items: filtered,
           total: filtered.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -367,7 +367,7 @@ export default [
     response: ({ url, query }: { url: string; query: Record<string, string> }) => {
       const id = extractId(url)
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       const monitor = mockMonitors.find((m) => m.id === id) ?? mockMonitors[0]
       const points = buildHistory(monitor)
       const start = (page - 1) * size
@@ -378,7 +378,7 @@ export default [
           items: points.slice(start, start + size),
           total: points.length,
           page,
-          page_size: size,
+          size,
           monitor_id: id,
         },
       }
@@ -392,7 +392,7 @@ export default [
       const id = extractId(url)
       const monitor = mockMonitors.find((m) => m.id === id) ?? mockMonitors[0]
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       const logs = buildLogs(monitor)
       const start = (page - 1) * size
       return {
@@ -402,7 +402,7 @@ export default [
           items: logs.slice(start, start + size),
           total: logs.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },

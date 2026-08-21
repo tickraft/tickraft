@@ -291,9 +291,9 @@ func TestPrimaryViolation_PicksHighestSeverity(t *testing.T) {
 			{Kind: ViolationKindMetric, Severity: "error", Metric: &MetricContext{Name: "net"}},
 		},
 	}
-	primary, ok := evt.PrimaryViolation()
-	if !ok {
-		t.Fatal("expected ok=true, got false")
+	primary := PrimaryViolation(evt)
+	if primary == nil {
+		t.Fatal("expected non-nil primary violation")
 	}
 	if primary.Metric == nil || primary.Metric.Name != "cpu" {
 		t.Errorf("Metric.Name = %+v, want %q (highest severity)", primary.Metric, "cpu")
@@ -314,9 +314,9 @@ func TestPrimaryViolation_FirstWinsOnTie(t *testing.T) {
 			{Kind: ViolationKindMetric, Severity: "critical", Metric: &MetricContext{Name: "second"}},
 		},
 	}
-	primary, ok := evt.PrimaryViolation()
-	if !ok {
-		t.Fatal("expected ok=true, got false")
+	primary := PrimaryViolation(evt)
+	if primary == nil {
+		t.Fatal("expected non-nil primary violation")
 	}
 	if primary.Metric == nil || primary.Metric.Name != "first" {
 		t.Errorf("Metric.Name = %+v, want %q (first wins on tie)", primary.Metric, "first")
@@ -337,14 +337,8 @@ func TestPrimaryViolation_EmptyViolations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			primary, ok := tc.evt.PrimaryViolation()
-			if ok {
-				t.Error("expected ok=false for empty violations, got true")
-			}
-			// Violation contains pointers so check the scalar fields that a
-			// zero-value Violation would have.
-			if primary.Kind != "" || primary.Metric != nil || primary.Severity != "" {
-				t.Errorf("expected zero-value Violation, got %+v", primary)
+			if primary := PrimaryViolation(tc.evt); primary != nil {
+				t.Error("expected nil primary violation for empty violations")
 			}
 		})
 	}
@@ -379,9 +373,9 @@ func TestPrimaryViolation_SeverityOrdering(t *testing.T) {
 			}
 			violations = append(violations, Violation{Severity: tc.severity, Metric: &MetricContext{Name: "target"}})
 			evt := Event{Violations: violations}
-			primary, ok := evt.PrimaryViolation()
-			if !ok {
-				t.Fatal("expected ok=true")
+			primary := PrimaryViolation(evt)
+			if primary == nil {
+				t.Fatal("expected non-nil primary violation")
 			}
 			if primary.Severity != tc.severity {
 				t.Errorf("Severity = %q, want %q", primary.Severity, tc.severity)
@@ -414,9 +408,9 @@ func TestPrimaryViolation_SeverityAliases(t *testing.T) {
 					{Severity: "debug", Metric: &MetricContext{Name: "lower"}},
 				},
 			}
-			primary, ok := evt.PrimaryViolation()
-			if !ok {
-				t.Fatal("expected ok=true")
+			primary := PrimaryViolation(evt)
+			if primary == nil {
+				t.Fatal("expected non-nil primary violation")
 			}
 			if primary.Metric == nil || primary.Metric.Name != "alias" {
 				t.Errorf("expected alias violation to win (rank %d), got %+v", tc.wantRank, primary.Metric)
@@ -435,9 +429,9 @@ func TestPrimaryViolation_UnknownSeverityRanksZero(t *testing.T) {
 			{Severity: "debug", Metric: &MetricContext{Name: "debug"}},
 		},
 	}
-	primary, ok := evt.PrimaryViolation()
-	if !ok {
-		t.Fatal("expected ok=true")
+	primary := PrimaryViolation(evt)
+	if primary == nil {
+		t.Fatal("expected non-nil primary violation")
 	}
 	if primary.Metric == nil || primary.Metric.Name != "debug" {
 		t.Errorf("expected debug (rank 1) to beat unknown (rank 0), got %+v", primary.Metric)
@@ -453,9 +447,9 @@ func TestPrimaryViolation_SingleViolation(t *testing.T) {
 			{Kind: ViolationKindLog, Severity: "info", Log: &LogContext{Keyword: "slow-query"}},
 		},
 	}
-	primary, ok := evt.PrimaryViolation()
-	if !ok {
-		t.Fatal("expected ok=true")
+	primary := PrimaryViolation(evt)
+	if primary == nil {
+		t.Fatal("expected non-nil primary violation")
 	}
 	if primary.Log == nil || primary.Log.Keyword != "slow-query" {
 		t.Errorf("Keyword = %+v, want %q", primary.Log, "slow-query")

@@ -26,8 +26,8 @@ func (NoopMetricStore) SaveMetric(_ context.Context, _ *CollectMetric) error { r
 func (NoopMetricStore) SaveMetricsBatch(_ context.Context, _ []*CollectMetric) error { return nil }
 
 // QueryMetrics returns an empty slice.
-func (NoopMetricStore) QueryMetrics(_ context.Context, _ MetricQuery) ([]CollectMetric, error) {
-	return nil, nil
+func (NoopMetricStore) QueryMetrics(_ context.Context, _ MetricQuery) ([]CollectMetric, int64, error) {
+	return nil, 0, nil
 }
 
 // Compile-time assertion that NoopMetricStore satisfies MetricStore.
@@ -45,8 +45,8 @@ func (NoopLogStore) SaveLog(_ context.Context, _ *CollectLog) error { return nil
 func (NoopLogStore) SaveLogsBatch(_ context.Context, _ []*CollectLog) error { return nil }
 
 // QueryLogs returns an empty slice.
-func (NoopLogStore) QueryLogs(_ context.Context, _ LogQuery) ([]CollectLog, error) {
-	return nil, nil
+func (NoopLogStore) QueryLogs(_ context.Context, _ LogQuery) ([]CollectLog, int64, error) {
+	return nil, 0, nil
 }
 
 // Compile-time assertion that NoopLogStore satisfies LogStore.
@@ -82,26 +82,42 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 	return nil
 }
 
-// QueryMetrics queries metrics for an asset within a time range.
-// If q.MetricName is non-empty, results are filtered by metric name.
-// The q.Limit field caps the number of returned entries; a value <= 0
-// applies a default limit of 1000.
+// QueryMetrics returns a page of metrics for an asset within a time range,
+// plus the total count of matching rows. If q.MetricName is non-empty,
+// results are filtered by metric name. The q.Size field caps the number of
+// returned entries; a value <= 0 applies a default limit of 1000.
 // Results are ordered by timestamp ascending.
-func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, error) {
+//
+//nolint:dupl // metric and log stores differ in model, filter and ordering
+func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, int64, error) {
 	query := s.dbc.WithContext(ctx).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", q.TenantID, q.AssetID, q.Start, q.End)
+		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
+			q.TenantID, q.AssetID, q.Start, q.End)
 	if q.MetricName != "" {
 		query = query.Where("metric_name = ?", q.MetricName)
 	}
-	limit := q.Limit
-	if limit <= 0 {
-		limit = 1000
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("telemetry: count metrics: %w", errmap.MapError(err))
 	}
+	limit, offset := queryWindow(q.Page, q.Size)
 	var metrics []CollectMetric
-	if err := query.Order("timestamp ASC").Limit(limit).Find(&metrics).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: query metrics: %w", errmap.MapError(err))
+	if err := query.Order("timestamp ASC").Offset(offset).Limit(limit).Find(&metrics).Error; err != nil {
+		return nil, 0, fmt.Errorf("telemetry: query metrics: %w", errmap.MapError(err))
 	}
-	return metrics, nil
+	return metrics, total, nil
+}
+
+// queryWindow resolves the effective row limit and offset for a paged
+// telemetry range query; a size <= 0 applies the default limit of 1000 rows.
+func queryWindow(page, size int) (limit, offset int) {
+	if size <= 0 {
+		size = 1000
+	}
+	if page > 1 {
+		return size, (page - 1) * size
+	}
+	return size, 0
 }
 
 // Compile-time assertion that metricStore satisfies MetricStore.
@@ -137,29 +153,34 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 	return nil
 }
 
-// QueryLogs queries logs for an asset within a time range.
-// If q.Level is non-empty, results are filtered by log level.
-// The q.Limit field caps the number of returned entries; a value <= 0
-// applies a default limit of 1000.
+// QueryLogs returns a page of logs for an asset within a time range, plus
+// the total count of matching rows. If q.Level is non-empty, results are
+// filtered by log level. The q.Size field caps the number of returned
+// entries; a value <= 0 applies a default limit of 1000.
 // Results are ordered by timestamp descending (newest first).
-func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, error) {
+//
+//nolint:dupl // metric and log stores differ in model, filter and ordering
+func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int64, error) {
 	query := s.dbc.WithContext(ctx).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?", q.TenantID, q.AssetID, q.Start, q.End)
+		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
+			q.TenantID, q.AssetID, q.Start, q.End)
 
 	if q.Level != "" {
 		query = query.Where("level = ?", q.Level)
 	}
 
-	limit := q.Limit
-	if limit <= 0 {
-		limit = 1000
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("telemetry: count logs: %w", errmap.MapError(err))
 	}
 
+	limit, offset := queryWindow(q.Page, q.Size)
+
 	var logs []CollectLog
-	if err := query.Order("timestamp DESC").Limit(limit).Find(&logs).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: query logs: %w", errmap.MapError(err))
+	if err := query.Order("timestamp DESC").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+		return nil, 0, fmt.Errorf("telemetry: query logs: %w", errmap.MapError(err))
 	}
-	return logs, nil
+	return logs, total, nil
 }
 
 // Compile-time assertion that logStore satisfies LogStore.

@@ -409,7 +409,7 @@ func (m *ACMEManager) authorizeAndIssue(
 	// order cannot be fulfilled; the caller should fall back to a
 	// different challenge type or directory.
 	for _, authzURL := range order.AuthzURLs {
-		if err = m.authorizeDomain(ctx, client, provider, domain, authzURL); err != nil {
+		if err := m.authorizeDomain(ctx, client, provider, domain, authzURL); err != nil {
 			return nil, nil, err
 		}
 	}

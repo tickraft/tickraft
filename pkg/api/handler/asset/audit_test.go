@@ -377,7 +377,7 @@ func TestAssetFullLifecycle(t *testing.T) {
 	}
 
 	// 3. List — verify the asset appears in the list.
-	w = ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&page_size=10", nil)
+	w = ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&size=10", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: HTTP %d", w.Code)
 	}
@@ -804,7 +804,7 @@ func TestAssetListPagination(t *testing.T) {
 	}
 
 	// Page 1 with size 2 — should return 2 items and total=5.
-	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&page_size=2", nil)
+	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&size=2", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("page 1: HTTP %d", w.Code)
 	}
@@ -819,7 +819,7 @@ func TestAssetListPagination(t *testing.T) {
 	}
 
 	// Page 3 with size 2 — should return 1 item (5 total - 4 on pages 1-2).
-	w = ut.PerformRequest(engine, "GET", assetBasePath+"?page=3&page_size=2", nil)
+	w = ut.PerformRequest(engine, "GET", assetBasePath+"?page=3&size=2", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("page 3: HTTP %d", w.Code)
 	}
@@ -922,7 +922,7 @@ func TestAssetCreateMultipleDistinctKeys(t *testing.T) {
 		}
 	}
 
-	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&page_size=100", nil)
+	w := ut.PerformRequest(engine, "GET", assetBasePath+"?page=1&size=100", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: HTTP %d", w.Code)
 	}

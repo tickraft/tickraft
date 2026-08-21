@@ -97,7 +97,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 		return nil, fmt.Errorf("register routes: %w", err)
 	}
 
-	if err = startACMERenewal(ctx, rt, acmeRenewalDeps{
+	if err := startACMERenewal(ctx, rt, acmeRenewalDeps{
 		errCh: errCh,
 		srv:   srv,
 		cfg:   &cfg,

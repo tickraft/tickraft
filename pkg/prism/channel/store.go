@@ -14,6 +14,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // ErrChannelNotFound is returned when a channel cannot be located by its ID.
@@ -55,11 +56,11 @@ func (s *Store) Create(ctx context.Context, m *Record) error {
 // Update saves the channel record. The ID field identifies the row to
 // update; CreatedAt is preserved by the caller before invoking Update.
 // A RowsAffected count of zero is reported as ErrChannelNotFound.
-func (s *Store) Update(ctx context.Context, m *Record) error {
-	if m == nil {
+func (s *Store) Update(ctx context.Context, rec *Record) error {
+	if rec == nil {
 		return fmt.Errorf("channel: update record: nil model")
 	}
-	result := s.dbc.WithContext(ctx).Save(m)
+	result := s.dbc.WithContext(ctx).Save(rec)
 	if result.Error != nil {
 		return fmt.Errorf("channel: update record: %w", errmap.MapError(result.Error))
 	}
@@ -72,41 +73,37 @@ func (s *Store) Update(ctx context.Context, m *Record) error {
 // GetByID retrieves a channel record by its ID. Returns
 // ErrChannelNotFound when no record with the given ID exists.
 func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
-	var m Record
-	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
+	var rec Record
+	if err := s.dbc.WithContext(ctx).First(&rec, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChannelNotFound
 		}
 		return nil, fmt.Errorf("channel: get record: %w", errmap.MapError(err))
 	}
-	return &m, nil
+	return &rec, nil
 }
 
 // List returns a page of channel records ordered by descending ID, plus
 // the total count. page starts at 1; size is the maximum number of items
 // returned. Soft-deleted rows are excluded.
 func (s *Store) List(ctx context.Context, page, size int) ([]*Record, int64, error) {
-	page = max(page, 1)
-	if size <= 0 {
-		size = 20
-	}
-	size = min(size, 100)
+	page, size = pagination.Clamp(page, size)
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("channel: list records: %w", errmap.MapError(err))
 	}
 
-	var models []*Record
+	var records []*Record
 	offset := (page - 1) * size
 	if err := s.dbc.WithContext(ctx).
 		Order("id DESC").
 		Offset(offset).
 		Limit(size).
-		Find(&models).Error; err != nil {
+		Find(&records).Error; err != nil {
 		return nil, 0, fmt.Errorf("channel: list records: %w", errmap.MapError(err))
 	}
-	return models, total, nil
+	return records, total, nil
 }
 
 // DeleteByID soft-deletes the channel record identified by id. A

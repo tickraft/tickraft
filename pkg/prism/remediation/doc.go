@@ -23,9 +23,12 @@
 //     CircuitBreakerThreshold is paused (Status set to "paused") so a
 //     persistently failing remediation does not hammer the target.
 //
-// The condition expression (ConditionExpr) is evaluated with the basic
-// expr-lang compiler from pkg/prism/rule. An empty expression matches all
-// events of the rule's trigger type. No custom functions are registered.
+// The trigger condition (Rule.Expression) is evaluated against the
+// RemediationEnv variable contract through the pkg/expr kernel with a
+// bounded LRU program cache. An empty expression matches all events of
+// the rule's trigger type. No custom functions are registered; entry
+// points validate expressions via ValidateExpression (compile + domain
+// check + sample evaluation) before persisting.
 //
 // This package is the base. Advanced capabilities — post-
 // remediation verification, success-rate circuit breaking, global

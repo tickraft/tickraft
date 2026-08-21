@@ -33,12 +33,14 @@ export interface AlertRule {
   id: number
   name: string
   description?: string
-  /** Scene: task, probe, metric, remediation */
-  scene: string
-  /** expr-lang source text */
+  /** expr-lang source text evaluated against the alert env */
   expression: string
   /** Higher priority fires first */
   priority?: number
+  /** Resource group visibility; undefined = tenant-wide */
+  groupId?: number | null
+  /** Extension key-value pairs */
+  metadata?: Record<string, string>
   enabled: boolean
   createdAt: string
   updatedAt: string
@@ -308,18 +310,22 @@ export interface RemediationRule {
   description: string
   assetId: number
   triggerEventType: string
-  conditionExpr: string
+  /** Optional trigger-condition expression evaluated against the
+   *  remediation env; empty matches every event. */
+  expression: string
   executorType: string
-  /** JSON-encoded executor config payload (e.g. WebhookExecutorConfig) */
+  /** JSON-encoded executor config payload (e.g. RemediationExecutorConfig) */
   executorConfig: string
   /** Cooldown duration in seconds */
   cooldown: number
   circuitBreakerThreshold: number
   enabled: boolean
-  /** Rule status (e.g. "idle", "running", "circuit_open") */
+  /** Rule status (active / paused) */
   status: string
   /** Last execution time (nullable until first run) */
   lastRunAt: string | null
+  /** Consecutive execution failures (circuit-breaker counter) */
+  consecutiveFailures?: number
   createdAt: string
   updatedAt: string
 }
@@ -333,7 +339,8 @@ export interface RemediationRulePayload {
   description?: string
   assetId?: number
   triggerEventType: string
-  conditionExpr?: string
+  /** Optional trigger-condition expression (empty matches all) */
+  expression?: string
   executorType: string
   executorConfig: string
   cooldown?: number
@@ -353,6 +360,9 @@ export interface RemediationExecutorConfig {
   headers: Record<string, string>
   /** Request body (only used by http executor type) */
   body?: string
+  /** Optional execution-judgment expression evaluated against the
+   *  execution env after the executor returns. */
+  expression?: string
 }
 
 /**
@@ -452,5 +462,36 @@ export function getRemediationRecords(
     url: '/prism/remediation/records',
     method: 'get',
     params,
+  })
+}
+
+// ── Expression validation ──
+
+/** Expression evaluation environment (aligned with backend /expr/validate) */
+export type ExprValidateEnv = 'alert' | 'remediation' | 'execution'
+
+/** Request payload of POST /api/v1/expr/validate */
+export interface ExprValidateParams {
+  env: ExprValidateEnv
+  expression: string
+}
+
+/** Success payload of POST /api/v1/expr/validate */
+export interface ExprValidateResult {
+  valid: boolean
+}
+
+/**
+ * Validate an expression against the selected env contract. Rejects
+ * with the backend diagnostic (including expr-lang line:column) on
+ * invalid expressions — show it inline under the editor.
+ */
+export function validateExpression(
+  params: ExprValidateParams,
+): Promise<ExprValidateResult> {
+  return request<ExprValidateResult>({
+    url: '/expr/validate',
+    method: 'post',
+    data: params,
   })
 }

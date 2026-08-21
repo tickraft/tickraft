@@ -28,10 +28,11 @@ import (
 //
 // Scheduler-specific tables (sys_schedule_task, sys_schedule_log) are owned
 // by pkg/scheduler and must be migrated by the scheduler's own
-// initialization path. Remediation tables (sys_remediation_rule,
-// sys_remediation_record) are owned by internal/remediation and migrated by
-// its own Migrate function. This keeps pkg/db free of internal/ dependencies
-// so it remains importable by downstream repositories.
+// initialization path. Remediation tables (sys_prism_remediation_rule,
+// sys_prism_remediation_record) are owned by pkg/prism/remediation and
+// migrated by its own Migrate function (which also drops the pre-rename
+// legacy tables). This keeps pkg/db free of prism dependencies so it
+// remains importable by downstream repositories.
 func AutoMigrate(ctx context.Context, dbc *gorm.DB) error {
 	return dbc.WithContext(ctx).AutoMigrate(
 		&user.User{},

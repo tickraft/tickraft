@@ -26,7 +26,7 @@ func TestRBACRoleMatrix(t *testing.T) {
 	}
 
 	// Visitor: read allowed, write denied.
-	status, _ := hs.do("GET", "/api/v1/assets?page=1&page_size=5", nil, viewerToken)
+	status, _ := hs.do("GET", "/api/v1/assets?page=1&size=5", nil, viewerToken)
 	if status != http.StatusOK {
 		t.Fatalf("viewer list assets: expected 200, got %d", status)
 	}
@@ -97,7 +97,7 @@ func TestRBACRoleMatrix(t *testing.T) {
 func TestNoTokenRejected(t *testing.T) {
 	hs := newHarness(t)
 
-	status, _ := hs.do("GET", "/api/v1/assets?page=1&page_size=5", nil, "")
+	status, _ := hs.do("GET", "/api/v1/assets?page=1&size=5", nil, "")
 	if status != http.StatusUnauthorized {
 		t.Fatalf("anonymous list assets: expected 401, got %d", status)
 	}

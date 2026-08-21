@@ -168,7 +168,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       const start = (page - 1) * size
       return {
         code: 0,
@@ -177,7 +177,7 @@ export default [
           items: mockApiKeys.slice(start, start + size).map((k) => ({ ...k })),
           total: mockApiKeys.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },

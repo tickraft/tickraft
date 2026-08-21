@@ -192,7 +192,7 @@ async function fetchHistory(): Promise<void> {
   if (!detail.value) return
   historyLoading.value = true
   try {
-    const res = await getMonitorHistory(detail.value.id, { page: 1, pageSize: 50 })
+    const res = await getMonitorHistory(detail.value.id, { page: 1, size: 50 })
     historyData.value = Array.isArray(res?.items) ? res.items : []
   } catch {
     historyData.value = []
@@ -206,7 +206,7 @@ async function fetchLogs(): Promise<void> {
   if (!detail.value) return
   logsLoading.value = true
   try {
-    const res = await getMonitorLogs(detail.value.id, { page: 1, pageSize: 50 })
+    const res = await getMonitorLogs(detail.value.id, { page: 1, size: 50 })
     logsData.value = Array.isArray(res?.items) ? res.items : []
   } catch {
     logsData.value = []

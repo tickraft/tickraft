@@ -22,7 +22,7 @@ type Rule struct {
 	Description             string     `json:"description,omitempty"`
 	AssetID                 int64      `json:"asset_id"`
 	TriggerEventType        string     `json:"trigger_event_type"`
-	ConditionExpr           string     `json:"condition_expr,omitempty"`
+	Expression              string     `json:"expression,omitempty"`
 	ExecutorType            string     `json:"executor_type"`
 	ExecutorConfig          string     `json:"executor_config,omitempty"`
 	Cooldown                int        `json:"cooldown"`
@@ -30,6 +30,7 @@ type Rule struct {
 	Enabled                 bool       `json:"enabled"`
 	Status                  string     `json:"status,omitempty"`
 	LastRunAt               *time.Time `json:"last_run_at,omitempty"`
+	ConsecutiveFailures     int        `json:"consecutive_failures,omitempty"`
 	CreatedAt               time.Time  `json:"created_at"`
 	UpdatedAt               time.Time  `json:"updated_at"`
 }

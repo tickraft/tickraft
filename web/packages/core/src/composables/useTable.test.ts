@@ -27,9 +27,9 @@ describe('useTable pagination contract', () => {
     vi.useRealTimers()
   })
 
-  function makeTable(defaultPageSize = 20) {
+  function makeTable(defaultSize = 20) {
     return useTable<Row>({
-      defaultPageSize,
+      defaultSize,
       fetchFn: async (params) => {
         fetches.push(params)
         return { items: [{ id: 1 }], total: 42 }
@@ -43,7 +43,7 @@ describe('useTable pagination contract', () => {
     expect(fetches.at(-1)?.page).toBe(1)
     expect(fetches.at(-1)?.size).toBe(15)
     expect(table.page.value).toBe(1)
-    expect(table.pageSize.value).toBe(15)
+    expect(table.size.value).toBe(15)
   })
 
   it('changePage updates the page passed to fetchFn', () => {
@@ -53,10 +53,10 @@ describe('useTable pagination contract', () => {
     expect(table.page.value).toBe(3)
   })
 
-  it('changePageSize resets the page to 1', () => {
+  it('changeSize resets the page to 1', () => {
     const table = makeTable()
     table.changePage(4)
-    table.changePageSize(50)
+    table.changeSize(50)
     expect(fetches.at(-1)?.page).toBe(1)
     expect(fetches.at(-1)?.size).toBe(50)
   })

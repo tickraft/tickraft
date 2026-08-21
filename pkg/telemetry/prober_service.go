@@ -206,6 +206,13 @@ func pointToProbeTask(point MonitorPoint) task.Task {
 	case task.ScheduleTypeOnce, task.ScheduleTypeEvent:
 		// Monitor points never produce one-shot or event-driven schedules.
 	}
+	// Execution judgment transmission (rule-engine-design §6.3.3): the
+	// optional "expression" key of the point's config JSON rides the task
+	// metadata through the trigger event into the runner, which applies it
+	// to the probe result.
+	if exprStr := executor.ConfigExpression(point.Config); exprStr != "" {
+		metadata["expression"] = exprStr
+	}
 	return task.Task{
 		ID:           proberTaskID(point.ID),
 		TenantID:     point.TenantID,

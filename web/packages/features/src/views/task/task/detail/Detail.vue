@@ -71,7 +71,7 @@ async function fetchData(): Promise<void> {
   try {
     const [taskData, logsData, stats] = await Promise.all([
       getTask(taskId),
-      getLogs(taskId, { page: 1, pageSize: 10 }),
+      getLogs(taskId, { page: 1, size: 10 }),
       getExecutionStats().catch(() => null),
     ])
     task.value = taskData

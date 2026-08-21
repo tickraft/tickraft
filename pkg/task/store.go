@@ -18,6 +18,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // store is the GORM-backed implementation of Store. It persists task
@@ -296,13 +297,9 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 
 // Query returns a page of executions matching the filter, ordered by most
 // recent first (descending ID), along with the total count of matching rows.
-// page starts at 1; size is normalized via ClampPaging semantics (defaults
-// and the max-page-size cap are applied by the caller).
+// page starts at 1; size is normalized by pagination.Clamp.
 func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error) {
-	page = max(page, 1)
-	if size <= 0 {
-		size = defaultExecutionListLimit
-	}
+	page, size = pagination.Clamp(page, size)
 
 	query := s.dbc.WithContext(ctx).Model(&ScheduleLog{})
 	if q.TaskID > 0 {

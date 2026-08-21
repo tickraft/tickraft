@@ -63,6 +63,7 @@ func TestExpectedRoutePrefixesPresent(t *testing.T) {
 		"/api/v1/tasks/stats",          // task module (execution statistics)
 		"/api/v1/prism/alert/rules",    // prism module (alert rule CRUD)
 		"/api/v1/prism/alert/records",  // prism module (alert record list/get)
+		"/api/v1/expr",                 // expr module (expression validation)
 		"/api/v1/system",               // system module (config, info)
 		"/api/v1/assets",               // asset module (asset CRUD)
 		"/api/v1/telemetry",            // telemetry module (CRUD + distributed reports)
@@ -76,6 +77,7 @@ func TestExpectedRoutePrefixesPresent(t *testing.T) {
 		"/api/v1/tasks/stats":          true,
 		"/api/v1/prism/alert/rules":    true,
 		"/api/v1/prism/alert/records":  true,
+		"/api/v1/expr":                 true,
 		"/api/v1/system":               true,
 		"/api/v1/assets":               true,
 		"/api/v1/telemetry":            true,

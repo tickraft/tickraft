@@ -27,11 +27,8 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/retry"
+	"github.com/tickraft/tickraft/pkg/types"
 )
-
-// channelName is the name reported by Channel.Name and used to tag
-// outbound SendError values.
-const channelName = "webhook"
 
 // Channel sends alert notifications as JSON POST requests to a configured
 // HTTP endpoint. It satisfies the alert.Channel interface.
@@ -48,7 +45,7 @@ type Channel struct {
 var _ alert.Channel = (*Channel)(nil)
 
 // Name implements alert.Channel.
-func (c *Channel) Name() string { return channelName }
+func (c *Channel) Name() string { return types.ChannelWebhook }
 
 // Send implements alert.Channel. It marshals the alert as JSON and
 // POSTs it to the configured URL with the configured headers. The

@@ -31,9 +31,9 @@ export interface DataTableProps<T> {
   resizable?: boolean
   pagination?: boolean
   total?: number
-  current?: number
-  pageSize?: number
-  pageSizes?: Array<number>
+  page?: number
+  size?: number
+  sizeOptions?: Array<number>
   defaultSort?: { prop: string; order: 'ascending' | 'descending' }
   /** Table persistence identifier; when non-empty, enables column width localStorage persistence */
   tableId?: string

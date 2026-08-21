@@ -17,8 +17,8 @@ const router = useRouter()
 const { t } = useI18n()
 
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(15)
+const page = ref(1)
+const size = ref(15)
 const total = ref(0)
 const tableData = ref<LogModel[]>([])
 
@@ -82,8 +82,8 @@ async function fetchData(): Promise<void> {
   loading.value = true
   try {
     const res = await getLogs(0, {
-      page: currentPage.value,
-      pageSize: pageSize.value,
+      page: page.value,
+      size: size.value,
       taskName: filterTaskName.value.trim() || undefined,
       executor: filterExecutor.value || undefined,
       status: filterStatus.value || undefined,
@@ -99,7 +99,7 @@ async function fetchData(): Promise<void> {
 }
 
 function handleSearch(): void {
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
@@ -107,16 +107,16 @@ function handleReset(): void {
   filterTaskName.value = ''
   filterExecutor.value = ''
   filterStatus.value = ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  const sizeChanged = payload.pageSize !== pageSize.value
-  currentPage.value = payload.current
-  pageSize.value = payload.pageSize
+function handlePageChange(payload: { page: number; size: number }): void {
+  const sizeChanged = payload.size !== size.value
+  page.value = payload.page
+  size.value = payload.size
   if (sizeChanged) {
-    currentPage.value = 1
+    page.value = 1
   }
   void fetchData()
 }
@@ -201,8 +201,8 @@ onMounted(() => { void fetchData() })
         :columns="logColumns"
         :loading="loading"
         :total="total"
-        :current="currentPage"
-        :page-size="pageSize"
+        :page="page"
+        :size="size"
         density="compact"
         @row-click="handleDetail"
         @page-change="handlePageChange"

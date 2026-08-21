@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -258,6 +257,15 @@ func TestLogAlertDispatchedToChannel(t *testing.T) {
 	}
 }
 
+// matcherFunc adapts a boolean predicate into an alert.Matcher for
+// tests: the predicate's result becomes MatchResult.Forward.
+type matcherFunc func(ctx context.Context, evt alert.Event) bool
+
+// Match implements alert.Matcher.
+func (f matcherFunc) Match(ctx context.Context, evt alert.Event) alert.MatchResult {
+	return alert.MatchResult{Forward: f(ctx, evt)}
+}
+
 // TestRuleSuppressesAlert verifies that a rule returning false suppresses
 // alert dispatch.
 func TestRuleSuppressesAlert(t *testing.T) {
@@ -271,7 +279,7 @@ func TestRuleSuppressesAlert(t *testing.T) {
 	}
 	eng.AddChannel(ch)
 	// Matcher that suppresses all alerts.
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
+	eng.AddRule(matcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return false
 	}))
 
@@ -307,7 +315,7 @@ func TestRuleMatchesAlert(t *testing.T) {
 	}
 	eng.AddChannel(ch)
 	// Matcher that matches only metric alerts for asset 42.
-	eng.AddRule(MatcherFunc(func(_ context.Context, a alert.Event) bool {
+	eng.AddRule(matcherFunc(func(_ context.Context, a alert.Event) bool {
 		return a.Type == alert.TypeMetric && a.AssetID == 42
 	}))
 
@@ -562,25 +570,6 @@ func TestEventJSON(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// MatcherFunc
-// ---------------------------------------------------------------------------
-
-// TestMatcherFunc verifies that MatcherFunc adapts a function into a Matcher.
-func TestMatcherFunc(t *testing.T) {
-	called := atomic.Bool{}
-	r := MatcherFunc(func(_ context.Context, _ alert.Event) bool {
-		called.Store(true)
-		return true
-	})
-	if !r.Match(context.Background(), alert.Event{}) {
-		t.Error("expected MatcherFunc to return true")
-	}
-	if !called.Load() {
-		t.Error("MatcherFunc was not called")
-	}
-}
-
 // TestAddRuleNilIsNoop verifies that AddRule(nil) is a no-op.
 func TestAddRuleNilIsNoop(t *testing.T) {
 	eng, err := New()
@@ -675,7 +664,7 @@ func TestDispatchEventIDStableAcrossSuppression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
+	eng.AddRule(matcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return false
 	}))
 
@@ -693,13 +682,11 @@ func TestDispatchEventIDStableAcrossSuppression(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // panickingRule is a Matcher implementation whose Match method always panics.
-type panickingRule struct{ name string }
+type panickingRule struct{}
 
-func (p *panickingRule) Match(_ context.Context, _ alert.Event) bool {
+func (p *panickingRule) Match(_ context.Context, _ alert.Event) alert.MatchResult {
 	panic("boom from panickingRule")
 }
-
-func (p *panickingRule) Name() string { return p.name }
 
 // TestRulePanicDoesNotCrashEngine verifies that a panicking custom Matcher is
 // recovered by match, treated as not matching, and does not crash the
@@ -712,21 +699,14 @@ func TestRulePanicDoesNotCrashEngine(t *testing.T) {
 	ch := &recordingChannel{name: "recorder"}
 	eng.AddChannel(ch)
 	// First rule panics; second rule matches.
-	eng.AddRule(&panickingRule{name: "panicker"})
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool {
+	eng.AddRule(&panickingRule{})
+	eng.AddRule(matcherFunc(func(_ context.Context, _ alert.Event) bool {
 		return true
 	}))
 
 	res := eng.Dispatch(context.Background(), alert.Event{Type: alert.TypeMetric, AssetID: 1})
 	if !res.Accepted {
 		t.Fatal("expected alert to be accepted via the healthy rule")
-	}
-	// The panicking rule is omitted from MatchedRules because match
-	// treats it as not matching.
-	for _, name := range res.MatchedRules {
-		if name == "panicker" {
-			t.Errorf("panicking rule should not appear in MatchedRules: %v", res.MatchedRules)
-		}
 	}
 
 	waitFor(t, func() bool { return ch.len() >= 1 }, 2*time.Second)
@@ -735,26 +715,23 @@ func TestRulePanicDoesNotCrashEngine(t *testing.T) {
 	}
 }
 
-// violationMatcherRule is a test rule that implements both Matcher and
-// ViolationMatcher. It always matches and returns a fixed set of
-// violations, simulating a compound rule that matched multiple conditions.
+// violationMatcherRule is a test rule that always matches and returns a
+// fixed set of violations, simulating a compound rule that matched
+// multiple conditions.
 type violationMatcherRule struct {
-	name       string
 	violations []alert.Violation
 }
 
-func (r *violationMatcherRule) Match(_ context.Context, _ alert.Event) bool { return true }
-func (r *violationMatcherRule) Name() string                                { return r.name }
-func (r *violationMatcherRule) MatchWithViolations(_ context.Context, _ alert.Event) []alert.Violation {
-	return r.violations
+func (r *violationMatcherRule) Match(_ context.Context, _ alert.Event) alert.MatchResult {
+	return alert.MatchResult{Forward: true, Violations: r.violations}
 }
 
-// TestDispatchCollectsViolationsFromViolationMatcher verifies that Dispatch
-// calls MatchWithViolations on rules implementing ViolationMatcher and
-// replaces the payload-populated Event.Violations with the rule engine's
-// violations. This enables compound rules (e.g. "cpu > 90 && mem > 85")
-// to contribute one Violation per matched condition.
-func TestDispatchCollectsViolationsFromViolationMatcher(t *testing.T) {
+// TestDispatchCollectsViolationsFromMatchResult verifies that Dispatch
+// replaces the payload-populated Event.Violations with the matched
+// rules' structured violations. This enables compound rules (e.g.
+// "cpu > 90 && mem > 85") to contribute one Violation per matched
+// condition.
+func TestDispatchCollectsViolationsFromMatchResult(t *testing.T) {
 	bus := event.NewBus()
 	defer bus.Close()
 
@@ -764,13 +741,13 @@ func TestDispatchCollectsViolationsFromViolationMatcher(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	eng.AddChannel(ch)
-	// Register a ViolationMatcher rule that returns two violations,
-	// simulating a compound rule match.
+	// Register a rule that returns two violations, simulating a
+	// compound rule match.
 	expected := []alert.Violation{
 		{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "cpu", Value: 95, Threshold: 90}},
 		{Kind: alert.ViolationKindMetric, Metric: &alert.MetricContext{Name: "mem", Value: 88, Threshold: 85}},
 	}
-	eng.AddRule(&violationMatcherRule{name: "compound", violations: expected})
+	eng.AddRule(&violationMatcherRule{violations: expected})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -806,10 +783,10 @@ func TestDispatchCollectsViolationsFromViolationMatcher(t *testing.T) {
 	}
 }
 
-// TestDispatchPreservesPayloadViolationsWithoutViolationMatcher verifies
-// that when no rule implements ViolationMatcher, the payload-populated
+// TestDispatchPreservesPayloadViolationsWithoutStructuredViolations verifies
+// that when no matched rule returns violations, the payload-populated
 // Event.Violations are preserved unchanged.
-func TestDispatchPreservesPayloadViolationsWithoutViolationMatcher(t *testing.T) {
+func TestDispatchPreservesPayloadViolationsWithoutStructuredViolations(t *testing.T) {
 	bus := event.NewBus()
 	defer bus.Close()
 
@@ -819,8 +796,9 @@ func TestDispatchPreservesPayloadViolationsWithoutViolationMatcher(t *testing.T)
 		t.Fatalf("New() error = %v", err)
 	}
 	eng.AddChannel(ch)
-	// Register a plain Matcher (not ViolationMatcher) that matches all.
-	eng.AddRule(MatcherFunc(func(_ context.Context, _ alert.Event) bool { return true }))
+	// Register a plain Matcher without structured violations that
+	// matches all.
+	eng.AddRule(matcherFunc(func(_ context.Context, _ alert.Event) bool { return true }))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

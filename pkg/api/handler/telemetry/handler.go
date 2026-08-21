@@ -82,7 +82,10 @@ func (h *Handler) SetDataStores(metricStore MetricStoreInjector, logStore LogSto
 // ProberService), "passive" (receives via listener), or omitted/empty for
 // all modes.
 func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	filter := Filter{Mode: arc.Query("mode")}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
@@ -236,22 +239,28 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 		api.Fail(arc, err)
 		return
 	}
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	history := make([]monitorHistoryEntry, 0)
+	var total int64
 
 	if h.metricStore != nil && task.AssetID > 0 {
 		end := time.Now()
 		start := end.AddDate(0, 0, -7) // last 7 days
-		metrics, qErr := h.metricStore.QueryMetrics(ctx, telemetry.MetricQuery{
+		metrics, count, qErr := h.metricStore.QueryMetrics(ctx, telemetry.MetricQuery{
 			AssetID: task.AssetID,
 			Start:   start,
 			End:     end,
-			Limit:   size,
+			Page:    page,
+			Size:    size,
 		})
 		if qErr != nil {
 			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
 			return
 		}
+		total = count
 		for i := range metrics {
 			history = append(history, monitorHistoryEntry{
 				Timestamp: metrics[i].Timestamp,
@@ -261,7 +270,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 		}
 	}
 
-	api.SuccessPage(arc, history, int64(len(history)), page, size)
+	api.SuccessPage(arc, history, total, page, size)
 }
 
 // ProbeMonitor handles POST /api/v1/telemetry/monitors/:id/probe. It
@@ -313,22 +322,28 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 		api.Fail(arc, err)
 		return
 	}
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	logs := make([]monitorLogEntry, 0)
+	var total int64
 
 	if h.logStore != nil && task.AssetID > 0 {
 		end := time.Now()
 		start := end.AddDate(0, 0, -7) // last 7 days
-		entries, qErr := h.logStore.QueryLogs(ctx, telemetry.LogQuery{
+		entries, count, qErr := h.logStore.QueryLogs(ctx, telemetry.LogQuery{
 			AssetID: task.AssetID,
 			Start:   start,
 			End:     end,
-			Limit:   size,
+			Page:    page,
+			Size:    size,
 		})
 		if qErr != nil {
 			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
 			return
 		}
+		total = count
 		for i := range entries {
 			logs = append(logs, monitorLogEntry{
 				Timestamp: entries[i].Timestamp,
@@ -338,7 +353,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 		}
 	}
 
-	api.SuccessPage(arc, logs, int64(len(logs)), page, size)
+	api.SuccessPage(arc, logs, total, page, size)
 }
 
 // EnableMonitor handles PUT /api/v1/telemetry/monitors/:id/enable. It

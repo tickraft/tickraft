@@ -21,8 +21,8 @@ export interface ApiResponse<T = unknown> {
 /**
  * Paginated response format.
  *
- * Backend sends `{ items, total, page, page_size }`; the interceptor
- * camelizes keys so frontend receives `{ items, total, page, pageSize }`.
+ * Backend sends `{ items, total, page, size }`; the interceptor camelizes
+ * keys (size is already camelCase) so frontend receives the same shape.
  */
 export interface PageData<T = unknown> {
   /** Data list */
@@ -32,20 +32,20 @@ export interface PageData<T = unknown> {
   /** Current page number */
   page: number
   /** Page size */
-  pageSize: number
+  size: number
 }
 
 /**
  * Pagination request params.
  *
- * Frontend code uses camelCase; the request interceptor converts
- * `pageSize` → `page_size` before sending to the backend.
+ * Keys are sent as-is by the request interceptor (snake_case conversion
+ * leaves single-word keys unchanged).
  */
 export interface PageParams {
   /** Page number, default 1 */
   page?: number
   /** Page size, default 20 */
-  pageSize?: number
+  size?: number
 }
 
 /**

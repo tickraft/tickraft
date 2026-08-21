@@ -24,8 +24,7 @@ func TestAlertRulesCRUD(t *testing.T) {
 
 	ruleBody := map[string]any{
 		"name":       "httpapi-cpu-rule",
-		"scene":      "metric",
-		"expression": `event.metrics["cpu_usage"] > 90`,
+		"expression": `metrics["cpu_usage"] > 90`,
 		"enabled":    true,
 	}
 	status, env := hs.do("POST", "/api/v1/prism/alert/rules", ruleBody, token)
@@ -44,19 +43,19 @@ func TestAlertRulesCRUD(t *testing.T) {
 	status, _ = hs.do("POST", "/api/v1/prism/alert/rules",
 		map[string]any{"name": "incomplete"}, token)
 	if status != http.StatusBadRequest {
-		t.Fatalf("create alert rule without scene/expression: expected 400, got %d", status)
+		t.Fatalf("create alert rule without expression: expected 400, got %d", status)
 	}
 
 	// Get.
 	status, env = hs.do("GET", "/api/v1/prism/alert/rules/"+jsonInt64(created.ID), nil, token)
 	var got map[string]any
 	hs.mustOK(status, env, "get alert rule", &got)
-	if got["expression"] != `event.metrics["cpu_usage"] > 90` {
+	if got["expression"] != `metrics["cpu_usage"] > 90` {
 		t.Fatalf("get alert rule: unexpected expression %v", got["expression"])
 	}
 
 	// Update.
-	ruleBody["expression"] = `event.metrics["cpu_usage"] > 95`
+	ruleBody["expression"] = `metrics["cpu_usage"] > 95`
 	ruleBody["name"] = "httpapi-cpu-rule-v2"
 	status, env = hs.do("PUT", "/api/v1/prism/alert/rules/"+jsonInt64(created.ID), ruleBody, token)
 	if status != http.StatusOK {
@@ -64,7 +63,7 @@ func TestAlertRulesCRUD(t *testing.T) {
 	}
 
 	// List.
-	pd := hs.listPage(token, "/api/v1/prism/alert/rules?page=1&page_size=20")
+	pd := hs.listPage(token, "/api/v1/prism/alert/rules?page=1&size=20")
 	if pd.Total < 1 {
 		t.Fatalf("list alert rules: expected >=1, got %d", pd.Total)
 	}
@@ -119,7 +118,7 @@ func TestAlertRecordsFlow(t *testing.T) {
 	})
 
 	// Severity filter.
-	pd := hs.listPage(token, "/api/v1/prism/alert/records?page=1&page_size=50&severity=critical")
+	pd := hs.listPage(token, "/api/v1/prism/alert/records?page=1&size=50&severity=critical")
 	if pd.Total < 1 {
 		t.Fatalf("records severity filter: expected >=1, got %d", pd.Total)
 	}
@@ -130,14 +129,14 @@ func TestAlertRecordsFlow(t *testing.T) {
 	}
 
 	// Status filter.
-	pd = hs.listPage(token, "/api/v1/prism/alert/records?page=1&page_size=50&status=resolved")
+	pd = hs.listPage(token, "/api/v1/prism/alert/records?page=1&size=50&status=resolved")
 	if pd.Total < 1 {
 		t.Fatalf("records status filter: expected >=1, got %d", pd.Total)
 	}
 
 	// Time range filter: from = 1h ago excludes the 2h-old record.
 	pd = hs.listPage(token, fmt.Sprintf(
-		"/api/v1/prism/alert/records?page=1&page_size=50&from=%s",
+		"/api/v1/prism/alert/records?page=1&size=50&from=%s",
 		now.Add(-time.Hour).Format(time.RFC3339)))
 	if pd.Total < 1 {
 		t.Fatalf("records from filter: expected >=1, got %d", pd.Total)
@@ -226,7 +225,7 @@ func TestChannelsCRUDAndWebhookTest(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("update channel: expected 200, got %d code=%d", status, env.Code)
 	}
-	pd := hs.listPage(token, "/api/v1/prism/channels?page=1&page_size=20")
+	pd := hs.listPage(token, "/api/v1/prism/channels?page=1&size=20")
 	if pd.Total < 1 {
 		t.Fatalf("list channels: expected >=1, got %d", pd.Total)
 	}

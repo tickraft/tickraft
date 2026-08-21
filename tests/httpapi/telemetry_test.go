@@ -82,17 +82,17 @@ func TestTelemetryMonitors(t *testing.T) {
 	}
 
 	// History and logs (paginated PageData envelope; empty is acceptable).
-	history := hs.listPage(token, "/api/v1/telemetry/monitors/"+jsonInt64(id)+"/history?page=1&page_size=10")
-	if history.Page != 1 || history.PageSize != 10 {
+	history := hs.listPage(token, "/api/v1/telemetry/monitors/"+jsonInt64(id)+"/history?page=1&size=10")
+	if history.Page != 1 || history.Size != 10 {
 		t.Fatalf("monitor history: pagination echo mismatch: %+v", history)
 	}
-	logs := hs.listPage(token, "/api/v1/telemetry/monitors/"+jsonInt64(id)+"/logs?page=1&page_size=10")
-	if logs.Page != 1 || logs.PageSize != 10 {
+	logs := hs.listPage(token, "/api/v1/telemetry/monitors/"+jsonInt64(id)+"/logs?page=1&size=10")
+	if logs.Page != 1 || logs.Size != 10 {
 		t.Fatalf("monitor logs: pagination echo mismatch: %+v", logs)
 	}
 
 	// List (mode filter accepted).
-	pd := hs.listPage(token, "/api/v1/telemetry/monitors?page=1&page_size=100&mode=active")
+	pd := hs.listPage(token, "/api/v1/telemetry/monitors?page=1&size=100&mode=active")
 	if pd.Total < 1 {
 		t.Fatalf("list monitors: expected >=1, got %d", pd.Total)
 	}

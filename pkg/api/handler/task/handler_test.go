@@ -22,6 +22,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // taskBasePath is the route prefix registered by routes.go for the task API.
@@ -158,7 +159,7 @@ func NewMemoryTaskService() Service {
 }
 
 func (s *memoryTaskService) ListTasks(_ context.Context, page, size int, filter Filter) ([]Task, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
+	page, size = pagination.Clamp(page, size)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -44,6 +44,7 @@ func ReleaseResult(r *Result) {
 func (r *Result) reset() {
 	r.Status = types.AssetStatus("")
 	r.StatusCode = 0
+	r.ExitCode = 0
 	r.Body = ""
 	r.ErrorMsg = ""
 	r.Duration = 0

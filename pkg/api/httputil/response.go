@@ -19,10 +19,10 @@ type Response struct {
 
 // PageData is the data structure for paginated responses.
 type PageData struct {
-	Items    any   `json:"items"`
-	Total    int64 `json:"total"`
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
+	Items any   `json:"items"`
+	Total int64 `json:"total"`
+	Page  int   `json:"page"`
+	Size  int   `json:"size"`
 }
 
 // CursorPageData is the data structure for cursor-based (keyset) paginated
@@ -34,7 +34,7 @@ type CursorPageData struct {
 	Items      any    `json:"items"`
 	Total      int64  `json:"total"`
 	NextCursor string `json:"next_cursor"`
-	PageSize   int    `json:"page_size"`
+	Size       int    `json:"size"`
 }
 
 // Success writes a successful response with code=0.
@@ -81,10 +81,10 @@ func SuccessPage(arc *app.RequestContext, items any, total int64, page, size int
 		Code:    0,
 		Message: "ok",
 		Data: PageData{
-			Items:    items,
-			Total:    total,
-			Page:     page,
-			PageSize: size,
+			Items: items,
+			Total: total,
+			Page:  page,
+			Size:  size,
 		},
 	})
 }
@@ -100,7 +100,7 @@ func SuccessPageCursor(arc *app.RequestContext, items any, total int64, nextCurs
 			Items:      items,
 			Total:      total,
 			NextCursor: nextCursor,
-			PageSize:   size,
+			Size:       size,
 		},
 	})
 }

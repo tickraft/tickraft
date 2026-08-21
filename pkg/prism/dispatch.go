@@ -40,10 +40,6 @@ type DispatchResult struct {
 	// on the Event before any channel or callback observes it, and
 	// suitable for correlating with delivery records.
 	EventID string
-	// MatchedRules lists the names of rules that matched the alert. Rules
-	// that do not implement NamedMatcher are counted toward the accept
-	// decision but omitted from this slice.
-	MatchedRules []string
 	// DispatchedChannels lists the channel names that received a
 	// notification dispatch request. Channel sends happen asynchronously
 	// via the worker pool; this slice reflects the channels the engine
@@ -59,8 +55,8 @@ type DispatchResult struct {
 // and discards the result so the existing fire-and-forget semantics are
 // preserved.
 func (e *Engine) onBusEvent(ctx context.Context, evt alert.Event) {
-	// Dispatch returns a DispatchResult carrying observability metadata (matched
-	// rules, dispatched channels). The event-bus callback has no caller to
+	// Dispatch returns a DispatchResult carrying observability metadata
+	// (dispatched channels). The event-bus callback has no caller to
 	// surface this to, and Dispatch already logs every relevant outcome
 	// (suppression, channel send failure, onAlert error) via zap, so the result
 	// is intentionally not captured here.
@@ -70,10 +66,9 @@ func (e *Engine) onBusEvent(ctx context.Context, evt alert.Event) {
 // Dispatch synchronously evaluates the alert against the registered rules
 // and, if it matches (or no rules are registered), submits notification
 // jobs to the worker pool for each registered channel. It returns a
-// DispatchResult carrying the matched rule names and the dispatched channel
-// names. Channel sends happen asynchronously via the worker pool; this
-// method returns as soon as the jobs are submitted (or the alert is
-// suppressed).
+// DispatchResult carrying the dispatched channel names. Channel sends
+// happen asynchronously via the worker pool; this method returns as soon
+// as the jobs are submitted (or the alert is suppressed).
 //
 // Before rule evaluation, the engine invokes the registered governance.Middleware
 // chain in order. The first middleware that returns governance.DecisionSuppress or
@@ -87,12 +82,12 @@ func (e *Engine) onBusEvent(ctx context.Context, evt alert.Event) {
 // it, so the same identifier flows through rules, the OnAlert callback,
 // every channel Send, and the returned DispatchResult.
 //
-// All registered rules are evaluated (no short-circuit) so that every
-// matching rule name is collected for the response. This differs from the
-// historical fire-and-forget dispatch path which broke on the first match;
-// the dispatch decision (any-match) is unchanged. Each rule.Match call is
-// wrapped with panic recovery so a buggy custom Matcher cannot crash the
-// engine; a panicking rule is logged and treated as not matching.
+// All registered rules are evaluated (no short-circuit). This differs
+// from the historical fire-and-forget dispatch path which broke on the
+// first match; the dispatch decision (any-match) is unchanged. Each
+// rule.Match call is wrapped with panic recovery so a buggy custom
+// Matcher cannot crash the engine; a panicking rule is logged and
+// treated as not matching.
 func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// Defensive check: ensure the event has at least one violation.
 	// When Violations is empty, initialize a default violation based on
@@ -126,16 +121,17 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// deployments, so this is a no-op there.
 	postGuardHook(ctx, e.postGuardHook, &evt, e.logger)
 
-	// Collect structured violations from any matched rule that implements
-	// ViolationMatcher. When a compound rule (e.g. "cpu > 90 && mem > 85")
-	// matches multiple conditions, each condition contributes one Violation.
-	// When violations are collected, they replace the single violation
+	// Each rule is evaluated exactly once, yielding both the forward
+	// decision and the structured violations of the matched rules. When
+	// a compound rule (e.g. "cpu > 90 && mem > 85") matches multiple
+	// conditions, each condition contributes one Violation. When
+	// violations are collected, they replace the single violation
 	// populated by the payload converter (metricPayloadToAlert /
 	// logPayloadToAlert) so downstream consumers (channels, governance
 	// fingerprint, record persistence) see the full set of matched
-	// conditions. When no ViolationMatcher rules match or none return
-	// violations, the payload-populated Event.Violations are preserved.
-	matchedRules, collectedViolations, matched := e.evaluateRules(ctx, rules, evt)
+	// conditions. When no rule returns violations, the payload-populated
+	// Event.Violations are preserved.
+	collectedViolations, matched := e.evaluateRules(ctx, rules, evt)
 	if len(collectedViolations) > 0 {
 		evt.Violations = collectedViolations
 	}
@@ -162,10 +158,14 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 		// No channels registered: log the alert so it is still
 		// observable in deployments without a configured
 		// notification sink.
-		primary, _ := evt.PrimaryViolation()
+		primary := alert.PrimaryViolation(evt)
 		metricName := ""
-		if primary.Metric != nil {
-			metricName = primary.Metric.Name
+		level := ""
+		if primary != nil {
+			if primary.Metric != nil {
+				metricName = primary.Metric.Name
+			}
+			level = primary.Severity
 		}
 		e.logger.Info("alert received (no channels registered)",
 			zap.String("event_id", eventID),
@@ -173,13 +173,12 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 			zap.Int64("asset_id", evt.AssetID),
 			zap.Int64("tenant_id", evt.TenantID),
 			zap.String("metric_name", metricName),
-			zap.String("level", primary.Severity),
+			zap.String("level", level),
 		)
 		return DispatchResult{
-			Accepted:     true,
-			EventID:      eventID,
-			MatchedRules: matchedRules,
-			Message:      "alert accepted; no channels registered",
+			Accepted: true,
+			EventID:  eventID,
+			Message:  "alert accepted; no channels registered",
 		}
 	}
 
@@ -188,7 +187,6 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	return DispatchResult{
 		Accepted:           true,
 		EventID:            eventID,
-		MatchedRules:       matchedRules,
 		DispatchedChannels: dispatchedChannels,
 		Message:            "alert accepted",
 	}
@@ -242,35 +240,29 @@ func (e *Engine) runGovernanceGuards(
 	return DispatchResult{}, false
 }
 
-// evaluateRules evaluates all registered rules (no short-circuit) so
-// that every matching rule name is collected for the response. This
-// differs from the historical fire-and-forget dispatch path which broke
-// on the first match; the dispatch decision (any-match) is unchanged.
-// Each rule.Match call is wrapped with panic recovery so a buggy custom
+// evaluateRules evaluates every registered rule exactly once (no
+// short-circuit) so that the dispatch decision (any-match) and the
+// structured violations come from a single evaluation per rule. Each
+// rule.Match call is wrapped with panic recovery so a buggy custom
 // Matcher cannot crash the engine; a panicking rule is logged and
-// treated as not matching. It returns the matched rule names, the
-// structured violations collected from ViolationMatcher rules, and
-// whether the alert matched (an empty rule set defaults to matched).
+// treated as not matching. It returns the structured violations
+// collected from the matched rules and whether the alert matched (an
+// empty rule set defaults to matched).
 func (e *Engine) evaluateRules(
 	ctx context.Context,
-	rules []Matcher,
+	rules []alert.Matcher,
 	evt alert.Event,
-) (matchedRules []string, collectedViolations []alert.Violation, matched bool) {
-	matchedRules = make([]string, 0)
+) (collectedViolations []alert.Violation, matched bool) {
 	matched = len(rules) == 0
 	for _, r := range rules {
-		if match(ctx, r, evt, e.logger) {
-			matched = true
-			if nr, ok := r.(NamedMatcher); ok {
-				matchedRules = append(matchedRules, nr.Name())
-			}
-			if vm, ok := r.(ViolationMatcher); ok {
-				collectedViolations = append(collectedViolations,
-					matchWithViolations(ctx, vm, evt, e.logger)...)
-			}
+		result := match(ctx, r, evt, e.logger)
+		if !result.Forward {
+			continue
 		}
+		matched = true
+		collectedViolations = append(collectedViolations, result.Violations...)
 	}
-	return matchedRules, collectedViolations, matched
+	return collectedViolations, matched
 }
 
 // dispatchToChannels submits one notification job to the worker pool

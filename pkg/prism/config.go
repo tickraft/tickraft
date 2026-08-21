@@ -18,7 +18,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/governance"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
-	"github.com/tickraft/tickraft/pkg/prism/rule"
 )
 
 // Config is the unified configuration for the prism engine and all its
@@ -48,8 +47,8 @@ type Config struct {
 	OnAlert OnAlertFunc
 	// RuleConfig configures the rule matching engine.
 	// When RuleConfig.Store is nil, no rule engine is registered.
-	RuleConfig rule.Config
-	// AssetStore is used by the rule MetricMatcher for asset enrichment.
+	RuleConfig alert.Config
+	// AssetStore is used by the rule AlertMatcher for asset enrichment.
 	AssetStore asset.Store
 	// RemediationOperators registers additional remediation action
 	// operators (beyond the default LocalOperator) with the remediation
@@ -96,12 +95,12 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	}
 
 	// Load enabled channels from the database into the dispatch engine.
-	if err = loadEnabledChannels(ctx, engine, stores.channel, logger); err != nil {
+	if err := loadEnabledChannels(ctx, engine, stores.channel, logger); err != nil {
 		return nil, err
 	}
 
 	// Register the rule engine when enabled.
-	ruleEng, err := rule.Register(ctx, engine, resolveRuleConfig(cfg, logger, stores.rule))
+	ruleEng, err := alert.Register(ctx, engine, resolveRuleConfig(cfg, logger, stores.rule))
 	if err != nil {
 		return nil, fmt.Errorf("prism: register rule engine: %w", err)
 	}
@@ -121,6 +120,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 		remediation.WithEventBus(cfg.Bus),
 		remediation.WithStore(stores.remediation),
 		remediation.WithRecordStore(stores.remediation),
+		remediation.WithAssetStore(cfg.AssetStore),
 		remediation.WithLogger(logger),
 		remediation.WithOperators(cfg.RemediationOperators...),
 	)
@@ -140,7 +140,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 // engineStores groups the persistent stores created and migrated by
 // NewFromConfig for the prism Engine and its sub-engines.
 type engineStores struct {
-	rule        *rule.Store
+	rule        *alert.Store
 	record      alert.RecordStore
 	channel     *channel.Store
 	remediation *remediation.Store
@@ -148,23 +148,23 @@ type engineStores struct {
 
 // migrateStores creates and migrates the rule, alert record, channel,
 // and remediation stores.
-func migrateStores(ctx context.Context, db *gorm.DB) (*engineStores, error) {
-	ruleStore := rule.NewStore(db, rule.NewCompiler())
+func migrateStores(ctx context.Context, dbc *gorm.DB) (*engineStores, error) {
+	ruleStore := alert.NewStore(dbc, alert.NewCompiler())
 	if err := ruleStore.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("prism: migrate rule store: %w", err)
 	}
 
-	recordStore := alert.NewRecordStore(db)
-	if err := alert.Migrate(ctx, db); err != nil {
+	recordStore := alert.NewRecordStore(dbc)
+	if err := alert.Migrate(ctx, dbc); err != nil {
 		return nil, fmt.Errorf("prism: migrate alert store: %w", err)
 	}
 
-	channelStore := channel.NewStore(db)
+	channelStore := channel.NewStore(dbc)
 	if err := channelStore.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("prism: migrate channel store: %w", err)
 	}
 
-	remediationStore := remediation.NewStore(db)
+	remediationStore := remediation.NewStore(dbc)
 	if err := remediationStore.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("prism: migrate remediation store: %w", err)
 	}
@@ -236,7 +236,7 @@ func loadEnabledChannels(ctx context.Context, engine *Engine, channelStore *chan
 
 // resolveRuleConfig normalizes the rule engine configuration with the
 // shared logger, the rule store fallback, and the optional asset store.
-func resolveRuleConfig(cfg Config, logger *zap.Logger, ruleStore *rule.Store) rule.Config {
+func resolveRuleConfig(cfg Config, logger *zap.Logger, ruleStore *alert.Store) alert.Config {
 	ruleCfg := cfg.RuleConfig
 	if ruleCfg.Logger == nil {
 		ruleCfg.Logger = logger

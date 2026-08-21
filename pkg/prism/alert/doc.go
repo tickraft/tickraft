@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package alert provides the alert domain types used by the prism engine.
+// Package alert provides the alert domain: events, the rule engine,
+// rule persistence, and dispatch contracts.
+//
+// The rule engine (Engine) compiles Rule expressions against the
+// AlertEnv contract through the pkg/expr kernel and evaluates them in a
+// single pass per event, yielding both the matched rule IDs and the
+// structured Violations of every matched comparison sub-condition.
+// AlertMatcher adapts the engine to the Matcher interface consumed by
+// the prism engine; Register is the startup wiring entry point.
 //
 // The prism engine (in package [github.com/tickraft/tickraft/pkg/prism])
 // subscribes to collector alert events (metric and log alerts) published on

@@ -53,3 +53,14 @@ type RecordStore interface {
 	// record with the given ID exists.
 	Resolve(ctx context.Context, id int64) (*Record, error)
 }
+
+// Lister defines the rule listing operation the Engine needs to reload
+// its rule set. It is the consumer-side port of the Store (see
+// store.go): the engine depends on this narrow interface rather
+// than the full persistence layer, per code-architecture.md §4.3.2.
+type Lister interface {
+	// ListEnabled returns enabled rules, ordered by priority (descending)
+	// then ID (ascending). A zero tenantID returns rules across all
+	// tenants; per-event tenant filtering happens at evaluation time.
+	ListEnabled(ctx context.Context, tenantID int64) ([]Rule, error)
+}

@@ -162,3 +162,42 @@ func TestExecuteWithHeaders(t *testing.T) {
 		t.Errorf("Status: got %q, want %q", result.Status, types.AssetStatusNormal)
 	}
 }
+
+// TestExecuteExpectStatus pins the expect_status contract (aligned with
+// the http executor): an explicit code requires an exact match — a 2xx
+// response can be judged abnormal and a non-2xx response normal.
+func TestExecuteExpectStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	e := New()
+
+	// A non-2xx response matching expect_status is normal.
+	cfgBytes, err := json.Marshal(config{URL: srv.URL, ExpectStatus: http.StatusServiceUnavailable})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	result, err := e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("Execute (expect 503, got 503): %v", err)
+	}
+	if result.Status != types.AssetStatusNormal {
+		t.Errorf("Status: got %q, want %q (exact match on expect_status)", result.Status, types.AssetStatusNormal)
+	}
+
+	// A 2xx-mismatching expect_status would be abnormal; reuse the same
+	// server with an impossible expectation.
+	cfgBytes, err = json.Marshal(config{URL: srv.URL, ExpectStatus: http.StatusOK})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	result, err = e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("Execute (expect 200, got 503): %v", err)
+	}
+	if result.Status != types.AssetStatusAbnormal {
+		t.Errorf("Status: got %q, want %q (mismatch on expect_status)", result.Status, types.AssetStatusAbnormal)
+	}
+}

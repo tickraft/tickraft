@@ -10,7 +10,7 @@ import service from '@tickraft/core/utils/request'
 /**
  * API-layer contract tests: each feature api function must hit the right
  * URL with the right method, and pagination/filter parameters must leave
- * the browser as the backend's snake_case contract (page/page_size,
+ * the browser as the backend's contract (page/size,
  * asset_type, task_name, ...) after the naming interceptor runs.
  */
 
@@ -33,11 +33,11 @@ beforeEach(() => {
 })
 
 describe('asset api', () => {
-  it('getAssets sends page/page_size/keyword/asset_type/status', async () => {
+  it('getAssets sends page/size/keyword/asset_type/status', async () => {
     const { getAssets } = await import('./asset')
     await getAssets({
       page: 2,
-      pageSize: 50,
+      size: 50,
       keyword: 'web',
       assetType: 'service',
       status: 'normal',
@@ -49,7 +49,7 @@ describe('asset api', () => {
     expect(call.method).toBe('get')
     expect(call.params).toEqual({
       page: 2,
-      page_size: 50,
+      size: 50,
       keyword: 'web',
       asset_type: 'service',
       status: 'normal',
@@ -72,7 +72,7 @@ describe('task api', () => {
     const task = await import('./task')
     await task.getLogs(0, {
       page: 1,
-      pageSize: 20,
+      size: 20,
       taskName: 'backup',
       executor: 'local',
       status: 'success',
@@ -83,7 +83,7 @@ describe('task api', () => {
     expect(call.method).toBe('get')
     expect(call.params).toEqual({
       page: 1,
-      page_size: 20,
+      size: 20,
       task_name: 'backup',
       executor: 'local',
       status: 'success',
@@ -127,32 +127,32 @@ describe('prism api', () => {
     expect(calls.at(-1)?.url).toBe('/prism/alert/records/11/resolve')
   })
 
-  it('getRemediationRecords sends page/page_size and the status filter', async () => {
+  it('getRemediationRecords sends page/size and the status filter', async () => {
     const prism = await import('./prism')
     const fns = prism as unknown as Record<string, (params?: unknown) => Promise<unknown>>
     if (typeof fns.getRemediationRecords !== 'function') {
       throw new Error('prism api: missing getRemediationRecords')
     }
-    await fns.getRemediationRecords({ page: 1, pageSize: 15, status: 'failed' })
+    await fns.getRemediationRecords({ page: 1, size: 15, status: 'failed' })
 
     const call = calls[0]
     expect(call.url).toBe('/prism/remediation/records')
-    expect(call.params).toEqual({ page: 1, page_size: 15, status: 'failed' })
+    expect(call.params).toEqual({ page: 1, size: 15, status: 'failed' })
   })
 })
 
 describe('auth api', () => {
-  it('getApiKeys sends page/page_size', async () => {
+  it('getApiKeys sends page/size', async () => {
     const auth = await import('./auth')
     const fns = auth as unknown as Record<string, (params?: unknown) => Promise<unknown>>
     if (typeof fns.getApiKeys !== 'function') {
       throw new Error('auth api: missing getApiKeys')
     }
-    await fns.getApiKeys({ page: 1, pageSize: 20 })
+    await fns.getApiKeys({ page: 1, size: 20 })
 
     const call = calls[0]
     expect(call.url).toBe('/auth/apikeys')
-    expect(call.params).toEqual({ page: 1, page_size: 20 })
+    expect(call.params).toEqual({ page: 1, size: 20 })
   })
 })
 

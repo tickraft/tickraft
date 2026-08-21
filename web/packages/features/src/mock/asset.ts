@@ -57,7 +57,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: { page?: string; size?: string; asset_type?: string; status?: string; keyword?: string } }) => {
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       let filtered = [...store]
       if (query?.asset_type) {
         filtered = filtered.filter((r) => r.asset_type === query.asset_type)
@@ -75,7 +75,7 @@ export default [
       return {
         code: 0,
         message: 'success',
-        data: { items, total, page, page_size: size },
+        data: { items, total, page, size },
       }
     },
   },

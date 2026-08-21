@@ -40,7 +40,10 @@ type copyTaskRequest struct {
 
 // ListTasks handles GET /api/v1/tasks.
 func (h *Handler) ListTasks(ctx context.Context, arc *app.RequestContext) {
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	filter := Filter{
 		Group: arc.Query("group"),
 	}
@@ -223,7 +226,7 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 }
 
 // ListExecutions handles GET /api/v1/tasks/:id/executions. Supported query
-// parameters: page, page_size, status (pending/running/success/failed),
+// parameters: page, size, status (pending/running/success/failed),
 // executor (executor type) and task_name (substring match). A task id of 0
 // lists executions across all tasks.
 func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
@@ -231,7 +234,10 @@ func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	filter := ExecutionFilter{
 		Status:       task.ToStoredStatus(arc.Query("status")),
 		ExecutorType: arc.Query("executor"),

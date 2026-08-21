@@ -81,6 +81,45 @@ type config struct {
 	URL     string              `json:"url"`
 	Headers map[string][]string `json:"headers,omitempty"`
 	Body    string              `json:"body,omitempty"`
+	// ExpectStatus is the required HTTP response status code. Zero (the
+	// default) accepts any 2xx status as normal, matching the http
+	// executor's semantics.
+	ExpectStatus int `json:"expect_status,omitempty"`
+}
+
+// parseConfig decodes and normalizes the executor config JSON: it rejects
+// empty configs and missing URLs and defaults the HTTP method to POST.
+func parseConfig(raw string) (*config, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("webhook: executor config is empty")
+	}
+	var cfg config
+	if err := sonic.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil, fmt.Errorf("webhook: parse config: %w", err)
+	}
+	if cfg.URL == "" {
+		return nil, fmt.Errorf("webhook: url is required")
+	}
+	if cfg.Method == "" {
+		cfg.Method = http.MethodPost
+	}
+	return &cfg, nil
+}
+
+// responseStatus maps an HTTP status code to an asset status: an explicit
+// expect_status requires an exact match; otherwise any 2xx is normal
+// (aligned with the http executor).
+func responseStatus(expect, code int) types.AssetStatus {
+	if expect > 0 {
+		if code == expect {
+			return types.AssetStatusNormal
+		}
+		return types.AssetStatusAbnormal
+	}
+	if code >= 200 && code < 300 {
+		return types.AssetStatusNormal
+	}
+	return types.AssetStatusAbnormal
 }
 
 // Execute runs the webhook task and returns the result.
@@ -104,21 +143,9 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		}
 	}()
 
-	if req.Config == "" {
-		return nil, fmt.Errorf("webhook: executor config is empty")
-	}
-
-	var cfg config
-	if err := sonic.Unmarshal([]byte(req.Config), &cfg); err != nil {
-		return nil, fmt.Errorf("webhook: parse config: %w", err)
-	}
-
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("webhook: url is required")
-	}
-
-	if cfg.Method == "" {
-		cfg.Method = http.MethodPost
+	cfg, err := parseConfig(req.Config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Timeout control.
@@ -164,14 +191,8 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	// Read response body with truncation protection (64KB).
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
-	// Determine success/failure based on HTTP status code.
-	status := types.AssetStatusAbnormal
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		status = types.AssetStatusNormal
-	}
-
 	r := executor.AcquireResult()
-	r.Status = status
+	r.Status = responseStatus(cfg.ExpectStatus, resp.StatusCode)
 	r.StatusCode = resp.StatusCode
 	r.Body = string(bodyBytes)
 	r.Duration = duration

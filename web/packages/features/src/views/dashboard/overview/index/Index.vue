@@ -101,7 +101,7 @@ async function fetchDashboardData(): Promise<void> {
       getRuntimeInfo(),
       getAlertRecords({
         page: 1,
-        pageSize: 50,
+        size: 50,
         from: rangeStart(activeRange.value),
         to: new Date().toISOString(),
       }),

@@ -52,11 +52,11 @@ var (
 // an init() function or an explicit setup phase) before LoadChannels is
 // invoked; mutating the registry concurrently with LoadChannels is safe
 // but may produce non-deterministic results for in-flight loads.
-func Register(typeName string, factory Factory) {
-	typeName = strings.ToLower(typeName)
+func Register(name string, factory Factory) {
+	name = strings.ToLower(name)
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	registry[typeName] = factory
+	registry[name] = factory
 }
 
 // LookupFactory returns the Factory registered for typeName, or
@@ -66,10 +66,11 @@ func Register(typeName string, factory Factory) {
 // The returned factory is a copy of the map value, so it remains valid
 // after the read lock is released. Callers may invoke the factory
 // without holding registryMu.
-func LookupFactory(typeName string) Factory {
+func LookupFactory(name string) Factory {
+	name = strings.ToLower(name)
 	registryMu.RLock()
 	defer registryMu.RUnlock()
-	return registry[typeName]
+	return registry[name]
 }
 
 // ResetRegistryForTest clears all registered factories. It is intended

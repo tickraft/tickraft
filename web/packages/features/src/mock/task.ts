@@ -220,13 +220,13 @@ function asStringArray(value: unknown): string[] {
 }
 
 export default [
-  // Task list (filters: page/page_size/group/tags)
+  // Task list (filters: page/size/group/tags)
   {
     url: '/api/v1/tasks',
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       let filtered = [...mockTasks]
       if (query?.group) {
         const group = query.group.trim().toLowerCase()
@@ -244,7 +244,7 @@ export default [
       const total = filtered.length
       const start = (page - 1) * size
       const items = filtered.slice(start, start + size)
-      return { code: 0, message: 'success', data: { items, total, page, page_size: size } }
+      return { code: 0, message: 'success', data: { items, total, page, size } }
     },
   },
   // Create task (body: TaskCreateParams in snake_case)
@@ -384,14 +384,14 @@ export default [
     },
   },
   // Execution log list (sub-resource: /tasks/:id/executions).
-  // Filters: page/page_size/task_name/executor/status; taskId=0 means all tasks.
+  // Filters: page/size/task_name/executor/status; taskId=0 means all tasks.
   {
     url: '/api/v1/tasks/:id/executions',
     method: 'get',
     response: ({ url, query }: { url: string; query: Record<string, string> }) => {
       const taskId = extractTaskId(url)
       const page = Number(query?.page) || 1
-      const size = Number(query?.page_size) || 20
+      const size = Number(query?.size) || 20
       let filtered = [...mockLogs]
       if (taskId > 0) {
         filtered = filtered.filter((l) => l.task_id === taskId)
@@ -409,7 +409,7 @@ export default [
       const total = filtered.length
       const start = (page - 1) * size
       const items = filtered.slice(start, start + size)
-      return { code: 0, message: 'success', data: { items, total, page, page_size: size } }
+      return { code: 0, message: 'success', data: { items, total, page, size } }
     },
   },
   // Log detail (sub-resource: /tasks/:id/executions/:execId)

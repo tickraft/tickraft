@@ -58,6 +58,17 @@ func (o *executorOperator) Execute(ctx context.Context, req ExecutionRequest) (*
 	defer cancel()
 
 	startedAt := time.Now()
+	// The optional "expression" key of the rule's executor config rides
+	// the metadata channel (rule-engine-design §6.3.3) and is applied to
+	// the result below so the user-defined judgment drives the circuit
+	// breaker outcome.
+	metadata := map[string]string{
+		"remediation": "true",
+		"rule_id":     strconv.FormatInt(req.RuleID, 10),
+	}
+	if exprStr := executor.ConfigExpression(req.Config); exprStr != "" {
+		metadata["expression"] = exprStr
+	}
 	res, err := o.exec.Execute(runCtx, executor.ExecutionRequest{
 		ID:           req.RuleID,
 		TenantID:     req.TenantID,
@@ -68,10 +79,7 @@ func (o *executorOperator) Execute(ctx context.Context, req ExecutionRequest) (*
 		Timeout:      timeout,
 		RunID:        req.RunID,
 		TriggerType:  "event",
-		Metadata: map[string]string{
-			"remediation": "true",
-			"rule_id":     strconv.FormatInt(req.RuleID, 10),
-		},
+		Metadata:     metadata,
 	})
 	duration := time.Since(startedAt)
 	if err != nil {
@@ -80,6 +88,7 @@ func (o *executorOperator) Execute(ctx context.Context, req ExecutionRequest) (*
 	if res == nil {
 		return &ExecutionResult{Success: false, Duration: duration, ErrorMsg: "executor returned no result"}, nil
 	}
+	executor.ApplyJudgment(metadata["expression"], res, o.logger)
 	return &ExecutionResult{
 		Success:  res.Status == types.AssetStatusNormal,
 		Output:   res.Body,

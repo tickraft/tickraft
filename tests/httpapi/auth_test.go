@@ -210,7 +210,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	}
 
 	// List shows the key (PageData envelope).
-	pd := hs.listPage(token, "/api/v1/auth/apikeys?page=1&page_size=20")
+	pd := hs.listPage(token, "/api/v1/auth/apikeys?page=1&size=20")
 	if pd.Total < 1 {
 		t.Fatalf("list apikeys: expected at least 1 item, got total=%d", pd.Total)
 	}

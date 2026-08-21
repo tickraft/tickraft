@@ -17,6 +17,7 @@ import type {
   RemediationExecutorConfig,
   RemediationRulePayload,
 } from '../../../../../api/prism'
+import ExprEditor from '../../../../components/ExprEditor.vue'
 
 /** A single header row in the dynamic headers editor */
 interface HeaderRow {
@@ -29,6 +30,8 @@ const router = useRouter()
 const { t } = useI18n()
 
 const formRef = ref<FormInstance>()
+const conditionRef = ref<InstanceType<typeof ExprEditor>>()
+const judgmentRef = ref<InstanceType<typeof ExprEditor>>()
 const loading = ref(false)
 const saving = ref(false)
 
@@ -52,7 +55,8 @@ const form = ref({
   name: '',
   description: '',
   triggerEventType: 'metric' as string,
-  conditionExpr: '',
+  /** Trigger-condition expression (empty matches every event). */
+  expression: '',
   executorType: 'webhook' as string,
   // Local executor config fields
   executorCommand: '',
@@ -63,6 +67,8 @@ const form = ref({
   executorTimeout: 10,
   executorBody: '',
   headers: [] as HeaderRow[],
+  // Optional execution-judgment expression (config JSON "expression" key)
+  judgmentExpr: '',
   // Advanced
   cooldown: 300,
   circuitBreakerThreshold: 3,
@@ -174,7 +180,7 @@ async function loadRule(): Promise<void> {
     form.value.name = rule.name
     form.value.description = rule.description
     form.value.triggerEventType = rule.triggerEventType
-    form.value.conditionExpr = rule.conditionExpr
+    form.value.expression = rule.expression
     form.value.executorType = rule.executorType
     form.value.cooldown = rule.cooldown
     form.value.circuitBreakerThreshold = rule.circuitBreakerThreshold
@@ -182,15 +188,18 @@ async function loadRule(): Promise<void> {
 
     // Parse executor config from the JSON config string. The shape depends
     // on the executor type: local uses {command, args}, webhook/http use
-    // the RemediationExecutorConfig shape.
+    // the RemediationExecutorConfig shape. Both may carry the optional
+    // execution-judgment "expression" key.
     try {
       if (rule.executorType === 'local') {
         const cfg = JSON.parse(rule.executorConfig) as {
           command?: string
           args?: string[]
+          expression?: string
         }
         form.value.executorCommand = cfg.command ?? ''
         form.value.executorArgs = (cfg.args ?? []).join('\n')
+        form.value.judgmentExpr = cfg.expression ?? ''
       } else {
         const cfg = JSON.parse(rule.executorConfig) as Partial<RemediationExecutorConfig>
         form.value.executorUrl = cfg.url ?? ''
@@ -199,6 +208,7 @@ async function loadRule(): Promise<void> {
         form.value.executorBody = cfg.body ?? ''
         const headerEntries = Object.entries(cfg.headers ?? {})
         form.value.headers = headerEntries.map(([key, value]) => ({ key, value: String(value) }))
+        form.value.judgmentExpr = cfg.expression ?? ''
       }
     } catch {
       form.value.executorCommand = ''
@@ -208,6 +218,7 @@ async function loadRule(): Promise<void> {
       form.value.executorTimeout = 10
       form.value.executorBody = ''
       form.value.headers = []
+      form.value.judgmentExpr = ''
     }
   } catch {
     ElMessage.warning(t('prism.remediation.rule.form.notFound'))
@@ -223,7 +234,7 @@ function resetForm(): void {
     name: '',
     description: '',
     triggerEventType: 'metric',
-    conditionExpr: '',
+    expression: '',
     executorType: 'webhook',
     executorCommand: '',
     executorArgs: '',
@@ -232,6 +243,7 @@ function resetForm(): void {
     executorTimeout: 10,
     executorBody: '',
     headers: [],
+    judgmentExpr: '',
     cooldown: 300,
     circuitBreakerThreshold: 3,
     enabled: true,
@@ -251,6 +263,9 @@ function removeHeader(index: number): void {
 
 /** Build the executor config JSON string from form data */
 function buildExecutorConfig(): string {
+  // The optional execution-judgment expression travels inside the
+  // config JSON (the runner reads Metadata["expression"]).
+  const judgment = form.value.judgmentExpr.trim()
   if (isLocalExecutor.value) {
     const args = form.value.executorArgs
       .split('\n')
@@ -259,6 +274,7 @@ function buildExecutorConfig(): string {
     return JSON.stringify({
       command: form.value.executorCommand.trim(),
       args,
+      ...(judgment ? { expression: judgment } : {}),
     })
   }
   const headers: Record<string, string> = {}
@@ -277,6 +293,9 @@ function buildExecutorConfig(): string {
   if (showBody.value && form.value.executorBody.trim()) {
     config.body = form.value.executorBody.trim()
   }
+  if (judgment) {
+    config.expression = judgment
+  }
   return JSON.stringify(config)
 }
 
@@ -293,7 +312,7 @@ function buildPayload(): RemediationRulePayload {
     name: form.value.name.trim(),
     description: form.value.description.trim(),
     triggerEventType: form.value.triggerEventType,
-    conditionExpr: form.value.conditionExpr.trim(),
+    expression: form.value.expression.trim(),
     executorType: form.value.executorType,
     executorConfig: buildExecutorConfig(),
     cooldown: Number(form.value.cooldown),
@@ -306,6 +325,15 @@ function buildPayload(): RemediationRulePayload {
 async function handleSubmit(): Promise<void> {
   const valid = await validateForm()
   if (!valid) {
+    ElMessage.warning(t('prism.remediation.rule.form.validateError'))
+    return
+  }
+  // Both expressions are optional but validated against their env
+  // contracts before anything is sent.
+  if (
+    !(await conditionRef.value?.validate()) ||
+    !(await judgmentRef.value?.validate())
+  ) {
     ElMessage.warning(t('prism.remediation.rule.form.validateError'))
     return
   }
@@ -424,15 +452,16 @@ onMounted(() => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="t('prism.remediation.rule.form.conditionExpr')">
-            <el-input
-              v-model="form.conditionExpr"
-              type="textarea"
+          <el-form-item :label="t('prism.remediation.rule.form.expression')">
+            <ExprEditor
+              ref="conditionRef"
+              v-model="form.expression"
+              env="remediation"
+              placeholder="metric.name == &quot;cpu&quot; && metric.value > 95"
               :rows="2"
-              :placeholder="t('prism.remediation.rule.form.conditionExprPlaceholder')"
             />
             <div class="tk-prism-remediation-rule-edit__help">
-              {{ t('prism.remediation.rule.form.conditionExprHelp') }}
+              {{ t('prism.remediation.rule.form.expressionHelp') }}
             </div>
           </el-form-item>
         </section>
@@ -486,99 +515,114 @@ onMounted(() => {
 
           <!-- Webhook/http executor: URL / method / timeout / headers / body -->
           <template v-else>
-          <el-form-item
-            :label="t('prism.remediation.rule.form.executorUrl')"
-            prop="executorUrl"
-          >
-            <el-input
-              v-model="form.executorUrl"
-              :placeholder="t('prism.remediation.rule.form.executorUrlPlaceholder')"
-            />
-          </el-form-item>
-          <div class="tk-prism-remediation-rule-edit__form-grid">
-            <el-form-item :label="t('prism.remediation.rule.form.executorMethod')">
-              <el-select
-                v-model="form.executorMethod"
-                class="tk-prism-remediation-rule-edit__block"
-              >
-                <el-option
-                  v-for="opt in methodOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-            </el-form-item>
             <el-form-item
-              :label="t('prism.remediation.rule.form.executorTimeout')"
-              prop="executorTimeout"
+              :label="t('prism.remediation.rule.form.executorUrl')"
+              prop="executorUrl"
             >
-              <el-input-number
-                v-model="form.executorTimeout"
-                :min="1"
-                :max="60"
-                :step="1"
-                :placeholder="t('prism.remediation.rule.form.executorTimeoutPlaceholder')"
-                class="tk-prism-remediation-rule-edit__block"
+              <el-input
+                v-model="form.executorUrl"
+                :placeholder="t('prism.remediation.rule.form.executorUrlPlaceholder')"
               />
-              <div class="tk-prism-remediation-rule-edit__help">
-                {{ t('prism.remediation.rule.form.executorTimeoutHelp') }}
-              </div>
             </el-form-item>
-          </div>
-
-          <!-- Dynamic headers editor -->
-          <el-form-item :label="t('prism.remediation.rule.form.executorHeaders')">
-            <div class="tk-prism-remediation-rule-edit__headers">
-              <div
-                v-for="(header, index) in form.headers"
-                :key="index"
-                class="tk-prism-remediation-rule-edit__header-row"
+            <div class="tk-prism-remediation-rule-edit__form-grid">
+              <el-form-item :label="t('prism.remediation.rule.form.executorMethod')">
+                <el-select
+                  v-model="form.executorMethod"
+                  class="tk-prism-remediation-rule-edit__block"
+                >
+                  <el-option
+                    v-for="opt in methodOptions"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item
+                :label="t('prism.remediation.rule.form.executorTimeout')"
+                prop="executorTimeout"
               >
-                <el-input
-                  v-model="header.key"
-                  :placeholder="t('prism.remediation.rule.form.executorHeaderKey')"
-                  class="tk-prism-remediation-rule-edit__header-key"
+                <el-input-number
+                  v-model="form.executorTimeout"
+                  :min="1"
+                  :max="60"
+                  :step="1"
+                  :placeholder="t('prism.remediation.rule.form.executorTimeoutPlaceholder')"
+                  class="tk-prism-remediation-rule-edit__block"
                 />
-                <el-input
-                  v-model="header.value"
-                  :placeholder="t('prism.remediation.rule.form.executorHeaderValue')"
-                  class="tk-prism-remediation-rule-edit__header-value"
-                />
+                <div class="tk-prism-remediation-rule-edit__help">
+                  {{ t('prism.remediation.rule.form.executorTimeoutHelp') }}
+                </div>
+              </el-form-item>
+            </div>
+
+            <!-- Dynamic headers editor -->
+            <el-form-item :label="t('prism.remediation.rule.form.executorHeaders')">
+              <div class="tk-prism-remediation-rule-edit__headers">
+                <div
+                  v-for="(header, index) in form.headers"
+                  :key="index"
+                  class="tk-prism-remediation-rule-edit__header-row"
+                >
+                  <el-input
+                    v-model="header.key"
+                    :placeholder="t('prism.remediation.rule.form.executorHeaderKey')"
+                    class="tk-prism-remediation-rule-edit__header-key"
+                  />
+                  <el-input
+                    v-model="header.value"
+                    :placeholder="t('prism.remediation.rule.form.executorHeaderValue')"
+                    class="tk-prism-remediation-rule-edit__header-value"
+                  />
+                  <el-button
+                    link
+                    type="danger"
+                    @click="removeHeader(index)"
+                  >
+                    {{ t('prism.remediation.rule.list.delete') }}
+                  </el-button>
+                </div>
                 <el-button
                   link
-                  type="danger"
-                  @click="removeHeader(index)"
+                  type="primary"
+                  @click="addHeader"
                 >
-                  {{ t('prism.remediation.rule.list.delete') }}
+                  + {{ t('prism.remediation.rule.form.executorAddHeader') }}
                 </el-button>
               </div>
-              <el-button
-                link
-                type="primary"
-                @click="addHeader"
-              >
-                + {{ t('prism.remediation.rule.form.executorAddHeader') }}
-              </el-button>
-            </div>
-          </el-form-item>
+            </el-form-item>
 
-          <!-- Request body (only for http executor type) -->
-          <el-form-item
-            v-if="showBody"
-            :label="t('prism.remediation.rule.form.executorBody')"
-          >
-            <el-input
-              v-model="form.executorBody"
-              type="textarea"
-              :rows="3"
-              :placeholder="t('prism.remediation.rule.form.executorBodyPlaceholder')"
+            <!-- Request body (only for http executor type) -->
+            <el-form-item
+              v-if="showBody"
+              :label="t('prism.remediation.rule.form.executorBody')"
+            >
+              <el-input
+                v-model="form.executorBody"
+                type="textarea"
+                :rows="3"
+                :placeholder="t('prism.remediation.rule.form.executorBodyPlaceholder')"
+              />
+              <div class="tk-prism-remediation-rule-edit__help">
+                {{ t('prism.remediation.rule.form.executorBodyHelp') }}
+              </div>
+            </el-form-item>
+          </template>
+
+          <!-- Execution judgment (stored in the config JSON "expression"
+               key; empty keeps the executor's default success semantics) -->
+          <el-form-item :label="t('prism.remediation.rule.form.judgmentExpr')">
+            <ExprEditor
+              ref="judgmentRef"
+              v-model="form.judgmentExpr"
+              env="execution"
+              :placeholder="'code == 200 && duration < 500'"
+              :rows="2"
             />
             <div class="tk-prism-remediation-rule-edit__help">
-              {{ t('prism.remediation.rule.form.executorBodyHelp') }}
+              {{ t('prism.remediation.rule.form.judgmentExprHelp') }}
             </div>
           </el-form-item>
-          </template>
         </section>
 
         <!-- Section 04: Advanced -->

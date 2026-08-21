@@ -10,7 +10,7 @@ import (
 )
 
 // MetricQuery specifies the filtering criteria for QueryMetrics.
-// A zero-value Limit applies a default cap of 1000 returned entries.
+// A zero-value Size applies a default cap of 1000 returned entries.
 type MetricQuery struct {
 	// TenantID filters results to metrics belonging to this tenant.
 	TenantID int64
@@ -22,9 +22,11 @@ type MetricQuery struct {
 	Start time.Time
 	// End is the inclusive upper bound of the query time range.
 	End time.Time
-	// Limit caps the number of returned entries; a value <= 0 applies
+	// Page is the 1-based page number used with Size for offset paging.
+	Page int
+	// Size caps the number of returned entries; a value <= 0 applies
 	// a default limit of 1000.
-	Limit int
+	Size int
 }
 
 // MetricStore persists metric data points.
@@ -41,15 +43,16 @@ type MetricStore interface {
 	// SaveMetricsBatch persists multiple metric data points in a single
 	// database round-trip. An empty slice is a no-op.
 	SaveMetricsBatch(ctx context.Context, metrics []*CollectMetric) error
-	// QueryMetrics queries metrics for an asset within a time range.
-	// If q.MetricName is non-empty, results are filtered by metric name.
-	// The q.Limit field caps the number of returned entries; a value <= 0
-	// applies a default limit of 1000.
-	QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, error)
+	// QueryMetrics returns a page of metrics for an asset within a time
+	// range, plus the total count of matching rows. If q.MetricName is
+	// non-empty, results are filtered by metric name. The q.Size field
+	// caps the number of returned entries; a value <= 0 applies a default
+	// limit of 1000.
+	QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, int64, error)
 }
 
 // LogQuery specifies the filtering criteria for QueryLogs.
-// A zero-value Limit applies a default cap of 1000 returned entries.
+// A zero-value Size applies a default cap of 1000 returned entries.
 type LogQuery struct {
 	// TenantID filters results to logs belonging to this tenant.
 	TenantID int64
@@ -61,9 +64,11 @@ type LogQuery struct {
 	Start time.Time
 	// End is the inclusive upper bound of the query time range.
 	End time.Time
-	// Limit caps the number of returned entries; a value <= 0 applies
+	// Page is the 1-based page number used with Size for offset paging.
+	Page int
+	// Size caps the number of returned entries; a value <= 0 applies
 	// a default limit of 1000.
-	Limit int
+	Size int
 }
 
 // LogStore persists log entries.
@@ -79,9 +84,9 @@ type LogStore interface {
 	// SaveLogsBatch persists multiple log entries in a single database
 	// round-trip. An empty slice is a no-op.
 	SaveLogsBatch(ctx context.Context, logs []*CollectLog) error
-	// QueryLogs queries logs for an asset within a time range.
-	// If q.Level is non-empty, results are filtered by log level.
-	// The q.Limit field caps the number of returned entries; a value <= 0
-	// applies a default limit of 1000.
-	QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, error)
+	// QueryLogs returns a page of logs for an asset within a time range,
+	// plus the total count of matching rows. If q.Level is non-empty,
+	// results are filtered by log level. The q.Size field caps the number
+	// of returned entries; a value <= 0 applies a default limit of 1000.
+	QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int64, error)
 }

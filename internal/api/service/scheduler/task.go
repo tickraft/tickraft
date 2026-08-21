@@ -25,6 +25,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/scheduler"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
@@ -77,8 +78,8 @@ func (s *TaskService) ListTasks(ctx context.Context, page, size int, filter task
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 
 	total := len(all)
-	page, size = clampPaging(page, size)
-	start, end := pageWindow(page, size, total)
+	page, size = pagination.Clamp(page, size)
+	start, end := pagination.Window(page, size, total)
 
 	result := make([]task.Task, 0, end-start)
 	for _, t := range all[start:end] {
@@ -271,7 +272,7 @@ func (s *TaskService) ListExecutions(
 		nameOf = func(id int64) string { return names[id] }
 	}
 
-	page, size = clampPaging(page, size)
+	page, size = pagination.Clamp(page, size)
 	q := schedtask.ExecutionQuery{
 		TaskID:       taskID,
 		TaskIDs:      taskIDs,
@@ -495,24 +496,4 @@ func mapError(err error) error {
 		return handler.NewServiceError(http.StatusConflict, errdefs.CodeConflict, err.Error())
 	}
 	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
-}
-
-// clampPaging normalizes page and size parameters to sane defaults.
-func clampPaging(page, size int) (clampedPage, clampedSize int) {
-	clampedPage = page
-	clampedSize = size
-	clampedPage = max(clampedPage, 1)
-	if clampedSize < 1 {
-		clampedSize = 20
-	}
-	clampedSize = min(clampedSize, 100)
-	return clampedPage, clampedSize
-}
-
-// pageWindow returns the [start, end) slice indices for the given page and
-// size within a collection of total length.
-func pageWindow(page, size, total int) (start, end int) {
-	start = min(max((page-1)*size, 0), total)
-	end = min(start+size, total)
-	return start, end
 }

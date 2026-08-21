@@ -215,7 +215,8 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		// Distinguish non-zero exit codes from other failures (e.g. command not found).
 		errorMsg := stderr.String()
 		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) && errorMsg == "" {
+		hasExitCode := errors.As(err, &exitErr)
+		if !hasExitCode && errorMsg == "" {
 			errorMsg = err.Error()
 		}
 		e.logger.Warn("local executor: failed",
@@ -225,6 +226,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		)
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal
+		r.ExitCode = exitCodeFrom(hasExitCode, exitErr)
 		r.Body = stdout.String()
 		r.ErrorMsg = errorMsg
 		r.Duration = duration
@@ -244,6 +246,16 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 
 // Compile-time interface assertion.
 var _ executor.Executor = (*Executor)(nil)
+
+// exitCodeFrom resolves the unified result code for a failed command run:
+// the process exit code when the kernel reported one, and -1 when no exit
+// code is available (command not found, killed by an uncatchable signal).
+func exitCodeFrom(hasExitCode bool, exitErr *exec.ExitError) int {
+	if hasExitCode && exitErr != nil {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
 
 // isCommandAllowed reports whether the command path matches one of the
 // allowed prefixes. A prefix can be a directory path (e.g. "/usr/local/bin/")

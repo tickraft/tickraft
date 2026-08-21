@@ -13,8 +13,8 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/channel"
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 	prismcore "github.com/tickraft/tickraft/pkg/prism"
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
 	prismchannel "github.com/tickraft/tickraft/pkg/prism/channel"
@@ -37,7 +37,7 @@ func NewChannelService(store *prismchannel.Store, engine *prismcore.Engine) *Cha
 
 // ListChannels returns a page of notification channels and the total count.
 func (s *ChannelService) ListChannels(ctx context.Context, page, size int) ([]channel.Channel, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
+	page, size = pagination.Clamp(page, size)
 	models, total, err := s.store.List(ctx, page, size)
 	if err != nil {
 		return nil, 0, mapChannelStoreError(err)

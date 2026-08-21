@@ -162,7 +162,10 @@ func resolveTranslation(t Template, locale string) (translation map[string]strin
 // log level directly. Falls back to the raw label when the i18n
 // Registry is nil or the key is missing.
 func resolveLevel(tr i18n.Translator, evt alert.Event, logger *zap.Logger) string {
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	var raw string
 	switch evt.Type {
 	case alert.TypeLog:
@@ -226,7 +229,10 @@ func formatTimestamp(evt alert.Event, tr i18n.Translator) string {
 // raw field names when the Registry is nil.
 func buildFields(evt alert.Event, tr i18n.Translator) map[string]string {
 	fields := make(map[string]string)
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	timestampLabel := "Timestamp"
 	resourceLabel := "Asset"
 	if tr != nil {
@@ -289,7 +295,10 @@ func buildAssetLink(evt alert.Event, opts RenderOptions) string {
 // buildTemplateVars constructs the template variable map for text/template
 // substitution. Variables are derived from the alert event fields.
 func buildTemplateVars(evt alert.Event) map[string]any {
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	vars := make(map[string]any)
 	vars["alert_type"] = string(evt.Type)
 	vars["asset_id"] = evt.AssetID

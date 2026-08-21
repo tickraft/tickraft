@@ -21,8 +21,8 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
@@ -93,7 +93,7 @@ func (s *Service) ListTasks(
 	page, size int,
 	filter telemetryhandler.Filter,
 ) ([]telemetryhandler.Task, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
+	page, size = pagination.Clamp(page, size)
 
 	mode := telemetry.Mode(filter.Mode)
 	points, total, err := s.store.ListPaged(ctx, mode, page, size)

@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // ErrRuleNotFound is returned when a remediation rule cannot be located by
@@ -33,11 +34,30 @@ func NewStore(dbc *gorm.DB) *Store {
 	return &Store{dbc: dbc}
 }
 
-// Migrate runs AutoMigrate for the Rule and Record tables. It is intended
-// to be invoked from the application's migration phase at startup.
+// Migrate runs AutoMigrate for the Rule and Record tables and drops the
+// orphaned pre-rename legacy tables. It is intended to be invoked from
+// the application's migration phase at startup.
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.dbc.WithContext(ctx).AutoMigrate(&Rule{}, &Record{}); err != nil {
 		return fmt.Errorf("remediation: migrate rule/record tables: %w", err)
+	}
+	if err := DropLegacyTables(ctx, s.dbc); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DropLegacyTables removes the orphaned pre-rename remediation tables
+// (sys_remediation_rule, sys_remediation_record) left behind by earlier
+// development builds. The project is unreleased, so no data migration
+// path exists: the live tables are sys_prism_remediation_rule and
+// sys_prism_remediation_record. Idempotent — missing tables are ignored.
+func DropLegacyTables(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).Exec("DROP TABLE IF EXISTS sys_remediation_rule").Error; err != nil {
+		return fmt.Errorf("remediation: drop legacy rule table: %w", errmap.MapError(err))
+	}
+	if err := dbc.WithContext(ctx).Exec("DROP TABLE IF EXISTS sys_remediation_record").Error; err != nil {
+		return fmt.Errorf("remediation: drop legacy record table: %w", errmap.MapError(err))
 	}
 	return nil
 }
@@ -79,9 +99,9 @@ func (s *Store) UpsertRecord(ctx context.Context, record *Record) error {
 
 // ListRecords returns a page of dispatch records ordered by descending ID,
 // plus the total count. A non-empty status filters by exact lifecycle
-// status match. limit and offset control the page; callers should clamp
-// them before calling.
-func (s *Store) ListRecords(ctx context.Context, limit, offset int, status string) ([]*Record, int64, error) {
+// status match. page is 1-based; size is normalized by pagination.Clamp.
+func (s *Store) ListRecords(ctx context.Context, page, size int, status string) ([]*Record, int64, error) {
+	page, size = pagination.Clamp(page, size)
 	q := s.dbc.WithContext(ctx).Model(&Record{})
 	if status != "" {
 		q = q.Where("status = ?", status)
@@ -96,8 +116,8 @@ func (s *Store) ListRecords(ctx context.Context, limit, offset int, status strin
 	var records []*Record
 	if err := q.
 		Order("id DESC").
-		Limit(limit).
-		Offset(offset).
+		Offset((page - 1) * size).
+		Limit(size).
 		Find(&records).Error; err != nil {
 		return nil, 0, fmt.Errorf("remediation: list records: %w", errmap.MapError(err))
 	}
@@ -116,14 +136,31 @@ func (s *Store) Create(ctx context.Context, m *Rule) error {
 	return nil
 }
 
-// Update saves the remediation rule record. The ID field identifies the
-// row to update; CreatedAt is preserved by the caller before invoking
-// Update. A RowsAffected count of zero is reported as ErrRuleNotFound.
+// updateColumns lists the user-editable columns touched by Update.
+// Runtime state (status, last_run_at, consecutive_failures, metadata)
+// and lifecycle fields (tenant_id, created_at) are deliberately absent
+// so a stale or partial DTO can never clear them.
+var updateColumns = []string{
+	"name", "description", "asset_id", "trigger_event_type", "expression",
+	"executor_type", "executor_config", "cooldown", "circuit_breaker_threshold",
+	"enabled", "updated_at",
+}
+
+// Update applies a column-level update limited to the user-editable
+// columns. Unlike a full Save, the runtime state consumed by the engine
+// (status, last_run_at, consecutive_failures) and lifecycle fields are
+// never touched, so a PUT built from a partial DTO cannot silently
+// disable the rule or reset its circuit breaker (fix for D-01). A
+// RowsAffected count of zero is reported as ErrRuleNotFound.
 func (s *Store) Update(ctx context.Context, m *Rule) error {
 	if m == nil {
 		return fmt.Errorf("remediation: update rule: nil model")
 	}
-	result := s.dbc.WithContext(ctx).Save(m)
+	result := s.dbc.WithContext(ctx).
+		Model(&Rule{}).
+		Where("id = ?", m.ID).
+		Select(updateColumns).
+		Updates(m)
 	if result.Error != nil {
 		return fmt.Errorf("remediation: update rule: %w", errmap.MapError(result.Error))
 	}
@@ -151,11 +188,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Rule, error) {
 // plus the total count. page starts at 1; size is the maximum number of
 // items returned. Soft-deleted rows are excluded.
 func (s *Store) List(ctx context.Context, page, size int) ([]*Rule, int64, error) {
-	page = max(page, 1)
-	if size <= 0 {
-		size = 20
-	}
-	size = min(size, 100)
+	page, size = pagination.Clamp(page, size)
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).Count(&total).Error; err != nil {
@@ -207,16 +240,42 @@ func (s *Store) GetRules(ctx context.Context, tenantID, assetID int64, triggerTy
 	return rules, nil
 }
 
-// UpdateRuleStatus updates the rule's operational status and metadata blob.
-func (s *Store) UpdateRuleStatus(ctx context.Context, ruleID int64, status, metadata string) error {
-	updates := map[string]any{
-		"status":   status,
-		"metadata": metadata,
-	}
+// UpdateRuleStatus updates the rule's operational status (active /
+// paused). It is the resume path for rules paused by the circuit
+// breaker; the counter itself is owned by RecordExecutionOutcome.
+func (s *Store) UpdateRuleStatus(ctx context.Context, ruleID int64, status string) error {
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).
 		Where("id = ?", ruleID).
-		Updates(updates).Error; err != nil {
+		Update("status", status).Error; err != nil {
 		return fmt.Errorf("remediation: update rule status: %w", errmap.MapError(err))
+	}
+	return nil
+}
+
+// RecordExecutionOutcome atomically updates the circuit breaker state
+// after an execution: success resets the consecutive-failure counter;
+// failure increments it and pauses the rule when the count reaches the
+// row's own threshold. Both paths are single-statement SQL updates, so
+// concurrent executions of the same rule never lose counts (fix for
+// D-08).
+func (s *Store) RecordExecutionOutcome(ctx context.Context, ruleID int64, success bool) error {
+	var err error
+	if success {
+		err = s.dbc.WithContext(ctx).Model(&Rule{}).
+			Where("id = ?", ruleID).
+			Update("consecutive_failures", 0).Error
+	} else {
+		err = s.dbc.WithContext(ctx).Model(&Rule{}).
+			Where("id = ?", ruleID).
+			Updates(map[string]any{
+				"consecutive_failures": gorm.Expr("consecutive_failures + 1"),
+				"status": gorm.Expr(
+					"CASE WHEN circuit_breaker_threshold > 0 AND consecutive_failures + 1 >= "+
+						"circuit_breaker_threshold THEN ? ELSE status END", string(StatusPaused)),
+			}).Error
+	}
+	if err != nil {
+		return fmt.Errorf("remediation: record execution outcome: %w", errmap.MapError(err))
 	}
 	return nil
 }

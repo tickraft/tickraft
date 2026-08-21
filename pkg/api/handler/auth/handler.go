@@ -224,7 +224,10 @@ func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
 
 // ListAPIKeys handles GET /api/v1/auth/apikeys.
 func (h *Handler) ListAPIKeys(ctx context.Context, c *app.RequestContext) {
-	page, size := httputil.ParsePaging(c)
+	page, size, ok := httputil.ParsePaging(c)
+	if !ok {
+		return
+	}
 	keys, total, err := h.svc.ListAPIKeys(ctx, page, size)
 	if err != nil {
 		api.Fail(c, err)

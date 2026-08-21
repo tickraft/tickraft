@@ -149,10 +149,13 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 }
 
 // ListAssets handles GET /api/v1/assets. Supported query parameters: page,
-// page_size, keyword (substring match on name/asset_key), asset_type and
+// size, keyword (substring match on name/asset_key), asset_type and
 // status (exact match).
 func (h *Handler) ListAssets(ctx context.Context, arc *app.RequestContext) {
-	page, size := httputil.ParsePaging(arc)
+	page, size, ok := httputil.ParsePaging(arc)
+	if !ok {
+		return
+	}
 	filter := asset.ListFilter{
 		Keyword:   arc.Query("keyword"),
 		AssetType: arc.Query("asset_type"),

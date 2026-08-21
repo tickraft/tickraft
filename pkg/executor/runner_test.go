@@ -1060,3 +1060,125 @@ func TestRunnerAsyncRetryNoRetrySucceeds(t *testing.T) {
 		t.Errorf("payload.Status: got %q, want %q", ev.Payload.Status, types.AssetStatusNormal)
 	}
 }
+
+// TestRunnerJudgmentOverridesStatus verifies the judgment choke point in
+// doExecute: a Metadata["expression"] that judges failure flips an
+// otherwise-normal protocol result to abnormal in the completion event.
+func TestRunnerJudgmentOverridesStatus(t *testing.T) {
+	exec := &fakeExecutor{
+		typ: "judged",
+		result: &Result{
+			Status:     types.AssetStatusNormal,
+			StatusCode: 200,
+			Body:       "ok",
+		},
+	}
+	registry := NewRegistry()
+	if err := registry.Register(exec); err != nil {
+		t.Fatalf("register executor: %v", err)
+	}
+
+	r, bus := newTestRunner(t, registry)
+	_ = r
+
+	completed := subscribeCompleted(bus)
+
+	publishTrigger(bus, event.ExecutionPayload{
+		ExecutionID:  "1",
+		TenantID:     "1",
+		AssetID:      "1",
+		ExecutorType: "judged",
+	}, event.WithMetadata(map[string]string{
+		"expression": "code != 200",
+	}))
+
+	ev := waitCompleted(t, completed)
+
+	if types.AssetStatus(ev.Payload.Status) != types.AssetStatusAbnormal {
+		t.Errorf("payload.Status: got %q, want %q", ev.Payload.Status, types.AssetStatusAbnormal)
+	}
+	if ev.Payload.Error == "" {
+		t.Error("payload.Error: want the judgment failure note, got empty")
+	}
+}
+
+// TestRunnerJudgmentDrivesRetry verifies that a judgment failure triggers
+// the retry machinery just like a protocol failure: user-defined
+// success/failure semantics drive retries (rule-engine-design §6.3.2).
+func TestRunnerJudgmentDrivesRetry(t *testing.T) {
+	exec := &fakeExecutor{
+		typ: "judged-retry",
+		result: &Result{
+			Status:     types.AssetStatusNormal,
+			StatusCode: 200,
+		},
+	}
+	registry := NewRegistry()
+	if err := registry.Register(exec); err != nil {
+		t.Fatalf("register executor: %v", err)
+	}
+
+	r, bus := newTestRunner(t, registry)
+	_ = r
+
+	completed := subscribeCompleted(bus)
+
+	publishTrigger(bus, event.ExecutionPayload{
+		ExecutionID:  "1",
+		TenantID:     "1",
+		AssetID:      "1",
+		ExecutorType: "judged-retry",
+	}, event.WithMetadata(map[string]string{
+		"max_retries":    "2",
+		"retry_interval": "1ms",
+		"expression":     "code != 200",
+	}))
+
+	ev := waitCompleted(t, completed)
+
+	// 1 initial + 2 retries = 3 total calls, all judged failing.
+	if got := exec.calls.Load(); got != 3 {
+		t.Errorf("executor calls: got %d, want 3", got)
+	}
+	if types.AssetStatus(ev.Payload.Status) != types.AssetStatusAbnormal {
+		t.Errorf("payload.Status: got %q, want %q", ev.Payload.Status, types.AssetStatusAbnormal)
+	}
+}
+
+// TestRunnerEmptyJudgmentKeepsProtocolDefault verifies that a request
+// without an "expression" metadata key leaves the executor's protocol
+// status untouched.
+func TestRunnerEmptyJudgmentKeepsProtocolDefault(t *testing.T) {
+	exec := &fakeExecutor{
+		typ: "plain",
+		result: &Result{
+			Status:     types.AssetStatusNormal,
+			StatusCode: 204,
+		},
+	}
+	registry := NewRegistry()
+	if err := registry.Register(exec); err != nil {
+		t.Fatalf("register executor: %v", err)
+	}
+
+	r, bus := newTestRunner(t, registry)
+	_ = r
+
+	completed := subscribeCompleted(bus)
+
+	publishTrigger(bus, event.ExecutionPayload{
+		ExecutionID:  "1",
+		TenantID:     "1",
+		AssetID:      "1",
+		ExecutorType: "plain",
+	}, event.WithMetadata(map[string]string{"max_retries": "2"}))
+
+	ev := waitCompleted(t, completed)
+
+	if got := exec.calls.Load(); got != 1 {
+		t.Errorf("executor calls: got %d, want 1 (no judgment, no retry)", got)
+	}
+	if types.AssetStatus(ev.Payload.Status) != types.AssetStatusNormal {
+		t.Errorf("payload.Status: got %q, want %q", ev.Payload.Status, types.AssetStatusNormal)
+	}
+}

@@ -227,47 +227,41 @@ type Option interface {
 type emailOptions struct {
 	cfg       Config
 	logger    *zap.Logger
-	tlsConfig *tls.Config
+	tls       *tls.Config
 	formatter i18n.Formatter
 	library   template.Library
 }
 
 // hostOption overrides the SMTP server host.
-type hostOption struct {
-	host string
-}
+type hostOption string
 
-func (o hostOption) apply(options *emailOptions) { options.cfg.Host = o.host }
+func (o hostOption) apply(options *emailOptions) { options.cfg.Host = string(o) }
 
 // WithHost overrides the SMTP server host.
 func WithHost(host string) Option {
-	return hostOption{host: host}
+	return hostOption(host)
 }
 
 // portOption overrides the SMTP server port.
-type portOption struct {
-	port int
-}
+type portOption int
 
-func (o portOption) apply(options *emailOptions) { options.cfg.Port = o.port }
+func (o portOption) apply(options *emailOptions) { options.cfg.Port = int(o) }
 
 // WithPort overrides the SMTP server port.
 func WithPort(port int) Option {
-	return portOption{port: port}
+	return portOption(port)
 }
 
 // timeoutOption overrides the maximum duration for a complete send operation.
-type timeoutOption struct {
-	d time.Duration
-}
+type timeoutOption time.Duration
 
-func (o timeoutOption) apply(options *emailOptions) { options.cfg.Timeout = o.d }
+func (o timeoutOption) apply(options *emailOptions) { options.cfg.Timeout = time.Duration(o) }
 
 // WithTimeout overrides the maximum duration for a complete send
 // operation, including dial, TLS handshake, authentication, and message
 // transmission.
-func WithTimeout(d time.Duration) Option {
-	return timeoutOption{d: d}
+func WithTimeout(timeout time.Duration) Option {
+	return timeoutOption(timeout)
 }
 
 // credentialsOption sets the authentication username and password.
@@ -287,15 +281,13 @@ func WithCredentials(username, password string) Option {
 }
 
 // fromOption overrides the sender email address.
-type fromOption struct {
-	from string
-}
+type fromOption string
 
-func (o fromOption) apply(options *emailOptions) { options.cfg.From = o.from }
+func (o fromOption) apply(options *emailOptions) { options.cfg.From = string(o) }
 
 // WithFrom overrides the sender email address.
 func WithFrom(from string) Option {
-	return fromOption{from: from}
+	return fromOption(from)
 }
 
 // toOption overrides the recipient list.
@@ -311,39 +303,33 @@ func WithTo(to ...string) Option {
 }
 
 // tlsModeOption overrides the TLS mode.
-type tlsModeOption struct {
-	mode TLSMode
-}
+type tlsModeOption TLSMode
 
-func (o tlsModeOption) apply(options *emailOptions) { options.cfg.TLSMode = o.mode }
+func (o tlsModeOption) apply(options *emailOptions) { options.cfg.TLSMode = TLSMode(o) }
 
 // WithTLSMode overrides the TLS mode.
 func WithTLSMode(mode TLSMode) Option {
-	return tlsModeOption{mode: mode}
+	return tlsModeOption(mode)
 }
 
 // authTypeOption overrides the authentication mechanism.
-type authTypeOption struct {
-	authType AuthType
-}
+type authTypeOption AuthType
 
-func (o authTypeOption) apply(options *emailOptions) { options.cfg.AuthType = o.authType }
+func (o authTypeOption) apply(options *emailOptions) { options.cfg.AuthType = AuthType(o) }
 
 // WithAuthType overrides the authentication mechanism.
 func WithAuthType(authType AuthType) Option {
-	return authTypeOption{authType: authType}
+	return authTypeOption(authType)
 }
 
 // htmlModeOption enables or disables HTML email mode.
-type htmlModeOption struct {
-	enabled bool
-}
+type htmlModeOption bool
 
-func (o htmlModeOption) apply(options *emailOptions) { options.cfg.HTMLMode = o.enabled }
+func (o htmlModeOption) apply(options *emailOptions) { options.cfg.HTMLMode = bool(o) }
 
 // WithHTMLMode enables or disables HTML email mode.
 func WithHTMLMode(enabled bool) Option {
-	return htmlModeOption{enabled: enabled}
+	return htmlModeOption(enabled)
 }
 
 // retryOption overrides the retry configuration.
@@ -397,15 +383,15 @@ func WithLogger(logger *zap.Logger) Option {
 
 // tlsConfigOption injects a custom TLS configuration.
 type tlsConfigOption struct {
-	tlsCfg *tls.Config
+	cfg *tls.Config
 }
 
-func (o tlsConfigOption) apply(options *emailOptions) { options.tlsConfig = o.tlsCfg }
+func (o tlsConfigOption) apply(options *emailOptions) { options.tls = o.cfg }
 
 // withTLSConfig is an unexported option for injecting a custom TLS
 // configuration, primarily for testing with self-signed certificates.
-func withTLSConfig(tlsCfg *tls.Config) Option {
-	return tlsConfigOption{tlsCfg: tlsCfg}
+func withTLSConfig(config *tls.Config) Option {
+	return tlsConfigOption{cfg: config}
 }
 
 // formatterOption injects a locale-aware Formatter used to render alert messages.
@@ -525,10 +511,10 @@ func New(cfg Config, options ...Option) (*Channel, error) {
 	opts.cfg.To = recipients
 
 	return &Channel{
-		config:    opts.cfg,
-		cb:        breaker,
-		retry:     r,
-		logger:    logger,
-		tlsConfig: opts.tlsConfig,
+		config: opts.cfg,
+		cb:     breaker,
+		retry:  r,
+		logger: logger,
+		tls:    opts.tls,
 	}, nil
 }

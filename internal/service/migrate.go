@@ -14,7 +14,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"github.com/tickraft/tickraft/pkg/prism/rule"
+	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
 )
 
 // RunMigrate opens the database from dbCfg, runs AutoMigrate, and logs the
@@ -34,12 +34,16 @@ func RunMigrate(ctx context.Context, dbCfg db.Config, displayDSN string) error {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err = rule.NewStore(dbc, rule.NewCompiler()).Migrate(ctx); err != nil {
+	if err = alert.NewStore(dbc, alert.NewCompiler()).Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate rule table: %w", err)
 	}
 
 	if err = alert.Migrate(ctx, dbc); err != nil {
 		return fmt.Errorf("migrate alert tables: %w", err)
+	}
+
+	if err = prismremediation.NewStore(dbc).Migrate(ctx); err != nil {
+		return fmt.Errorf("migrate remediation tables: %w", err)
 	}
 
 	zap.L().Info("database migration completed successfully",

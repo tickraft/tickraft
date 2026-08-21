@@ -12,6 +12,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/api/handler/channel"
+	"github.com/tickraft/tickraft/pkg/api/handler/expr"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
@@ -61,6 +62,7 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	registerAuthRoutes(server, cfg, authH)
 	registerTaskRoutes(server, cfg, taskH)
 	registerPrismRoutes(server, cfg, alertH, channelH, remediationH)
+	registerExprRoutes(server, cfg)
 	registerSystemRoutes(server, cfg, systemH)
 	registerAssetRoutes(server, cfg)
 	registerTelemetryRoutes(server, cfg, telemetryH)
@@ -250,6 +252,17 @@ func registerPrismRoutes(server *api.Server, cfg *routeConfig,
 		remediationRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"),
 			remediationH.ListRemediationRecords)
 	}
+}
+
+// registerExprRoutes registers the expression validation endpoint used by
+// the rule editors for real-time validation (JWT required). The handler
+// is stateless — validation is a pure function delegating to the pkg/expr
+// kernel, the same source as the CRUD entry-point validations.
+func registerExprRoutes(server *api.Server, cfg *routeConfig) {
+	exprH := expr.NewHandler()
+	exprGroup := server.Group("/api/v1/expr")
+	exprGroup.Use(cfg.jwtMiddleware)
+	exprGroup.POST("/validate", middleware.RequirePermission(middleware.ActionRead, "*"), exprH.Validate)
 }
 
 // registerSystemRoutes registers the system module routes (JWT required) and

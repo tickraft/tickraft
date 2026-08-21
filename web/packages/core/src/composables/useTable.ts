@@ -26,7 +26,7 @@ export interface UseTableOptions<T extends object> {
     params: PageParams & Record<string, unknown>,
   ) => Promise<{ items: T[]; total: number }>
   /** Default page size */
-  defaultPageSize?: number
+  defaultSize?: number
   /** Row unique key field name; defaults to 'id' */
   rowKey?: string
   /** Whether to sync pagination/search/sort state to the URL query (restorable on page refresh); defaults to false */
@@ -55,7 +55,7 @@ export interface UseTableReturn<T extends object> {
   /** Current page number */
   page: ComputedRef<number>
   /** Page size */
-  pageSize: ComputedRef<number>
+  size: ComputedRef<number>
   /** Debounced search (default 300ms) */
   search: (params: Record<string, unknown>) => void
   /** Immediate search (no debounce) */
@@ -75,7 +75,7 @@ export interface UseTableReturn<T extends object> {
   /** Page number change */
   changePage: (page: number) => void
   /** Page size change */
-  changePageSize: (size: number) => void
+  changeSize: (size: number) => void
   /** Sort change */
   sortChange: (sortBy: string, sortOrder?: SortOrder) => void
   /** URL sync parameters object */
@@ -95,7 +95,7 @@ export function useTable<T extends object>(
 ): UseTableReturn<T> {
   const {
     fetchFn,
-    defaultPageSize = 20,
+    defaultSize = 20,
     rowKey = 'id',
     syncUrl = false,
     searchDebounceDelay = DEFAULT_SEARCH_DEBOUNCE,
@@ -108,7 +108,7 @@ export function useTable<T extends object>(
 
   const pagination = reactive<PaginationState>({
     page: 1,
-    size: defaultPageSize,
+    size: defaultSize,
   })
 
   const searchParams = reactive<Record<string, unknown>>({})
@@ -127,7 +127,7 @@ export function useTable<T extends object>(
   /** Current page number (derived from pagination) */
   const page: ComputedRef<number> = computed(() => pagination.page)
   /** Page size (derived from pagination) */
-  const pageSize: ComputedRef<number> = computed(() => pagination.size)
+  const size: ComputedRef<number> = computed(() => pagination.size)
 
   /** Selected row objects */
   const selectedRows: ComputedRef<T[]> = computed(() => Array.from(selectedRowMap.values()))
@@ -249,7 +249,7 @@ export function useTable<T extends object>(
    * Page size change
    * @param size - new page size
    */
-  function changePageSize(size: number): void {
+  function changeSize(size: number): void {
     pagination.size = size
     pagination.page = 1
     void fetchData()
@@ -362,7 +362,7 @@ export function useTable<T extends object>(
     error,
     total,
     page,
-    pageSize,
+    size,
     search,
     immediateSearch,
     resetSearch,
@@ -372,7 +372,7 @@ export function useTable<T extends object>(
     getSelectedRows,
     refresh,
     changePage,
-    changePageSize,
+    changeSize,
     sortChange,
     urlParams,
   }

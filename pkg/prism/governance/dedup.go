@@ -75,7 +75,10 @@ func (d *Dedup) Process(_ context.Context, evt *alert.Event) Decision {
 	d.maybeSweepLocked(now)
 
 	if last, ok := d.seen[fp]; ok && now.Sub(last) < d.window {
-		primary, _ := evt.PrimaryViolation()
+		var primary alert.Violation
+		if p := alert.PrimaryViolation(*evt); p != nil {
+			primary = *p
+		}
 		metricName := ""
 		if primary.Metric != nil {
 			metricName = primary.Metric.Name

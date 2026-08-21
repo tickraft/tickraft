@@ -30,8 +30,8 @@ const { t } = useI18n()
 const { canDelete } = usePermission()
 
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(20)
+const page = ref(1)
+const size = ref(20)
 const total = ref(0)
 const tableData = ref<Asset[]>([])
 
@@ -113,8 +113,8 @@ async function fetchData(): Promise<void> {
   loading.value = true
   try {
     const res = await getAssets({
-      page: currentPage.value,
-      pageSize: pageSize.value,
+      page: page.value,
+      size: size.value,
       keyword: searchValues.keyword.trim() || undefined,
       assetType: (searchValues.type || undefined) as AssetListQuery['assetType'],
       status: (searchValues.status || undefined) as AssetListQuery['status'],
@@ -149,7 +149,7 @@ function handleSearch(values: Record<string, unknown>): void {
   searchValues.keyword = (values.keyword as string) ?? ''
   searchValues.type = (values.type as string) ?? ''
   searchValues.status = (values.status as string) ?? ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
@@ -157,20 +157,20 @@ function handleReset(): void {
   searchValues.keyword = ''
   searchValues.type = ''
   searchValues.status = ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
-function handlePageChange({ current, pageSize: size }: { current: number; pageSize: number }): void {
-  currentPage.value = current
-  pageSize.value = size
+function handlePageChange(payload: { page: number; size: number }): void {
+  page.value = payload.page
+  size.value = payload.size
   void fetchData()
 }
 
 /** Click a summary card to filter by status (toggle off if already active) */
 function handleSummaryClick(status: string): void {
   searchValues.status = searchValues.status === status ? '' : status
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
@@ -303,8 +303,8 @@ onMounted(() => {
         :columns="columns"
         :loading="loading"
         :total="total"
-        :current="currentPage"
-        :page-size="pageSize"
+        :page="page"
+        :size="size"
         @page-change="handlePageChange"
       >
         <template #name="{ row }">

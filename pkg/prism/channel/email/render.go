@@ -142,7 +142,10 @@ func renderAlert(ctx context.Context, evt alert.Event, cfg Config, logger *zap.L
 // primary (most severe) violation to ensure the subject reflects the most
 // important issue in multi-violation events.
 func formatSubject(evt alert.Event) string {
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	switch evt.Type {
 	case alert.TypeMetric:
 		if v.Metric != nil && v.Metric.Name != "" {

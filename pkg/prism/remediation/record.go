@@ -89,7 +89,7 @@ type RecordStore interface {
 	UpsertRecord(ctx context.Context, record *Record) error
 	// ListRecords returns a page of dispatch records ordered by descending
 	// ID, plus the total count. A non-empty status filters by exact
-	// lifecycle status match. limit and offset control the page; callers
-	// should clamp them before calling.
-	ListRecords(ctx context.Context, limit, offset int, status string) ([]*Record, int64, error)
+	// lifecycle status match. page is 1-based; size is normalized by
+	// pagination.Clamp.
+	ListRecords(ctx context.Context, page, size int, status string) ([]*Record, int64, error)
 }

@@ -30,8 +30,8 @@ const { canDelete } = usePermission()
 
 const loading = ref(false)
 const allTemplates = ref<TelemetryTemplate[]>([])
-const currentPage = ref(1)
-const pageSize = ref(15)
+const page = ref(1)
+const size = ref(15)
 
 /** Search form */
 const searchModel = reactive<Record<string, unknown>>({
@@ -100,8 +100,8 @@ const total = computed(() => filteredData.value.length)
 
 /** Paginated data (client-side) */
 const pagedData = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredData.value.slice(start, start + pageSize.value)
+  const start = (page.value - 1) * size.value
+  return filteredData.value.slice(start, start + size.value)
 })
 
 /** Table columns */
@@ -164,7 +164,7 @@ async function handleDelete(row: TelemetryTemplate): Promise<void> {
 /** Click search: trigger query with current search model */
 function handleSearch(values: Record<string, unknown>): void {
   searchModel.category = (values.category as string) || ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
@@ -172,20 +172,20 @@ function handleSearch(values: Record<string, unknown>): void {
 function handleReset(): void {
   searchModel.category = ''
   activeType.value = ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
 /** Pagination change handler */
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  currentPage.value = payload.current
-  pageSize.value = payload.pageSize
+function handlePageChange(payload: { page: number; size: number }): void {
+  page.value = payload.page
+  size.value = payload.size
 }
 
 /** Type chip click: filter by type (client-side) */
 function handleTypeChipClick(type: string): void {
   activeType.value = activeType.value === type ? '' : type
-  currentPage.value = 1
+  page.value = 1
 }
 
 /** Handle back to monitor list */
@@ -293,9 +293,9 @@ onMounted(() => {
       :columns="columns"
       :loading="loading"
       :total="total"
-      :current="currentPage"
-      :page-size="pageSize"
-      :page-sizes="[10, 15, 20, 50]"
+      :page="page"
+      :size="size"
+      :size-options="[10, 15, 20, 50]"
       row-key="id"
       @page-change="handlePageChange"
     >

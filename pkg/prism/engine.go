@@ -19,7 +19,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/governance"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
-	"github.com/tickraft/tickraft/pkg/prism/rule"
 )
 
 // defaultNotificationPoolSize is the worker count used when no pool size is
@@ -48,7 +47,7 @@ type Engine struct {
 	logger *zap.Logger
 
 	rulesMu    sync.RWMutex
-	rules      []Matcher
+	rules      []alert.Matcher
 	channelsMu sync.RWMutex
 	channels   []Channel
 	guardsMu   sync.RWMutex
@@ -74,8 +73,8 @@ type Engine struct {
 
 	// Orchestration fields: populated by NewFromConfig, nil when the Engine
 	// is created via New() directly (standalone dispatch engine mode).
-	ruleEngine       *rule.Engine
-	ruleStore        *rule.Store
+	ruleEngine       *alert.Engine
+	ruleStore        *alert.Store
 	recordStore      alert.RecordStore
 	channelStore     *channel.Store
 	remediationStore *remediation.Store
@@ -375,7 +374,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	// Subscribe to telemetry alert events. Each handler normalizes the
 	// typed payload into an Event and dispatches it through the
 	// rule engine and notification channels.
-	if _, err := event.Subscribe[event.MetricExceededPayload](e.bus, event.TypeTelemetryMetricExceeded,
+	if _, err := event.Subscribe(e.bus, event.TypeTelemetryMetricExceeded,
 		func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
 			e.onBusEvent(runCtx, metricPayloadToAlert(ev))
 			return nil
@@ -475,10 +474,10 @@ func (e *Engine) Stop(ctx context.Context) error {
 
 // rulesSnapshot returns the current rules without holding the read lock
 // across the call site.
-func (e *Engine) rulesSnapshot() []Matcher {
+func (e *Engine) rulesSnapshot() []alert.Matcher {
 	e.rulesMu.RLock()
 	defer e.rulesMu.RUnlock()
-	return append([]Matcher(nil), e.rules...)
+	return append([]alert.Matcher(nil), e.rules...)
 }
 
 // channelsSnapshot returns the current channels without holding the read
@@ -501,7 +500,7 @@ func (e *Engine) guardsSnapshot() []governance.Guard {
 
 // RuleStore returns the rule persistence store. Returns nil when the Engine
 // was created via New() directly without orchestration.
-func (e *Engine) RuleStore() *rule.Store { return e.ruleStore }
+func (e *Engine) RuleStore() *alert.Store { return e.ruleStore }
 
 // RecordStore returns the alert record persistence store. Returns nil when
 // the Engine was created via New() directly without orchestration.
@@ -518,4 +517,4 @@ func (e *Engine) RemediationStore() *remediation.Store { return e.remediationSto
 // RuleEngine returns the rule matching engine. Returns nil when the Engine
 // was created via New() directly without orchestration or when no rule
 // engine was registered.
-func (e *Engine) RuleEngine() *rule.Engine { return e.ruleEngine }
+func (e *Engine) RuleEngine() *alert.Engine { return e.ruleEngine }

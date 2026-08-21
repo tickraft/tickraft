@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/vm"
 	"go.uber.org/zap"
 
+	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/expr"
 	"github.com/tickraft/tickraft/pkg/pool"
 )
 
@@ -27,6 +27,11 @@ import (
 // configured. It bounds concurrent remediation executions so a burst of
 // triggers cannot spawn unbounded goroutines.
 const defaultExecutionPoolSize = 4
+
+// conditionCacheCapacity is the LRU capacity of the compiled-condition
+// program cache. It bounds memory for compiled expressions regardless of
+// how many distinct rules exist (fix for D-07).
+const conditionCacheCapacity = 512
 
 // Manager is the remediation decision and dispatch engine. It subscribes
 // to telemetry alert events on the event bus, evaluates registered Rules
@@ -39,8 +44,9 @@ const defaultExecutionPoolSize = 4
 // WithOperators / RegisterOperator.
 type Manager struct {
 	bus       event.Bus
-	store     RuleStore
+	rules     RuleStore
 	records   RecordStore
+	assets    asset.Store
 	logger    *zap.Logger
 	operators map[string]Operator
 
@@ -51,11 +57,10 @@ type Manager struct {
 	execPool  pool.Pool
 	poolOwned bool
 
-	// matchCache caches compiled condition programs keyed by
-	// "<ruleID>:<expr>" so a rule's expression is compiled at most once
-	// per distinct expression. A zero expression (match-all) is not cached.
-	matchMu    sync.Mutex
-	matchCache map[string]*vm.Program
+	// exprCache caches compiled condition programs (LRU, keyed by env
+	// type + expression) so a rule's expression is compiled at most once
+	// per distinct expression and retired expressions are evicted.
+	exprCache *expr.ProgramCache
 
 	// inFlight tracks (ruleID:assetID) keys currently executing so a
 	// flapping trigger cannot stack duplicate executions.
@@ -76,8 +81,9 @@ type Option interface {
 
 type managerOptions struct {
 	bus       event.Bus
-	store     RuleStore
+	rules     RuleStore
 	records   RecordStore
+	assets    asset.Store
 	logger    *zap.Logger
 	operators []Operator
 	poolSize  int
@@ -101,7 +107,7 @@ type ruleStoreOption struct {
 	store RuleStore
 }
 
-func (o ruleStoreOption) apply(options *managerOptions) { options.store = o.store }
+func (o ruleStoreOption) apply(options *managerOptions) { options.rules = o.store }
 
 // WithStore sets the rule store used to load and update remediation rules.
 func WithStore(store RuleStore) Option {
@@ -113,8 +119,6 @@ type recordStoreOption struct {
 	records RecordStore
 }
 
-//修复recordStoreOption.apply方法中的参数类型不匹配问题
-
 func (o recordStoreOption) apply(options *managerOptions) { options.records = o.records }
 
 // WithRecordStore sets the store used to persist remediation dispatch
@@ -122,6 +126,20 @@ func (o recordStoreOption) apply(options *managerOptions) { options.records = o.
 // started, completed, failed, skipped) is persisted for the records API.
 func WithRecordStore(store RecordStore) Option {
 	return recordStoreOption{records: store}
+}
+
+// assetStoreOption sets the store used to enrich the evaluation env.
+type assetStoreOption struct {
+	assets asset.Store
+}
+
+func (o assetStoreOption) apply(options *managerOptions) { options.assets = o.assets }
+
+// WithAssetStore sets the asset store used to enrich the RemediationEnv
+// with asset.name/type/tags. A nil store leaves the asset domain limited
+// to the event's id/key.
+func WithAssetStore(store asset.Store) Option {
+	return assetStoreOption{assets: store}
 }
 
 // loggerOption sets the structured logger.
@@ -192,18 +210,19 @@ func New(options ...Option) (*Manager, error) {
 	for _, o := range options {
 		o.apply(opts)
 	}
-	if opts.store == nil {
+	if opts.rules == nil {
 		return nil, fmt.Errorf("remediation: %w: rule store is required", errdefs.ErrInvalidArgument)
 	}
 
 	m := &Manager{
-		bus:        opts.bus,
-		store:      opts.store,
-		records:    opts.records,
-		logger:     opts.logger,
-		operators:  map[string]Operator{},
-		matchCache: map[string]*vm.Program{},
-		inFlight:   map[string]struct{}{},
+		bus:       opts.bus,
+		rules:     opts.rules,
+		records:   opts.records,
+		assets:    opts.assets,
+		logger:    opts.logger,
+		operators: map[string]Operator{},
+		exprCache: expr.NewProgramCache(conditionCacheCapacity),
+		inFlight:  map[string]struct{}{},
 	}
 	// Register the default local operator unless the caller supplied one.
 	hasLocal := false
@@ -270,7 +289,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	// Metric threshold breaches -> metric trigger.
 	sub, err := event.Subscribe(m.bus, event.TypeTelemetryMetricExceeded,
 		func(_ context.Context, ev event.Event[event.MetricExceededPayload]) error {
-			m.handle(runCtx, metricPayloadToContext(ev))
+			if te, ok := metricPayloadToTrigger(ev); ok {
+				m.handle(runCtx, te)
+			} else {
+				m.warnMalformedPayload("metric exceeded", ev.Payload.AssetID, ev.Payload.TenantID)
+			}
 			return nil
 		})
 	if err != nil {
@@ -282,7 +305,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	// Log keyword matches -> log trigger.
 	sub, err = event.Subscribe(m.bus, event.TypeTelemetryLogMatched,
 		func(_ context.Context, ev event.Event[event.LogMatchedPayload]) error {
-			m.handle(runCtx, logPayloadToContext(ev))
+			if te, ok := logPayloadToTrigger(ev); ok {
+				m.handle(runCtx, te)
+			} else {
+				m.warnMalformedPayload("log matched", ev.Payload.AssetID, ev.Payload.TenantID)
+			}
 			return nil
 		})
 	if err != nil {
@@ -294,7 +321,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	// Asset status transitions -> status_change trigger.
 	sub, err = event.Subscribe(m.bus, event.TypeAssetStatusChanged,
 		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
-			m.handle(runCtx, statusPayloadToContext(ev))
+			if te, ok := statusPayloadToTrigger(ev); ok {
+				m.handle(runCtx, te)
+			} else {
+				m.warnMalformedPayload("status change", ev.Payload.AssetID, ev.Payload.TenantID)
+			}
 			return nil
 		})
 	if err != nil {
@@ -307,6 +338,17 @@ func (m *Manager) Start(ctx context.Context) error {
 		zap.Int("operators", len(m.operators)),
 	)
 	return nil
+}
+
+// warnMalformedPayload logs an event dropped because its identifiers could
+// not be parsed. Falling back to asset id 0 is not an option: it would match
+// every global rule (fix for D-10).
+func (m *Manager) warnMalformedPayload(kind, assetID, tenantID string) {
+	m.logger.Warn("remediation: drop event with malformed payload identifiers",
+		zap.String("event_kind", kind),
+		zap.String("asset_id", assetID),
+		zap.String("tenant_id", tenantID),
+	)
 }
 
 // Stop gracefully shuts down the manager: it cancels event subscriptions and
@@ -337,31 +379,59 @@ func (m *Manager) Stop(ctx context.Context) error {
 	return nil
 }
 
-// handle is the decision core. It loads matching rules from the store and
-// dispatches each matching rule to its operator through the worker pool,
+// handle is the decision core. It loads matching rules from the store,
+// evaluates each rule's trigger condition against a RemediationEnv, and
+// dispatches matching rules to their operator through the worker pool,
 // gated by idempotency, cooldown, and the circuit breaker.
-func (m *Manager) handle(ctx context.Context, ec EventContext) {
-	rules, err := m.store.GetRules(ctx, ec.TenantID, ec.AssetID, ec.Type)
+//
+// The in-flight claim happens before the remaining gates (claim-then-check)
+// so no window exists between the idempotency check and the dispatch-time
+// set (fix for D-09).
+func (m *Manager) handle(ctx context.Context, te triggerEvent) {
+	rules, err := m.rules.GetRules(ctx, te.TenantID, te.AssetID, te.Trigger)
 	if err != nil {
 		m.logger.Warn("remediation: load rules failed",
-			zap.String("trigger", ec.Type),
-			zap.Int64("asset_id", ec.AssetID),
+			zap.String("trigger", te.Trigger),
+			zap.Int64("asset_id", te.AssetID),
 			zap.Error(err),
 		)
 		return
 	}
+	if len(rules) == 0 {
+		return
+	}
+	env := m.buildEnv(ctx, te)
 	for _, r := range rules {
 		if !r.Enabled || r.Status != string(StatusActive) {
 			continue
 		}
-		if !m.matchCondition(ctx, r, ec) {
+		if !m.matchCondition(r, env) {
 			continue
 		}
-		if skip := m.checkGates(ctx, r, ec); skip {
+		key := inFlightKey(r.ID, te.AssetID)
+		if !m.tryClaimInFlight(key) {
+			m.recordSkip(ctx, r, te, "idempotency: execution in flight")
 			continue
 		}
-		m.dispatch(ctx, r, ec)
+		if skip := m.checkGates(ctx, r, te); skip {
+			m.releaseInFlight(key)
+			continue
+		}
+		m.dispatch(ctx, r, te, key)
 	}
+}
+
+// buildEnv projects the trigger event into a RemediationEnv, enriching the
+// asset domain from the asset store. A failed lookup is non-fatal: the env
+// keeps the event's asset id/key with empty name/type/tags.
+func (m *Manager) buildEnv(ctx context.Context, te triggerEvent) RemediationEnv {
+	var res *asset.Asset
+	if m.assets != nil {
+		if found, err := m.assets.GetByID(ctx, te.AssetID); err == nil && found != nil {
+			res = found
+		}
+	}
+	return buildRemediationEnv(te, res)
 }
 
 // saveRecord persists a dispatch lifecycle transition. Persistence failures
@@ -384,66 +454,56 @@ func (m *Manager) saveRecord(rec *Record) {
 
 // newRecord builds the base Record for a dispatch run at its first
 // (triggered) transition.
-func newRecord(r *Rule, ec EventContext, runID string) *Record {
+func newRecord(r *Rule, te triggerEvent, runID string) *Record {
 	return &Record{
 		RuleID:   r.ID,
 		RuleName: r.Name,
-		AssetID:  ec.AssetID,
-		AssetKey: ec.AssetKey,
+		AssetID:  te.AssetID,
+		AssetKey: te.AssetKey,
 		RunID:    runID,
-		Trigger:  ec.Type,
+		Trigger:  te.Trigger,
 		Status:   RecordStatusTriggered,
 	}
 }
 
 // recordSkip persists a skipped dispatch with the given reason and publishes
 // the corresponding RemediationSkipped event.
-func (m *Manager) recordSkip(ctx context.Context, r *Rule, ec EventContext, reason string) {
-	m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, reason))
-	rec := newRecord(r, ec, newRunID())
+func (m *Manager) recordSkip(ctx context.Context, r *Rule, te triggerEvent, reason string) {
+	m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, te, reason))
+	rec := newRecord(r, te, newRunID())
 	rec.Status = RecordStatusSkipped
 	rec.Error = reason
 	m.saveRecord(rec)
 }
 
-// checkGates evaluates the idempotency, cooldown, and circuit-breaker gates
-// for a rule. It returns true when the rule should be skipped (and records
-// the skip reason via a RemediationSkipped event).
-func (m *Manager) checkGates(ctx context.Context, r *Rule, ec EventContext) (skip bool) {
-	key := inFlightKey(r.ID, ec.AssetID)
-
-	// Idempotency: skip if an execution for this (rule, asset) is in flight.
-	m.inFlightMu.Lock()
-	if _, ok := m.inFlight[key]; ok {
-		m.inFlightMu.Unlock()
-		m.recordSkip(ctx, r, ec, "idempotency: execution in flight")
-		return true
-	}
-	m.inFlightMu.Unlock()
-
+// checkGates evaluates the cooldown and circuit-breaker gates for a rule.
+// The idempotency gate lives in handle (claim-then-check). It returns true
+// when the rule should be skipped (and records the skip reason via a
+// RemediationSkipped event).
+func (m *Manager) checkGates(ctx context.Context, r *Rule, te triggerEvent) (skip bool) {
 	// Cooldown: skip if the last run is still within the cooldown window.
 	if r.LastRunAt != nil && r.Cooldown > 0 {
 		elapsed := time.Since(*r.LastRunAt)
 		if elapsed < time.Duration(r.Cooldown)*time.Second {
-			m.recordSkip(ctx, r, ec, "cooldown")
+			m.recordSkip(ctx, r, te, "cooldown")
 			return true
 		}
 	}
 
 	// Circuit breaker: skip if consecutive failures have reached the
-	// threshold. The rule is marked paused so it is not re-evaluated until
-	// a human resumes it.
-	md := parseMetadata(r.Metadata)
-	if r.CircuitBreakerThreshold > 0 && md.ConsecutiveFailures >= r.CircuitBreakerThreshold {
+	// threshold. The rule is normally paused atomically by the store when
+	// the counter crosses the threshold; this read-side check is the
+	// belt-and-braces path for rows paused out-of-band.
+	if r.CircuitBreakerThreshold > 0 && r.ConsecutiveFailures >= r.CircuitBreakerThreshold {
 		if r.Status != string(StatusPaused) {
-			if err := m.store.UpdateRuleStatus(ctx, r.ID, string(StatusPaused), md.serialize()); err != nil {
+			if err := m.rules.UpdateRuleStatus(ctx, r.ID, string(StatusPaused)); err != nil {
 				m.logger.Warn("remediation: pause rule failed",
 					zap.Int64("rule_id", r.ID),
 					zap.Error(err),
 				)
 			}
 		}
-		m.recordSkip(ctx, r, ec, "circuit breaker tripped")
+		m.recordSkip(ctx, r, te, "circuit breaker tripped")
 		return true
 	}
 	return false
@@ -451,45 +511,43 @@ func (m *Manager) checkGates(ctx context.Context, r *Rule, ec EventContext) (ski
 
 // skipPayload builds a RunPayload for a skipped remediation carrying the
 // skip reason.
-func skipPayload(r *Rule, ec EventContext, reason string) RunPayload {
-	p := newPayload(r, ec, "")
+func skipPayload(r *Rule, te triggerEvent, reason string) RunPayload {
+	p := newPayload(r, te, "")
 	p.Reason = reason
 	return p
 }
 
-// dispatch marks the (rule, asset) in-flight and submits the execution to the
-// worker pool. On completion it updates the rule's last-run timestamp and
-// circuit-breaker state.
-func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
+// dispatch submits the execution to the worker pool. The (rule, asset)
+// in-flight key must already be claimed by handle; the key is released by
+// the job on completion or here when the pool rejects the submission. On
+// completion the job updates the rule's last-run timestamp and circuit
+// breaker state.
+func (m *Manager) dispatch(ctx context.Context, r *Rule, te triggerEvent, key string) {
 	m.operatorsMu.RLock()
 	op, ok := m.operators[r.ExecutorType]
 	m.operatorsMu.RUnlock()
 	if !ok {
+		m.releaseInFlight(key)
 		m.logger.Warn("remediation: operator not registered",
 			zap.String("executor_type", r.ExecutorType),
 			zap.Int64("rule_id", r.ID),
 		)
-		m.recordSkip(ctx, r, ec, "operator not registered: "+r.ExecutorType)
+		m.recordSkip(ctx, r, te, "operator not registered: "+r.ExecutorType)
 		return
 	}
-	key := inFlightKey(r.ID, ec.AssetID)
 	runID := newRunID()
 
-	m.inFlightMu.Lock()
-	m.inFlight[key] = struct{}{}
-	m.inFlightMu.Unlock()
-
-	m.publish(ctx, event.TypeRemediationTriggered, newPayload(r, ec, runID))
-	m.saveRecord(newRecord(r, ec, runID))
+	m.publish(ctx, event.TypeRemediationTriggered, newPayload(r, te, runID))
+	m.saveRecord(newRecord(r, te, runID))
 
 	m.wg.Add(1)
 	job := pool.Lambda(func(jobCtx context.Context) error {
 		defer m.wg.Done()
 		defer m.releaseInFlight(key)
-		m.publish(jobCtx, event.TypeRemediationStarted, newPayload(r, ec, runID))
+		m.publish(jobCtx, event.TypeRemediationStarted, newPayload(r, te, runID))
 
 		startedAt := time.Now()
-		startedRec := newRecord(r, ec, runID)
+		startedRec := newRecord(r, te, runID)
 		startedRec.Status = RecordStatusStarted
 		startedRec.StartedAt = &startedAt
 		m.saveRecord(startedRec)
@@ -497,22 +555,36 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 		res, err := op.Execute(jobCtx, ExecutionRequest{
 			RuleID:   r.ID,
 			RuleName: r.Name,
-			TenantID: ec.TenantID,
-			AssetID:  ec.AssetID,
+			TenantID: te.TenantID,
+			AssetID:  te.AssetID,
 			RunID:    runID,
 			Config:   r.ExecutorConfig,
+			Timeout:  parseExecutorTimeout(r.ExecutorConfig),
 		})
 		now := time.Now()
-		if uerr := m.store.UpdateLastRun(jobCtx, r.ID, now); uerr != nil {
+		if uerr := m.rules.UpdateLastRun(jobCtx, r.ID, now); uerr != nil {
 			m.logger.Warn("remediation: update last run failed",
 				zap.Int64("rule_id", r.ID),
 				zap.Error(uerr),
 			)
 		}
-		m.applyCircuitBreaker(jobCtx, r, res, err)
+		success := err == nil && res != nil && res.Success
+		if oerr := m.rules.RecordExecutionOutcome(jobCtx, r.ID, success); oerr != nil {
+			m.logger.Warn("remediation: record execution outcome failed",
+				zap.Int64("rule_id", r.ID),
+				zap.Error(oerr),
+			)
+		}
+		if !success && r.CircuitBreakerThreshold > 0 {
+			m.logger.Warn("remediation: execution failed, circuit breaker count incremented",
+				zap.Int64("rule_id", r.ID),
+				zap.Int("consecutive_failures", r.ConsecutiveFailures+1),
+				zap.Int("threshold", r.CircuitBreakerThreshold),
+			)
+		}
 
-		completed := newPayload(r, ec, runID)
-		completed.Success = err == nil && res != nil && res.Success
+		completed := newPayload(r, te, runID)
+		completed.Success = success
 		if res != nil {
 			completed.DurationMs = res.Duration.Milliseconds()
 			completed.ErrorMsg = res.ErrorMsg
@@ -522,7 +594,7 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 		}
 		m.publish(jobCtx, event.TypeRemediationCompleted, completed)
 
-		finishedRec := newRecord(r, ec, runID)
+		finishedRec := newRecord(r, te, runID)
 		finishedRec.StartedAt = &startedAt
 		finishedRec.FinishedAt = &now
 		if completed.Success {
@@ -541,115 +613,76 @@ func (m *Manager) dispatch(ctx context.Context, r *Rule, ec EventContext) {
 			zap.Int64("rule_id", r.ID),
 			zap.Error(err),
 		)
-		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, ec, "execution pool full"))
-		droppedRec := newRecord(r, ec, runID)
+		m.publish(ctx, event.TypeRemediationSkipped, skipPayload(r, te, "execution pool full"))
+		droppedRec := newRecord(r, te, runID)
 		droppedRec.Status = RecordStatusSkipped
 		droppedRec.Error = "execution pool full"
 		m.saveRecord(droppedRec)
 	}
 }
 
-// applyCircuitBreaker updates the rule's consecutive-failure count and
-// pauses the rule when the threshold is reached. Success resets the count.
-func (m *Manager) applyCircuitBreaker(ctx context.Context, r *Rule, res *ExecutionResult, execErr error) {
-	md := parseMetadata(r.Metadata)
-	if execErr == nil && res != nil && res.Success {
-		md.ConsecutiveFailures = 0
-	} else {
-		md.ConsecutiveFailures++
-	}
-	status := string(StatusActive)
-	if r.CircuitBreakerThreshold > 0 && md.ConsecutiveFailures >= r.CircuitBreakerThreshold {
-		status = string(StatusPaused)
-		m.logger.Warn("remediation: circuit breaker tripped, rule paused",
-			zap.Int64("rule_id", r.ID),
-			zap.Int("consecutive_failures", md.ConsecutiveFailures),
-			zap.Int("threshold", r.CircuitBreakerThreshold),
-		)
-	}
-	if err := m.store.UpdateRuleStatus(ctx, r.ID, status, md.serialize()); err != nil {
-		m.logger.Warn("remediation: update circuit breaker state failed",
-			zap.Int64("rule_id", r.ID),
-			zap.Error(err),
-		)
-	}
-}
-
-// remediationBuiltinWhitelist is the set of expr-lang builtins permitted
-// inside remediation condition expressions. It mirrors the rule engine's
-// builtinWhitelist so both expression surfaces share the same sandbox.
-var remediationBuiltinWhitelist = []string{
-	"len", "all", "any", "one", "none", "filter", "find", "count",
-	"sum", "mean", "max", "min", "median",
-	"keys", "values",
-	"contains", "startsWith", "endsWith",
-	"now", "duration",
-}
-
-// compileCondition compiles a remediation condition expression with the same
-// sandbox constraints as the rule engine: a node-count cap, a hermetic
-// builtin set, and the EventContext type contract. It returns a reusable
-// *vm.Program safe for concurrent evaluation.
-func compileCondition(expression string) (*vm.Program, error) {
-	opts := make([]expr.Option, 0, len(remediationBuiltinWhitelist)+4)
-	opts = append(opts,
-		expr.AsBool(),
-		expr.MaxNodes(1000),
-		expr.DisableAllBuiltins(),
-		expr.Env(EventContext{}),
-	)
-	for _, name := range remediationBuiltinWhitelist {
-		opts = append(opts, expr.EnableBuiltin(name))
-	}
-	return expr.Compile(expression, opts...)
-}
-
-// matchCondition evaluates the rule's condition expression against the event
-// context. An empty expression matches all events. Compilation results are
-// cached per (ruleID, expression) so a rule is compiled at most once per
-// distinct expression.
-func (m *Manager) matchCondition(_ context.Context, r *Rule, ec EventContext) bool {
-	if r.ConditionExpr == "" {
+// matchCondition evaluates the rule's trigger condition expression against
+// the RemediationEnv. An empty expression matches all events. Compilation
+// is cached by the LRU ProgramCache; compile or evaluation failures are
+// logged and treated as non-matches so sibling rules are unaffected.
+func (m *Manager) matchCondition(r *Rule, env RemediationEnv) bool {
+	if r.Expression == "" {
 		return true
 	}
-	cacheKey := strconv.FormatInt(r.ID, 10) + ":" + r.ConditionExpr
-	m.matchMu.Lock()
-	program, ok := m.matchCache[cacheKey]
-	m.matchMu.Unlock()
-	if !ok {
-		compiled, err := compileCondition(r.ConditionExpr)
-		if err != nil {
-			m.logger.Warn("remediation: compile condition failed, rule disabled",
-				zap.Int64("rule_id", r.ID),
-				zap.String("expr", r.ConditionExpr),
-				zap.Error(err),
-			)
-			return false
-		}
-		program = compiled
-		m.matchMu.Lock()
-		m.matchCache[cacheKey] = program
-		m.matchMu.Unlock()
-	}
-	output, err := expr.Run(program, ec)
+	ok, err := m.exprCache.Eval(r.Expression, env)
 	if err != nil {
 		m.logger.Warn("remediation: evaluate condition failed",
 			zap.Int64("rule_id", r.ID),
-			zap.String("expr", r.ConditionExpr),
+			zap.String("expr", r.Expression),
 			zap.Error(err),
 		)
 		return false
 	}
-	result, ok := output.(bool)
-	if !ok {
-		m.logger.Warn("remediation: condition did not evaluate to bool",
-			zap.Int64("rule_id", r.ID),
-			zap.String("expr", r.ConditionExpr),
-			zap.Any("result_type", output),
-		)
+	return ok
+}
+
+// parseExecutorTimeout extracts the optional "timeout" key from the
+// executor config JSON. It accepts a duration string ("90s") or a bare
+// number (seconds). Zero is returned when absent or invalid, leaving the
+// operator's default in effect (fix for D-15).
+func parseExecutorTimeout(config string) time.Duration {
+	if config == "" {
+		return 0
+	}
+	var raw struct {
+		Timeout json.RawMessage `json:"timeout"`
+	}
+	if err := json.Unmarshal([]byte(config), &raw); err != nil || len(raw.Timeout) == 0 {
+		return 0
+	}
+	// The value is either a duration string ("90s", "1m30s") or a bare
+	// number of seconds (45). json.Unmarshal handles the JSON quoting.
+	var str string
+	if err := json.Unmarshal(raw.Timeout, &str); err == nil {
+		if d, err := time.ParseDuration(str); err == nil && d > 0 {
+			return d
+		}
+		return 0
+	}
+	var secs float64
+	if err := json.Unmarshal(raw.Timeout, &secs); err == nil && secs > 0 {
+		return time.Duration(secs * float64(time.Second))
+	}
+	return 0
+}
+
+// tryClaimInFlight atomically claims an in-flight key: it returns false
+// when the key is already claimed, otherwise it claims the key and
+// returns true. Pairing claim and check in one critical section closes
+// the check-then-set window (fix for D-09).
+func (m *Manager) tryClaimInFlight(key string) bool {
+	m.inFlightMu.Lock()
+	defer m.inFlightMu.Unlock()
+	if _, ok := m.inFlight[key]; ok {
 		return false
 	}
-	return result
+	m.inFlight[key] = struct{}{}
+	return true
 }
 
 // releaseInFlight removes an in-flight key, tolerating concurrent release.
@@ -675,15 +708,15 @@ func (m *Manager) publish(ctx context.Context, typ event.Type, payload RunPayloa
 	}
 }
 
-// newPayload builds a RunPayload from a rule and event context.
-func newPayload(r *Rule, ec EventContext, runID string) RunPayload {
+// newPayload builds a RunPayload from a rule and trigger event.
+func newPayload(r *Rule, te triggerEvent, runID string) RunPayload {
 	return RunPayload{
 		RuleID:   r.ID,
 		RuleName: r.Name,
-		AssetID:  ec.AssetID,
-		TenantID: ec.TenantID,
+		AssetID:  te.AssetID,
+		TenantID: te.TenantID,
 		RunID:    runID,
-		Trigger:  ec.Type,
+		Trigger:  te.Trigger,
 	}
 }
 
@@ -714,82 +747,4 @@ func newRunID() string {
 		return fmt.Sprintf("run-%x", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
-}
-
-// ruleMetadata is the JSON structure persisted in Rule.Metadata.
-type ruleMetadata struct {
-	// ConsecutiveFailures is the running count of consecutive execution
-	// failures consumed by the circuit breaker.
-	ConsecutiveFailures int `json:"consecutive_failures"`
-}
-
-// parseMetadata decodes the rule's metadata blob, returning a zero value
-// when the blob is empty or invalid.
-func parseMetadata(raw string) ruleMetadata {
-	if raw == "" {
-		return ruleMetadata{}
-	}
-	var md ruleMetadata
-	if err := json.Unmarshal([]byte(raw), &md); err != nil {
-		return ruleMetadata{}
-	}
-	return md
-}
-
-// serialize encodes the metadata to its JSON blob form.
-func (m ruleMetadata) serialize() string {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-// metricPayloadToContext converts a metric-exceeded event payload into an
-// EventContext for rule evaluation.
-func metricPayloadToContext(ev event.Event[event.MetricExceededPayload]) EventContext {
-	p := ev.Payload
-	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
-	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
-	return EventContext{
-		Type:        string(TriggerMetric),
-		AssetID:     assetID,
-		TenantID:    tenantID,
-		MetricName:  p.MetricName,
-		MetricValue: p.MetricValue,
-		Threshold:   p.Threshold,
-	}
-}
-
-// logPayloadToContext converts a log-matched event payload into an
-// EventContext for rule evaluation.
-func logPayloadToContext(ev event.Event[event.LogMatchedPayload]) EventContext {
-	p := ev.Payload
-	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
-	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
-	return EventContext{
-		Type:     string(TriggerLog),
-		AssetID:  assetID,
-		TenantID: tenantID,
-		Level:    p.Level,
-		Keyword:  p.Keyword,
-		Content:  p.Content,
-		SourceIP: p.SourceIP,
-	}
-}
-
-// statusPayloadToContext converts an asset status-change event payload into
-// an EventContext for rule evaluation.
-func statusPayloadToContext(ev event.Event[event.StatusChangePayload]) EventContext {
-	p := ev.Payload
-	assetID, _ := strconv.ParseInt(p.AssetID, 10, 64)
-	tenantID, _ := strconv.ParseInt(p.TenantID, 10, 64)
-	return EventContext{
-		Type:       string(TriggerStatusChange),
-		AssetID:    assetID,
-		AssetKey:   p.AssetKey,
-		TenantID:   tenantID,
-		PrevStatus: p.PrevStatus,
-		CurrStatus: p.CurrStatus,
-	}
 }

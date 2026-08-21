@@ -3,13 +3,27 @@
 // Dual-licensed — see LICENSE for details.
 
 import type { MockMethod } from './types'
+import { CATALOG } from '../utils/expr-builder'
+import type { ExprEnv } from '../utils/expr-builder'
+
+/** Catalog flattened for the validate mock (env → path → needs key). */
+const EXPR_CATALOG: Record<string, Record<string, { map: boolean }>> = Object.fromEntries(
+  (Object.keys(CATALOG) as ExprEnv[]).map((env) => [
+    env,
+    Object.fromEntries(
+      CATALOG[env].map((v) => [
+        v.path,
+        { map: v.kind === 'numberMap' || v.kind === 'stringMap' },
+      ]),
+    ),
+  ]),
+)
 
 /** Alert rule seed (snake_case response shape of handler.AlertRule) */
 interface MockAlertRule {
   id: number
   name: string
   description: string
-  scene: string
   expression: string
   priority: number
   enabled: boolean
@@ -32,14 +46,13 @@ interface MockAlertRecord {
   resolved_at: string | null
 }
 
-/** Alert rules (8 items covering all 4 scenes: task / probe / metric / remediation) */
+/** Alert rules (8 items across metric / log alert categories) */
 const mockAlertRules: MockAlertRule[] = [
   {
     id: 1,
     name: 'HTTP 5xx Error Rate',
     description: 'Fires when the reported HTTP 5xx error rate exceeds 5%',
-    scene: 'metric',
-    expression: 'event.metrics["http_5xx_rate"] > 5',
+    expression: 'metrics["http_5xx_rate"] > 5',
     priority: 100,
     enabled: true,
     created_at: '2026-06-01 10:00:00',
@@ -49,8 +62,7 @@ const mockAlertRules: MockAlertRule[] = [
     id: 2,
     name: 'Host CPU Usage',
     description: 'Fires when host CPU usage is sustained above 80%',
-    scene: 'metric',
-    expression: 'event.metrics["cpu_usage"] > 80',
+    expression: 'metrics["cpu_usage"] > 80',
     priority: 60,
     enabled: true,
     created_at: '2026-06-02 10:00:00',
@@ -60,8 +72,7 @@ const mockAlertRules: MockAlertRule[] = [
     id: 3,
     name: 'Host Memory Usage',
     description: 'Fires when host memory usage reaches 90%',
-    scene: 'metric',
-    expression: 'event.metrics["memory_usage"] >= 90',
+    expression: 'metrics["memory_usage"] >= 90',
     priority: 90,
     enabled: true,
     created_at: '2026-06-03 10:00:00',
@@ -71,8 +82,7 @@ const mockAlertRules: MockAlertRule[] = [
     id: 4,
     name: 'Disk Free Space',
     description: 'Fires when disk free space falls below 10%',
-    scene: 'metric',
-    expression: 'event.metrics["disk_free"] < 10',
+    expression: 'metrics["disk_free"] < 10',
     priority: 50,
     enabled: true,
     created_at: '2026-06-04 10:00:00',
@@ -81,9 +91,8 @@ const mockAlertRules: MockAlertRule[] = [
   {
     id: 5,
     name: 'TCP Port Connectivity',
-    description: 'Fires when a TCP probe fails or the asset turns abnormal',
-    scene: 'probe',
-    expression: 'event.metrics["tcp_connect"] == 0 || event.status == "abnormal"',
+    description: 'Fires when a TCP probe fails on any prod asset',
+    expression: 'metrics["tcp_connect"] == 0 && asset.tags["env"] == "prod"',
     priority: 80,
     enabled: true,
     created_at: '2026-06-05 10:00:00',
@@ -93,8 +102,7 @@ const mockAlertRules: MockAlertRule[] = [
     id: 6,
     name: 'ICMP Packet Loss Rate',
     description: 'Fires when ICMP probe packet loss rate exceeds 10%',
-    scene: 'probe',
-    expression: 'event.metrics["icmp_loss"] > 10',
+    expression: 'metrics["icmp_loss"] > 10',
     priority: 40,
     enabled: true,
     created_at: '2026-06-06 10:00:00',
@@ -102,10 +110,9 @@ const mockAlertRules: MockAlertRule[] = [
   },
   {
     id: 7,
-    name: 'Task Failure Surge',
-    description: 'Fires when local-executor task failures reach 3 within a window (disabled)',
-    scene: 'task',
-    expression: 'event.metrics["task_failed"] >= 3 && event.executor_type == "local"',
+    name: 'Task Failure Log',
+    description: 'Fires on critical task-failure log lines (disabled)',
+    expression: 'keyword matches "task.*failed" && severity in ["warning", "critical"]',
     priority: 20,
     enabled: false,
     created_at: '2026-06-07 10:00:00',
@@ -113,10 +120,9 @@ const mockAlertRules: MockAlertRule[] = [
   },
   {
     id: 8,
-    name: 'Critical Alert Remediation Escalation',
+    name: 'Critical Alert Escalation',
     description: 'Escalates to a human channel when a critical alert value stays above 80',
-    scene: 'remediation',
-    expression: 'event.metric_value > 80 && event.severity == "critical"',
+    expression: 'severity == "critical" && metrics["trigger_value"] > 80',
     priority: 120,
     enabled: true,
     created_at: '2026-06-08 10:00:00',
@@ -234,7 +240,7 @@ const channels = mockChannels.map((c) => ({ ...c }))
 /** Current channel auto-increment ID */
 let channelSeq = mockChannels.length
 
-/** Mock remediation rules (CE supports webhook/http executor types) */
+/** Mock remediation rules (CE supports local/webhook/http executor types) */
 const mockRemediationRules = [
   {
     id: 1,
@@ -242,7 +248,7 @@ const mockRemediationRules = [
     description: 'When HTTP 5xx error rate fires, trigger a webhook to restart the web service',
     asset_id: 4,
     trigger_event_type: 'metric',
-    condition_expr: 'severity == "critical" && metric == "http_5xx_rate"',
+    expression: 'metric.name == "http_5xx_rate" && metric.value > threshold',
     executor_type: 'webhook',
     executor_config: JSON.stringify({
       url: 'https://hooks.example.com/restart-web',
@@ -253,7 +259,8 @@ const mockRemediationRules = [
     cooldown: 300,
     circuit_breaker_threshold: 3,
     enabled: true,
-    status: 'idle',
+    status: 'active',
+    consecutive_failures: 0,
     last_run_at: '2026-07-01 14:30:00',
     created_at: '2026-06-01 10:00:00',
     updated_at: '2026-06-15 12:00:00',
@@ -264,7 +271,7 @@ const mockRemediationRules = [
     description: 'When host CPU usage reaches critical threshold, call HTTP API to scale out',
     asset_id: 3,
     trigger_event_type: 'log',
-    condition_expr: 'metric == "cpu_usage" && current_value > 85',
+    expression: 'content contains "oom" && level == "error"',
     executor_type: 'http',
     executor_config: JSON.stringify({
       url: 'https://api.scaling.example.com/v1/scale-out',
@@ -276,18 +283,19 @@ const mockRemediationRules = [
     cooldown: 600,
     circuit_breaker_threshold: 5,
     enabled: true,
-    status: 'idle',
+    status: 'active',
+    consecutive_failures: 0,
     last_run_at: '2026-07-02 09:15:00',
     created_at: '2026-06-05 14:00:00',
     updated_at: '2026-06-20 16:30:00',
   },
   {
     id: 3,
-    name: 'Clear Cache on Memory Pressure',
-    description: 'When memory usage fires, trigger a webhook to flush Redis cache',
+    name: 'Clear Cache on Status Degrade',
+    description: 'When an asset turns abnormal, trigger a webhook to flush its cache',
     asset_id: 3,
     trigger_event_type: 'status_change',
-    condition_expr: 'metric == "mem_usage"',
+    expression: 'status.previous == "normal" && status.current == "abnormal"',
     executor_type: 'webhook',
     executor_config: JSON.stringify({
       url: 'https://hooks.example.com/flush-cache',
@@ -298,7 +306,8 @@ const mockRemediationRules = [
     cooldown: 180,
     circuit_breaker_threshold: 2,
     enabled: false,
-    status: 'idle',
+    status: 'active',
+    consecutive_failures: 0,
     last_run_at: null,
     created_at: '2026-06-10 11:00:00',
     updated_at: '2026-06-10 11:00:00',
@@ -352,7 +361,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query.page) || 1
-      const size = Number(query.page_size) || 10
+      const size = Number(query.size) || 10
       const status = query.status || ''
       const filtered = status ? remediationRecords.filter((r) => r.status === status) : remediationRecords
       const start = (page - 1) * size
@@ -363,7 +372,7 @@ export default [
           items: filtered.slice(start, start + size),
           total: filtered.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -374,7 +383,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query.page) || 1
-      const size = Number(query.page_size) || 15
+      const size = Number(query.size) || 15
       const filtered = filterRecords(query)
       const start = (page - 1) * size
       return {
@@ -384,7 +393,7 @@ export default [
           items: filtered.slice(start, start + size),
           total: filtered.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -434,7 +443,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query.page) || 1
-      const size = Number(query.page_size) || 10
+      const size = Number(query.size) || 10
       const start = (page - 1) * size
       return {
         code: 0,
@@ -443,7 +452,7 @@ export default [
           items: rules.slice(start, start + size),
           total: rules.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -467,7 +476,6 @@ export default [
         id: ruleSeq,
         name: String(body.name ?? ''),
         description: String(body.description ?? ''),
-        scene: String(body.scene ?? 'metric'),
         expression: String(body.expression ?? ''),
         priority: Number(body.priority ?? 0),
         enabled: body.enabled !== false,
@@ -490,7 +498,6 @@ export default [
           ...rules[idx],
           name: String(body.name ?? rules[idx].name),
           description: String(body.description ?? ''),
-          scene: String(body.scene ?? rules[idx].scene),
           expression: String(body.expression ?? rules[idx].expression),
           priority: Number(body.priority ?? rules[idx].priority),
           enabled: body.enabled !== undefined ? Boolean(body.enabled) : rules[idx].enabled,
@@ -517,7 +524,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query.page) || 1
-      const size = Number(query.page_size) || 10
+      const size = Number(query.size) || 10
       const keyword = query.keyword || ''
       const filtered = keyword
         ? channels.filter((c) => c.name.toLowerCase().includes(keyword.toLowerCase()))
@@ -530,7 +537,7 @@ export default [
           items: filtered.slice(start, start + size),
           total: filtered.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -613,7 +620,7 @@ export default [
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
       const page = Number(query.page) || 1
-      const size = Number(query.page_size) || 10
+      const size = Number(query.size) || 10
       const keyword = query.keyword || ''
       const filtered = keyword
         ? remediationRules.filter((r) => r.name.toLowerCase().includes(keyword.toLowerCase()))
@@ -626,7 +633,7 @@ export default [
           items: filtered.slice(start, start + size),
           total: filtered.length,
           page,
-          page_size: size,
+          size,
         },
       }
     },
@@ -652,13 +659,14 @@ export default [
         description: String(body.description ?? ''),
         asset_id: Number(body.asset_id ?? 0),
         trigger_event_type: String(body.trigger_event_type ?? 'metric'),
-        condition_expr: String(body.condition_expr ?? ''),
+        expression: String(body.expression ?? ''),
         executor_type: String(body.executor_type ?? 'webhook'),
         executor_config: String(body.executor_config ?? '{}'),
         cooldown: Number(body.cooldown ?? 300),
         circuit_breaker_threshold: Number(body.circuit_breaker_threshold ?? 3),
         enabled: body.enabled !== false,
-        status: 'idle',
+        status: 'active',
+        consecutive_failures: 0,
         last_run_at: null,
         created_at: now,
         updated_at: now,
@@ -681,7 +689,7 @@ export default [
           description: String(body.description ?? remediationRules[idx].description),
           asset_id: Number(body.asset_id ?? remediationRules[idx].asset_id),
           trigger_event_type: String(body.trigger_event_type ?? remediationRules[idx].trigger_event_type),
-          condition_expr: String(body.condition_expr ?? remediationRules[idx].condition_expr),
+          expression: String(body.expression ?? remediationRules[idx].expression),
           executor_type: String(body.executor_type ?? remediationRules[idx].executor_type),
           executor_config: String(body.executor_config ?? remediationRules[idx].executor_config),
           cooldown: Number(body.cooldown ?? remediationRules[idx].cooldown),
@@ -702,6 +710,53 @@ export default [
       const idx = remediationRules.findIndex((r) => r.id === id)
       if (idx !== -1) remediationRules.splice(idx, 1)
       return { code: 0, message: 'success', data: null }
+    },
+  },
+  // ── Expression validation ──
+  {
+    url: '/api/v1/expr/validate',
+    method: 'post',
+    response: ({ body }: { body: Record<string, unknown> }) => {
+      const env = String(body.env ?? '')
+      const expression = String(body.expression ?? '')
+      const known = EXPR_CATALOG[env]
+      if (!known) {
+        return { code: 40000, message: 'env must be one of: alert, remediation, execution', data: null }
+      }
+      // Empty is valid for the optional envs (default semantics).
+      if (!expression.trim()) {
+        return { code: 0, message: 'success', data: { valid: true } }
+      }
+      // Catalog-based variable check: every dotted identifier chain must
+      // be a known path, optionally followed by a string index for map
+      // variables. A rough stand-in for the backend compile pipeline —
+      // good enough for mock-mode development.
+      const stripped = expression.replace(/"(?:[^"\\]|\\.)*"/g, '""')
+      const idents = stripped.match(/[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*/g) ?? []
+      const wordOps = new Set(['matches', 'contains', 'startsWith', 'endsWith', 'in'])
+      for (const ident of idents) {
+        if (wordOps.has(ident)) continue
+        const entry = known[ident]
+        if (!entry) {
+          return {
+            code: 40000,
+            message: `expression compile failed: unknown field ${ident}`,
+            data: null,
+          }
+        }
+        // A scalar path must be used whole; a map path must be indexed.
+        const hasIndex = new RegExp(`${ident.replace(/\./g, '\\.')}\\s*\\[`).test(stripped)
+        if (entry.map !== hasIndex) {
+          return {
+            code: 40000,
+            message: entry.map
+              ? `expression compile failed: ${ident} requires a key (${ident}["key"])`
+              : `expression compile failed: unknown field ${ident}`,
+            data: null,
+          }
+        }
+      }
+      return { code: 0, message: 'success', data: { valid: true } }
     },
   },
 ] as MockMethod[]

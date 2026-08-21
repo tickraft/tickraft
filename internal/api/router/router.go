@@ -49,12 +49,12 @@ type apiKeyCacheEntry struct {
 // interface. It converts jwt.TokenPair to authapi.TokenPair so that
 // the handler package never needs to import pkg/auth or pkg/auth/jwt.
 type serviceAdapter struct {
-	service *auth.Service
+	svc *auth.Service
 }
 
 // Login authenticates a user and returns a handler-local TokenPair.
-func (a *serviceAdapter) Login(ctx context.Context, username, password string) (*authapi.TokenPair, error) {
-	res, err := a.service.Login(ctx, username, password)
+func (adapter *serviceAdapter) Login(ctx context.Context, username, password string) (*authapi.TokenPair, error) {
+	res, err := adapter.svc.Login(ctx, username, password)
 	if err != nil {
 		return nil, err
 	}
@@ -75,18 +75,18 @@ func (a *serviceAdapter) Login(ctx context.Context, username, password string) (
 }
 
 // Logout blacklists the access token and optionally the refresh token.
-func (a *serviceAdapter) Logout(
+func (adapter *serviceAdapter) Logout(
 	ctx context.Context,
 	accessJTI string,
 	accessExpireAt time.Time,
 	refreshToken string,
 ) error {
-	return a.service.Logout(ctx, accessJTI, accessExpireAt, refreshToken)
+	return adapter.svc.Logout(ctx, accessJTI, accessExpireAt, refreshToken)
 }
 
 // RefreshToken validates a refresh token and returns a handler-local TokenPair.
-func (a *serviceAdapter) RefreshToken(ctx context.Context, refreshToken string) (*authapi.TokenPair, error) {
-	tp, err := a.service.RefreshToken(ctx, refreshToken)
+func (adapter *serviceAdapter) RefreshToken(ctx context.Context, refreshToken string) (*authapi.TokenPair, error) {
+	tp, err := adapter.svc.RefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, err
 	}
@@ -97,38 +97,38 @@ func (a *serviceAdapter) RefreshToken(ctx context.Context, refreshToken string) 
 }
 
 // ChangePassword changes the user's password.
-func (a *serviceAdapter) ChangePassword(
+func (adapter *serviceAdapter) ChangePassword(
 	ctx context.Context,
 	userID int64,
 	oldPassword, newPassword, currentJTI string,
 ) error {
-	return a.service.ChangePassword(ctx, userID, oldPassword, newPassword, currentJTI)
+	return adapter.svc.ChangePassword(ctx, userID, oldPassword, newPassword, currentJTI)
 }
 
 // CreateAPIKey generates a new API key and returns the raw key plus metadata.
-func (a *serviceAdapter) CreateAPIKey(
+func (adapter *serviceAdapter) CreateAPIKey(
 	ctx context.Context,
 	name string,
 	expiredAt *time.Time,
 ) (string, *user.APIKey, error) {
-	return a.service.CreateAPIKey(ctx, name, expiredAt)
+	return adapter.svc.CreateAPIKey(ctx, name, expiredAt)
 }
 
 // ListAPIKeys returns a page of API keys together with the total count.
-func (a *serviceAdapter) ListAPIKeys(ctx context.Context, page, size int) ([]user.APIKey, int64, error) {
-	return a.service.ListAPIKeys(ctx, page, size)
+func (adapter *serviceAdapter) ListAPIKeys(ctx context.Context, page, size int) ([]user.APIKey, int64, error) {
+	return adapter.svc.ListAPIKeys(ctx, page, size)
 }
 
 // RevokeAPIKey revokes an API key by ID.
-func (a *serviceAdapter) RevokeAPIKey(ctx context.Context, id int64) error {
-	return a.service.RevokeAPIKey(ctx, id)
+func (adapter *serviceAdapter) RevokeAPIKey(ctx context.Context, id int64) error {
+	return adapter.svc.RevokeAPIKey(ctx, id)
 }
 
 // GetProfile retrieves the profile of the current user identified by userID.
 // It delegates to the auth service and projects the user.User into a
 // handler-layer UserProfile.
-func (a *serviceAdapter) GetProfile(ctx context.Context, userID int64) (*authapi.UserProfile, error) {
-	u, err := a.service.GetProfile(ctx, userID)
+func (adapter *serviceAdapter) GetProfile(ctx context.Context, userID int64) (*authapi.UserProfile, error) {
+	u, err := adapter.svc.GetProfile(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (a *serviceAdapter) GetProfile(ctx context.Context, userID int64) (*authapi
 // UpdateProfile updates the profile of the current user identified by userID.
 // It delegates to the auth service and projects the updated user.User into a
 // handler-layer UserProfile.
-func (a *serviceAdapter) UpdateProfile(
+func (adapter *serviceAdapter) UpdateProfile(
 	ctx context.Context,
 	userID int64,
 	req *authapi.UpdateProfileRequest,
@@ -146,7 +146,7 @@ func (a *serviceAdapter) UpdateProfile(
 	if req == nil {
 		return nil, handler.ErrInvalidRequest
 	}
-	u, err := a.service.UpdateProfile(ctx, userID, auth.UpdateProfileParams{
+	u, err := adapter.svc.UpdateProfile(ctx, userID, auth.UpdateProfileParams{
 		Nickname:         req.Nickname,
 		Email:            req.Email,
 		Language:         req.Language,
@@ -187,12 +187,12 @@ type RegisterOption interface {
 
 // registerConfig holds handlers and services injected via RegisterOption.
 type registerConfig struct {
-	taskSvc                task.Service
-	alertSvc               alert.Service
-	channelSvc             channel.Service
-	remediationRuleSvc     remediation.Service
-	systemSvc              system.Service
-	telemetrySvc           telemetry.Service
+	taskService            task.Service
+	alertService           alert.Service
+	channelService         channel.Service
+	remediationRuleService remediation.Service
+	systemService          system.Service
+	telemetryService       telemetry.Service
 	telemetryReportHandler telemetry.ReportHandler
 	telemetryMetricStore   telemetry.MetricStoreInjector
 	telemetryLogStore      telemetry.LogStoreInjector
@@ -211,7 +211,7 @@ type taskServiceOption struct {
 	svc task.Service
 }
 
-func (o taskServiceOption) apply(c *registerConfig) { c.taskSvc = o.svc }
+func (o taskServiceOption) apply(c *registerConfig) { c.taskService = o.svc }
 
 // WithTaskService provides the task.Service implementation for task
 // handlers. When omitted, the task route group is not registered; the
@@ -225,7 +225,7 @@ type alertServiceOption struct {
 	svc alert.Service
 }
 
-func (o alertServiceOption) apply(c *registerConfig) { c.alertSvc = o.svc }
+func (o alertServiceOption) apply(c *registerConfig) { c.alertService = o.svc }
 
 // WithAlertService provides the alert.Service implementation for alert
 // handlers. When omitted, the handler package falls back to an in-memory
@@ -238,7 +238,7 @@ type channelServiceOption struct {
 	svc channel.Service
 }
 
-func (o channelServiceOption) apply(c *registerConfig) { c.channelSvc = o.svc }
+func (o channelServiceOption) apply(c *registerConfig) { c.channelService = o.svc }
 
 // WithChannelService provides the channel.Service implementation for
 // notification channel handlers. When omitted, the handler package falls
@@ -253,7 +253,7 @@ type remediationRuleServiceOption struct {
 	svc remediation.Service
 }
 
-func (o remediationRuleServiceOption) apply(c *registerConfig) { c.remediationRuleSvc = o.svc }
+func (o remediationRuleServiceOption) apply(c *registerConfig) { c.remediationRuleService = o.svc }
 
 // WithRemediationRuleService provides the remediation.Service
 // implementation for self-healing rule handlers. When omitted, the handler
@@ -268,7 +268,7 @@ type systemServiceOption struct {
 	svc system.Service
 }
 
-func (o systemServiceOption) apply(c *registerConfig) { c.systemSvc = o.svc }
+func (o systemServiceOption) apply(c *registerConfig) { c.systemService = o.svc }
 
 // WithSystemService provides the system.Service implementation for system
 // handlers (config and info endpoints under /api/v1/system). Must always
@@ -294,7 +294,7 @@ type telemetryServiceOption struct {
 	svc telemetry.Service
 }
 
-func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetrySvc = o.svc }
+func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetryService = o.svc }
 
 // WithTelemetryService provides the telemetry.Service implementation for the
 // telemetry collection task CRUD API at /api/v1/telemetry. When omitted, the
@@ -453,7 +453,7 @@ func RegisterRoutes(
 	assetKeyMW := middleware.NewAssetKeyMiddleware(getter)
 
 	// Wrap *auth.Service in the adapter to satisfy authapi.Service.
-	adapter := &serviceAdapter{service: service}
+	adapter := &serviceAdapter{svc: service}
 
 	// Apply registrations.
 	rc := &registerConfig{}
@@ -548,22 +548,22 @@ func newAPIKeyGetter(service *auth.Service) func(ctx context.Context, keyHash st
 // would leave the deployment with incomplete routes.
 func missingServices(rc *registerConfig) []string {
 	var missing []string
-	if rc.taskSvc == nil {
+	if rc.taskService == nil {
 		missing = append(missing, "task service")
 	}
-	if rc.alertSvc == nil {
+	if rc.alertService == nil {
 		missing = append(missing, "alert service")
 	}
-	if rc.channelSvc == nil {
+	if rc.channelService == nil {
 		missing = append(missing, "channel service")
 	}
-	if rc.remediationRuleSvc == nil {
+	if rc.remediationRuleService == nil {
 		missing = append(missing, "remediation rule service")
 	}
-	if rc.systemSvc == nil {
+	if rc.systemService == nil {
 		missing = append(missing, "system service")
 	}
-	if rc.telemetrySvc == nil {
+	if rc.telemetryService == nil {
 		missing = append(missing, "telemetry service")
 	}
 	if rc.telemetryReportHandler == nil {
@@ -588,12 +588,12 @@ func buildHandlerOptions(
 		handler.WithJWTAuth(authMW),
 		handler.WithAssetKeyAuth(assetKeyMW),
 		handler.WithAuthService(adapter),
-		handler.WithTaskService(rc.taskSvc),
-		handler.WithAlertService(rc.alertSvc),
-		handler.WithChannelService(rc.channelSvc),
-		handler.WithRemediationRuleService(rc.remediationRuleSvc),
-		handler.WithSystemService(rc.systemSvc),
-		handler.WithTelemetryService(rc.telemetrySvc),
+		handler.WithTaskService(rc.taskService),
+		handler.WithAlertService(rc.alertService),
+		handler.WithChannelService(rc.channelService),
+		handler.WithRemediationRuleService(rc.remediationRuleService),
+		handler.WithSystemService(rc.systemService),
+		handler.WithTelemetryService(rc.telemetryService),
 		handler.WithTelemetryReportHandler(rc.telemetryReportHandler),
 		handler.WithTelemetryDataStores(rc.telemetryMetricStore, rc.telemetryLogStore),
 		handler.WithAssetHandler(rc.assetHandler),

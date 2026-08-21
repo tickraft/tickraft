@@ -36,6 +36,7 @@ import {
   getProbers,
   getListeners,
 } from '../../../../api/telemetry'
+import ExprEditor from '../../../components/ExprEditor.vue'
 
 interface IcmpConfig {
   host: string
@@ -64,6 +65,7 @@ const route = useRoute()
 const { t } = useI18n()
 
 const formRef = ref<FormInstance>()
+const judgmentRef = ref<InstanceType<typeof ExprEditor>>()
 const loading = ref(false)
 const assetLoading = ref(false)
 const assets = ref<Asset[]>([])
@@ -105,6 +107,11 @@ const webhookConfig = reactive<WebhookConfig>({
   secret: '',
   authType: 'hmac',
 })
+
+/** Optional execution-judgment expression (active probes only); stored
+ *  in the config JSON "expression" key and evaluated against the probe
+ *  task's execution result. */
+const judgmentExpr = ref('')
 
 /** Static dot color mapping for known type identifiers */
 const TYPE_DOT_COLORS: Record<string, string> = {
@@ -170,18 +177,23 @@ watch(() => form.mode, (newMode) => {
 
 /** Build config object based on selected type */
 function buildConfig(): Record<string, unknown> {
+  // The optional execution-judgment expression travels inside the
+  // point config JSON (active probes only).
+  const judgment = judgmentExpr.value.trim()
+  const withJudgment = (base: Record<string, unknown>) =>
+    judgment ? { ...base, expression: judgment } : base
   switch (form.type) {
     case 'icmp':
-      return { host: icmpConfig.host, count: icmpConfig.count }
+      return withJudgment({ host: icmpConfig.host, count: icmpConfig.count })
     case 'tcp':
-      return { host: tcpConfig.host, port: tcpConfig.port }
+      return withJudgment({ host: tcpConfig.host, port: tcpConfig.port })
     case 'http':
-      return {
+      return withJudgment({
         method: httpConfig.method,
         url: httpConfig.url,
         expectCode: httpConfig.expectCode,
         headers: httpConfig.headers || undefined,
-      }
+      })
     case 'webhook':
       return {
         secret: webhookConfig.secret || undefined,
@@ -248,6 +260,12 @@ async function handleSubmit(): Promise<void> {
     return
   }
 
+  // The optional judgment expression is validated against the
+  // execution env contract before anything is sent.
+  if (!(await judgmentRef.value?.validate())) {
+    return
+  }
+
   loading.value = true
   try {
     form.config = buildConfig()
@@ -274,7 +292,7 @@ function handleCancel(): void {
 async function fetchAssets(): Promise<void> {
   assetLoading.value = true
   try {
-    const res = await getAssets({ page: 1, pageSize: 100 })
+    const res = await getAssets({ page: 1, size: 100 })
     assets.value = res.items
   } catch {
     assets.value = []
@@ -322,6 +340,7 @@ async function fetchMonitor(): Promise<void> {
 
     // Parse config into reactive form objects
     const config = monitor.config ?? {}
+    judgmentExpr.value = (config.expression as string) ?? ''
     if (form.type === 'icmp') {
       icmpConfig.host = (config.host as string) ?? ''
       icmpConfig.count = (config.count as number) ?? 4
@@ -573,9 +592,18 @@ onMounted(async () => {
                     v-model="httpConfig.method"
                     style="width: 120px"
                   >
-                    <el-option label="GET" value="GET" />
-                    <el-option label="POST" value="POST" />
-                    <el-option label="HEAD" value="HEAD" />
+                    <el-option
+                      label="GET"
+                      value="GET"
+                    />
+                    <el-option
+                      label="POST"
+                      value="POST"
+                    />
+                    <el-option
+                      label="HEAD"
+                      value="HEAD"
+                    />
                   </el-select>
                 </el-form-item>
                 <el-form-item :label="t('telemetry.monitor.create.requestUrl')">
@@ -632,6 +660,24 @@ onMounted(async () => {
                 </el-form-item>
               </template>
 
+              <!-- Execution judgment (active probes; stored in the config
+                   JSON "expression" key) -->
+              <el-form-item
+                v-if="form.mode === 'active'"
+                :label="t('telemetry.monitor.create.judgmentExpr')"
+              >
+                <ExprEditor
+                  ref="judgmentRef"
+                  v-model="judgmentExpr"
+                  env="execution"
+                  :placeholder="'code == 200 && duration < 500'"
+                  :rows="2"
+                />
+                <div class="tk-form-help">
+                  {{ t('telemetry.monitor.create.judgmentExprHelp') }}
+                </div>
+              </el-form-item>
+
               <!-- Common parameters -->
               <el-form-item :label="t('telemetry.monitor.create.schedule')">
                 <el-input
@@ -659,7 +705,9 @@ onMounted(async () => {
             :loading="loading"
             @click="handleSubmit"
           >
-            <el-icon class="tk-form-footer__icon"><Check /></el-icon>
+            <el-icon class="tk-form-footer__icon">
+              <Check />
+            </el-icon>
             {{ t('telemetry.monitor.create.save') }}
           </el-button>
         </div>
@@ -687,7 +735,9 @@ onMounted(async () => {
         <!-- Tips card -->
         <div class="tk-tips-card">
           <div class="tk-tips-card__title">
-            <el-icon :size="14"><InfoFilled /></el-icon>
+            <el-icon :size="14">
+              <InfoFilled />
+            </el-icon>
             <span>{{ t('telemetry.monitor.create.tipsTitle') }}</span>
           </div>
           <ul class="tk-tips-card__list">

@@ -107,6 +107,8 @@
       "webhookSecret": "Signing Secret",
       "webhookSecretPlaceholder": "Enter signing secret",
       "webhookSecretHelp": "Used for HMAC signature verification, keep it safe",
+      "judgmentExpr": "Execution Judgment",
+      "judgmentExprHelp": "Optional; evaluated after each probe run, true means healthy, false means abnormal, empty falls back to the probe-type default. Variables: code/body/error/duration/metrics, e.g. code == 200 && duration < 500",
       "schedule": "Schedule",
       "schedulePlaceholder": "e.g. 60s, 5m, 1h",
       "scheduleHelp": "Supports seconds(s), minutes(m), hours(h) format, or Cron expression",

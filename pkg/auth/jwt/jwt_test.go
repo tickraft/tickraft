@@ -15,7 +15,8 @@ import (
 const testSecret = "test-secret-key"
 
 func TestSignAndParse(t *testing.T) {
-	token, err := SignToken(testSecret, SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: time.Hour})
+	opts := SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: time.Hour}
+	token, err := SignToken(testSecret, opts)
 	if err != nil {
 		t.Fatalf("SignToken() error = %v", err)
 	}
@@ -39,7 +40,8 @@ func TestSignAndParse(t *testing.T) {
 }
 
 func TestParseExpired(t *testing.T) {
-	token, err := SignToken(testSecret, SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: -time.Hour})
+	opts := SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: -time.Hour}
+	token, err := SignToken(testSecret, opts)
 	if err != nil {
 		t.Fatalf("SignToken() error = %v", err)
 	}
@@ -51,7 +53,8 @@ func TestParseExpired(t *testing.T) {
 }
 
 func TestParseInvalidSecret(t *testing.T) {
-	token, err := SignToken(testSecret, SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: time.Hour})
+	opts := SignTokenOptions{UserID: 1, TenantID: 0, Role: 2, Username: "testuser", Expiry: time.Hour}
+	token, err := SignToken(testSecret, opts)
 	if err != nil {
 		t.Fatalf("SignToken() error = %v", err)
 	}
@@ -97,7 +100,8 @@ func TestSignWithCustomClaims(t *testing.T) {
 }
 
 func TestSignToken(t *testing.T) {
-	token, err := SignToken(testSecret, SignTokenOptions{UserID: 1, TenantID: 10, Role: 2, Username: "testuser", Expiry: time.Hour})
+	opts := SignTokenOptions{UserID: 1, TenantID: 10, Role: 2, Username: "testuser", Expiry: time.Hour}
+	token, err := SignToken(testSecret, opts)
 	if err != nil {
 		t.Fatalf("SignToken() error = %v", err)
 	}

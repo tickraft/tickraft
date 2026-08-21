@@ -14,8 +14,8 @@ import (
 	httpprober "github.com/tickraft/tickraft/pkg/executor/http"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
 	prismengine "github.com/tickraft/tickraft/pkg/prism"
+	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
-	"github.com/tickraft/tickraft/pkg/prism/rule"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -38,9 +38,10 @@ func startPrismEngine(
 		Logger:               rt.logger,
 		NotificationPoolSize: notificationPoolSize,
 		Guards:               prismengine.DefaultGuards(rt.logger),
-		RuleConfig: rule.Config{
-			Logger:     rt.logger,
-			AssetStore: rt.assetStore,
+		RuleConfig: prismalert.Config{
+			Logger:       rt.logger,
+			AssetStore:   rt.assetStore,
+			EvalInterval: rt.cfg.Prism.EvalInterval.Duration(),
 		},
 		AssetStore: rt.assetStore,
 		// Remediation actions reuse the built-in executors: webhook and

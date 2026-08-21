@@ -89,27 +89,23 @@ type webhookOptions struct {
 }
 
 // urlOption overrides the endpoint URL.
-type urlOption struct {
-	url string
-}
+type urlOption string
 
-func (o urlOption) apply(options *webhookOptions) { options.cfg.URL = o.url }
+func (o urlOption) apply(options *webhookOptions) { options.cfg.URL = string(o) }
 
 // WithURL overrides the endpoint URL.
 func WithURL(url string) Option {
-	return urlOption{url: url}
+	return urlOption(url)
 }
 
 // timeoutOption overrides the HTTP client timeout.
-type timeoutOption struct {
-	d time.Duration
-}
+type timeoutOption time.Duration
 
-func (o timeoutOption) apply(options *webhookOptions) { options.cfg.Timeout = o.d }
+func (o timeoutOption) apply(options *webhookOptions) { options.cfg.Timeout = time.Duration(o) }
 
 // WithTimeout overrides the HTTP client timeout.
-func WithTimeout(d time.Duration) Option {
-	return timeoutOption{d: d}
+func WithTimeout(timeout time.Duration) Option {
+	return timeoutOption(timeout)
 }
 
 // headersOption overrides the custom HTTP headers added to every request.

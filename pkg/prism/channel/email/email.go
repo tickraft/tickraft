@@ -31,23 +31,24 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/retry"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // Channel sends alert notifications via SMTP email. It satisfies the
 // alert.Channel interface.
 type Channel struct {
-	config    Config
-	cb        *circuitbreaker.CircuitBreaker
-	retry     *retry.Retry
-	logger    *zap.Logger
-	tlsConfig *tls.Config
+	config Config
+	cb     *circuitbreaker.CircuitBreaker
+	retry  *retry.Retry
+	logger *zap.Logger
+	tls    *tls.Config
 }
 
 // Compile-time assertion that Channel implements alert.Channel.
 var _ alert.Channel = (*Channel)(nil)
 
 // Name implements alert.Channel.
-func (c *Channel) Name() string { return "email" }
+func (c *Channel) Name() string { return types.ChannelEmail }
 
 // Send implements alert.Channel. It formats the alert as an email message
 // and delivers it via SMTP.
@@ -141,7 +142,7 @@ func (c *Channel) sendOnce(ctx context.Context, msg []byte) error {
 		return fmt.Errorf("email: new smtp client: %w", err)
 	}
 
-	if err = c.helloAndAuth(client); err != nil {
+	if err := c.helloAndAuth(client); err != nil {
 		return err
 	}
 
@@ -210,7 +211,7 @@ func (c *Channel) deliver(client *smtp.Client, msg []byte) error {
 func (c *Channel) dial(ctx context.Context, addr string) (net.Conn, error) {
 	switch c.config.TLSMode {
 	case TLSModeImplicit:
-		tlsCfg := c.tlsConfig
+		tlsCfg := c.tls
 		if tlsCfg == nil {
 			tlsCfg = &tls.Config{ServerName: c.config.Host}
 		}
@@ -234,11 +235,11 @@ func (c *Channel) dial(ctx context.Context, addr string) (net.Conn, error) {
 
 // startTLS upgrades the client connection to TLS.
 func (c *Channel) startTLS(client *smtp.Client) error {
-	tlsCfg := c.tlsConfig
-	if tlsCfg == nil {
-		tlsCfg = &tls.Config{ServerName: c.config.Host}
+	config := c.tls
+	if config == nil {
+		config = &tls.Config{ServerName: c.config.Host}
 	}
-	if err := client.StartTLS(tlsCfg); err != nil {
+	if err := client.StartTLS(config); err != nil {
 		return fmt.Errorf("email: starttls: %w", err)
 	}
 	return nil

@@ -86,7 +86,7 @@ func TestTaskLifecycle(t *testing.T) {
 	defer func() { _, _ = hs.do("DELETE", "/api/v1/tasks/"+jsonInt64(copied.ID), nil, token) }()
 
 	// List contains both.
-	pd := hs.listPage(token, "/api/v1/tasks?page=1&page_size=100")
+	pd := hs.listPage(token, "/api/v1/tasks?page=1&size=100")
 	if pd.Total < 2 {
 		t.Fatalf("list tasks: expected >=2, got %d", pd.Total)
 	}
@@ -123,7 +123,7 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 	deadline := time.Now().Add(15 * time.Second)
 	var pd pageData
 	for time.Now().Before(deadline) {
-		pd = hs.listPage(token, "/api/v1/tasks/"+jsonInt64(idA)+"/executions?page=1&page_size=20")
+		pd = hs.listPage(token, "/api/v1/tasks/"+jsonInt64(idA)+"/executions?page=1&size=20")
 		for _, item := range pd.Items {
 			if _, ok := item["executor_type"].(string); ok && item["executor_type"] != "" {
 				break
@@ -147,7 +147,7 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 
 	// Filter by task_name (substring, case-insensitive per contract).
 	filtered := hs.listPage(token,
-		"/api/v1/tasks/0/executions?page=1&page_size=50&task_name="+fmt.Sprintf("exec-%d-a", unique))
+		"/api/v1/tasks/0/executions?page=1&size=50&task_name="+fmt.Sprintf("exec-%d-a", unique))
 	if filtered.Total < 1 {
 		t.Fatalf("executions task_name filter: expected >=1, got %d", filtered.Total)
 	}
@@ -160,7 +160,7 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 
 	// Filter by executor type.
 	filtered = hs.listPage(token,
-		"/api/v1/tasks/0/executions?page=1&page_size=50&executor=local")
+		"/api/v1/tasks/0/executions?page=1&size=50&executor=local")
 	if filtered.Total < 1 {
 		t.Fatalf("executions executor filter: expected >=1, got %d", filtered.Total)
 	}

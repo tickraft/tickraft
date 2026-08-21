@@ -101,11 +101,11 @@ describe('request naming interceptors', () => {
     mod.setToken('token-abc')
     apiScript.push({ status: 200, body: { code: 0, message: 'ok', data: { ok: true } } })
 
-    await mod.request({ url: '/assets', method: 'post', params: { pageSize: 20, assetType: 'host' }, data: { assetKey: 'k', createdAt: 'now' } })
+    await mod.request({ url: '/assets', method: 'post', params: { size: 20, assetType: 'host' }, data: { assetKey: 'k', createdAt: 'now' } })
 
     expect(apiCalls).toHaveLength(1)
     const call = apiCalls[0]
-    expect(call.params).toEqual({ page_size: 20, asset_type: 'host' })
+    expect(call.params).toEqual({ size: 20, asset_type: 'host' })
     // axios serializes the body before the adapter runs
     expect(JSON.parse(call.data as string)).toEqual({ asset_key: 'k', created_at: 'now' })
     expect(call.headers.Authorization).toBe('Bearer token-abc')
@@ -119,16 +119,16 @@ describe('request naming interceptors', () => {
       body: {
         code: 0,
         message: 'ok',
-        data: { total: 1, page_size: 20, items: [{ asset_key: 'k', created_at: 't' }] },
+        data: { total: 1, page: 1, size: 20, items: [{ asset_key: 'k', created_at: 't' }] },
       },
     })
 
-    const result = await mod.request<{ total: number; pageSize: number; items: Array<{ assetKey: string }> }>({
+    const result = await mod.request<{ total: number; page: number; size: number; items: Array<{ assetKey: string }> }>({
       url: '/assets',
       method: 'get',
     })
 
-    expect(result).toEqual({ total: 1, pageSize: 20, items: [{ assetKey: 'k', createdAt: 't' }] })
+    expect(result).toEqual({ total: 1, page: 1, size: 20, items: [{ assetKey: 'k', createdAt: 't' }] })
   })
 
   it('rejects with the envelope message for business error codes', async () => {

@@ -66,31 +66,44 @@ type Rule struct {
 	// TriggerEventType is the event type that activates this rule.
 	// Valid values: metric, log, status_change.
 	TriggerEventType string `gorm:"column:trigger_event_type;type:varchar(32);not null" json:"trigger_event_type"`
-	// ConditionExpr is the optional expression evaluated against EventContext
-	// variables. An empty expression matches all events of the trigger type.
-	ConditionExpr string `gorm:"column:condition_expr;type:text" json:"condition_expr,omitempty"`
+	// Expression is the optional trigger condition evaluated against
+	// RemediationEnv variables. An empty expression matches all events
+	// of the trigger type.
+	Expression string `gorm:"column:expression;type:text" json:"expression,omitempty"`
 	// ExecutorType identifies which operator to invoke on match.
 	// The default deployment supports "local" only.
-	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null;default:'local'" json:"executor_type"`
+	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null" json:"executor_type"`
 	// ExecutorConfig is the JSON-encoded operator configuration. For the
-	// local operator it carries {command, args, env}.
+	// local operator it carries {command, args, env}; an optional
+	// "expression" key defines the execution judgment and an optional
+	// "timeout" key bounds the action duration.
 	ExecutorConfig string `gorm:"column:executor_config;type:text" json:"executor_config,omitempty"`
 	// Cooldown is the minimum interval in seconds between consecutive
-	// executions of this rule.
-	Cooldown int `gorm:"column:cooldown;not null;default:300" json:"cooldown"`
+	// executions of this rule. The column has no gorm default so an
+	// explicit zero (no cooldown) survives Create.
+	Cooldown int `gorm:"column:cooldown;not null" json:"cooldown"`
 	// CircuitBreakerThreshold is the consecutive failure count after which
-	// the circuit breaker trips and pauses the rule.
-	CircuitBreakerThreshold int `gorm:"column:circuit_breaker_threshold;not null;default:5" json:"circuit_breaker_threshold"` //nolint:revive // struct tag cannot be line-wrapped
-	// Enabled indicates whether the rule participates in evaluation.
-	Enabled bool `gorm:"column:enabled;not null;default:true" json:"enabled"`
+	// the circuit breaker trips and pauses the rule. Zero disables the
+	// breaker; the column has no gorm default so the explicit value
+	// survives Create.
+	CircuitBreakerThreshold int `gorm:"column:circuit_breaker_threshold;not null" json:"circuit_breaker_threshold"` //nolint:revive // struct tag cannot be line-wrapped
+	// Enabled indicates whether the rule participates in evaluation. The
+	// column has no gorm default: a default tag would make GORM omit the
+	// zero value on insert, silently persisting enabled=true for rules
+	// created with Enabled=false.
+	Enabled bool `gorm:"column:enabled;not null;index" json:"enabled"`
 	// Status is the operational status of the rule: active or paused.
 	Status string `gorm:"column:status;type:varchar(16);not null;default:'active'" json:"status"`
 	// LastRunAt records the last execution timestamp, used for cooldown
 	// enforcement. Nullable.
 	LastRunAt *time.Time `gorm:"column:last_run_at;index" json:"last_run_at,omitempty"`
-	// Metadata is a JSON blob carrying runtime state, including the
-	// consecutive_failures count used by the circuit breaker. See
-	// ruleMetadata.
+	// ConsecutiveFailures is the circuit breaker's running count of
+	// consecutive execution failures. Updated atomically by the store
+	// (RecordExecutionOutcome); never touched by the CRUD Update path.
+	ConsecutiveFailures int `gorm:"column:consecutive_failures;not null;default:0" json:"consecutive_failures"`
+	// Metadata is a reserved JSON blob for extension key-value pairs.
+	// The circuit breaker no longer stores its counter here (it moved to
+	// the consecutive_failures column).
 	Metadata string `gorm:"column:metadata;type:text" json:"metadata,omitempty"`
 	// CreatedAt is the rule creation timestamp.
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
@@ -103,38 +116,3 @@ type Rule struct {
 
 // TableName returns the database table name for Rule.
 func (Rule) TableName() string { return "sys_prism_remediation_rule" }
-
-// EventContext defines the variables exposed to a Rule's condition
-// expression. Fields are populated from the incoming event payload based on
-// the trigger type. The expr-lang compiler accesses fields via the expr
-// struct tag using snake_case identifiers (e.g. metric_value > threshold).
-type EventContext struct {
-	// Type is the trigger type identifier.
-	Type string `expr:"type"`
-	// AssetID is the asset associated with the event.
-	AssetID int64 `expr:"asset_id"`
-	// AssetKey is the tenant-unique asset key, populated for status_change
-	// triggers whose payload carries one. Empty for metric and log
-	// triggers, which only carry the numeric asset ID.
-	AssetKey string `expr:"asset_key"`
-	// TenantID is the owning tenant (0 in the runtime).
-	TenantID int64 `expr:"tenant_id"`
-	// MetricName is the metric that breached a threshold (metric trigger).
-	MetricName string `expr:"metric_name"`
-	// MetricValue is the observed metric value (metric trigger).
-	MetricValue float64 `expr:"metric_value"`
-	// Threshold is the configured threshold (metric trigger).
-	Threshold float64 `expr:"threshold"`
-	// Level is the log severity (log trigger).
-	Level string `expr:"level"`
-	// Keyword is the matched log keyword (log trigger).
-	Keyword string `expr:"keyword"`
-	// Content is the log line that matched (log trigger).
-	Content string `expr:"content"`
-	// SourceIP is the origin of the log (log trigger).
-	SourceIP string `expr:"source_ip"`
-	// PrevStatus is the asset status before the transition (status_change).
-	PrevStatus string `expr:"prev_status"`
-	// CurrStatus is the asset status after the transition (status_change).
-	CurrStatus string `expr:"curr_status"`
-}

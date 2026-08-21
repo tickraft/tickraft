@@ -26,21 +26,9 @@ const deleteVisible = ref(false)
 const deleteTarget = ref<AlertRule | null>(null)
 const deleting = ref(false)
 
-/** Scene tag type mapping */
-function sceneTagType(scene: string): 'success' | 'warning' | 'danger' | 'info' {
-  switch (scene) {
-    case 'task': return 'info'
-    case 'probe': return 'success'
-    case 'metric': return 'warning'
-    case 'remediation': return 'danger'
-    default: return 'info'
-  }
-}
-
 /** Table column configuration */
 const columns = computed(() => [
   { prop: 'name', label: t('prism.rule.list.name'), minWidth: '160' },
-  { prop: 'scene', label: t('prism.rule.list.scene'), width: '120', slot: 'scene' },
   { prop: 'expression', label: t('prism.rule.list.expression'), minWidth: '200', showOverflowTooltip: true },
   { prop: 'priority', label: t('prism.rule.list.priority'), width: '100', align: 'center' as const },
   { prop: 'enabled', label: t('prism.rule.list.enabled'), width: '90', slot: 'enabled' },
@@ -52,17 +40,17 @@ const {
   loading,
   total,
   page,
-  pageSize,
+  size,
   immediateSearch,
   changePage,
-  changePageSize,
+  changeSize,
   refresh,
 } = useTable<AlertRule>({
-  defaultPageSize: 10,
+  defaultSize: 10,
   fetchFn: async (params) => {
     const res = await getAlertRules({
       page: params.page,
-      pageSize: params.size as number,
+      size: params.size as number,
     })
     return { items: res.items, total: res.total }
   },
@@ -75,11 +63,11 @@ function formatTimeCell(_row: AlertRule, _column: unknown, value: unknown): stri
 }
 
 /** Pagination change handler */
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  if (payload.pageSize !== pageSize.value) {
-    changePageSize(payload.pageSize)
+function handlePageChange(payload: { page: number; size: number }): void {
+  if (payload.size !== size.value) {
+    changeSize(payload.size)
   } else {
-    changePage(payload.current)
+    changePage(payload.page)
   }
 }
 
@@ -108,7 +96,6 @@ async function handleToggle(
     const updated = await updateAlertRule(row.id, {
       name: fullRule.name,
       description: fullRule.description,
-      scene: fullRule.scene,
       expression: fullRule.expression,
       priority: fullRule.priority,
       enabled: value,
@@ -190,21 +177,12 @@ onMounted(() => {
       :columns="columns"
       :loading="loading"
       :total="total"
-      :current="page"
-      :page-size="pageSize"
-      :page-sizes="[10, 20, 50]"
+      :page="page"
+      :size="size"
+      :size-options="[10, 20, 50]"
       row-key="id"
       @page-change="handlePageChange"
     >
-      <template #scene="{ row }">
-        <el-tag
-          :type="sceneTagType((row as AlertRule).scene)"
-          effect="light"
-        >
-          {{ t(`prism.scene.${(row as AlertRule).scene}`) }}
-        </el-tag>
-      </template>
-
       <template #enabled="{ row }">
         <el-switch
           :model-value="(row as AlertRule).enabled"
@@ -221,7 +199,10 @@ onMounted(() => {
           :resizable="false"
         >
           <template #default="{ row }">
-            <div class="tk-rule-actions" @click.stop>
+            <div
+              class="tk-rule-actions"
+              @click.stop
+            >
               <el-button
                 link
                 type="primary"

@@ -18,7 +18,7 @@ func remediationBody(name, trigger, executor string) map[string]any {
 		"name":                      name,
 		"description":               "httpapi remediation rule",
 		"trigger_event_type":        trigger,
-		"condition_expr":            "value > 10",
+		"expression":                "metric.value > 10",
 		"executor_type":             executor,
 		"executor_config":           `{"url":"http://127.0.0.1:1/noop","method":"POST","timeout":"1s"}`,
 		"cooldown":                  300,
@@ -60,6 +60,23 @@ func TestRemediationRulesCRUDAndValidation(t *testing.T) {
 		t.Fatalf("create remediation rule with bad executor: expected 400, got %d", status)
 	}
 
+	// An invalid trigger expression is rejected before persisting.
+	badExpr := remediationBody("bad-expression", "metric", "webhook")
+	badExpr["expression"] = "metric.naem > 10"
+	status, _ = hs.do("POST", "/api/v1/prism/remediation/rules", badExpr, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("create remediation rule with bad expression: expected 400, got %d", status)
+	}
+
+	// An invalid executor judgment expression inside executor_config is
+	// rejected too.
+	badJudge := remediationBody("bad-judgment", "metric", "webhook")
+	badJudge["executor_config"] = `{"url":"http://127.0.0.1:1/noop","expression":"code == \"ok\""}`
+	status, _ = hs.do("POST", "/api/v1/prism/remediation/rules", badJudge, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("create remediation rule with bad judgment expression: expected 400, got %d", status)
+	}
+
 	// All three contract trigger types are accepted.
 	createdRuleIDs := make([]int64, 0, 3)
 	for _, trigger := range []string{"metric", "log", "status_change"} {
@@ -96,7 +113,7 @@ func TestRemediationRulesCRUDAndValidation(t *testing.T) {
 		t.Fatalf("get remediation rule: unexpected payload %v/%v",
 			got["trigger_event_type"], got["executor_type"])
 	}
-	pd := hs.listPage(token, "/api/v1/prism/remediation/rules?page=1&page_size=20")
+	pd := hs.listPage(token, "/api/v1/prism/remediation/rules?page=1&size=20")
 	if pd.Total < 1 {
 		t.Fatalf("list remediation rules: expected >=1, got %d", pd.Total)
 	}
@@ -108,7 +125,7 @@ func TestRemediationQuota(t *testing.T) {
 	token := hs.login(adminUsername, adminPassword)
 
 	// How many rules already exist (other tests may have left some).
-	pd := hs.listPage(token, "/api/v1/prism/remediation/rules?page=1&page_size=1")
+	pd := hs.listPage(token, "/api/v1/prism/remediation/rules?page=1&size=1")
 	existing := pd.Total
 
 	const quotaCeiling = 5
@@ -171,13 +188,13 @@ func TestRemediationRecordsList(t *testing.T) {
 		}
 	}
 
-	pd := hs.listPage(token, "/api/v1/prism/remediation/records?page=1&page_size=50")
+	pd := hs.listPage(token, "/api/v1/prism/remediation/records?page=1&size=50")
 	if pd.Total < 2 {
 		t.Fatalf("remediation records: expected >=2, got %d", pd.Total)
 	}
 
 	// Status filter.
-	pd = hs.listPage(token, "/api/v1/prism/remediation/records?page=1&page_size=50&status=failed")
+	pd = hs.listPage(token, "/api/v1/prism/remediation/records?page=1&size=50&status=failed")
 	if pd.Total != 1 {
 		t.Fatalf("remediation records status filter: expected exactly 1, got %d", pd.Total)
 	}

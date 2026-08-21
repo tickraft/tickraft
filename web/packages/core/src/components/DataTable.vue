@@ -73,7 +73,7 @@ const AUTO_WIDTH = {
 interface DataTableEmits<T> {
   (e: 'selection-change', payload: { keys: Array<T[keyof T]>; rows: Array<T> }): void
   (e: 'sort-change', payload: { prop: string; order: SortOrder }): void
-  (e: 'page-change', payload: { current: number; pageSize: number }): void
+  (e: 'page-change', payload: { page: number; size: number }): void
   (e: 'retry'): void
   (e: 'row-click', row: T): void
   (e: 'column-width-change', payload: { prop: string; width: number }): void
@@ -88,9 +88,9 @@ const props = withDefaults(defineProps<DataTableProps<T>>(), {
   resizable: true,
   pagination: true,
   total: 0,
-  current: 1,
-  pageSize: 20,
-  pageSizes: () => [10, 20, 50, 100],
+  page: 1,
+  size: 20,
+  sizeOptions: () => [10, 20, 50, 100],
   tableId: '',
   columnWidths: () => ({}),
   rowClassName: undefined,
@@ -367,7 +367,7 @@ function handleDoubleClickColumn(prop: string): void {
 }
 
 const skeletonRows = computed(() => {
-  const count = Math.min(props.pageSize, 10)
+  const count = Math.min(props.size, 10)
   return Array.from({ length: count }, (_, i) => i)
 })
 
@@ -393,11 +393,11 @@ function handleSortChange({ prop, order }: { prop: string; order: SortOrder }): 
 }
 
 function handleCurrentChange(page: number): void {
-  emit('page-change', { current: page, pageSize: props.pageSize })
+  emit('page-change', { page, size: props.size })
 }
 
 function handleSizeChange(size: number): void {
-  emit('page-change', { current: 1, pageSize: size })
+  emit('page-change', { page: 1, size })
 }
 
 function handleRowClick(row: T): void {
@@ -572,10 +572,10 @@ defineExpose({ clearSelection, doLayout, clearSort })
         class="tk-data-table__pagination"
       >
         <el-pagination
-          :current-page="current"
-          :page-size="pageSize"
+          :current-page="page"
+          :page-size="size"
           :total="total"
-          :page-sizes="pageSizes"
+          :page-sizes="sizeOptions"
           background
           layout="total, sizes, prev, pager, next, jumper"
           @current-change="handleCurrentChange"

@@ -109,6 +109,10 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 4
+      # Test literals (sample envs, rule fixtures) must not inflate counts
+      # enough to fire on production files; reporting in tests is already
+      # excluded below.
+      ignore-tests: true
 
   exclusions:
     rules:

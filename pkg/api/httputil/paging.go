@@ -5,13 +5,14 @@
 package httputil
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // Field length limits shared by API handlers. They mirror the varchar
@@ -29,11 +30,64 @@ const (
 	MaxDescriptionLength = 1024
 )
 
-// Paging defaults and caps.
-const (
-	defaultPageSize = 20
-	maxPageSize     = 100
-)
+// ParsePaging extracts the page and size query parameters. Missing or
+// empty parameters fall back to the defaults (page 1, size 20). Explicitly
+// provided but invalid values — non-numeric, page < 1, size < 1 or size
+// above pagination.MaxSize — are rejected with a 400 response and ok=false
+// so the caller can return early.
+func ParsePaging(arc *app.RequestContext) (page, size int, ok bool) {
+	page, ok = queryInt(arc, "page", 1, 1, maxPage)
+	if !ok {
+		return 0, 0, false
+	}
+	size, ok = queryInt(arc, "size", pagination.DefaultSize, 1, pagination.MaxSize)
+	if !ok {
+		return 0, 0, false
+	}
+	return page, size, true
+}
+
+// ParsePageRequest extracts pagination in one shot for handlers that
+// support both keyset and offset modes: when the cursor parameter is
+// present (even empty) the request runs in keyset mode with that token;
+// otherwise it runs in offset mode with page/size as in [ParsePaging].
+// On invalid input a 400 response is written and ok=false is returned.
+func ParsePageRequest(arc *app.RequestContext) (pagination.PageRequest, bool) {
+	if _, has := arc.GetQuery("cursor"); has {
+		req := pagination.PageRequest{Cursor: arc.Query("cursor")}
+		size, ok := queryInt(arc, "size", pagination.DefaultSize, 1, pagination.MaxSize)
+		if !ok {
+			return pagination.PageRequest{}, false
+		}
+		req.Size = size
+		return req, true
+	}
+	page, size, ok := ParsePaging(arc)
+	if !ok {
+		return pagination.PageRequest{}, false
+	}
+	return pagination.PageRequest{Page: page, Size: size}, true
+}
+
+// maxPage is the upper bound accepted for the page parameter; it only
+// guards against integer overflow in the offset computation.
+const maxPage = math.MaxInt32
+
+// queryInt parses an optional integer query parameter. An absent or empty
+// value yields def. A present but non-numeric value, or one outside
+// [lo, hi], writes a 400 response and returns ok=false.
+func queryInt(arc *app.RequestContext, name string, def, lo, hi int) (int, bool) {
+	raw := arc.Query(name)
+	if raw == "" {
+		return def, true
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < lo || v > hi {
+		FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid "+name)
+		return 0, false
+	}
+	return v, true
+}
 
 // ParseID extracts the :id path parameter as an int64. On failure it writes a
 // 400 response and returns ok=false so the caller can return early.
@@ -44,53 +98,4 @@ func ParseID(arc *app.RequestContext) (int64, bool) {
 		return 0, false
 	}
 	return id, true
-}
-
-// ParsePaging extracts the page and page_size query parameters with sensible
-// defaults and an enforced upper bound. page defaults to 1 and page_size to 20
-// when missing or non-positive. page_size is clamped to maxPageSize (100); when
-// a client requests more than the cap, the value is reduced and a warning is
-// logged so the truncation is observable by operators.
-func ParsePaging(arc *app.RequestContext) (page, size int) {
-	page, _ = strconv.Atoi(arc.Query("page"))
-	if page <= 0 {
-		page = 1
-	}
-	size, _ = strconv.Atoi(arc.Query("page_size"))
-	if size <= 0 {
-		size = defaultPageSize
-	}
-	if size > maxPageSize {
-		zap.L().Warn("page size exceeds max, clamped",
-			zap.Int("requested", size),
-			zap.Int("max", maxPageSize),
-		)
-		size = maxPageSize
-	}
-	return page, size
-}
-
-// ClampPaging normalizes page/size parameters for list endpoints.
-// page starts at 1; size defaults to 20 when non-positive and is capped at 100.
-func ClampPaging(page, size int) (clampedPage, clampedSize int) {
-	clampedPage = page
-	clampedSize = size
-	clampedPage = max(clampedPage, 1)
-	if clampedSize <= 0 {
-		clampedSize = defaultPageSize
-	}
-	clampedSize = min(clampedSize, maxPageSize)
-	return clampedPage, clampedSize
-}
-
-// PageWindow returns the [start, end) index window for the given page/size
-// over a collection of total items. start may be >= total to signal an empty
-// result; callers must guard against that before slicing.
-func PageWindow(page, size, total int) (start, end int) {
-	start = (page - 1) * size
-	start = max(start, 0)
-	start = min(start, total)
-	end = start + size
-	end = min(end, total)
-	return start, end
 }

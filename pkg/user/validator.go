@@ -27,8 +27,6 @@ var (
 	ErrInvalidEmail = fmt.Errorf("email format is invalid: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidID is returned when ID is not positive.
 	ErrInvalidID = fmt.Errorf("id must be greater than 0: %w", errdefs.ErrInvalidArgument)
-	// ErrInvalidPage is returned when page parameters are invalid.
-	ErrInvalidPage = fmt.Errorf("page must be >= 1 and pageSize must be 1-100: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidAPIKeyName is returned when API key name is empty or too long.
 	ErrInvalidAPIKeyName = fmt.Errorf("api key name must be 1-255 characters: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidKeyPrefix is returned when API key prefix is empty.
@@ -78,14 +76,6 @@ func ValidateEmail(email string) error {
 func ValidateID(id int64) error {
 	if id <= 0 {
 		return ErrInvalidID
-	}
-	return nil
-}
-
-// ValidatePage checks that page >= 1 and pageSize is 1-100.
-func ValidatePage(page, pageSize int) error {
-	if page < 1 || pageSize < 1 || pageSize > 100 {
-		return ErrInvalidPage
 	}
 	return nil
 }

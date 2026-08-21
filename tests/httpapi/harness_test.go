@@ -6,7 +6,7 @@
 // (JWT + RBAC middleware included) backed by sqlite :memory: stores, driven
 // over a real listener with net/http. The tests verify the API contract the
 // frontend relies on: envelope shape, snake_case field names, pagination
-// page/page_size handling, auth token lifecycle, and per-domain CRUD flows.
+// page/size handling, auth token lifecycle, and per-domain CRUD flows.
 package httpapi
 
 import (
@@ -451,10 +451,10 @@ func (hs *harness) login(username, pwd string) string {
 
 // pageData decodes a PageData envelope.
 type pageData struct {
-	Items    []map[string]any `json:"items"`
-	Total    int64            `json:"total"`
-	Page     int              `json:"page"`
-	PageSize int              `json:"page_size"`
+	Items []map[string]any `json:"items"`
+	Total int64            `json:"total"`
+	Page  int              `json:"page"`
+	Size  int              `json:"size"`
 }
 
 func (hs *harness) listPage(token, path string) pageData {

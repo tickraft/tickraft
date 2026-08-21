@@ -16,8 +16,8 @@ const { canDelete } = usePermission()
 
 const loading = ref(false)
 const tableData = ref<ApiKey[]>([])
-const currentPage = ref(1)
-const pageSize = ref(10)
+const page = ref(1)
+const size = ref(10)
 const searchQuery = ref('')
 
 /** Filtered data by search query */
@@ -29,8 +29,8 @@ const filteredData = computed(() => {
 
 const total = computed(() => filteredData.value.length)
 const pageData = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredData.value.slice(start, start + pageSize.value)
+  const start = (page.value - 1) * size.value
+  return filteredData.value.slice(start, start + size.value)
 })
 
 /** Summary strip counts */
@@ -44,8 +44,8 @@ const summary = computed(() => {
 /** Range text for footer */
 const rangeText = computed(() => {
   if (total.value === 0) return ''
-  const start = (currentPage.value - 1) * pageSize.value + 1
-  const end = Math.min(start + pageSize.value - 1, total.value)
+  const start = (page.value - 1) * size.value + 1
+  const end = Math.min(start + size.value - 1, total.value)
   return t('system.apiKeys.showingRange', { start, end, total: total.value })
 })
 
@@ -85,11 +85,18 @@ const selectedKey = ref<ApiKey | null>(null)
 async function loadData(): Promise<void> {
   loading.value = true
   try {
-    // Fetch a large page so client-side search/pagination can operate on the
-    // full dataset (the backend ListAPIKeys only supports page/size filtering).
-    const res = await getApiKeys({ page: 1, pageSize: 1000 })
-    tableData.value = res.items
-    currentPage.value = 1
+    // Fetch all keys in max-size pages so client-side search, the summary
+    // strip and pagination operate on the full dataset (the backend caps
+    // size at 100 and has no keyword filter).
+    const first = await getApiKeys({ page: 1, size: 100 })
+    const items = [...first.items]
+    const pages = Math.ceil(first.total / Math.max(first.size, 1))
+    for (let p = 2; p <= pages; p++) {
+      const res = await getApiKeys({ page: p, size: 100 })
+      items.push(...res.items)
+    }
+    tableData.value = items
+    page.value = 1
     searchQuery.value = ''
   } catch {
     ElMessage.error(t('system.apiKeys.loadFailed'))
@@ -161,9 +168,9 @@ async function handleRevokeConfirm(): Promise<void> {
   }
 }
 
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  currentPage.value = payload.current
-  pageSize.value = payload.pageSize
+function handlePageChange(payload: { page: number; size: number }): void {
+  page.value = payload.page
+  size.value = payload.size
 }
 
 /** Key prefix mask: tk_abc1 -> tk_abc1**** */
@@ -239,7 +246,7 @@ onMounted(() => {
         :prefix-icon="Search"
         class="tk-apikey__search"
         clearable
-        @input="currentPage = 1"
+        @input="page = 1"
       />
       <el-button
         :icon="Refresh"
@@ -264,8 +271,8 @@ onMounted(() => {
         :columns="columns"
         :loading="loading"
         :total="total"
-        :current="currentPage"
-        :page-size="pageSize"
+        :page="page"
+        :size="size"
         @page-change="handlePageChange"
       >
         <template #name="{ row }">

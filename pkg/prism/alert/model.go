@@ -4,10 +4,75 @@
 
 package alert
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+// Rule is the alert rule model: the single representation shared by the
+// persistence layer (sys_prism_alert_rule) and the evaluation engine.
+// Metadata is stored as a JSON-encoded string column; callers that need
+// the decoded form use MetadataMap, which tolerates malformed blobs (a
+// bad payload yields nil rather than failing rule loading).
+type Rule struct {
+	// ID is the auto-incremented primary key.
+	ID int64 `gorm:"column:id;primaryKey;autoIncrement"`
+	// TenantID scopes the rule to a tenant for multi-tenant isolation.
+	// 0 is the global scope matched against every event; tenant
+	// filtering is an engine internal, never an expression variable.
+	TenantID int64 `gorm:"column:tenant_id;not null;index"`
+	// Name is the human-readable rule name.
+	Name string `gorm:"column:name;type:varchar(255);not null"`
+	// Description is an optional free-form rule description.
+	Description string `gorm:"column:description;type:text"`
+	// Expression is the expr-lang source text compiled by the Compiler.
+	Expression string `gorm:"column:expression;type:text;not null"`
+	// Enabled indicates whether the rule participates in matching. The
+	// column has no gorm default: a default tag would make GORM omit the
+	// zero value on insert, silently persisting enabled=true for rules
+	// created with Enabled=false.
+	Enabled bool `gorm:"column:enabled;not null;index"`
+	// Priority orders rules; higher values fire first.
+	Priority int `gorm:"column:priority;not null;default:0"`
+	// GroupID is the resource group the rule belongs to. nil means the
+	// rule is tenant-wide (visible to all members); a non-nil value
+	// restricts visibility to members assigned to that group (B1-04).
+	GroupID *int64 `gorm:"column:group_id;index"`
+	// Metadata is the JSON-encoded extension key-value pairs.
+	Metadata string `gorm:"column:metadata;type:text"`
+	// CreatedAt is the rule creation timestamp. Static rules loaded from
+	// configuration files carry zero-value timestamps.
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	// UpdatedAt is the rule last-update timestamp.
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	// DeletedAt records the soft-delete timestamp.
+	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index"`
+}
+
+// TableName returns the database table name for Rule.
+func (Rule) TableName() string { return "sys_prism_alert_rule" }
+
+// MetadataMap decodes the rule's JSON metadata blob into a string map.
+// An empty or malformed blob returns nil so a bad payload never blocks
+// rule loading; readers treat nil as "no extension keys".
+func (r *Rule) MetadataMap() map[string]string {
+	if r.Metadata == "" {
+		return nil
+	}
+	var metadata map[string]string
+	if err := json.Unmarshal([]byte(r.Metadata), &metadata); err != nil {
+		return nil
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
+}
 
 // Alert record lifecycle statuses stored in Record.Status and the
-// sys_prism_record.status column. The GORM default tag on Record.Status
+// sys_prism_alert_record.status column. The GORM default tag on Record.Status
 // keeps the literal "firing" because struct tags cannot reference
 // constants.
 const (
@@ -21,17 +86,18 @@ const (
 	StatusResolved = "resolved"
 )
 
-// Record is the GORM model for the sys_prism_record table.
+// Record is the GORM model for the sys_prism_alert_record table.
 //
 // It persists alert records generated when the alert engine evaluates a rule
 // match. Records are append-only except for lifecycle transitions:
 //   - firing -> acknowledged: AcknowledgedAt populated by Acknowledge.
 //   - firing/acknowledged -> resolved: ResolvedAt populated by Resolve.
 //
-// RuleID is a plain foreign key referencing sys_prism_rule.id (managed by
-// the rule package). The association is not declared as a GORM belongs-to
-// relation because the Rule persistence model lives in pkg/prism/rule;
-// callers that need rule context resolve it via the rule.Store.
+// RuleID is a plain foreign key referencing sys_prism_alert_rule.id
+// (managed by this package's rule Store, see store.go). The
+// association is not declared as a GORM belongs-to relation because
+// records and rules are persisted and reloaded independently; callers
+// that need rule context resolve it via the rule Store.
 type Record struct {
 	ID       int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	RuleID   int64   `gorm:"column:rule_id;not null;index" json:"rule_id"`
@@ -48,4 +114,4 @@ type Record struct {
 }
 
 // TableName returns the database table name.
-func (Record) TableName() string { return "sys_prism_record" }
+func (Record) TableName() string { return "sys_prism_alert_record" }

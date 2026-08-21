@@ -107,6 +107,8 @@
       "webhookSecret": "签名密钥（Secret）",
       "webhookSecretPlaceholder": "输入签名密钥",
       "webhookSecretHelp": "用于 HMAC 签名校验，请妥善保管",
+      "judgmentExpr": "执行判定",
+      "judgmentExprHelp": "可选；探测执行完成后求值，true 视为正常、false 视为异常，留空按探测类型默认语义。可用变量：code/body/error/duration/metrics，示例：code == 200 && duration < 500",
       "schedule": "调度间隔",
       "schedulePlaceholder": "如 60s、5m、1h",
       "scheduleHelp": "支持秒(s)、分(m)、时(h)格式，或 Cron 表达式",

@@ -18,8 +18,8 @@ const { t } = useI18n()
 const loading = ref(false)
 const tableData = ref<TaskModel[]>([])
 const total = ref(0)
-const currentPage = ref(1)
-const pageSize = ref(10)
+const page = ref(1)
+const size = ref(10)
 
 const summaryStats = reactive({
   success: 0,
@@ -77,8 +77,8 @@ async function fetchData() {
   try {
     const [result, stats] = await Promise.all([
       getTasks({
-        page: currentPage.value,
-        pageSize: pageSize.value,
+        page: page.value,
+        size: size.value,
         group: (searchValues.group as string) || undefined,
         tags: (searchValues.tags as string) || undefined,
       }),
@@ -107,20 +107,20 @@ async function fetchData() {
 
 function handleSearch(values: Record<string, unknown>) {
   Object.assign(searchValues, values)
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
 function handleReset() {
   searchValues.group = ''
   searchValues.tags = ''
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
-function handlePageChange({ current, pageSize: size }: { current: number; pageSize: number }) {
-  currentPage.value = current
-  pageSize.value = size
+function handlePageChange(payload: { page: number; size: number }) {
+  page.value = payload.page
+  size.value = payload.size
   void fetchData()
 }
 
@@ -159,8 +159,8 @@ async function handleDelete(row: TaskModel) {
     )
     await deleteTask(row.id)
     ElMessage.success(t('task.task.list.deleteSuccess'))
-    if (tableData.value.length === 1 && currentPage.value > 1) {
-      currentPage.value--
+    if (tableData.value.length === 1 && page.value > 1) {
+      page.value--
     }
     await fetchData()
   } catch {
@@ -270,8 +270,8 @@ onMounted(() => {
         :columns="columns"
         :loading="loading"
         :total="total"
-        :current="currentPage"
-        :page-size="pageSize"
+        :page="page"
+        :size="size"
         row-key="id"
         @page-change="handlePageChange"
       >

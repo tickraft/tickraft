@@ -35,7 +35,7 @@ func seedAssets(hs *harness, token string, n int) []int64 {
 }
 
 // TestAssetCRUDAndFilters covers asset CRUD, server-side keyword/type/status
-// filtering, and the pagination contract (page/page_size in and out).
+// filtering, and the pagination contract (page/size in and out).
 func TestAssetCRUDAndFilters(t *testing.T) {
 	hs := newHarness(t)
 	token := hs.login(adminUsername, adminPassword)
@@ -67,7 +67,7 @@ func TestAssetCRUDAndFilters(t *testing.T) {
 	}
 
 	// Keyword filter matches the renamed asset only.
-	pd := hs.listPage(token, "/api/v1/assets?page=1&page_size=20&keyword=renamed")
+	pd := hs.listPage(token, "/api/v1/assets?page=1&size=20&keyword=renamed")
 	if pd.Total != 1 || len(pd.Items) != 1 {
 		t.Fatalf("keyword filter: expected exactly 1 result, got total=%d items=%d", pd.Total, len(pd.Items))
 	}
@@ -76,7 +76,7 @@ func TestAssetCRUDAndFilters(t *testing.T) {
 	}
 
 	// Type filter: half of the six seeded assets are services.
-	pd = hs.listPage(token, "/api/v1/assets?page=1&page_size=50&asset_type=service")
+	pd = hs.listPage(token, "/api/v1/assets?page=1&size=50&asset_type=service")
 	if pd.Total < 3 {
 		t.Fatalf("asset_type filter: expected >=3 services, got %d", pd.Total)
 	}
@@ -92,26 +92,25 @@ func TestAssetCRUDAndFilters(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("update asset status: expected 200, got %d code=%d", status, env.Code)
 	}
-	pd = hs.listPage(token, "/api/v1/assets?page=1&page_size=50&status=abnormal")
+	pd = hs.listPage(token, "/api/v1/assets?page=1&size=50&status=abnormal")
 	if pd.Total < 1 {
 		t.Fatalf("status filter: expected >=1 abnormal asset, got %d", pd.Total)
 	}
 
-	// Pagination clamp: page_size above the max is clamped to 100 and echoed
-	// back in the envelope.
-	pd = hs.listPage(token, "/api/v1/assets?page=1&page_size=500")
-	if pd.PageSize != 100 {
-		t.Fatalf("pagination clamp: expected page_size=100, got %d", pd.PageSize)
+	// Pagination validation: size above the max is rejected with 400.
+	status, env = hs.do("GET", "/api/v1/assets?page=1&size=500", nil, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("pagination validation: expected 400, got %d code=%d", status, env.Code)
 	}
 
 	// Delete one asset and confirm the total shrinks.
-	before := hs.listPage(token, "/api/v1/assets?page=1&page_size=100").Total
+	before := hs.listPage(token, "/api/v1/assets?page=1&size=100").Total
 	status, env = hs.do("DELETE", "/api/v1/assets/"+jsonInt64(ids[2]), nil, token)
 	if status != http.StatusOK {
 		t.Fatalf("delete asset: expected 200, got %d code=%d", status, env.Code)
 	}
 	ids[2] = 0 // skip in cleanup
-	after := hs.listPage(token, "/api/v1/assets?page=1&page_size=100").Total
+	after := hs.listPage(token, "/api/v1/assets?page=1&size=100").Total
 	if after != before-1 {
 		t.Fatalf("delete asset: total %d -> %d, expected decrement by 1", before, after)
 	}

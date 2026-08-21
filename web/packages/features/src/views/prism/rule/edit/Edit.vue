@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createAlertRule, getAlertRule, updateAlertRule } from '../../../../api/prism'
 import type { AlertRulePayload } from '../../../../api/prism'
+import ExprEditor from '../../../components/ExprEditor.vue'
 import { TEMPLATES } from '../../templates/presets'
 
 const route = useRoute()
@@ -16,6 +17,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 const formRef = ref<FormInstance>()
+const exprRef = ref<InstanceType<typeof ExprEditor>>()
 const loading = ref(false)
 const saving = ref(false)
 
@@ -39,56 +41,13 @@ const enabledLabel = computed(() =>
   form.enabled ? t('prism.rule.edit.previewEnabled') : t('prism.rule.edit.previewDisabled'),
 )
 
-/** Scene dropdown options */
-const sceneOptions = computed(() => [
-  { value: 'task', label: t('prism.scene.task') },
-  { value: 'probe', label: t('prism.scene.probe') },
-  { value: 'metric', label: t('prism.scene.metric') },
-  { value: 'remediation', label: t('prism.scene.remediation') },
-])
-
-/**
- * Scene-specific expression help text.
- * Each scene exposes a different set of variables to the expr-lang engine;
- * metrics must be accessed via the structured path (e.g. event.metrics["cpu"]),
- * not as bare names (e.g. cpu > 80 would fail to compile).
- */
-const sceneExpressionHelp = computed(() => {
-  switch (form.scene) {
-    case 'task':
-      return t('prism.rule.edit.exprHelpTask')
-    case 'probe':
-      return t('prism.rule.edit.exprHelpProbe')
-    case 'metric':
-      return t('prism.rule.edit.exprHelpMetric')
-    case 'remediation':
-      return t('prism.rule.edit.exprHelpRemediation')
-    default:
-      return t('prism.rule.edit.expressionHelp')
-  }
-})
-
-/** Scene-specific expression examples for the placeholder */
-const expressionPlaceholder = computed(() => {
-  switch (form.scene) {
-    case 'task':
-      return 'event.executor_type == "http" && event.priority > 5'
-    case 'probe':
-      return 'event.metrics["cpu_usage"] > 90 || event.status == "abnormal"'
-    case 'metric':
-      return 'event.metrics["cpu_usage"] > 90'
-    case 'remediation':
-      return 'event.metric_value > 80 && event.severity == "critical"'
-    default:
-      return t('prism.rule.edit.expressionPlaceholder')
-  }
-})
+/** Expert-mode placeholder aligned with the alert env contract */
+const expressionPlaceholder = 'metrics["cpu"] > 90'
 
 /** Form data */
 const form = reactive({
   name: '',
   description: '',
-  scene: 'task',
   expression: '',
   priority: 0,
   enabled: true,
@@ -100,7 +59,6 @@ const rules = computed<FormRules>(() => ({
     { required: true, message: t('prism.rule.edit.namePlaceholder'), trigger: 'blur' },
     { max: 255, message: t('prism.rule.edit.nameMaxLen'), trigger: 'blur' },
   ],
-  scene: [{ required: true, message: t('prism.rule.edit.scenePlaceholder'), trigger: 'change' }],
   expression: [
     { required: true, message: t('prism.rule.edit.expressionPlaceholder'), trigger: 'blur' },
   ],
@@ -121,7 +79,6 @@ async function loadRule(): Promise<void> {
     const rule = await getAlertRule(editId.value)
     form.name = rule.name
     form.description = rule.description ?? ''
-    form.scene = rule.scene
     form.expression = rule.expression
     form.priority = rule.priority ?? 0
     form.enabled = rule.enabled
@@ -137,7 +94,6 @@ function buildPayload(enabled: boolean): AlertRulePayload {
   return {
     name: form.name.trim(),
     description: form.description.trim() || undefined,
-    scene: form.scene,
     expression: form.expression.trim(),
     priority: Number(form.priority) || 0,
     enabled,
@@ -148,6 +104,12 @@ function buildPayload(enabled: boolean): AlertRulePayload {
 async function handleSubmit(forceEnable: boolean): Promise<void> {
   const valid = await validateForm()
   if (!valid) {
+    ElMessage.warning(t('prism.rule.edit.validateError'))
+    return
+  }
+  // Expert-mode text (and required emptiness) is checked against the
+  // /expr/validate endpoint before anything is sent.
+  if (!(await exprRef.value?.validate())) {
     ElMessage.warning(t('prism.rule.edit.validateError'))
     return
   }
@@ -182,20 +144,9 @@ function applyTemplate(templateId: number): void {
   if (!tpl) return
   form.name = t(tpl.nameKey)
   form.description = t(tpl.descriptionKey)
-  // Map monitor type to scene
-  const sceneMap: Record<string, string> = {
-    host: 'probe',
-    network: 'probe',
-    web: 'probe',
-    data: 'metric',
-    cert: 'probe',
-  }
-  const scene = sceneMap[tpl.monitorType] ?? 'probe'
-  form.scene = scene
 
-  // Build a valid expr-lang expression using the correct variable path
-  // for the selected scene. Metrics must be accessed via the structured
-  // env object (e.g. event.metrics["cpu_usage"]), not as bare names.
+  // Build a metric-threshold expression against the alert env; metrics
+  // are accessed via the map key path (metrics["cpu_usage"]).
   const operatorMap: Record<string, string> = {
     gt: '>',
     lt: '<',
@@ -204,10 +155,7 @@ function applyTemplate(templateId: number): void {
     eq: '==',
   }
   const op = operatorMap[tpl.condition] ?? '>'
-  const metricPath = scene === 'remediation'
-    ? `event.metric_value`
-    : `event.metrics["${tpl.metric}"]`
-  form.expression = `${metricPath} ${op} ${tpl.threshold}`
+  form.expression = `metrics["${tpl.metric}"] ${op} ${tpl.threshold}`
 }
 
 onMounted(() => {
@@ -293,37 +241,21 @@ onMounted(() => {
               <span class="tk-prism-rule-edit__section-index">02</span>
               {{ t('prism.rule.edit.sectionTrigger') }}
             </h3>
-            <el-form-item
-              :label="t('prism.rule.edit.scene')"
-              prop="scene"
-            >
-              <el-select
-                v-model="form.scene"
-                :placeholder="t('prism.rule.edit.scenePlaceholder')"
-                class="tk-prism-rule-edit__block"
-              >
-                <el-option
-                  v-for="opt in sceneOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-            </el-form-item>
 
             <el-form-item
               :label="t('prism.rule.edit.expression')"
               prop="expression"
             >
-              <el-input
+              <ExprEditor
+                ref="exprRef"
                 v-model="form.expression"
-                type="textarea"
-                :rows="5"
+                env="alert"
+                required
                 :placeholder="expressionPlaceholder"
-                class="tk-prism-rule-edit__expr-input"
+                :rows="5"
               />
               <div class="tk-prism-rule-edit__help">
-                {{ sceneExpressionHelp }}
+                {{ t('prism.rule.edit.expressionHelp') }}
               </div>
             </el-form-item>
 
@@ -392,14 +324,6 @@ onMounted(() => {
 
             <!-- Metadata preview -->
             <div class="tk-prism-rule-edit__preview-meta">
-              <div class="tk-prism-rule-edit__preview-meta-cell">
-                <span class="tk-prism-rule-edit__preview-meta-label">
-                  {{ t('prism.rule.edit.scene') }}
-                </span>
-                <span class="tk-prism-rule-edit__preview-meta-value">
-                  {{ t(`prism.scene.${form.scene}`) }}
-                </span>
-              </div>
               <div class="tk-prism-rule-edit__preview-meta-cell">
                 <span class="tk-prism-rule-edit__preview-meta-label">
                   {{ t('prism.rule.edit.priority') }}
@@ -529,12 +453,6 @@ onMounted(() => {
     width: 100%;
   }
 
-  &__expr-input {
-    :deep(textarea) {
-      font-family: var(--tk-font-family-mono);
-    }
-  }
-
   &__help {
     margin-top: 4px;
     font-size: var(--tk-font-size-sm);
@@ -606,7 +524,7 @@ onMounted(() => {
 
   &__preview-meta {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: var(--tk-spacing-md);
   }
 

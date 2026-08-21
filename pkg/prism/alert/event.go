@@ -140,19 +140,19 @@ type Event struct {
 	TemplateID string `json:"template_id,omitempty"`
 }
 
-// PrimaryViolation returns the most severe violation in the event, or a
+// primaryViolation returns the most severe violation in the event, or a
 // zero-value Violation when the event has no violations. The boolean
-// indicates whether a violation was found.
+// indicates whether a violation was found. It backs the exported
+// package-level PrimaryViolation, which is the form callers outside the
+// package use.
 //
 // Severity ordering (highest to lowest):
 //
 //	critical > error > warning > info > debug
 //
 // When multiple violations share the same severity, the first one in the
-// slice is returned. This method is suitable for summary scenarios (email
-// subjects, alert titles) where a single representative violation is
-// needed, but the full Violations list should be used for complete rendering.
-func (e Event) PrimaryViolation() (Violation, bool) {
+// slice is returned.
+func (e Event) primaryViolation() (Violation, bool) {
 	if len(e.Violations) == 0 {
 		return Violation{}, false
 	}

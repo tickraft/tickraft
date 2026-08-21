@@ -53,18 +53,18 @@ const {
   loading,
   total,
   page,
-  pageSize,
+  size,
   immediateSearch,
   resetSearch,
   changePage,
-  changePageSize,
+  changeSize,
 } = useTable<RemediationRecord>({
-  defaultPageSize: 15,
+  defaultSize: 15,
   fetchFn: async (params) => {
     const status = (params.status as string) || ''
     return getRemediationRecords({
       page: Number(params.page) || 1,
-      pageSize: Number(params.size) || 15,
+      size: Number(params.size) || 15,
       ...(status ? { status } : {}),
     })
   },
@@ -83,11 +83,11 @@ function handleReset(): void {
 }
 
 /** Pagination change handler */
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  if (payload.pageSize !== pageSize.value) {
-    changePageSize(payload.pageSize)
+function handlePageChange(payload: { page: number; size: number }): void {
+  if (payload.size !== size.value) {
+    changeSize(payload.size)
   } else {
-    changePage(payload.current)
+    changePage(payload.page)
   }
 }
 
@@ -132,9 +132,9 @@ onMounted(() => {
       :columns="columns"
       :loading="loading"
       :total="total"
-      :current="page"
-      :page-size="pageSize"
-      :page-sizes="[10, 15, 20, 50]"
+      :page="page"
+      :size="size"
+      :size-options="[10, 15, 20, 50]"
       row-key="id"
       @page-change="handlePageChange"
     >

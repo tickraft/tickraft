@@ -71,7 +71,7 @@ func (op *LocalOperator) Name() string { return localExecutorName }
 // infrastructure failure; a nil error with Success=false indicates the
 // command ran but failed (non-zero exit or timeout). The circuit breaker
 // counts the latter as a failure.
-func (o *LocalOperator) Execute(ctx context.Context, req ExecutionRequest) (*ExecutionResult, error) {
+func (op *LocalOperator) Execute(ctx context.Context, req ExecutionRequest) (*ExecutionResult, error) {
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = defaultOperatorTimeout
@@ -82,6 +82,15 @@ func (o *LocalOperator) Execute(ctx context.Context, req ExecutionRequest) (*Exe
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// The optional "expression" key of the rule's executor config rides
+	// the metadata channel (rule-engine-design §6.3.3) and is applied to
+	// the result below so the user-defined judgment drives the circuit
+	// breaker outcome.
+	metadata := map[string]string{"remediation": "true"}
+	if exprStr := executor.ConfigExpression(req.Config); exprStr != "" {
+		metadata["expression"] = exprStr
+	}
+
 	er := executor.ExecutionRequest{
 		TenantID:     req.TenantID,
 		AssetID:      req.AssetID,
@@ -91,11 +100,13 @@ func (o *LocalOperator) Execute(ctx context.Context, req ExecutionRequest) (*Exe
 		RunID:        req.RunID,
 		TriggerType:  "remediation",
 		Timeout:      timeout,
+		Metadata:     metadata,
 	}
-	res, err := o.exec.Execute(runCtx, er)
+	res, err := op.exec.Execute(runCtx, er)
 	if err != nil {
 		return nil, fmt.Errorf("remediation: local execute: %w", err)
 	}
+	executor.ApplyJudgment(metadata["expression"], res, op.logger)
 
 	out := &ExecutionResult{
 		Output:   res.Body,

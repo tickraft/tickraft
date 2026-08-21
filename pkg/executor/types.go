@@ -95,6 +95,12 @@ type Result struct {
 	Status types.AssetStatus
 	// StatusCode is the protocol-specific status code (e.g. HTTP 200).
 	StatusCode int
+	// ExitCode is the process exit code for command executors (local).
+	// It is 0 for protocol executors, 0 on success, the process exit code
+	// on failure, and -1 when no exit code is available (command not
+	// found, killed by signal). It backs the "code" variable of the
+	// execution judgment env.
+	ExitCode int
 	// Body contains the response body or execution output.
 	Body string
 	// ErrorMsg describes the error when execution failed.

@@ -15,13 +15,10 @@ import (
 // RecordAlert creates alert records for each violation carried by the event.
 // It is intended as the OnAlert callback wired into the prism engine.
 // When the event carries multiple violations, a single batch INSERT is used
-// to minimize DB round-trips. A nil recordStore makes the function a no-op
+// to minimize DB round-trips. A nil store makes the function a no-op
 // so the callback is safe to register even when record persistence is disabled.
-func RecordAlert(ctx context.Context, recordStore RecordStore, evt Event) error {
-	if recordStore == nil {
-		return nil
-	}
-	if len(evt.Violations) == 0 {
+func RecordAlert(ctx context.Context, store RecordStore, evt Event) error {
+	if store == nil || len(evt.Violations) == 0 {
 		return nil
 	}
 	triggeredAt := evt.Timestamp
@@ -32,7 +29,7 @@ func RecordAlert(ctx context.Context, recordStore RecordStore, evt Event) error 
 	for _, v := range evt.Violations {
 		records = append(records, ViolationToRecord(v, triggeredAt))
 	}
-	if err := recordStore.CreateBatch(ctx, records); err != nil {
+	if err := store.CreateBatch(ctx, records); err != nil {
 		return fmt.Errorf("persist alert records: %w", err)
 	}
 	return nil

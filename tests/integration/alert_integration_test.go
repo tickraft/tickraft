@@ -19,6 +19,15 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
+// integrationMatcherFunc adapts a boolean predicate into an alert.Matcher.
+// The production MatcherFunc adapter was removed with the NamedMatcher
+// / ViolationMatcher cleanup; tests keep a local bool-shaped helper.
+type integrationMatcherFunc func(ctx context.Context, evt alert.Event) bool
+
+func (f integrationMatcherFunc) Match(ctx context.Context, evt alert.Event) alert.MatchResult {
+	return alert.MatchResult{Forward: f(ctx, evt)}
+}
+
 // mockAlertRecordStore implements alert.RecordStore for the alerting
 // integration test. It records every Create call so the test can assert that
 // the OnAlert callback persisted the expected alert.Record.
@@ -153,7 +162,7 @@ func TestAlertFlow(t *testing.T) {
 	}
 	// Register a metric rule that matches the upcoming alert: the engine
 	// matches on metric name + operator comparison (value > threshold).
-	eng.AddRule(prismengine.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
+	eng.AddRule(integrationMatcherFunc(func(_ context.Context, evt alert.Event) bool {
 		return evt.Type == alert.TypeMetric &&
 			len(evt.Violations) > 0 &&
 			evt.Violations[0].Metric != nil &&
@@ -257,7 +266,7 @@ func TestAlertFlowRuleSuppressed(t *testing.T) {
 	}
 	// Register a rule that only matches cpu_usage; the test will emit a
 	// memory_usage alert which must be suppressed.
-	eng.AddRule(prismengine.MatcherFunc(func(_ context.Context, evt alert.Event) bool {
+	eng.AddRule(integrationMatcherFunc(func(_ context.Context, evt alert.Event) bool {
 		return len(evt.Violations) > 0 &&
 			evt.Violations[0].Metric != nil &&
 			evt.Violations[0].Metric.Name == "cpu_usage"

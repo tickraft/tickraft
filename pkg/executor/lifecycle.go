@@ -119,6 +119,13 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 		}
 		lastResult = result
 		execErr = e
+		// Execution judgment choke point (rule-engine-design §6.3.2): a
+		// user-defined expression (Metadata["expression"]) overrides the
+		// protocol-default status before the retry decision below, so
+		// user-defined success/failure drives retries exactly like
+		// protocol failures. The judgment runs while the result is still
+		// owned by this attempt, before any pooling.
+		ApplyJudgment(req.Metadata["expression"], result, r.logger)
 		if e != nil {
 			return e
 		}

@@ -146,7 +146,10 @@ func (f *defaultFormatter) Format(ctx context.Context, evt alert.Event, opts For
 // infer the level from the threshold and operator; log alerts use the log
 // level directly.
 func (f *defaultFormatter) resolveLevel(tr Translator, evt alert.Event) string {
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	var raw string
 	switch evt.Type {
 	case alert.TypeLog:
@@ -207,7 +210,10 @@ func formatTimestamp(evt alert.Event, tr Translator, _ FormatOptions) string {
 // using localized field labels from the Registry.
 func buildFields(evt alert.Event, tr Translator) map[string]string {
 	fields := make(map[string]string)
-	v, _ := evt.PrimaryViolation()
+	var v alert.Violation
+	if p := alert.PrimaryViolation(evt); p != nil {
+		v = *p
+	}
 	fields[ResolveKey(tr, "field.timestamp", nil)] = evt.Timestamp.Format(time.RFC3339)
 	fields[ResolveKey(tr, "field.resource", nil)] = fmt.Sprintf("%d", evt.AssetID)
 
@@ -258,7 +264,7 @@ func buildTemplateVars(evt alert.Event) map[string]any {
 	vars["timestamp"] = evt.Timestamp.Format(time.RFC3339)
 
 	// Derive single-value convenience fields from the primary violation.
-	if primary, ok := evt.PrimaryViolation(); ok {
+	if primary := alert.PrimaryViolation(evt); primary != nil {
 		vars["severity"] = primary.Severity
 		vars["source_ip"] = primary.Source
 		if primary.Metric != nil {

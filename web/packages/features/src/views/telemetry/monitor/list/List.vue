@@ -29,8 +29,8 @@ const { t } = useI18n()
 const { canDelete } = usePermission()
 
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(20)
+const page = ref(1)
+const size = ref(20)
 const total = ref(0)
 const tableData = ref<MonitorPoint[]>([])
 
@@ -109,8 +109,8 @@ async function fetchData(): Promise<void> {
   loading.value = true
   try {
     const res = await getMonitors({
-      page: currentPage.value,
-      pageSize: pageSize.value,
+      page: page.value,
+      size: size.value,
       mode: activeTab.value || undefined,
     })
     // Defensive: ensure items is always an array (guard against malformed responses)
@@ -124,15 +124,15 @@ async function fetchData(): Promise<void> {
   }
 }
 
-function handlePageChange({ current, pageSize: size }: { current: number; pageSize: number }): void {
-  currentPage.value = current
-  pageSize.value = size
+function handlePageChange(payload: { page: number; size: number }): void {
+  page.value = payload.page
+  size.value = payload.size
   void fetchData()
 }
 
 function handleTabChange(tab: ModeFilter): void {
   activeTab.value = tab
-  currentPage.value = 1
+  page.value = 1
   void fetchData()
 }
 
@@ -267,8 +267,8 @@ onMounted(() => {
         :columns="columns"
         :loading="loading"
         :total="total"
-        :current="currentPage"
-        :page-size="pageSize"
+        :page="page"
+        :size="size"
         @page-change="handlePageChange"
       >
         <template #mode="{ row }">

@@ -88,18 +88,18 @@ const {
   loading,
   total,
   page,
-  pageSize,
+  size,
   immediateSearch,
   resetSearch,
   changePage,
-  changePageSize,
+  changeSize,
   refresh,
 } = useTable<AlertRecord>({
-  defaultPageSize: 15,
+  defaultSize: 15,
   fetchFn: async (params) => {
     const res = await getAlertRecords({
       page: params.page,
-      pageSize: params.size as number,
+      size: params.size as number,
       severity: (params.severity as string) || undefined,
       status: (params.status as string) || undefined,
     })
@@ -133,11 +133,11 @@ function formatNullableTime(value: string | null | undefined): string {
 }
 
 /** Pagination change handler */
-function handlePageChange(payload: { current: number; pageSize: number }): void {
-  if (payload.pageSize !== pageSize.value) {
-    changePageSize(payload.pageSize)
+function handlePageChange(payload: { page: number; size: number }): void {
+  if (payload.size !== size.value) {
+    changeSize(payload.size)
   } else {
-    changePage(payload.current)
+    changePage(payload.page)
   }
 }
 
@@ -253,9 +253,9 @@ onMounted(() => {
       :columns="columns"
       :loading="loading"
       :total="total"
-      :current="page"
-      :page-size="pageSize"
-      :page-sizes="[10, 15, 20, 50]"
+      :page="page"
+      :size="size"
+      :size-options="[10, 15, 20, 50]"
       row-key="id"
       :row-class-name="rowClassName"
       @page-change="handlePageChange"

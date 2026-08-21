@@ -90,14 +90,10 @@ func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetSt
 }
 
 // List returns a page of assets matching the filter, ordered by descending
-// ID, plus the total count. page starts at 1; size is clamped between 1 and
-// 100. A zero-value filter returns all assets.
+// ID, plus the total count. page starts at 1; size is normalized by
+// pagination.Clamp. A zero-value filter returns all assets.
 func (s *store) List(ctx context.Context, page, size int, filter ListFilter) ([]*Asset, int64, error) {
-	page = max(page, 1)
-	if size <= 0 {
-		size = 20
-	}
-	size = min(size, 100)
+	page, size = pagination.Clamp(page, size)
 
 	query := s.dbc.WithContext(ctx).Model(&Asset{})
 	if filter.Keyword != "" {

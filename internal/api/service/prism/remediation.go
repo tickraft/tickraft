@@ -12,8 +12,9 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/pagination"
 	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -33,7 +34,7 @@ func NewRemediationService(store *prismremediation.Store) *RemediationService {
 
 // ListRules returns a page of remediation rules and the total count.
 func (s *RemediationService) ListRules(ctx context.Context, page, size int) ([]remediation.Rule, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
+	page, size = pagination.Clamp(page, size)
 	models, total, err := s.store.List(ctx, page, size)
 	if err != nil {
 		return nil, 0, mapRemediationStoreError(err)
@@ -96,8 +97,8 @@ func (s *RemediationService) ListRecords(
 	page, size int,
 	status string,
 ) ([]remediation.Record, int64, error) {
-	page, size = httputil.ClampPaging(page, size)
-	models, total, err := s.store.ListRecords(ctx, size, (page-1)*size, status)
+	page, size = pagination.Clamp(page, size)
+	models, total, err := s.store.ListRecords(ctx, page, size, status)
 	if err != nil {
 		return nil, 0, mapRemediationStoreError(err)
 	}
@@ -126,7 +127,16 @@ var validExecutorTypes = map[string]struct{}{
 	string(types.ExecutorHTTP):    {},
 }
 
-// validateRule checks the closed-set fields of a remediation rule request.
+// validateRule checks the closed-set fields of a remediation rule request
+// and pre-compiles both expression surfaces so a bad expression is rejected
+// with a 400 at the entry point rather than silently never matching at
+// runtime (fix for D-06):
+//
+//  1. the trigger condition `expression` is compiled and sample-evaluated
+//     against the RemediationEnv contract;
+//  2. the optional "expression" key inside `executor_config` JSON is
+//     compiled and sample-evaluated against the executor's ExecutionEnv
+//     contract.
 func validateRule(r *remediation.Rule) error {
 	if _, ok := validTriggerEventTypes[r.TriggerEventType]; !ok {
 		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
@@ -143,6 +153,18 @@ func validateRule(r *remediation.Rule) error {
 	if r.CircuitBreakerThreshold < 0 {
 		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"circuitBreakerThreshold must be non-negative")
+	}
+	if r.Expression != "" {
+		if err := prismremediation.ValidateExpression(r.Expression); err != nil {
+			return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid expression: "+innermostMessage(err))
+		}
+	}
+	if exprStr := executor.ConfigExpression(r.ExecutorConfig); exprStr != "" {
+		if err := executor.ValidateExpression(exprStr); err != nil {
+			return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid executor judgment expression: "+innermostMessage(err))
+		}
 	}
 	return nil
 }
@@ -207,7 +229,7 @@ func remediationModelToHandler(m *prismremediation.Rule) remediation.Rule {
 		Description:             m.Description,
 		AssetID:                 m.AssetID,
 		TriggerEventType:        m.TriggerEventType,
-		ConditionExpr:           m.ConditionExpr,
+		Expression:              m.Expression,
 		ExecutorType:            m.ExecutorType,
 		ExecutorConfig:          m.ExecutorConfig,
 		Cooldown:                m.Cooldown,
@@ -215,6 +237,7 @@ func remediationModelToHandler(m *prismremediation.Rule) remediation.Rule {
 		Enabled:                 m.Enabled,
 		Status:                  m.Status,
 		LastRunAt:               m.LastRunAt,
+		ConsecutiveFailures:     m.ConsecutiveFailures,
 		CreatedAt:               m.CreatedAt,
 		UpdatedAt:               m.UpdatedAt,
 	}
@@ -222,13 +245,16 @@ func remediationModelToHandler(m *prismremediation.Rule) remediation.Rule {
 
 // remediationHandlerToModel converts a handler-layer Rule DTO into
 // a prismremediation.Rule persistence model ready for Create/Update.
+// Runtime state (status, last-run, circuit-breaker counter) and
+// lifecycle fields are deliberately not mapped: the store's column-level
+// Update never touches them, and Create assigns them server-side.
 func remediationHandlerToModel(r *remediation.Rule) *prismremediation.Rule {
 	return &prismremediation.Rule{
 		Name:                    r.Name,
 		Description:             r.Description,
 		AssetID:                 r.AssetID,
 		TriggerEventType:        r.TriggerEventType,
-		ConditionExpr:           r.ConditionExpr,
+		Expression:              r.Expression,
 		ExecutorType:            r.ExecutorType,
 		ExecutorConfig:          r.ExecutorConfig,
 		Cooldown:                r.Cooldown,

@@ -119,20 +119,20 @@ func NewExponential(base, maxDelay time.Duration, options ...ExponentialOption) 
 	if maxDelay < base {
 		return nil, fmt.Errorf("retry: max must be >= base, got max=%v base=%v", maxDelay, base)
 	}
-	e := &Exponential{
+	exp := &Exponential{
 		base:       base,
 		max:        maxDelay,
 		multiplier: 2.0,
 	}
 	for _, o := range options {
-		o.apply(e)
+		o.apply(exp)
 	}
 
-	if e.multiplier <= 0 {
-		return nil, fmt.Errorf("retry: multiplier must be > 0, got %v", e.multiplier)
+	if exp.multiplier <= 0 {
+		return nil, fmt.Errorf("retry: multiplier must be > 0, got %v", exp.multiplier)
 	}
 
-	return e, nil
+	return exp, nil
 }
 
 // Next computes the backoff delay for the given attempt number (0-based),

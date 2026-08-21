@@ -55,17 +55,6 @@ const severityText = computed(() => {
   return t(`prism.severity.${sev}`)
 })
 
-/** Scene tag type for the associated rule */
-function sceneTagType(scene: string): 'success' | 'warning' | 'danger' | 'info' {
-  switch (scene) {
-    case 'task': return 'info'
-    case 'probe': return 'success'
-    case 'metric': return 'warning'
-    case 'remediation': return 'danger'
-    default: return 'info'
-  }
-}
-
 /** Format a nullable time string */
 function formatTime(value: string | null | undefined): string {
   if (!value) return '-'
@@ -321,15 +310,6 @@ onMounted(() => {
         >
           <el-descriptions-item :label="t('prism.record.detail.ruleName')">
             {{ rule.name }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('prism.record.detail.scene')">
-            <el-tag
-              :type="sceneTagType(rule.scene)"
-              effect="light"
-              size="small"
-            >
-              {{ t(`prism.scene.${rule.scene}`) }}
-            </el-tag>
           </el-descriptions-item>
           <el-descriptions-item :label="t('prism.record.detail.priority')">
             {{ rule.priority ?? 0 }}

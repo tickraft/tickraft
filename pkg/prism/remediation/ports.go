@@ -23,13 +23,17 @@ type RuleStore interface {
 	// apply across all assets; implementations should also return global
 	// rules (asset_id = 0) alongside asset-scoped rules.
 	GetRules(ctx context.Context, tenantID int64, assetID int64, triggerType string) ([]*Rule, error)
-	// UpdateRuleStatus updates the rule's operational status and metadata.
-	// The metadata blob carries runtime state such as the
-	// consecutive_failures count consumed by the circuit breaker.
-	UpdateRuleStatus(ctx context.Context, ruleID int64, status string, metadata string) error
+	// UpdateRuleStatus updates the rule's operational status. It is the
+	// resume path for rules paused by the circuit breaker.
+	UpdateRuleStatus(ctx context.Context, ruleID int64, status string) error
 	// UpdateLastRun records the last execution timestamp for the rule,
 	// used by the cooldown check on subsequent triggers.
 	UpdateLastRun(ctx context.Context, ruleID int64, lastRunAt time.Time) error
+	// RecordExecutionOutcome atomically updates the circuit breaker state
+	// after an execution: success resets the consecutive-failure counter,
+	// failure increments it and pauses the rule when the threshold is
+	// reached.
+	RecordExecutionOutcome(ctx context.Context, ruleID int64, success bool) error
 }
 
 // ExecutionRequest is the remediation execution context passed to an

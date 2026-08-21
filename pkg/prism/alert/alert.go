@@ -8,7 +8,7 @@ package alert
 // or nil when no violations have been recorded. This is the recommended
 // accessor for summary scenarios (alert titles, channel messages).
 func PrimaryViolation(e Event) *Violation {
-	if v, ok := e.PrimaryViolation(); ok {
+	if v, ok := e.primaryViolation(); ok {
 		return &v
 	}
 	return nil

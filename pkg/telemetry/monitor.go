@@ -12,6 +12,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
 // MonitorStore provides CRUD operations for unified monitoring points backed
@@ -48,7 +49,7 @@ func (s *MonitorStore) List(ctx context.Context, mode Mode) ([]MonitorPoint, err
 
 // ListPaged returns a page of monitoring points filtered by an optional mode,
 // together with the total count. When mode is empty, all points are included.
-// page is 1-based; size is the maximum number of points returned.
+// page is 1-based; size is normalized by pagination.Clamp.
 func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int) ([]MonitorPoint, int64, error) {
 	query := s.dbc.WithContext(ctx).Model(&MonitorPoint{})
 	if mode != "" {
@@ -58,10 +59,7 @@ func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int)
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("telemetry: count monitor points: %w", errmap.MapError(err))
 	}
-	page = max(page, 1)
-	if size <= 0 {
-		size = 20
-	}
+	page, size = pagination.Clamp(page, size)
 	offset := (page - 1) * size
 	var points []MonitorPoint
 	if err := query.Order("id ASC").Offset(offset).Limit(size).Find(&points).Error; err != nil {

@@ -103,4 +103,44 @@ func TestExecuteNonZeroExit(t *testing.T) {
 	if result.Status != types.AssetStatusAbnormal {
 		t.Errorf("Status: got %q, want %q", result.Status, types.AssetStatusAbnormal)
 	}
+	if result.ExitCode != 1 {
+		t.Errorf("ExitCode: got %d, want 1", result.ExitCode)
+	}
+}
+
+// TestExecuteExitCodePropagation pins the unified result code contract:
+// success records exit code 0, a specific non-zero exit is preserved, and
+// a missing command yields -1 (no exit code available).
+func TestExecuteExitCodePropagation(t *testing.T) {
+	e := New()
+
+	// Success: exit code 0.
+	cfgBytes, _ := json.Marshal(config{Command: "true"})
+	res, err := e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("execute true: %v", err)
+	}
+	if res.Status != types.AssetStatusNormal || res.ExitCode != 0 {
+		t.Errorf("true: Status=%q ExitCode=%d, want normal/0", res.Status, res.ExitCode)
+	}
+
+	// Specific non-zero exit code is preserved.
+	cfgBytes, _ = json.Marshal(config{Command: "sh", Args: []string{"-c", "exit 7"}})
+	res, err = e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("execute exit 7: %v", err)
+	}
+	if res.Status != types.AssetStatusAbnormal || res.ExitCode != 7 {
+		t.Errorf("exit 7: Status=%q ExitCode=%d, want abnormal/7", res.Status, res.ExitCode)
+	}
+
+	// Command not found: no exit code available, recorded as -1.
+	cfgBytes, _ = json.Marshal(config{Command: "no-such-binary-tickraft-test"})
+	res, err = e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("execute missing binary: %v", err)
+	}
+	if res.Status != types.AssetStatusAbnormal || res.ExitCode != -1 {
+		t.Errorf("missing binary: Status=%q ExitCode=%d, want abnormal/-1", res.Status, res.ExitCode)
+	}
 }
