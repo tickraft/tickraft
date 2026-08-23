@@ -154,7 +154,7 @@ type Aggregator struct {
 
 // NewAggregator creates a new Aggregator with the given tumbling window.
 // The window must be positive; callers that want to disable aggregation should
-// pass a non-positive duration to the Manager instead of constructing an
+// pass a non-positive duration to the Engine instead of constructing an
 // Aggregator directly.
 func NewAggregator(window time.Duration, logger *zap.Logger) *Aggregator {
 	if logger == nil {

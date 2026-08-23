@@ -10,11 +10,11 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { DataTable } from '@tickraft/core'
 import { formatDuration, formatDate } from '@tickraft/core'
-import type { LogModel, ExecutorType } from '../../../../types/task'
-import { getLogs } from '../../../../api/task'
+import type { LogModel, ExecutorType, ExecutorTypeInfo } from '../../../../types/task'
+import { getLogs, getExecutors } from '../../../../api/task'
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const loading = ref(false)
 const page = ref(1)
@@ -26,21 +26,55 @@ const tableData = ref<LogModel[]>([])
 const filterTaskName = ref('')
 const filterExecutor = ref<ExecutorType | ''>('')
 const filterStatus = ref('')
+const filterTrigger = ref('')
+
+/** Executor catalog from the backend registry; the static map below is the
+ *  fallback when the endpoint is unreachable. */
+const executorInfos = ref<ExecutorTypeInfo[]>([
+  { type: 'http', name: 'HTTP' },
+  { type: 'tcp', name: 'TCP' },
+  { type: 'icmp', name: 'ICMP' },
+  { type: 'local', name: 'Local' },
+  { type: 'webhook', name: 'Webhook' },
+])
+
+/** Resolve an executor's filter label: curated i18n name when defined,
+ *  otherwise the registry's display name. */
+function executorLabel(info: ExecutorTypeInfo): string {
+  const pascal = info.type.charAt(0).toUpperCase() + info.type.slice(1)
+  const key = `task.task.create.executor${pascal}`
+  return te(key) ? t(key) : info.name
+}
+
+onMounted(async () => {
+  try {
+    const list = await getExecutors()
+    if (list.length > 0) executorInfos.value = list
+  } catch {
+    // keep the fallback catalog
+  }
+})
 
 /** Log table columns */
 const logColumns = computed(() => [
   { prop: 'id', label: t('task.log.list.logId'), width: 80, slot: 'id', align: 'center' as const },
   { prop: 'taskName', label: t('task.log.list.taskName'), minWidth: 180, slot: 'taskName', align: 'left' as const, showOverflowTooltip: true },
   { prop: 'executorType', label: t('task.log.list.executorType'), width: 110, slot: 'executorType', align: 'center' as const },
+  { prop: 'triggerType', label: t('task.log.list.triggerType'), width: 90, slot: 'triggerType', align: 'center' as const },
   { prop: 'status', label: t('task.log.list.status'), width: 100, slot: 'status', align: 'center' as const },
   { prop: 'startedAt', label: t('task.log.list.startedAt'), width: 160, slot: 'startedAt', align: 'center' as const },
   { prop: 'duration', label: t('task.log.list.duration'), width: 120, slot: 'duration', align: 'center' as const },
 ])
 
-const EXECUTOR_LABELS = computed<Record<string, string>>(() => ({
-  http: 'HTTP', tcp: 'TCP', icmp: 'ICMP', local: t('task.task.create.executorLocal'),
-  webhook: 'Webhook', ssh: 'SSH', mysql: 'MYSQL', redis: 'REDIS',
-}))
+const EXECUTOR_LABELS = computed<Record<string, string>>(() => {
+  const labels: Record<string, string> = {
+    ssh: 'SSH', mysql: 'MYSQL', redis: 'REDIS',
+  }
+  for (const info of executorInfos.value) {
+    labels[info.type] = executorLabel(info)
+  }
+  return labels
+})
 
 const summary = computed(() => {
   const items = tableData.value
@@ -64,19 +98,31 @@ function durationPercent(duration: number): number {
 
 const countText = computed(() => `${total.value} ${t('task.log.list.title').toUpperCase().includes('LOG') ? 'LOGS' : ''}`)
 
-const executorOptions = computed(() => [
-  { label: 'HTTP', value: 'http' },
-  { label: 'TCP', value: 'tcp' },
-  { label: 'ICMP', value: 'icmp' },
-  { label: t('task.task.create.executorLocal'), value: 'local' },
-  { label: 'Webhook', value: 'webhook' },
-])
+const executorOptions = computed(() =>
+  executorInfos.value.map((info) => ({ label: executorLabel(info), value: info.type as ExecutorType })),
+)
 
 const statusOptions = computed(() => [
   { label: t('common.status.success'), value: 'success' },
   { label: t('common.status.failed'), value: 'failed' },
   { label: t('common.status.running'), value: 'running' },
+  { label: t('common.status.timeout'), value: 'timeout' },
 ])
+
+const triggerOptions = computed(() => [
+  { label: t('task.log.list.triggerCron'), value: 'schedule' },
+  { label: t('task.log.list.triggerManual'), value: 'manual' },
+  { label: t('task.log.list.triggerEvent'), value: 'event' },
+])
+
+/** Translate a trigger source into its display label; unknown/absent
+ * values render an em dash (legacy rows predate trigger tracking). */
+function triggerLabel(triggerType?: string): string {
+  if (triggerType === 'schedule') return t('task.log.list.triggerCron')
+  if (triggerType === 'manual') return t('task.log.list.triggerManual')
+  if (triggerType === 'event') return t('task.log.list.triggerEvent')
+  return triggerType || '—'
+}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -85,8 +131,9 @@ async function fetchData(): Promise<void> {
       page: page.value,
       size: size.value,
       taskName: filterTaskName.value.trim() || undefined,
-      executor: filterExecutor.value || undefined,
+      executorType: filterExecutor.value || undefined,
       status: filterStatus.value || undefined,
+      triggerType: filterTrigger.value || undefined,
     })
     tableData.value = res.items || []
     total.value = res.total || 0
@@ -107,6 +154,7 @@ function handleReset(): void {
   filterTaskName.value = ''
   filterExecutor.value = ''
   filterStatus.value = ''
+  filterTrigger.value = ''
   page.value = 1
   void fetchData()
 }
@@ -139,37 +187,63 @@ onMounted(() => { void fetchData() })
     <div class="tk-log-list__header">
       <div>
         <div class="tk-log-list__title-row">
-          <h1 class="tk-log-list__title">{{ t('task.log.list.title') }}</h1>
+          <h1 class="tk-log-list__title">
+            {{ t('task.log.list.title') }}
+          </h1>
           <span class="tk-log-list__count">{{ countText }}</span>
         </div>
-        <p class="tk-log-list__subtitle">{{ t('task.log.list.subtitle') }}</p>
+        <p class="tk-log-list__subtitle">
+          {{ t('task.log.list.subtitle') }}
+        </p>
       </div>
       <div class="tk-log-list__actions">
-        <el-button @click="handleRefresh"><el-icon><Refresh /></el-icon>{{ t('common.app.refresh') }}</el-button>
+        <el-button @click="handleRefresh">
+          <el-icon><Refresh /></el-icon>{{ t('common.app.refresh') }}
+        </el-button>
       </div>
     </div>
 
     <!-- Summary strip: 5 cards with accent borders -->
     <div class="tk-log-summary">
       <div class="tk-log-summary__card tk-log-summary__card--total">
-        <div class="tk-log-summary__label"><span class="tk-log-summary__dot" />{{ t('task.log.list.summaryTotal') }}</div>
-        <div class="tk-log-summary__value">{{ summary.total }}</div>
+        <div class="tk-log-summary__label">
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryTotal') }}
+        </div>
+        <div class="tk-log-summary__value">
+          {{ summary.total }}
+        </div>
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--success">
-        <div class="tk-log-summary__label"><span class="tk-log-summary__dot" />{{ t('task.log.list.summarySuccess') }}</div>
-        <div class="tk-log-summary__value">{{ summary.success }}</div>
+        <div class="tk-log-summary__label">
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summarySuccess') }}
+        </div>
+        <div class="tk-log-summary__value">
+          {{ summary.success }}
+        </div>
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--failed">
-        <div class="tk-log-summary__label"><span class="tk-log-summary__dot" />{{ t('task.log.list.summaryFailed') }}</div>
-        <div class="tk-log-summary__value">{{ summary.failed }}</div>
+        <div class="tk-log-summary__label">
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryFailed') }}
+        </div>
+        <div class="tk-log-summary__value">
+          {{ summary.failed }}
+        </div>
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--running">
-        <div class="tk-log-summary__label"><span class="tk-log-summary__dot" />{{ t('task.log.list.summaryRunning') }}</div>
-        <div class="tk-log-summary__value">{{ summary.running }}</div>
+        <div class="tk-log-summary__label">
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryRunning') }}
+        </div>
+        <div class="tk-log-summary__value">
+          {{ summary.running }}
+        </div>
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--timeout">
-        <div class="tk-log-summary__label"><span class="tk-log-summary__dot" />{{ t('task.log.list.summaryTimeout') }}</div>
-        <div class="tk-log-summary__value">{{ summary.timeout }}</div>
+        <div class="tk-log-summary__label">
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryTimeout') }}
+        </div>
+        <div class="tk-log-summary__value">
+          {{ summary.timeout }}
+        </div>
       </div>
     </div>
 
@@ -183,15 +257,58 @@ onMounted(() => { void fetchData() })
         class="tk-log-filter__search"
         @keyup.enter="handleSearch"
       />
-      <el-select v-model="filterExecutor" :placeholder="t('task.log.list.executorType')" clearable class="tk-log-filter__select">
-        <el-option v-for="opt in executorOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+      <el-select
+        v-model="filterExecutor"
+        :placeholder="t('task.log.list.executorType')"
+        clearable
+        class="tk-log-filter__select"
+      >
+        <el-option
+          v-for="opt in executorOptions"
+          :key="opt.value"
+          :label="opt.label"
+          :value="opt.value"
+        />
       </el-select>
-      <el-select v-model="filterStatus" :placeholder="t('task.log.list.status')" clearable class="tk-log-filter__select">
-        <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+      <el-select
+        v-model="filterStatus"
+        :placeholder="t('task.log.list.status')"
+        clearable
+        class="tk-log-filter__select"
+      >
+        <el-option
+          v-for="opt in statusOptions"
+          :key="opt.value"
+          :label="opt.label"
+          :value="opt.value"
+        />
+      </el-select>
+      <el-select
+        v-model="filterTrigger"
+        :placeholder="t('task.log.list.triggerType')"
+        clearable
+        class="tk-log-filter__select"
+      >
+        <el-option
+          v-for="opt in triggerOptions"
+          :key="opt.value"
+          :label="opt.label"
+          :value="opt.value"
+        />
       </el-select>
       <div class="tk-log-filter__divider" />
-      <el-button text @click="handleReset">{{ t('common.app.reset') }}</el-button>
-      <el-button type="primary" @click="handleSearch">{{ t('common.app.search') }}</el-button>
+      <el-button
+        text
+        @click="handleReset"
+      >
+        {{ t('common.app.reset') }}
+      </el-button>
+      <el-button
+        type="primary"
+        @click="handleSearch"
+      >
+        {{ t('common.app.search') }}
+      </el-button>
     </div>
 
     <!-- Table -->
@@ -207,27 +324,44 @@ onMounted(() => { void fetchData() })
         @row-click="handleDetail"
         @page-change="handlePageChange"
       >
-        <template #id="{ row }"><span class="tk-mono-id">#{{ (row as LogModel).id }}</span></template>
+        <template #id="{ row }">
+          <span class="tk-mono-id">#{{ (row as LogModel).id }}</span>
+        </template>
         <template #taskName="{ row }">
           <span class="tk-log-task">{{ (row as LogModel).taskName || '—' }}</span>
         </template>
         <template #executorType="{ row }">
-          <span class="tk-executor-badge" :class="`tk-executor-badge--${(row as LogModel).executorType ?? ''}`">
+          <span
+            class="tk-executor-badge"
+            :class="`tk-executor-badge--${(row as LogModel).executorType ?? ''}`"
+          >
             <span class="tk-executor-badge__dot" />
             {{ EXECUTOR_LABELS[(row as LogModel).executorType ?? ''] || (row as LogModel).executorType }}
           </span>
         </template>
+        <template #triggerType="{ row }">
+          <span class="tk-mono-text">{{ triggerLabel((row as LogModel).triggerType) }}</span>
+        </template>
         <template #status="{ row }">
-          <span class="tk-status-tag" :class="`tk-status-tag--${(row as LogModel).status === 'success' ? 'success' : (row as LogModel).status === 'failed' ? 'failed' : (row as LogModel).status === 'running' ? 'running' : (row as LogModel).status === 'timeout' ? 'warning' : 'unknown'}`">
+          <span
+            class="tk-status-tag"
+            :class="`tk-status-tag--${(row as LogModel).status === 'success' ? 'success' : (row as LogModel).status === 'failed' ? 'failed' : (row as LogModel).status === 'running' ? 'running' : (row as LogModel).status === 'timeout' ? 'warning' : 'unknown'}`"
+          >
             <span class="tk-status-tag__dot" />{{ (row as LogModel).status }}
           </span>
         </template>
-        <template #startedAt="{ row }"><span class="tk-mono-text">{{ formatDate((row as LogModel).startedAt) }}</span></template>
+        <template #startedAt="{ row }">
+          <span class="tk-mono-text">{{ formatDate((row as LogModel).startedAt) }}</span>
+        </template>
         <template #duration="{ row }">
           <div class="tk-duration-cell">
             <span class="tk-duration-cell__value">{{ formatDuration((row as LogModel).duration ?? 0) }}</span>
             <div class="tk-duration-cell__bar">
-              <div class="tk-duration-cell__fill" :class="{ 'tk-duration-cell__fill--fail': (row as LogModel).status === 'failed' || (row as LogModel).status === 'timeout' }" :style="{ width: durationPercent((row as LogModel).duration ?? 0) + '%' }" />
+              <div
+                class="tk-duration-cell__fill"
+                :class="{ 'tk-duration-cell__fill--fail': (row as LogModel).status === 'failed' || (row as LogModel).status === 'timeout' }"
+                :style="{ width: durationPercent((row as LogModel).duration ?? 0) + '%' }"
+              />
             </div>
           </div>
         </template>
@@ -240,8 +374,15 @@ onMounted(() => { void fetchData() })
             :resizable="false"
           >
             <template #default="{ row }">
-              <div class="tk-log-actions" @click.stop>
-                <el-button link type="primary" @click="handleDetail(row as LogModel)">
+              <div
+                class="tk-log-actions"
+                @click.stop
+              >
+                <el-button
+                  link
+                  type="primary"
+                  @click="handleDetail(row as LogModel)"
+                >
                   {{ t('task.log.list.detail') }}
                 </el-button>
               </div>

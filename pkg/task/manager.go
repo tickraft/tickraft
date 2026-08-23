@@ -7,7 +7,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -223,14 +222,19 @@ type Service struct {
 }
 
 // Register registers a new task for scheduling.
-// It parses the task's schedule configuration, stores the task, and
-// registers a timed callback with the engine.
+// It parses the task's schedule string, stores the task, and registers a
+// timed callback with the engine. Disabled tasks are stored but not put on
+// the wheel; they start running when resumed (Resume or an update with
+// Enabled=true).
 func (m *Service) Register(ctx context.Context, task Task) error {
-	scheduleType, cronExpr, interval := extractScheduleConfig(task)
+	scheduleType, interval, err := ClassifySchedule(task.Schedule)
+	if err != nil {
+		return fmt.Errorf("register task %d: %w", task.ID, err)
+	}
 	if err := checkMinInterval(scheduleType, interval); err != nil {
 		return fmt.Errorf("register task %d: %w", task.ID, err)
 	}
-	sched, err := parseSchedule(scheduleType, cronExpr, interval)
+	sched, err := parseSchedule(task.Schedule)
 	if err != nil {
 		return fmt.Errorf("register task %d: %w", task.ID, err)
 	}
@@ -238,25 +242,30 @@ func (m *Service) Register(ctx context.Context, task Task) error {
 	m.setTask(task)
 
 	m.mu.Lock()
-	m.scheds[task.ID] = sched
-	m.scheduleTypes[task.ID] = scheduleType
-	if scheduleType == ScheduleTypeEvent {
-		m.eventDrivenTasks[task.ID] = struct{}{}
-	} else {
-		delete(m.eventDrivenTasks, task.ID)
+	if task.Enabled {
+		m.scheds[task.ID] = sched
+		m.scheduleTypes[task.ID] = scheduleType
+		if scheduleType == ScheduleTypeEvent {
+			m.eventDrivenTasks[task.ID] = struct{}{}
+		} else {
+			delete(m.eventDrivenTasks, task.ID)
+		}
 	}
 	m.mu.Unlock()
 
 	// Register the timed callback with the engine. Event-driven tasks
 	// use a neverSchedule so the engine never fires them; they are
 	// triggered by external events via SubscribeEvents.
-	if err := m.engine.Add(task.ID, sched, m.onFire); err != nil {
-		return fmt.Errorf("register task %d: %w", task.ID, err)
+	if task.Enabled && scheduleType != ScheduleTypeEvent {
+		if err := m.engine.Add(task.ID, sched, m.onFire); err != nil {
+			return fmt.Errorf("register task %d: %w", task.ID, err)
+		}
 	}
 
 	m.logger.Info("task registered",
 		zap.Int64("task_id", task.ID),
 		zap.String("schedule_type", string(scheduleType)),
+		zap.Bool("enabled", task.Enabled),
 	)
 	return nil
 }
@@ -268,7 +277,7 @@ func (m *Service) Schedule(_ context.Context, taskID int64) error {
 	if err != nil {
 		return fmt.Errorf("schedule task %d: %w", taskID, err)
 	}
-	m.trigger(task)
+	m.trigger(task, TriggerTypeManual)
 	return nil
 }
 
@@ -327,10 +336,7 @@ func (m *Service) Pause(taskID int64) error {
 	delete(m.scheduleTypes, taskID)
 	m.mu.Unlock()
 
-	if task.Metadata == nil {
-		task.Metadata = make(map[string]string)
-	}
-	task.Metadata[MetadataKeyEnabled] = strconv.FormatBool(false)
+	task.Enabled = false
 	m.setTask(task)
 
 	m.logger.Info("task paused",
@@ -357,32 +363,33 @@ func (m *Service) Resume(taskID int64) error {
 		return ErrTaskNotPaused
 	}
 
-	if schedType != ScheduleTypeEvent {
+	scheduleType, _, cerr := ClassifySchedule(task.Schedule)
+	if cerr != nil {
+		return fmt.Errorf("resume task %d: %w", taskID, cerr)
+	}
+	if scheduleType != ScheduleTypeEvent {
 		if sched == nil {
-			// Re-parse from metadata so Resume is resilient.
-			st, cronExpr, interval := extractScheduleConfig(task)
-			parsed, perr := parseSchedule(st, cronExpr, interval)
+			// Re-parse from the task's schedule string so Resume is resilient.
+			parsed, perr := parseSchedule(task.Schedule)
 			if perr != nil {
 				return fmt.Errorf("resume task %d: %w", taskID, perr)
 			}
 			sched = parsed
 			m.mu.Lock()
 			m.scheds[taskID] = sched
-			m.scheduleTypes[taskID] = st
-			if st == ScheduleTypeEvent {
-				m.eventDrivenTasks[taskID] = struct{}{}
-			}
+			m.scheduleTypes[taskID] = scheduleType
 			m.mu.Unlock()
 		}
 		if err := m.engine.Add(taskID, sched, m.onFire); err != nil {
 			return fmt.Errorf("resume task %d: %w", taskID, err)
 		}
+	} else {
+		m.mu.Lock()
+		m.eventDrivenTasks[taskID] = struct{}{}
+		m.mu.Unlock()
 	}
 
-	if task.Metadata == nil {
-		task.Metadata = make(map[string]string)
-	}
-	task.Metadata[MetadataKeyEnabled] = strconv.FormatBool(true)
+	task.Enabled = true
 	m.setTask(task)
 
 	m.logger.Info("task resumed",
@@ -419,7 +426,7 @@ func (m *Service) Stop(ctx context.Context) error {
 //
 // SubscribeEvents, handleStatusChange, trigger, and newRunID live in
 // events.go. Restore, getTask, setTask, deleteTask, and listTasks live in
-// persistence.go. extractScheduleConfig and parseSchedule live in schedule.go.
+// persistence.go. ClassifySchedule and parseSchedule live in schedule.go.
 func (m *Service) onFire(taskID int64) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -469,14 +476,7 @@ func (m *Service) onFire(taskID int64) {
 		}
 	}
 
-	m.trigger(task)
-
-	m.mu.RLock()
-	schedType := m.scheduleTypes[taskID]
-	m.mu.RUnlock()
-	if schedType == ScheduleTypeOnce {
-		m.deps.Reset(taskID)
-	}
+	m.trigger(task, TriggerTypeSchedule)
 }
 
 // tryClaimRunning atomically checks whether the task is already running and,

@@ -12,6 +12,7 @@ export { baseMessages } from './i18n'
 export { baseMenus } from './menus'
 
 // ── API namespace ──
+export * as assetApi from './api/asset'
 export * as authApi from './api/auth'
 export * as taskApi from './api/task'
 export * as telemetryApi from './api/telemetry'
@@ -48,8 +49,6 @@ export type {
   MonitorHistoryEntry,
   MonitorLog,
   TelemetryTemplate,
-  TemplateCreateParams,
-  TemplateUpdateParams,
   ApplyTemplateParams,
 } from './types/telemetry'
 export type {

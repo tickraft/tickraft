@@ -82,8 +82,8 @@ func TestAssetJSONRoundTrip(t *testing.T) {
 	if got.ID != a.ID {
 		t.Errorf("ID = %d, want %d", got.ID, a.ID)
 	}
-	if got.TenantID != a.TenantID {
-		t.Errorf("TenantID = %d, want %d", got.TenantID, a.TenantID)
+	if got.TenantID != 0 {
+		t.Errorf("TenantID = %d, want 0: tenant_id is json:\"-\" and must not round-trip the wire", got.TenantID)
 	}
 	if got.AssetType != a.AssetType {
 		t.Errorf("AssetType = %q, want %q", got.AssetType, a.AssetType)

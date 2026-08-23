@@ -16,8 +16,6 @@ type TaskPayload struct {
 	TaskType string `json:"task_type"`
 	// ExecutorType is the executor type (e.g. http, tcp, icmp, local, webhook).
 	ExecutorType string `json:"executor_type"`
-	// Category is the executor category: "Actuator" (write/executing) or "Prober" (read-only probing).
-	Category string `json:"category"`
 	// TenantID is the tenant identifier the task belongs to.
 	// The runtime is single-tenant: this field is always "".
 	// callers may inject the actual tenant ID via the event bus.
@@ -49,14 +47,16 @@ type ExecutionPayload struct {
 	ExecutionID string `json:"execution_id"`
 	// ExecutorType is the executor type (e.g. http, tcp, icmp, local, webhook).
 	ExecutorType string `json:"executor_type"`
-	// Category is the executor category: "Actuator" (write/executing) or "Prober" (read-only probing).
-	Category string `json:"category"`
 	// TenantID is the tenant identifier.
 	// The runtime is single-tenant: this field is always "".
 	// callers may inject the actual tenant ID via the event bus.
 	TenantID string `json:"tenant_id"`
 	// AssetID is the target asset ID. Populated when the executor targets a specific asset.
 	AssetID string `json:"asset_id,omitempty"`
+	// Operation is the operation kind: "probe" (read-only probing) or
+	// "execute" (write action). Populated on every lifecycle event; empty is
+	// treated as "execute" by consumers for compatibility with older events.
+	Operation string `json:"operation,omitempty"`
 	// Action is the lifecycle action: triggered, started, completed, progressed.
 	Action string `json:"action"`
 	// Status is the execution status: success, failure, timeout, running. Populated for completed.
@@ -65,8 +65,12 @@ type ExecutionPayload struct {
 	TriggerType string `json:"trigger_type,omitempty"`
 	// Config is the serialized executor configuration (JSON string). Populated for triggered.
 	Config string `json:"config,omitempty"`
-	// Timeout is the execution timeout in nanoseconds.
-	Timeout int64 `json:"timeout,omitempty"`
+	// TimeoutSeconds is the execution timeout in seconds.
+	TimeoutSeconds int64 `json:"timeout_seconds,omitempty"`
+	// MaxRetries is the maximum number of retries configured for the task.
+	MaxRetries int `json:"max_retries,omitempty"`
+	// RetryIntervalSeconds is the configured delay between retries in seconds.
+	RetryIntervalSeconds int64 `json:"retry_interval_seconds,omitempty"`
 	// RunID is the run identifier, used to correlate executions within a retry chain.
 	RunID string `json:"run_id,omitempty"`
 	// Result is the execution result summary. Populated for completed.

@@ -15,7 +15,6 @@ func TestTaskPayloadJSON(t *testing.T) {
 		TaskName:      "test-task",
 		TaskType:      "task",
 		ExecutorType:  "http",
-		Category:      "Actuator",
 		TenantID:      "tenant-001",
 		Action:        "created",
 		TriggerType:   "cron",
@@ -70,8 +69,8 @@ func TestExecutionPayloadJSON(t *testing.T) {
 		TaskID:       "task-001",
 		ExecutionID:  "exec-001",
 		ExecutorType: "http",
-		Category:     "Actuator",
 		TenantID:     "tenant-001",
+		Operation:    "probe",
 		Action:       "triggered",
 		Status:       "success",
 		TriggerType:  "schedule",
@@ -95,6 +94,9 @@ func TestExecutionPayloadJSON(t *testing.T) {
 	if got.ExecutionID != p.ExecutionID {
 		t.Errorf("execution_id: got %q, want %q", got.ExecutionID, p.ExecutionID)
 	}
+	if got.Operation != p.Operation {
+		t.Errorf("operation: got %q, want %q", got.Operation, p.Operation)
+	}
 	if got.Duration != p.Duration {
 		t.Errorf("duration: got %d, want %d", got.Duration, p.Duration)
 	}
@@ -108,7 +110,6 @@ func TestExecutionPayloadOmitEmpty(t *testing.T) {
 		TaskID:       "task-001",
 		ExecutionID:  "exec-001",
 		ExecutorType: "http",
-		Category:     "Actuator",
 		TenantID:     "tenant-001",
 		Action:       "triggered",
 	}
@@ -120,7 +121,7 @@ func TestExecutionPayloadOmitEmpty(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
 	}
-	omitted := []string{"status", "trigger_type", "result", "output", "error", "duration",
+	omitted := []string{"operation", "status", "trigger_type", "result", "output", "error", "duration",
 		"progress", "retry_count", "started_at", "completed_at"}
 	for _, key := range omitted {
 		if _, ok := raw[key]; ok {

@@ -21,3 +21,8 @@ type TokenBlacklist struct {
 	ExpiredAt time.Time `json:"expired_at"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// TableName returns the database table name for TokenBlacklist.
+func (TokenBlacklist) TableName() string {
+	return "sys_token_blacklist"
+}

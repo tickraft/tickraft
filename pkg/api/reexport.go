@@ -42,6 +42,7 @@ type (
 // Response functions
 var (
 	Success           = httputil.Success
+	SuccessAccepted   = httputil.SuccessAccepted
 	Fail              = httputil.Fail
 	FailWithCode      = httputil.FailWithCode
 	FailWithData      = httputil.FailWithData

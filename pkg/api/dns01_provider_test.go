@@ -34,7 +34,7 @@ func (s *stubDNSProvider) Present(_ context.Context, domain, token, value string
 	return s.presentErr
 }
 
-func (s *stubDNSProvider) CleanUp(_ context.Context, domain, token, value string) error {
+func (s *stubDNSProvider) Cleanup(_ context.Context, domain, token, value string) error {
 	s.cleanupCalls = append(s.cleanupCalls, presentCall{domain, token, value})
 	return nil
 }

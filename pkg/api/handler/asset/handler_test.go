@@ -208,7 +208,7 @@ func TestAssetHandlerCreateInvalidJSON(t *testing.T) {
 
 // TestAssetHandlerCreateDeviceQuotaExceeded verifies that creating more
 // than maxDeviceQuota device resources is rejected with 409 Conflict and the
-// "quota_exceeded" error code.
+// "quota exceeded" error code.
 func TestAssetHandlerCreateDeviceQuotaExceeded(t *testing.T) {
 	engine, store := newAssetTestEngine(t)
 	ctx := context.Background()
@@ -234,8 +234,8 @@ func TestAssetHandlerCreateDeviceQuotaExceeded(t *testing.T) {
 	if resp.Code != errdefs.CodeConflict {
 		t.Errorf("code = %d, want %d", resp.Code, errdefs.CodeConflict)
 	}
-	if resp.Message != "quota_exceeded" {
-		t.Errorf("message = %q, want %q", resp.Message, "quota_exceeded")
+	if resp.Message != "quota exceeded" {
+		t.Errorf("message = %q, want %q", resp.Message, "quota exceeded")
 	}
 }
 
@@ -492,8 +492,8 @@ func TestNewHandlerConstructsField(t *testing.T) {
 	}
 	store := assetstore.NewStore(dbc)
 	h := NewHandler(store, nil)
-	if h.store == nil {
-		t.Error("store field is nil, want non-nil")
+	if h.assets == nil {
+		t.Error("assets store field is nil, want non-nil")
 	}
 	if h.logger == nil {
 		t.Error("logger field is nil, want non-nil (nop fallback)")

@@ -11,14 +11,19 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/pkg/api/handler/alert"
+	alerthandler "github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
-	"github.com/tickraft/tickraft/pkg/api/handler/channel"
-	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
+	channelhandler "github.com/tickraft/tickraft/pkg/api/handler/channel"
+	remediationhandler "github.com/tickraft/tickraft/pkg/api/handler/remediation"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
+	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
+	prismchannel "github.com/tickraft/tickraft/pkg/prism/channel"
+	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
+	schedtask "github.com/tickraft/tickraft/pkg/task"
+	telemetrymodel "github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -31,133 +36,142 @@ import (
 // stubTaskService implements task.Service.
 type stubTaskService struct{}
 
-func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ task.Filter) ([]task.Task, int64, error) {
+func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ task.Filter) ([]*schedtask.Task, int64, error) {
 	return nil, 0, nil
 }
-func (stubTaskService) GetTask(_ context.Context, _ int64) (*task.Task, error) {
+func (stubTaskService) GetTask(_ context.Context, _ int64) (*schedtask.Task, error) {
 	return nil, nil
 }
-func (stubTaskService) CreateTask(_ context.Context, _ *task.Task) (*task.Task, error) {
-	return &task.Task{}, nil
+func (stubTaskService) CreateTask(_ context.Context, _ *schedtask.Task) (*schedtask.Task, error) {
+	return &schedtask.Task{}, nil
 }
-func (stubTaskService) UpdateTask(_ context.Context, _ int64, _ *task.Task) (*task.Task, error) {
-	return &task.Task{}, nil
+func (stubTaskService) UpdateTask(_ context.Context, _ int64, _ *schedtask.Task) (*schedtask.Task, error) {
+	return &schedtask.Task{}, nil
 }
 func (stubTaskService) DeleteTask(_ context.Context, _ int64) error  { return nil }
 func (stubTaskService) TriggerTask(_ context.Context, _ int64) error { return nil }
 func (stubTaskService) PauseTask(_ context.Context, _ int64) error   { return nil }
 func (stubTaskService) ResumeTask(_ context.Context, _ int64) error  { return nil }
 func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int,
-	_ task.ExecutionFilter) ([]task.Execution, int64, error) {
+	_ task.ExecutionFilter) ([]*schedtask.Execution, int64, error) {
 	return nil, 0, nil
 }
-func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*task.Execution, error) {
+func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*schedtask.Execution, error) {
 	return nil, nil
 }
-func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*task.Task, error) {
-	return &task.Task{}, nil
+func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*schedtask.Task, error) {
+	return &schedtask.Task{}, nil
 }
-func (stubTaskService) GetExecutionStats(_ context.Context, _, _ time.Time) (task.ExecutionStats, error) {
+func (stubTaskService) GetExecutionStats(
+	_ context.Context, _, _ time.Time, _ int64, _ int,
+) (task.ExecutionStats, error) {
 	return task.ExecutionStats{}, nil
 }
 
 var _ task.Service = (*stubTaskService)(nil)
 
-// stubAlertService implements alert.Service.
+// stubAlertService implements alert.Service (model: prismalert).
 type stubAlertService struct{}
 
-func (stubAlertService) ListRules(_ context.Context, _, _ int) ([]alert.Rule, int64, error) {
+func (stubAlertService) ListRules(_ context.Context, _, _ int) ([]*prismalert.Rule, int64, error) {
 	return nil, 0, nil
 }
-func (stubAlertService) GetRule(_ context.Context, _ int64) (*alert.Rule, error) { return nil, nil }
-func (stubAlertService) CreateRule(_ context.Context, _ *alert.Rule) (*alert.Rule, error) {
-	return &alert.Rule{}, nil
+func (stubAlertService) GetRule(_ context.Context, _ int64) (*prismalert.Rule, error) {
+	return nil, nil
 }
-func (stubAlertService) UpdateRule(_ context.Context, _ int64, _ *alert.Rule) (*alert.Rule, error) {
-	return &alert.Rule{}, nil
+func (stubAlertService) CreateRule(_ context.Context, _ *prismalert.Rule) (*prismalert.Rule, error) {
+	return &prismalert.Rule{}, nil
+}
+func (stubAlertService) UpdateRule(_ context.Context, _ int64, _ *prismalert.Rule) (*prismalert.Rule, error) {
+	return &prismalert.Rule{}, nil
 }
 func (stubAlertService) DeleteRule(_ context.Context, _ int64) error { return nil }
-func (stubAlertService) ListRecords(_ context.Context, _, _ int, _ alert.RecordFilter) ([]alert.Record, int64, error) {
+func (stubAlertService) ListRecords(_ context.Context, _, _ int,
+	_ prismalert.RecordFilter) ([]*prismalert.Record, int64, error) {
 	return nil, 0, nil
 }
-func (stubAlertService) GetRecord(_ context.Context, _ int64) (*alert.Record, error) {
+func (stubAlertService) GetRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
 	return nil, nil
 }
-func (stubAlertService) AcknowledgeRecord(_ context.Context, _ int64) (*alert.Record, error) {
+func (stubAlertService) AcknowledgeRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
 	return nil, nil
 }
-func (stubAlertService) ResolveRecord(_ context.Context, _ int64) (*alert.Record, error) {
+func (stubAlertService) ResolveRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
 	return nil, nil
 }
 
-var _ alert.Service = (*stubAlertService)(nil)
+var _ alerthandler.Service = (*stubAlertService)(nil)
 
-// stubChannelService implements channel.Service.
+// stubChannelService implements channel.Service (model: prismchannel.Channel).
 type stubChannelService struct{}
 
-func (stubChannelService) ListChannels(_ context.Context, _, _ int) ([]channel.Channel, int64, error) {
+func (stubChannelService) ListChannels(_ context.Context, _, _ int) ([]*prismchannel.Channel, int64, error) {
 	return nil, 0, nil
 }
-func (stubChannelService) GetChannel(_ context.Context, _ int64) (*channel.Channel, error) {
+func (stubChannelService) GetChannel(_ context.Context, _ int64) (*prismchannel.Channel, error) {
 	return nil, nil
 }
-func (stubChannelService) CreateChannel(_ context.Context, _ *channel.Channel) (*channel.Channel, error) {
-	return &channel.Channel{}, nil
+func (stubChannelService) CreateChannel(_ context.Context, _ *prismchannel.Channel) (*prismchannel.Channel, error) {
+	return &prismchannel.Channel{}, nil
 }
-func (stubChannelService) UpdateChannel(_ context.Context, _ int64, _ *channel.Channel) (*channel.Channel, error) {
-	return &channel.Channel{}, nil
+func (stubChannelService) UpdateChannel(_ context.Context, _ int64,
+	_ *prismchannel.Channel) (*prismchannel.Channel, error) {
+	return &prismchannel.Channel{}, nil
 }
 func (stubChannelService) DeleteChannel(_ context.Context, _ int64) error { return nil }
 func (stubChannelService) TestChannel(_ context.Context, _ int64) error   { return nil }
 
-var _ channel.Service = (*stubChannelService)(nil)
+var _ channelhandler.Service = (*stubChannelService)(nil)
 
-// stubRemediationService implements remediation.Service.
+// stubRemediationService implements remediation.Service (model: prismremediation).
 type stubRemediationService struct{}
 
-func (stubRemediationService) ListRules(_ context.Context, _, _ int) ([]remediation.Rule, int64, error) {
+func (stubRemediationService) ListRules(_ context.Context, _, _ int) ([]*prismremediation.Rule, int64, error) {
 	return nil, 0, nil
 }
-func (stubRemediationService) GetRule(_ context.Context, _ int64) (*remediation.Rule, error) {
+func (stubRemediationService) GetRule(_ context.Context, _ int64) (*prismremediation.Rule, error) {
 	return nil, nil
 }
-func (stubRemediationService) CreateRule(_ context.Context, _ *remediation.Rule) (*remediation.Rule, error) {
-	return &remediation.Rule{}, nil
+func (stubRemediationService) CreateRule(_ context.Context, _ *prismremediation.Rule) (*prismremediation.Rule, error) {
+	return &prismremediation.Rule{}, nil
 }
-func (stubRemediationService) UpdateRule(_ context.Context, _ int64, _ *remediation.Rule) (*remediation.Rule, error) {
-	return &remediation.Rule{}, nil
+func (stubRemediationService) UpdateRule(_ context.Context, _ int64,
+	_ *prismremediation.Rule) (*prismremediation.Rule, error) {
+	return &prismremediation.Rule{}, nil
 }
 func (stubRemediationService) DeleteRule(_ context.Context, _ int64) error { return nil }
-func (stubRemediationService) ListRecords(_ context.Context, _, _ int, _ string) ([]remediation.Record, int64, error) {
+func (stubRemediationService) ListRecords(_ context.Context, _, _ int,
+	_ string) ([]*prismremediation.Record, int64, error) {
 	return nil, 0, nil
 }
 
-var _ remediation.Service = (*stubRemediationService)(nil)
-
-// stubReportHandler implements telemetry.ReportHandler.
-type stubReportHandler struct{}
-
-func (stubReportHandler) Report(_ context.Context, _ *app.RequestContext) {}
-
-var _ telemetry.ReportHandler = (*stubReportHandler)(nil)
+var _ remediationhandler.Service = (*stubRemediationService)(nil)
 
 // stubTelemetryService implements telemetry.Service.
 type stubTelemetryService struct{}
 
 func (stubTelemetryService) ListTasks(_ context.Context, _, _ int,
-	_ telemetry.Filter) ([]telemetry.Task, int64, error) {
+	_ telemetry.Filter) ([]telemetrymodel.MonitorPoint, int64, error) {
 	return nil, 0, nil
 }
-func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetry.Task, error) {
+func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetrymodel.MonitorPoint, error) {
 	return nil, nil
 }
-func (stubTelemetryService) CreateTask(_ context.Context, _ *telemetry.Task) (*telemetry.Task, error) {
-	return &telemetry.Task{}, nil
+func (stubTelemetryService) CreateTask(
+	_ context.Context, _ *telemetrymodel.MonitorPoint) (*telemetrymodel.MonitorPoint, error) {
+	return &telemetrymodel.MonitorPoint{}, nil
 }
-func (stubTelemetryService) UpdateTask(_ context.Context, _ int64, _ *telemetry.Task) (*telemetry.Task, error) {
-	return &telemetry.Task{}, nil
+func (stubTelemetryService) UpdateTask(_ context.Context, _ int64,
+	_ *telemetrymodel.MonitorPoint) (*telemetrymodel.MonitorPoint, error) {
+	return &telemetrymodel.MonitorPoint{}, nil
 }
 func (stubTelemetryService) DeleteTask(_ context.Context, _ int64) error { return nil }
+func (stubTelemetryService) ProbeNow(_ context.Context, _ int64) (*telemetrymodel.MonitorPoint, error) {
+	return &telemetrymodel.MonitorPoint{}, nil
+}
+func (stubTelemetryService) Summary(_ context.Context) (telemetrymodel.PointSummary, error) {
+	return telemetrymodel.PointSummary{}, nil
+}
 
 var _ telemetry.Service = (*stubTelemetryService)(nil)
 
@@ -214,7 +228,7 @@ func allRequiredRegisterOptions() []RegisterOption {
 		WithRemediationRuleService(stubRemediationService{}),
 		WithSystemService(newFakeSystemService()),
 		WithTelemetryService(stubTelemetryService{}),
-		WithTelemetryReportHandler(stubReportHandler{}),
+		WithTelemetryReportHandler(func(_ context.Context, _ *app.RequestContext) {}),
 		WithAssetHandler(asset.NewHandler(stubAssetStore{}, zap.NewNop())),
 	}
 }

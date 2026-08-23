@@ -50,7 +50,7 @@ const searchFields = computed(() => [
 const columns = computed(() => [
   { prop: 'id', label: t('task.task.list.id'), width: 80, slot: 'id' },
   { prop: 'name', label: t('task.task.list.name'), minWidth: 180, slot: 'name', align: 'left' as const },
-  { prop: 'executor', label: t('task.task.list.executorType'), width: 130, slot: 'executor' },
+  { prop: 'executorType', label: t('task.task.list.executorType'), width: 130, slot: 'executorType' },
   { prop: 'schedule', label: t('task.task.list.scheduleExpr'), width: 200, slot: 'schedule' },
   { prop: 'group', label: t('task.task.create.group'), width: 120, slot: 'group' },
   { prop: 'enabled', label: t('task.task.list.enabled'), width: 80, slot: 'enabled' },
@@ -289,13 +289,13 @@ onMounted(() => {
           </el-button>
         </template>
 
-        <template #executor="{ row }">
+        <template #executorType="{ row }">
           <span
             class="tk-executor-badge"
-            :class="`tk-executor-badge--${(row as TaskModel).executor}`"
+            :class="`tk-executor-badge--${(row as TaskModel).executorType}`"
           >
             <span class="tk-executor-badge__dot" />
-            {{ EXECUTOR_LABELS[(row as TaskModel).executor] || (row as TaskModel).executor }}
+            {{ EXECUTOR_LABELS[(row as TaskModel).executorType] || (row as TaskModel).executorType }}
           </span>
         </template>
 
@@ -344,11 +344,18 @@ onMounted(() => {
                 >
                   <el-icon><Lightning /></el-icon>
                 </el-button>
-                <el-dropdown trigger="hover" @command="(cmd: string) => {
-                  if (cmd === 'copy') handleCopy(row as TaskModel)
-                  else if (cmd === 'delete') handleDelete(row as TaskModel)
-                }">
-                  <el-button link type="info" class="tk-task-list__more-btn">
+                <el-dropdown
+                  trigger="hover"
+                  @command="(cmd: string) => {
+                    if (cmd === 'copy') handleCopy(row as TaskModel)
+                    else if (cmd === 'delete') handleDelete(row as TaskModel)
+                  }"
+                >
+                  <el-button
+                    link
+                    type="info"
+                    class="tk-task-list__more-btn"
+                  >
                     <el-icon><MoreFilled /></el-icon>
                   </el-button>
                   <template #dropdown>
@@ -357,7 +364,10 @@ onMounted(() => {
                         <el-icon><CopyDocument /></el-icon>
                         {{ t('task.task.list.copy') }}
                       </el-dropdown-item>
-                      <el-dropdown-item command="delete" divided>
+                      <el-dropdown-item
+                        command="delete"
+                        divided
+                      >
                         <el-icon><Delete /></el-icon>
                         {{ t('task.task.list.delete') }}
                       </el-dropdown-item>

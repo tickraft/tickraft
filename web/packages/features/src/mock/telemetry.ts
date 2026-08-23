@@ -196,8 +196,23 @@ export default [
   // ---------------------------------------------------------------------------
   // Unified Monitor Point API — /api/v1/telemetry/monitors
   // NOTE: the /monitors/:id wildcard routes are intentionally placed AFTER the
-  // specific collection route. The mock server matches routes in array order.
+  // specific collection routes. The mock server matches routes in array order.
   // ---------------------------------------------------------------------------
+  // Monitor summary counts (must precede /monitors/:id)
+  {
+    url: '/api/v1/telemetry/monitors/summary',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: {
+        active: mockMonitors.filter((m) => m.mode === 'active').length,
+        passive: mockMonitors.filter((m) => m.mode === 'passive').length,
+        enabled: mockMonitors.filter((m) => m.enabled).length,
+        disabled: mockMonitors.filter((m) => !m.enabled).length,
+      },
+    }),
+  },
   // Monitor list (with optional mode filter)
   {
     url: '/api/v1/telemetry/monitors',
@@ -216,11 +231,13 @@ export default [
       if (query?.enabled) {
         filtered = filtered.filter((m) => String(m.enabled) === query.enabled)
       }
+      // Runtime status is derived, mirroring the backend's probe-maintained column
+      const items = filtered.map((m) => ({ ...m, status: monitorStatus(m) }))
       return {
         code: 0,
         message: 'success',
         data: {
-          items: filtered,
+          items,
           total: filtered.length,
           page,
           size,
@@ -337,6 +354,9 @@ export default [
           name: monitor?.name ?? '',
           enabled: monitor?.enabled ?? false,
           status: monitorStatus(monitor),
+          ...(monitor?.mode === 'active' && monitor.enabled
+            ? { last_probe_at: ts(0.2), latency_ms: sampleLatency(id, monitor.type === 'http' ? 120 : 20) }
+            : {}),
         },
       }
     },
@@ -419,7 +439,6 @@ export default [
         { type: 'icmp', name: 'ICMP Ping', description: 'Measure connectivity and latency via ICMP echo' },
         { type: 'tcp', name: 'TCP Port', description: 'Check TCP port connectivity' },
         { type: 'http', name: 'HTTP', description: 'HTTP endpoint probe with status code validation' },
-        { type: 'udp', name: 'UDP', description: 'UDP port probe' },
       ],
     }),
   },

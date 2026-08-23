@@ -9,18 +9,22 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/tickraft/tickraft/pkg/task"
 )
 
-// createTask creates a disabled local-executor task and returns its ID.
+// createTask creates an enabled local-executor task and returns its ID. The
+// once-a-year cron schedule keeps the task off the wheel in practice during
+// the test window.
 func createTask(hs *harness, token, name string) int64 {
 	hs.t.Helper()
 	status, env := hs.do("POST", "/api/v1/tasks", map[string]any{
-		"name":        name,
-		"description": "httpapi integration task",
-		"executor":    "local",
-		"schedule":    "0 0 1 1 *",
-		"enabled":     false,
-		"config":      map[string]any{"command": "echo httpapi"},
+		"name":          name,
+		"description":   "httpapi integration task",
+		"executor_type": "local",
+		"schedule":      "0 0 1 1 *",
+		"enabled":       true,
+		"config":        map[string]any{"command": "echo httpapi"},
 	}, token)
 	var created struct {
 		ID int64 `json:"id"`
@@ -45,18 +49,18 @@ func TestTaskLifecycle(t *testing.T) {
 	status, env := hs.do("GET", "/api/v1/tasks/"+jsonInt64(taskID), nil, token)
 	var got map[string]any
 	hs.mustOK(status, env, "get task", &got)
-	if got["name"] != "httpapi-lifecycle-task" || got["executor"] != "local" {
+	if got["name"] != "httpapi-lifecycle-task" || got["executor_type"] != "local" {
 		t.Fatalf("get task: unexpected payload %v", got)
 	}
 
 	// Update.
 	status, env = hs.do("PUT", "/api/v1/tasks/"+jsonInt64(taskID), map[string]any{
-		"name":        "httpapi-lifecycle-task-v2",
-		"description": "updated",
-		"executor":    "local",
-		"schedule":    "0 0 2 2 *",
-		"enabled":     false,
-		"config":      map[string]any{"command": "echo updated"},
+		"name":          "httpapi-lifecycle-task-v2",
+		"description":   "updated",
+		"executor_type": "local",
+		"schedule":      "0 0 2 2 *",
+		"enabled":       true,
+		"config":        map[string]any{"command": "echo updated"},
 	}, token)
 	if status != http.StatusOK {
 		t.Fatalf("update task: expected 200, got %d code=%d", status, env.Code)
@@ -117,9 +121,9 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 		}
 	}
 
-	// Wait for the executor runner's real execution record (the manual
-	// trigger placeholder row carries no executor_type; the runner's row
-	// does once the run completes).
+	// Wait for the execution list to become non-empty. The manual-trigger
+	// placeholder row is written synchronously; the runner's completed row
+	// lands asynchronously.
 	deadline := time.Now().Add(15 * time.Second)
 	var pd pageData
 	for time.Now().Before(deadline) {
@@ -160,7 +164,7 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 
 	// Filter by executor type.
 	filtered = hs.listPage(token,
-		"/api/v1/tasks/0/executions?page=1&size=50&executor=local")
+		"/api/v1/tasks/0/executions?page=1&size=50&executor_type=local")
 	if filtered.Total < 1 {
 		t.Fatalf("executions executor filter: expected >=1, got %d", filtered.Total)
 	}
@@ -185,7 +189,9 @@ func TestTaskExecutionsFilterAndDetail(t *testing.T) {
 	}
 }
 
-// TestTaskStats verifies the /tasks/stats aggregate endpoint.
+// TestTaskStats verifies the /tasks/stats aggregate endpoint: field shape,
+// the task_id scoping filter, the days chart-series parameter, and strict
+// parameter validation.
 func TestTaskStats(t *testing.T) {
 	hs := newHarness(t)
 	token := hs.login(adminUsername, adminPassword)
@@ -202,4 +208,106 @@ func TestTaskStats(t *testing.T) {
 			t.Fatalf("task stats: missing field %q, keys=%v", key, keysOf(stats))
 		}
 	}
+
+	// The package harness shares one server and database across tests, so
+	// global counts are asserted as deltas against a pre-seed baseline and
+	// per-task counts use task IDs no other test touches.
+	status, env = hs.do("GET", "/api/v1/tasks/stats", nil, token)
+	var baseline map[string]any
+	hs.mustOK(status, env, "baseline stats", &baseline)
+
+	// Seed rows directly so the aggregate assertions below are exact and
+	// independent of the async runner.
+	now := time.Now()
+	rows := []task.Execution{
+		{TaskID: 9101, Status: task.StatusSuccess, Duration: 100, StartedAt: now},
+		{TaskID: 9101, Status: task.StatusFailed, Duration: 300, StartedAt: now},
+		{TaskID: 9202, Status: task.StatusSuccess, Duration: 200, StartedAt: now},
+	}
+	if err := hs.dbc.Create(&rows).Error; err != nil {
+		t.Fatalf("seed executions: %v", err)
+	}
+
+	// Global aggregate grows by the seeded rows.
+	status, env = hs.do("GET", "/api/v1/tasks/stats", nil, token)
+	hs.mustOK(status, env, "global stats", &stats)
+	if stats["total_executions"].(float64)-baseline["total_executions"].(float64) != 3 ||
+		stats["success_count"].(float64)-baseline["success_count"].(float64) != 2 {
+		t.Fatalf("global stats delta: total %v→%v success %v→%v, want +3/+2",
+			baseline["total_executions"], stats["total_executions"],
+			baseline["success_count"], stats["success_count"])
+	}
+
+	// task_id scopes the aggregate to a single task's executions.
+	status, env = hs.do("GET", "/api/v1/tasks/stats?task_id=9101", nil, token)
+	var scoped map[string]any
+	hs.mustOK(status, env, "scoped stats", &scoped)
+	if scoped["total_executions"].(float64) != 2 ||
+		scoped["success_count"].(float64) != 1 ||
+		scoped["failure_count"].(float64) != 1 {
+		t.Fatalf("task_id stats: unexpected aggregate %v", scoped)
+	}
+
+	// days returns a zero-filled contiguous daily series ending today;
+	// combined with task_id the counts are scoped to the seeded task.
+	status, env = hs.do("GET", "/api/v1/tasks/stats?days=3&task_id=9101", nil, token)
+	var withDays struct {
+		Daily []struct {
+			Date    string `json:"date"`
+			Total   int64  `json:"total"`
+			Success int64  `json:"success"`
+		} `json:"daily"`
+	}
+	hs.mustOK(status, env, "days stats", &withDays)
+	if len(withDays.Daily) != 3 {
+		t.Fatalf("days=3: got %d daily entries, want 3: %+v", len(withDays.Daily), withDays.Daily)
+	}
+	today := time.Now().Format("2006-01-02")
+	if last := withDays.Daily[len(withDays.Daily)-1]; last.Date != today || last.Total != 2 || last.Success != 1 {
+		t.Fatalf("days=3: today entry = %+v, want date=%s total=2 success=1", last, today)
+	}
+
+	// Invalid parameters are rejected strictly.
+	for _, q := range []string{
+		"task_id=0", "task_id=-1", "task_id=abc", "days=0", "days=91",
+	} {
+		status, env = hs.do("GET", "/api/v1/tasks/stats?"+q, nil, token)
+		if status != http.StatusBadRequest {
+			t.Fatalf("stats %q: expected 400, got %d code=%d (%s)", q, status, env.Code, env.Message)
+		}
+	}
+}
+
+// TestTaskExecutorCapabilityGate verifies the create-time capability
+// prevalidation: probe-only executor types are rejected with 400, while the
+// dual-mode http executor is accepted as a task type.
+func TestTaskExecutorCapabilityGate(t *testing.T) {
+	hs := newHarness(t)
+	token := hs.login(adminUsername, adminPassword)
+
+	status, env := hs.do("POST", "/api/v1/tasks", map[string]any{
+		"name":          "gate-probe-only",
+		"executor_type": "icmp",
+		"schedule":      "0 0 1 1 *",
+		"enabled":       false,
+	}, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("create icmp task: expected 400, got %d code=%d (%s)", status, env.Code, env.Message)
+	}
+
+	status, env = hs.do("POST", "/api/v1/tasks", map[string]any{
+		"name":          "gate-http-task",
+		"executor_type": "http",
+		"schedule":      "0 0 1 1 *",
+		"enabled":       false,
+		"config":        map[string]any{"address": "http://127.0.0.1:1/healthz", "method": "POST"},
+	}, token)
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	hs.mustOK(status, env, "create http task", &created)
+	if created.ID == 0 {
+		t.Fatal("create http task: no id returned")
+	}
+	_, _ = hs.do("DELETE", "/api/v1/tasks/"+jsonInt64(created.ID), nil, token)
 }

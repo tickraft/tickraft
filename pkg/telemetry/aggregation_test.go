@@ -158,24 +158,24 @@ func TestAggregatorStopFlushesRemaining(t *testing.T) {
 	}
 }
 
-func TestAggregationDisabledViaManager(t *testing.T) {
-	mgr := mustNewManager(t,
+func TestAggregationDisabledViaEngine(t *testing.T) {
+	mgr := mustNewEngine(t,
 		WithAssetStore(newMgrMockStore()),
 		WithAggregationWindow(0),
 		WithLogger(zap.NewNop()),
-	).(*Manager)
+	).(*Engine)
 
 	if mgr.aggregator != nil {
 		t.Error("expected nil aggregator when window is 0")
 	}
 }
 
-func TestAggregationEnabledViaManager(t *testing.T) {
-	mgr := mustNewManager(t,
+func TestAggregationEnabledViaEngine(t *testing.T) {
+	mgr := mustNewEngine(t,
 		WithAssetStore(newMgrMockStore()),
 		WithAggregationWindow(30*time.Second),
 		WithLogger(zap.NewNop()),
-	).(*Manager)
+	).(*Engine)
 
 	if mgr.aggregator == nil {
 		t.Error("expected non-nil aggregator when window is positive")

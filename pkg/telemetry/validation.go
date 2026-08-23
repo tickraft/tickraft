@@ -73,7 +73,7 @@ func NewValidatorWithCache(store asset.Store, maxEntries int, ttl time.Duration,
 }
 
 // InvalidateAsset evicts the cached entry for the given asset, if any.
-// The manager should call this when an asset is updated or deleted so that
+// The engine should call this when an asset is updated or deleted so that
 // subsequent telemetry re-fetches the latest state from the store.
 func (v *Validator) InvalidateAsset(ctx context.Context, assetID int64) {
 	if v.cache == nil {
@@ -122,36 +122,46 @@ func (v *Validator) Validate(ctx context.Context, t *Telemetry) error {
 		return nil
 	}
 
-	a, err := v.loadAsset(ctx, t.AssetID)
+	tenantID, err := v.loadAssetTenant(ctx, t.AssetID)
 	if err != nil {
 		return fmt.Errorf("%w: asset %d: %w", ErrAssetNotFound, t.AssetID, err)
 	}
-	if a.TenantID != t.TenantID {
+	if tenantID != t.TenantID {
 		return fmt.Errorf("%w: telemetry tenant %d does not match asset tenant %d",
-			ErrTenantMismatch, t.TenantID, a.TenantID)
+			ErrTenantMismatch, t.TenantID, tenantID)
 	}
 
 	return nil
 }
 
-// loadAsset fetches an asset by ID, using the LRU cache to avoid
-// repeated database queries for the same asset. On a cache miss the
-// asset is loaded from the store and cached for subsequent lookups.
-func (v *Validator) loadAsset(ctx context.Context, assetID int64) (*asset.Asset, error) {
+// cachedAsset is the cache snapshot of an asset lookup. The validator
+// caches this minimal struct instead of the full asset.Asset because the
+// cache serializes entries as JSON, and asset fields guarded by json:"-"
+// (tenant_id) would silently drop to zero on every cache hit.
+type cachedAsset struct {
+	TenantID int64 `json:"tenant_id"`
+}
+
+// loadAssetTenant fetches the owning tenant of an asset by ID, using the
+// LRU cache to avoid repeated database queries for the same asset. On a
+// cache miss the asset is loaded from the store and its tenant cached for
+// subsequent lookups.
+func (v *Validator) loadAssetTenant(ctx context.Context, assetID int64) (int64, error) {
 	key := assetCacheKey(assetID)
 
 	// Fast path: serve from cache.
-	if cached, ok := cache.GetJSON[asset.Asset](ctx, v.cache, key); ok {
-		return &cached, nil
+	if cached, ok := cache.GetJSON[cachedAsset](ctx, v.cache, key); ok {
+		return cached.TenantID, nil
 	}
 
 	// Slow path: query the store and cache the result.
 	a, err := v.assetStore.GetByID(ctx, assetID)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if a != nil {
-		cache.SetJSON(ctx, v.cache, key, *a)
+	if a == nil {
+		return 0, fmt.Errorf("asset store returned nil asset")
 	}
-	return a, nil
+	cache.SetJSON(ctx, v.cache, key, cachedAsset{TenantID: a.TenantID})
+	return a.TenantID, nil
 }

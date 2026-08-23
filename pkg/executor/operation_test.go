@@ -167,3 +167,26 @@ func TestOperationUnmarshalJSONInvalidJSON(t *testing.T) {
 		t.Errorf("Operation.UnmarshalJSON() expected error for invalid JSON, got nil")
 	}
 }
+
+// TestParseOperationDefaults pins the event-consumer contract: an empty
+// operation string — as emitted by events published before the Operation
+// field existed — parses to OpExecute, so the runner dispatch treats
+// legacy events as task executions.
+func TestParseOperationDefaults(t *testing.T) {
+	for _, s := range []string{"", "execute"} {
+		op, err := ParseOperation(s)
+		if err != nil {
+			t.Errorf("ParseOperation(%q) error = %v, want nil", s, err)
+		}
+		if op != OpExecute {
+			t.Errorf("ParseOperation(%q) = %v, want OpExecute", s, op)
+		}
+	}
+
+	if op, err := ParseOperation("probe"); err != nil || op != OpProbe {
+		t.Errorf("ParseOperation(probe) = %v (err %v), want OpProbe", op, err)
+	}
+	if _, err := ParseOperation("bogus"); !errors.Is(err, ErrInvalidOperation) {
+		t.Errorf("ParseOperation(bogus) error = %v, want ErrInvalidOperation", err)
+	}
+}

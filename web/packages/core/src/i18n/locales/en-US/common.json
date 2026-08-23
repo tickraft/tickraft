@@ -110,7 +110,7 @@
     "alertStatus": "Status",
     "alertSeverity": "Severity",
     "alertMessage": "Message",
-    "alertFiredAt": "Fired At",
+    "alertTriggeredAt": "Triggered At",
     "alertThreshold": "Alert Threshold",
     "viewAll": "View All",
     "viewDetail": "Detail",

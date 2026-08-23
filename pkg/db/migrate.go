@@ -53,7 +53,7 @@ func AutoMigrate(ctx context.Context, dbc *gorm.DB) error {
 // The created user has role=2 (admin), status=1 (active).
 // Returns the generated plaintext password (empty when the user already
 // existed or when an explicit password was supplied).
-func EnsureAdminUser(ctx context.Context, db *gorm.DB, username, pwd string) (string, error) {
+func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (string, error) {
 	if username == "" {
 		return "", errors.New("db: admin username is required")
 	}
@@ -67,10 +67,10 @@ func EnsureAdminUser(ctx context.Context, db *gorm.DB, username, pwd string) (st
 		return "", fmt.Errorf("db: invalid admin username %q: %w", username, err)
 	}
 
-	db = db.WithContext(ctx)
+	dbc = dbc.WithContext(ctx)
 
 	var existing user.User
-	err := db.Where("username = ?", username).First(&existing).Error
+	err := dbc.Where("username = ?", username).First(&existing).Error
 	if err == nil {
 		// User already exists; do not overwrite the password.
 		return "", nil
@@ -101,7 +101,7 @@ func EnsureAdminUser(ctx context.Context, db *gorm.DB, username, pwd string) (st
 		Status:       1, // active
 	}
 
-	if err = db.Create(&u).Error; err != nil {
+	if err = dbc.Create(&u).Error; err != nil {
 		return "", fmt.Errorf("db: create admin user: %w", err)
 	}
 

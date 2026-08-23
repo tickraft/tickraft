@@ -32,10 +32,18 @@
 //
 // # Handler types
 //
-// Handler-local request/response types (Task, Execution, AlertRule,
-// AlertRecord, SystemConfig, telemetry.Task, Telemetry, etc.) are defined in
-// types.go. They decouple the API contract from the internal model package
-// so the handler package stays testable without a database.
+// Most domain modules have no handler-local entity types: the wire shape
+// and the storage shape are the same model (e.g. prism/alert.Rule,
+// prism/channel.Channel, telemetry.MonitorPoint). Those models carry both
+// json and gorm tags, and internal columns (TenantID, DeletedAt,
+// runtime-managed status fields) are tagged json:"-" so binding and
+// serialization can never read or write them.
+//
+// A handler-local type remains only where the API shape genuinely differs
+// from storage (request-only payloads such as loginRequest, and view
+// structs such as system.Info), or where the handler type is the single
+// model itself (system.Config, TokenPair). See docs/model-layering-design.md
+// for the full layering contract.
 //
 // # Purity
 //

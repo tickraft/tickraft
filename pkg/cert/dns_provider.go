@@ -15,15 +15,16 @@ import (
 var (
 	// ErrDNSChallengeNotConfigured is returned by NoopDNSProvider.Present to
 	// indicate that no real DNS provider has been injected. The runtime
-	// does not implement DNS-01 challenge issuance; callers
-	// inject a real DNS provider via WithDNSProvider.
+	// does not implement DNS-01 challenge issuance; callers register a
+	// real provider via api.SetACMEProvider(api.NewDNS01Provider(...)).
 	ErrDNSChallengeNotConfigured = errors.New("dns-01 challenge provider not configured")
 )
 
 // DNSProvider is the interface for DNS-01 challenge providers. The runtime
-// provides only the NoopDNSProvider default; callers
-// inject a real DNS provider (e.g. cloudflare, route53, alidns) via
-// WithDNSProvider to enable ACME DNS-01 challenge issuance.
+// provides only the NoopDNSProvider default; callers inject a real DNS
+// provider (e.g. cloudflare, route53, alidns) by wrapping it in
+// api.NewDNS01Provider and registering it via api.SetACMEProvider to
+// enable ACME DNS-01 challenge issuance.
 //
 // The interface abstracts only the two operations that differ between DNS
 // providers: publishing a TXT record for challenge validation and removing
@@ -42,12 +43,12 @@ type DNSProvider interface {
 	// _acme-challenge.<domain>.
 	Present(ctx context.Context, domain, token, value string) error
 
-	// CleanUp removes the DNS TXT record previously published by Present.
+	// Cleanup removes the DNS TXT record previously published by Present.
 	// It is called after the challenge is validated (or after a failure),
-	// so the provider can remove the temporary TXT record. CleanUp must
+	// so the provider can remove the temporary TXT record. Cleanup must
 	// be idempotent: calling it multiple times for the same domain/token
 	// pair must not return an error.
-	CleanUp(ctx context.Context, domain, token, value string) error
+	Cleanup(ctx context.Context, domain, token, value string) error
 
 	// Timeout returns the DNS propagation check interval and the overall
 	// wait timeout. The ACME manager polls DNS at each interval until the
@@ -56,8 +57,8 @@ type DNSProvider interface {
 	Timeout() (interval, timeout time.Duration)
 }
 
-// NoopDNSProvider is the no-op DNSProvider. It is the default used by
-// Manager when no DNS provider is injected via WithDNSProvider.
+// NoopDNSProvider is the no-op DNSProvider. It is the default used when
+// no real DNS provider has been registered.
 //
 // Present returns ErrDNSChallengeNotConfigured so a misconfigured DNS-01
 // flow fails fast with a clear error instead of silently succeeding
@@ -74,8 +75,8 @@ func (NoopDNSProvider) Present(_ context.Context, _, _, _ string) error {
 	return ErrDNSChallengeNotConfigured
 }
 
-// CleanUp is a no-op and returns nil. Cleanup is always safe to skip.
-func (NoopDNSProvider) CleanUp(_ context.Context, _, _, _ string) error {
+// Cleanup is a no-op and returns nil. Cleanup is always safe to skip.
+func (NoopDNSProvider) Cleanup(_ context.Context, _, _, _ string) error {
 	return nil
 }
 
@@ -87,58 +88,3 @@ func (NoopDNSProvider) Timeout() (interval, timeout time.Duration) {
 
 // Compile-time assertion that NoopDNSProvider satisfies DNSProvider.
 var _ DNSProvider = NoopDNSProvider{}
-
-// Manager holds certificate management configuration, including the DNS-01
-// challenge provider interface. The runtime uses the NoopDNSProvider
-// default; callers may inject a real DNS provider via WithDNSProvider.
-//
-// Manager is the holder: it decouples the DNS-01 challenge provider
-// implementation from the ACME manager that consumes it. callers
-// construct a Manager with their DNS provider and expose it to the ACME
-// flow at startup, without modifying the kernel source.
-type Manager struct {
-	dnsProvider DNSProvider
-}
-
-// Option configures a Manager.
-type Option interface {
-	apply(*Manager)
-}
-
-// dnsProviderOption sets the DNS-01 challenge provider.
-type dnsProviderOption struct {
-	p DNSProvider
-}
-
-func (o dnsProviderOption) apply(m *Manager) {
-	if o.p == nil {
-		return
-	}
-	m.dnsProvider = o.p
-}
-
-// WithDNSProvider sets the DNS-01 challenge provider. Pass nil to keep the
-// NoopDNSProvider default.
-//
-// The runtime does not provide a real DNS provider. Extended
-// editions inject one via this option to enable ACME DNS-01 challenge
-// issuance:
-//
-//	mgr := cert.NewManager(cert.WithDNSProvider(myDNSProvider))
-func WithDNSProvider(p DNSProvider) Option { return dnsProviderOption{p: p} }
-
-// NewManager creates a new Manager with the given options. When no DNS
-// provider option is supplied, the NoopDNSProvider default is used.
-func NewManager(options ...Option) *Manager {
-	m := &Manager{dnsProvider: NoopDNSProvider{}}
-	for _, o := range options {
-		o.apply(m)
-	}
-	return m
-}
-
-// DNSProvider returns the configured DNS-01 challenge provider. When no
-// provider was injected via WithDNSProvider, it returns NoopDNSProvider{}.
-func (m *Manager) DNSProvider() DNSProvider {
-	return m.dnsProvider
-}

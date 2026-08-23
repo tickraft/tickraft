@@ -14,6 +14,7 @@ import type { GlobalStats, RuntimeInfo } from '../../../../api/system'
 import { getAlertRecords } from '../../../../api/prism'
 import type { AlertRecord } from '../../../../api/prism'
 import type { AlertSeverity } from '../../../../api/prism'
+import { getExecutionStats } from '../../../../api/task'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -50,7 +51,7 @@ const todayDate = new Date().toISOString().split('T')[0]
 function buildAlertTrend(records: AlertRecord[]): { date: string; critical: number; warning: number; info: number }[] {
   const byDate = new Map<string, { critical: number; warning: number; info: number }>()
   for (const r of records) {
-    const d = r.firedAt ? new Date(r.firedAt) : null
+    const d = r.triggeredAt ? new Date(r.triggeredAt) : null
     if (!d || isNaN(d.getTime())) continue
     const key = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const entry = byDate.get(key) ?? { critical: 0, warning: 0, info: 0 }
@@ -92,11 +93,31 @@ function rangeStart(range: 'today' | '7d' | '30d'): string {
   return now.toISOString()
 }
 
+/** Resolve the day-window size for the task execution trend series */
+function rangeDays(range: 'today' | '7d' | '30d'): number {
+  if (range === '7d') return 7
+  if (range === '30d') return 30
+  return 1
+}
+
+/**
+ * Build task execution trend data from the /tasks/stats daily series
+ * (zero-filled server-local days, YYYY-MM-DD). Dates are shortened to
+ * MM-DD to match the alert trend axis format.
+ */
+function buildTaskExecTrend(daily?: { date: string; total: number; success: number; failed: number }[]): { date: string; success: number; failed: number }[] {
+  return (daily || []).map((d) => ({
+    date: d.date.length > 5 ? d.date.slice(5) : d.date,
+    success: d.success,
+    failed: d.failed,
+  }))
+}
+
 /** Fetch all dashboard data from backend APIs */
 async function fetchDashboardData(): Promise<void> {
   loading.value = true
   try {
-    const [stats, info, alerts] = await Promise.all([
+    const [stats, info, alerts, execStats] = await Promise.all([
       getGlobalStats(),
       getRuntimeInfo(),
       getAlertRecords({
@@ -105,6 +126,7 @@ async function fetchDashboardData(): Promise<void> {
         from: rangeStart(activeRange.value),
         to: new Date().toISOString(),
       }),
+      getExecutionStats({ days: rangeDays(activeRange.value) }),
     ])
     globalStats.value = stats
     runtimeInfo.value = info
@@ -114,6 +136,7 @@ async function fetchDashboardData(): Promise<void> {
     setChartData({
       alertTrend: buildAlertTrend(alerts.items || []),
       statusDist: buildStatusDist(stats),
+      taskExecTrend: buildTaskExecTrend(execStats.daily),
     })
   } catch {
     // Errors are handled centrally by the interceptor
@@ -242,7 +265,7 @@ const alertColumns = computed(() => [
   { prop: 'ruleName', label: t('common.dashboard.alertAsset'), minWidth: 160, slot: 'ruleName' },
   { prop: 'message', label: t('common.dashboard.alertMessage'), minWidth: 200, slot: 'message' },
   { prop: 'status', label: t('common.dashboard.alertStatus'), width: 110, slot: 'status' },
-  { prop: 'firedAt', label: t('common.dashboard.alertFiredAt'), width: 170, slot: 'firedAt' },
+  { prop: 'triggeredAt', label: t('common.dashboard.alertTriggeredAt'), width: 170, slot: 'triggeredAt' },
 ])
 
 /** Severity CSS class mapping */
@@ -320,8 +343,12 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <span class="tk-dash__eyebrow">
           {{ t('common.dashboard.eyebrow') }} · {{ todayDate }}
         </span>
-        <h1 class="tk-dash__title">{{ t('common.dashboard.overview') }}</h1>
-        <p class="tk-dash__subtitle">{{ t('common.dashboard.subtitle') }}</p>
+        <h1 class="tk-dash__title">
+          {{ t('common.dashboard.overview') }}
+        </h1>
+        <p class="tk-dash__subtitle">
+          {{ t('common.dashboard.subtitle') }}
+        </p>
       </div>
       <div class="tk-dash__toolbar">
         <div
@@ -405,7 +432,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <div class="tk-dash-card__head">
           <div class="tk-dash-card__label">
             <span class="tk-dash-card__index">05</span>
-            <h2 class="tk-dash-card__title">{{ t('common.dashboard.alertTrendTitle') }}</h2>
+            <h2 class="tk-dash-card__title">
+              {{ t('common.dashboard.alertTrendTitle') }}
+            </h2>
           </div>
           <div class="tk-dash-card__tools">
             <a
@@ -440,7 +469,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <div class="tk-dash-card__head">
           <div class="tk-dash-card__label">
             <span class="tk-dash-card__index">06</span>
-            <h2 class="tk-dash-card__title">{{ t('common.dashboard.assetDistribution') }}</h2>
+            <h2 class="tk-dash-card__title">
+              {{ t('common.dashboard.assetDistribution') }}
+            </h2>
           </div>
           <div class="tk-dash-card__tools">
             <a
@@ -468,7 +499,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <div class="tk-dash-card__head">
           <div class="tk-dash-card__label">
             <span class="tk-dash-card__index">07</span>
-            <h2 class="tk-dash-card__title">{{ t('common.dashboard.taskExecTrend') }}</h2>
+            <h2 class="tk-dash-card__title">
+              {{ t('common.dashboard.taskExecTrend') }}
+            </h2>
           </div>
           <div class="tk-dash-card__tools">
             <a
@@ -490,7 +523,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <div class="tk-dash-card__head">
           <div class="tk-dash-card__label">
             <span class="tk-dash-card__index">08</span>
-            <h2 class="tk-dash-card__title">{{ t('common.dashboard.systemHealth') }}</h2>
+            <h2 class="tk-dash-card__title">
+              {{ t('common.dashboard.systemHealth') }}
+            </h2>
           </div>
           <div class="tk-dash-card__tools">
             <a
@@ -511,11 +546,15 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
                 <i class="i-ep-odometer" />
               </span>
               <div class="tk-dash-health__meta">
-                <div class="tk-dash-health__label">{{ t(item.labelKey) }}</div>
+                <div class="tk-dash-health__label">
+                  {{ t(item.labelKey) }}
+                </div>
                 <div
                   class="tk-dash-health__value"
                   :class="healthStateClass(item.state)"
-                >{{ item.value }}</div>
+                >
+                  {{ item.value }}
+                </div>
               </div>
             </div>
           </div>
@@ -532,7 +571,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
         <div class="tk-dash-card__head">
           <div class="tk-dash-card__label">
             <span class="tk-dash-card__index">09</span>
-            <h2 class="tk-dash-card__title">{{ t('common.dashboard.recentAlerts') }}</h2>
+            <h2 class="tk-dash-card__title">
+              {{ t('common.dashboard.recentAlerts') }}
+            </h2>
           </div>
           <div class="tk-dash-card__tools">
             <a
@@ -578,8 +619,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
                 {{ t(`prism.record.list.${row.status}`) }}
               </el-tag>
             </template>
-            <template #firedAt="{ row }">
-              <span class="tk-dash-time">{{ formatDate(row.firedAt) }}</span>
+            <template #triggeredAt="{ row }">
+              <span class="tk-dash-time">{{ formatDate(row.triggeredAt) }}</span>
             </template>
           </DataTable>
         </div>

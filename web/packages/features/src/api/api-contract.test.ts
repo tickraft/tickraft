@@ -68,15 +68,15 @@ describe('asset api', () => {
 })
 
 describe('task api', () => {
-  it('getTaskExecutions sends task_name/executor/status filters with pagination', async () => {
+  it('getTaskExecutions sends task_name/executor_type/status filters with pagination', async () => {
     const task = await import('./task')
     await task.getLogs(0, {
       page: 1,
       size: 20,
       taskName: 'backup',
-      executor: 'local',
+      executorType: 'local',
       status: 'success',
-    } as never)
+    })
 
     const call = calls[0]
     expect(call.url).toContain('/tasks/0/executions')
@@ -85,7 +85,7 @@ describe('task api', () => {
       page: 1,
       size: 20,
       task_name: 'backup',
-      executor: 'local',
+      executor_type: 'local',
       status: 'success',
     })
   })
@@ -108,6 +108,25 @@ describe('task api', () => {
       expect(call?.method).toBe(method)
       expect(call?.url).toBe(url)
     }
+  })
+
+  it('getExecutionStats sends task_id and days', async () => {
+    const task = await import('./task')
+    await task.getExecutionStats({ taskId: 3, days: 7 })
+
+    const call = calls[0]
+    expect(call.url).toBe('/tasks/stats')
+    expect(call.method).toBe('get')
+    expect(call.params).toEqual({ task_id: 3, days: 7 })
+  })
+
+  it('getExecutors hits the registry-derived executor catalog', async () => {
+    const task = await import('./task')
+    await task.getExecutors()
+
+    const call = calls[0]
+    expect(call.url).toBe('/executors')
+    expect(call.method).toBe('get')
   })
 })
 
@@ -157,6 +176,15 @@ describe('auth api', () => {
 })
 
 describe('telemetry api', () => {
+  it('getMonitorSummary hits /telemetry/monitors/summary', async () => {
+    const telemetry = await import('./telemetry')
+    await telemetry.getMonitorSummary()
+
+    const call = calls[0]
+    expect(call.url).toBe('/telemetry/monitors/summary')
+    expect(call.method).toBe('get')
+  })
+
   it('builtin templates endpoint precedes the :id route', async () => {
     const telemetry = await import('./telemetry')
     const fns = telemetry as unknown as Record<string, (...rest: unknown[]) => Promise<unknown>>

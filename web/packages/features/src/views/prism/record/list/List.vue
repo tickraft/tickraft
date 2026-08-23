@@ -78,7 +78,7 @@ const columns = computed(() => [
   { prop: 'value', label: t('prism.record.list.value'), width: '100', slot: 'value' },
   { prop: 'status', label: t('prism.record.list.status'), width: '130', slot: 'status', showOverflowTooltip: false },
   { prop: 'message', label: t('prism.record.list.message'), minWidth: '200', showOverflowTooltip: true },
-  { prop: 'firedAt', label: t('prism.record.list.firedAt'), width: '170', align: 'center' as const, formatter: formatTimeCell },
+  { prop: 'triggeredAt', label: t('prism.record.list.triggeredAt'), width: '170', align: 'center' as const, formatter: formatTimeCell },
   { prop: 'acknowledgedAt', label: t('prism.record.list.acknowledgedAt'), width: '170', slot: 'acknowledgedAt' },
   { prop: 'resolvedAt', label: t('prism.record.list.resolvedAt'), width: '170', slot: 'resolvedAt' },
 ])

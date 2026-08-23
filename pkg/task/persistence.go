@@ -62,7 +62,21 @@ func (m *Service) Restore(ctx context.Context) error {
 
 	scheduled := 0
 	for _, task := range tasks {
-		scheduleType, cronExpr, interval := extractScheduleConfig(*task)
+		if !task.Enabled {
+			m.logger.Info("skip scheduling disabled task",
+				zap.Int64("task_id", task.ID),
+			)
+			continue
+		}
+		scheduleType, interval, err := ClassifySchedule(task.Schedule)
+		if err != nil {
+			m.logger.Warn("skip restoring task with invalid schedule",
+				zap.Int64("task_id", task.ID),
+				zap.String("schedule", task.Schedule),
+				zap.Error(err),
+			)
+			continue
+		}
 		if err := checkMinInterval(scheduleType, interval); err != nil {
 			m.logger.Warn("skip restoring task with interval below minimum",
 				zap.Int64("task_id", task.ID),
@@ -72,11 +86,11 @@ func (m *Service) Restore(ctx context.Context) error {
 			)
 			continue
 		}
-		sched, err := parseSchedule(scheduleType, cronExpr, interval)
+		sched, err := parseSchedule(task.Schedule)
 		if err != nil {
 			m.logger.Warn("skip restoring task with invalid schedule",
 				zap.Int64("task_id", task.ID),
-				zap.String("schedule_type", string(scheduleType)),
+				zap.String("schedule", task.Schedule),
 				zap.Error(err),
 			)
 			continue

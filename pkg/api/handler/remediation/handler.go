@@ -15,6 +15,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 )
 
 // Handler exposes remediation rule CRUD endpoints.
@@ -59,7 +60,7 @@ func (h *Handler) GetRemediationRule(ctx context.Context, arc *app.RequestContex
 
 // CreateRemediationRule handles POST /api/v1/prism/remediation/rules.
 func (h *Handler) CreateRemediationRule(ctx context.Context, arc *app.RequestContext) {
-	var req Rule
+	var req remediation.Rule
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -94,7 +95,7 @@ func (h *Handler) UpdateRemediationRule(ctx context.Context, arc *app.RequestCon
 	if !ok {
 		return
 	}
-	var req Rule
+	var req remediation.Rule
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}

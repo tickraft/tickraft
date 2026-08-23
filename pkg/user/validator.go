@@ -38,16 +38,16 @@ var (
 )
 
 var (
-	// UsernameRegex matches a valid username: 3-64 chars, only letters,
+	// NameRegex matches a valid username: 3-64 chars, only letters,
 	// digits and underscores. It is the canonical definition shared across
 	// the user domain (pkg/user) and the auth domain (pkg/auth).
-	UsernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]{3,64}$`)
-	emailRegex    = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	NameRegex  = regexp.MustCompile(`^[a-zA-Z0-9_]{3,64}$`)
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 )
 
 // ValidateUsername checks that username is 3-64 chars, only letters/digits/underscores.
 func ValidateUsername(username string) error {
-	if !UsernameRegex.MatchString(username) {
+	if !NameRegex.MatchString(username) {
 		return ErrInvalidUsername
 	}
 	return nil

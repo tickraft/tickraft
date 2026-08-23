@@ -5,7 +5,7 @@
 // Package remediation implements the basic automated fault self-healing
 // engine for the default deployment.
 //
-// The Manager subscribes to telemetry alert events on the event bus,
+// The Engine subscribes to telemetry alert events on the event bus,
 // evaluates registered remediation Rules against each event, and dispatches
 // matching rules to a registered Operator for execution. The default
 // edition ships only the LocalOperator (host script execution via

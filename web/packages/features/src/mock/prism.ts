@@ -41,7 +41,7 @@ interface MockAlertRecord {
   value: number
   status: 'firing' | 'acknowledged' | 'resolved'
   message: string
-  fired_at: string
+  triggered_at: string
   acknowledged_at: string | null
   resolved_at: string | null
 }
@@ -144,39 +144,39 @@ function daysAgo(days: number, time: string): string {
  */
 const mockAlertRecords: MockAlertRecord[] = [
   // Day 0 (today)
-  { id: 1, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 92.5, status: 'firing', message: 'Memory usage on prod-api-03 at 92.5%, threshold 90%', fired_at: daysAgo(0, '09:58:00'), acknowledged_at: null, resolved_at: null },
-  { id: 2, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-es-01:9200 unreachable (tcp_connect=0)', fired_at: daysAgo(0, '09:21:00'), acknowledged_at: null, resolved_at: null },
-  { id: 3, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 15.4, status: 'firing', message: 'ICMP packet loss to cdn-edge-01 reached 15.4%, threshold 10%', fired_at: daysAgo(0, '08:47:00'), acknowledged_at: null, resolved_at: null },
+  { id: 1, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 92.5, status: 'firing', message: 'Memory usage on prod-api-03 at 92.5%, threshold 90%', triggered_at: daysAgo(0, '09:58:00'), acknowledged_at: null, resolved_at: null },
+  { id: 2, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-es-01:9200 unreachable (tcp_connect=0)', triggered_at: daysAgo(0, '09:21:00'), acknowledged_at: null, resolved_at: null },
+  { id: 3, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 15.4, status: 'firing', message: 'ICMP packet loss to cdn-edge-01 reached 15.4%, threshold 10%', triggered_at: daysAgo(0, '08:47:00'), acknowledged_at: null, resolved_at: null },
   // Day 1
-  { id: 4, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 85.3, status: 'firing', message: 'CPU usage on prod-api-03 at 85.3%, threshold 80%', fired_at: daysAgo(1, '16:05:00'), acknowledged_at: null, resolved_at: null },
-  { id: 5, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 8.2, status: 'acknowledged', message: 'Disk free space on backup storage down to 8.2%, threshold 10%', fired_at: daysAgo(1, '11:30:00'), acknowledged_at: daysAgo(1, '12:02:00'), resolved_at: null },
+  { id: 4, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 85.3, status: 'firing', message: 'CPU usage on prod-api-03 at 85.3%, threshold 80%', triggered_at: daysAgo(1, '16:05:00'), acknowledged_at: null, resolved_at: null },
+  { id: 5, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 8.2, status: 'acknowledged', message: 'Disk free space on backup storage down to 8.2%, threshold 10%', triggered_at: daysAgo(1, '11:30:00'), acknowledged_at: daysAgo(1, '12:02:00'), resolved_at: null },
   // Day 2
-  { id: 6, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 8.2, status: 'firing', message: 'HTTP 5xx error rate on payment-api reached 8.2%, threshold 5%', fired_at: daysAgo(2, '14:18:00'), acknowledged_at: null, resolved_at: null },
-  { id: 7, rule_id: 8, rule_name: 'Critical Alert Remediation Escalation', severity: 'critical', value: 92, status: 'acknowledged', message: 'Escalating critical alert: trigger value 92 stays above 80', fired_at: daysAgo(2, '10:40:00'), acknowledged_at: daysAgo(2, '10:55:00'), resolved_at: null },
+  { id: 6, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 8.2, status: 'firing', message: 'HTTP 5xx error rate on payment-api reached 8.2%, threshold 5%', triggered_at: daysAgo(2, '14:18:00'), acknowledged_at: null, resolved_at: null },
+  { id: 7, rule_id: 8, rule_name: 'Critical Alert Remediation Escalation', severity: 'critical', value: 92, status: 'acknowledged', message: 'Escalating critical alert: trigger value 92 stays above 80', triggered_at: daysAgo(2, '10:40:00'), acknowledged_at: daysAgo(2, '10:55:00'), resolved_at: null },
   // Day 3
-  { id: 8, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-cache-01:6379 unreachable (tcp_connect=0)', fired_at: daysAgo(3, '22:10:00'), acknowledged_at: null, resolved_at: null },
-  { id: 9, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 82.7, status: 'resolved', message: 'CPU usage on prod-web-01 at 82.7%, threshold 80%', fired_at: daysAgo(3, '09:12:00'), acknowledged_at: daysAgo(3, '09:20:00'), resolved_at: daysAgo(3, '09:40:00') },
+  { id: 8, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'firing', message: 'TCP probe failed: prod-cache-01:6379 unreachable (tcp_connect=0)', triggered_at: daysAgo(3, '22:10:00'), acknowledged_at: null, resolved_at: null },
+  { id: 9, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 82.7, status: 'resolved', message: 'CPU usage on prod-web-01 at 82.7%, threshold 80%', triggered_at: daysAgo(3, '09:12:00'), acknowledged_at: daysAgo(3, '09:20:00'), resolved_at: daysAgo(3, '09:40:00') },
   // Day 4
-  { id: 10, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 93.1, status: 'resolved', message: 'Memory usage on prod-web-02 at 93.1%, threshold 90%', fired_at: daysAgo(4, '18:26:00'), acknowledged_at: daysAgo(4, '18:40:00'), resolved_at: daysAgo(4, '19:00:00') },
-  { id: 11, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 3, status: 'firing', message: 'Local-executor task failures reached 3 within one hour', fired_at: daysAgo(4, '15:03:00'), acknowledged_at: null, resolved_at: null },
+  { id: 10, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 93.1, status: 'resolved', message: 'Memory usage on prod-web-02 at 93.1%, threshold 90%', triggered_at: daysAgo(4, '18:26:00'), acknowledged_at: daysAgo(4, '18:40:00'), resolved_at: daysAgo(4, '19:00:00') },
+  { id: 11, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 3, status: 'firing', message: 'Local-executor task failures reached 3 within one hour', triggered_at: daysAgo(4, '15:03:00'), acknowledged_at: null, resolved_at: null },
   // Day 5
-  { id: 12, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 6.1, status: 'resolved', message: 'HTTP 5xx error rate on www.tickraft.io reached 6.1%, threshold 5%', fired_at: daysAgo(5, '13:45:00'), acknowledged_at: null, resolved_at: daysAgo(5, '14:10:00') },
-  { id: 13, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 11.2, status: 'resolved', message: 'ICMP packet loss on intranet gateway reached 11.2%, threshold 10%', fired_at: daysAgo(5, '08:20:00'), acknowledged_at: null, resolved_at: daysAgo(5, '08:50:00') },
+  { id: 12, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 6.1, status: 'resolved', message: 'HTTP 5xx error rate on www.tickraft.io reached 6.1%, threshold 5%', triggered_at: daysAgo(5, '13:45:00'), acknowledged_at: null, resolved_at: daysAgo(5, '14:10:00') },
+  { id: 13, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 11.2, status: 'resolved', message: 'ICMP packet loss on intranet gateway reached 11.2%, threshold 10%', triggered_at: daysAgo(5, '08:20:00'), acknowledged_at: null, resolved_at: daysAgo(5, '08:50:00') },
   // Day 6
-  { id: 14, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 9.1, status: 'acknowledged', message: 'Disk free space on prod-db-02 down to 9.1%, threshold 10%', fired_at: daysAgo(6, '20:32:00'), acknowledged_at: daysAgo(6, '21:00:00'), resolved_at: null },
-  { id: 15, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 81.5, status: 'resolved', message: 'CPU usage on prod-db-03 at 81.5%, threshold 80%', fired_at: daysAgo(6, '11:15:00'), acknowledged_at: null, resolved_at: daysAgo(6, '11:45:00') },
+  { id: 14, rule_id: 4, rule_name: 'Disk Free Space', severity: 'warning', value: 9.1, status: 'acknowledged', message: 'Disk free space on prod-db-02 down to 9.1%, threshold 10%', triggered_at: daysAgo(6, '20:32:00'), acknowledged_at: daysAgo(6, '21:00:00'), resolved_at: null },
+  { id: 15, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 81.5, status: 'resolved', message: 'CPU usage on prod-db-03 at 81.5%, threshold 80%', triggered_at: daysAgo(6, '11:15:00'), acknowledged_at: null, resolved_at: daysAgo(6, '11:45:00') },
   // Day 7
-  { id: 16, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 91.4, status: 'resolved', message: 'Memory usage on prod-db-02 at 91.4%, threshold 90%', fired_at: daysAgo(7, '17:08:00'), acknowledged_at: daysAgo(7, '17:20:00'), resolved_at: daysAgo(7, '17:35:00') },
-  { id: 17, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 4, status: 'resolved', message: 'Local-executor task failures reached 4 within one hour', fired_at: daysAgo(7, '10:26:00'), acknowledged_at: null, resolved_at: daysAgo(7, '11:00:00') },
+  { id: 16, rule_id: 3, rule_name: 'Host Memory Usage', severity: 'critical', value: 91.4, status: 'resolved', message: 'Memory usage on prod-db-02 at 91.4%, threshold 90%', triggered_at: daysAgo(7, '17:08:00'), acknowledged_at: daysAgo(7, '17:20:00'), resolved_at: daysAgo(7, '17:35:00') },
+  { id: 17, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 4, status: 'resolved', message: 'Local-executor task failures reached 4 within one hour', triggered_at: daysAgo(7, '10:26:00'), acknowledged_at: null, resolved_at: daysAgo(7, '11:00:00') },
   // Day 8
-  { id: 18, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 12.6, status: 'resolved', message: 'ICMP packet loss on prod-web-01 reached 12.6%, threshold 10%', fired_at: daysAgo(8, '21:40:00'), acknowledged_at: null, resolved_at: daysAgo(8, '22:05:00') },
-  { id: 19, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'resolved', message: 'TCP probe failed: prod-kafka-01:9092 unreachable (tcp_connect=0)', fired_at: daysAgo(8, '09:35:00'), acknowledged_at: daysAgo(8, '09:42:00'), resolved_at: daysAgo(8, '09:50:00') },
+  { id: 18, rule_id: 6, rule_name: 'ICMP Packet Loss Rate', severity: 'warning', value: 12.6, status: 'resolved', message: 'ICMP packet loss on prod-web-01 reached 12.6%, threshold 10%', triggered_at: daysAgo(8, '21:40:00'), acknowledged_at: null, resolved_at: daysAgo(8, '22:05:00') },
+  { id: 19, rule_id: 5, rule_name: 'TCP Port Connectivity', severity: 'critical', value: 0, status: 'resolved', message: 'TCP probe failed: prod-kafka-01:9092 unreachable (tcp_connect=0)', triggered_at: daysAgo(8, '09:35:00'), acknowledged_at: daysAgo(8, '09:42:00'), resolved_at: daysAgo(8, '09:50:00') },
   // Day 9
-  { id: 20, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 84.9, status: 'resolved', message: 'CPU usage on monitoring host at 84.9%, threshold 80%', fired_at: daysAgo(9, '14:22:00'), acknowledged_at: null, resolved_at: daysAgo(9, '14:55:00') },
+  { id: 20, rule_id: 2, rule_name: 'Host CPU Usage', severity: 'warning', value: 84.9, status: 'resolved', message: 'CPU usage on monitoring host at 84.9%, threshold 80%', triggered_at: daysAgo(9, '14:22:00'), acknowledged_at: null, resolved_at: daysAgo(9, '14:55:00') },
   // Day 10
-  { id: 21, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 5, status: 'resolved', message: 'Local-executor task failures reached 5 within one hour', fired_at: daysAgo(10, '12:10:00'), acknowledged_at: null, resolved_at: daysAgo(10, '12:38:00') },
+  { id: 21, rule_id: 7, rule_name: 'Task Failure Surge', severity: 'info', value: 5, status: 'resolved', message: 'Local-executor task failures reached 5 within one hour', triggered_at: daysAgo(10, '12:10:00'), acknowledged_at: null, resolved_at: daysAgo(10, '12:38:00') },
   // Day 11
-  { id: 22, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 9.4, status: 'resolved', message: 'HTTP 5xx error rate on payment-api reached 9.4%, threshold 5%', fired_at: daysAgo(11, '15:52:00'), acknowledged_at: null, resolved_at: daysAgo(11, '16:20:00') },
+  { id: 22, rule_id: 1, rule_name: 'HTTP 5xx Error Rate', severity: 'critical', value: 9.4, status: 'resolved', message: 'HTTP 5xx error rate on payment-api reached 9.4%, threshold 5%', triggered_at: daysAgo(11, '15:52:00'), acknowledged_at: null, resolved_at: daysAgo(11, '16:20:00') },
 ]
 
 /** Mutable copy for demo of start/stop, delete, create, resolve and other write operations */
@@ -339,7 +339,7 @@ function filterRecords(query: Record<string, string>) {
   return records.filter((r) => {
     if (severity && r.severity !== severity) return false
     if (status && r.status !== status) return false
-    const firedTs = parseTs(r.fired_at)
+    const firedTs = parseTs(r.triggered_at)
     if (fromTs && firedTs < fromTs) return false
     if (toTs && firedTs > toTs) return false
     return true

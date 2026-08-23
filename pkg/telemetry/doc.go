@@ -7,7 +7,7 @@
 // (HTTP webhook listener) into a single pipeline: Validator -> Processor ->
 // StateManager -> Emitter -> Aggregator -> Persistence.
 //
-// The package ships a concrete Manager implementation, an HTTP
+// The package ships a concrete Engine implementation, an HTTP
 // webhook Listener, device/task Processors, a tumbling-window Aggregator,
 // GORM-backed MetricStore/LogStore, and a template store seeded with
 // built-in probe templates. callers may plug in additional

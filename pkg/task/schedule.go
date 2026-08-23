@@ -12,67 +12,61 @@ import (
 	"github.com/tickraft/tickraft/pkg/scheduler"
 )
 
-// Metadata keys used to persist schedule configuration on tasks.
-const (
-	metaKeyScheduleType = "schedule_type"
-	metaKeyCronExpr     = "cron_expr"
-)
-
-// extractScheduleConfig reads the schedule type, cron expression, and
-// interval from a task's Metadata map. Defaults to ScheduleTypeCron with
-// empty values when the corresponding keys are absent.
-func extractScheduleConfig(task Task) (ScheduleType, string, time.Duration) {
-	scheduleType := ScheduleTypeCron
-	cronExpr := ""
-	interval := time.Duration(0)
-
-	if task.Metadata != nil {
-		if v, ok := task.Metadata[metaKeyScheduleType]; ok {
-			scheduleType = ScheduleType(v)
+// ClassifySchedule derives the schedule type from a task's schedule string:
+// "" is event-driven, a valid Go duration string ("30s", "5m", "1h30m") is
+// a fixed interval, and anything else is a cron expression. Cron
+// expressions and interval values are validated; the returned error is nil
+// exactly when parseSchedule would succeed.
+func ClassifySchedule(schedule string) (ScheduleType, time.Duration, error) {
+	switch {
+	case schedule == "":
+		return ScheduleTypeEvent, 0, nil
+	case isIntervalSchedule(schedule):
+		interval, err := time.ParseDuration(schedule)
+		if err != nil {
+			return ScheduleTypeCron, 0, fmt.Errorf("task: parse interval %q: %w", schedule, err)
 		}
-		if v, ok := task.Metadata[metaKeyCronExpr]; ok {
-			cronExpr = v
+		if interval <= 0 {
+			return ScheduleTypeInterval, interval, fmt.Errorf("task: interval must be positive, got %s", interval)
 		}
-		if v, ok := task.Metadata[string(ScheduleTypeInterval)]; ok {
-			if d, err := time.ParseDuration(v); err == nil {
-				interval = d
-			}
+		return ScheduleTypeInterval, interval, nil
+	default:
+		if _, err := cron.Parse(schedule); err != nil {
+			return ScheduleTypeCron, 0, fmt.Errorf("%w: %w", scheduler.ErrInvalidCronExpr, err)
 		}
+		return ScheduleTypeCron, 0, nil
 	}
-	return scheduleType, cronExpr, interval
 }
 
-// parseSchedule converts schedule configuration to a scheduler.Schedule.
-// It supports cron expressions, fixed intervals, one-time, and event-driven
-// schedules.
-func parseSchedule(scheduleType ScheduleType, cronExpr string, interval time.Duration) (scheduler.Schedule, error) {
-	switch scheduleType {
-	case ScheduleTypeCron:
-		if cronExpr == "" {
-			return nil, fmt.Errorf("%w: cron expression is empty", scheduler.ErrInvalidCronExpr)
+// isIntervalSchedule reports whether the schedule string is a valid Go
+// duration (e.g. "30s", "5m", "1h30m").
+func isIntervalSchedule(schedule string) bool {
+	_, err := time.ParseDuration(schedule)
+	return err == nil
+}
+
+// parseSchedule converts a task's schedule string to a scheduler.Schedule:
+// "" yields a never schedule (event-driven tasks are triggered externally),
+// a duration string yields a constant interval, anything else is parsed as
+// a cron expression.
+func parseSchedule(schedule string) (scheduler.Schedule, error) {
+	switch {
+	case schedule == "":
+		return scheduler.NewNeverSchedule(), nil
+	case isIntervalSchedule(schedule):
+		interval, err := time.ParseDuration(schedule)
+		if err != nil {
+			return nil, fmt.Errorf("task: parse interval %q: %w", schedule, err)
 		}
-		sched, err := cron.Parse(cronExpr)
+		if interval <= 0 {
+			return nil, fmt.Errorf("task: interval must be positive, got %s", interval)
+		}
+		return scheduler.NewConstantIntervalSchedule(interval), nil
+	default:
+		sched, err := cron.Parse(schedule)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", scheduler.ErrInvalidCronExpr, err)
 		}
 		return sched, nil
-
-	case ScheduleTypeInterval:
-		if interval <= 0 {
-			return nil, fmt.Errorf("task: interval must be positive, got %v", interval)
-		}
-		return scheduler.NewConstantIntervalSchedule(interval), nil
-
-	case ScheduleTypeOnce:
-		if interval <= 0 {
-			return scheduler.NewImmediateSchedule(), nil
-		}
-		return scheduler.NewOneTimeSchedule(time.Now().Add(interval)), nil
-
-	case ScheduleTypeEvent:
-		return scheduler.NewNeverSchedule(), nil
-
-	default:
-		return nil, fmt.Errorf("task: unsupported schedule type %q", scheduleType)
 	}
 }

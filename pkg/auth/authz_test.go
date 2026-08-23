@@ -7,6 +7,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,8 +43,8 @@ func newTestAuthDB(t *testing.T) *gorm.DB {
 func newTestService(t *testing.T) (*auth.Service, user.Store, user.APIKeyStore, auth.BlacklistStore) {
 	t.Helper()
 	dbc := newTestAuthDB(t)
-	users := user.NewStore(dbc, nil)
-	apiKeys := user.NewAPIKeyStore(dbc, nil)
+	users := user.NewStore(dbc)
+	apiKeys := user.NewAPIKeyStore(dbc)
 	blacklist := auth.NewBlacklistStore(dbc, nil)
 
 	blacklistChecker := func(jti string) (bool, error) {
@@ -526,4 +527,53 @@ func TestCloseIsSafeOnDirectConstruction(t *testing.T) {
 	svc := auth.NewServiceForCleanupTest()
 	// Should not panic.
 	svc.Close()
+}
+
+// TestSetJTIRecorder verifies that the JTI recorder observes every token
+// issued by the service: both tokens of a login pair and both tokens of a
+// refresh rotation.
+func TestSetJTIRecorder(t *testing.T) {
+	svc, users, _, _ := newTestService(t)
+	u := seedUser(t, users, "recorder_user", "Passw0rd123")
+
+	var mu sync.Mutex
+	recorded := map[string]int64{}
+	svc.SetJTIRecorder(func(userID int64, jti string, expiresAt time.Time) {
+		if jti == "" || expiresAt.IsZero() {
+			t.Errorf("recorder got empty jti/expiry: %q %v", jti, expiresAt)
+		}
+		mu.Lock()
+		recorded[jti] = userID
+		mu.Unlock()
+	})
+
+	res, err := svc.Login(context.Background(), u.Username, "Passw0rd123")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if len(recorded) != 2 {
+		t.Fatalf("after login, recorded %d JTIs, want 2 (access+refresh)", len(recorded))
+	}
+
+	pair, err := svc.RefreshToken(context.Background(), res.RefreshToken)
+	if err != nil {
+		t.Fatalf("RefreshToken: %v", err)
+	}
+	if len(recorded) != 4 {
+		t.Fatalf("after refresh rotation, recorded %d JTIs, want 4", len(recorded))
+	}
+	for jti, uid := range recorded {
+		if uid != u.ID {
+			t.Errorf("jti %q recorded for user %d, want %d", jti, uid, u.ID)
+		}
+	}
+
+	// The rotated pair's tokens must be among the recorded JTIs.
+	accessClaims, err := svc.ParseTokenForTest(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("parse access: %v", err)
+	}
+	if _, ok := recorded[accessClaims.JTI]; !ok {
+		t.Errorf("rotated access jti %q not recorded", accessClaims.JTI)
+	}
 }

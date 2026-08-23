@@ -38,7 +38,7 @@ func (e *ServiceError) Code() int { return e.code }
 // Sentinel service errors. Each implements errdefs.ErrorCoder so the response
 // layer can map them to the correct HTTP status and business code
 // automatically. These are shared across all service implementations in both
-// pkg/ sub-packages and internal/api/service/ sub-packages.
+// pkg/api/service sub-packages.
 var (
 	ErrTaskNotFound      = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "task not found")
 	ErrRuleNotFound      = NewServiceError(http.StatusNotFound, errdefs.CodeNotFound, "alert rule not found")

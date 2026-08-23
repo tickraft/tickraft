@@ -91,8 +91,10 @@ database:
 auth:
   # Secret used to sign JWT tokens. MUST be set. Use env var interpolation.
   jwt_secret: ${TICKRAFT_JWT_SECRET}
-  # Lifetime of issued JWT tokens.
-  token_ttl: "24h"
+  # Lifetime of issued JWT access tokens.
+  access_ttl: "2h"
+  # Lifetime of issued JWT refresh tokens.
+  refresh_ttl: "168h"
   # Built-in admin username. Defaults to "admin" when unset.
   admin_username: "admin"
   # Built-in admin password. When empty, a random password is generated and

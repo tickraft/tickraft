@@ -23,6 +23,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
+	"github.com/tickraft/tickraft/pkg/task"
 )
 
 // taskBasePath is the route prefix registered by routes.go for the task API.
@@ -52,14 +53,14 @@ func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) api.Response {
 }
 
 // decodeTaskData re-marshals the api.Response Data field and decodes it
-// into a Task, enabling field assertions on create/get/update responses.
-func decodeTaskData(t *testing.T, resp api.Response) Task {
+// into a task.Task, enabling field assertions on create/get/update responses.
+func decodeTaskData(t *testing.T, resp api.Response) task.Task {
 	t.Helper()
 	raw, err := json.Marshal(resp.Data)
 	if err != nil {
 		t.Fatalf("marshal data: %v", err)
 	}
-	var r Task
+	var r task.Task
 	if err := json.Unmarshal(raw, &r); err != nil {
 		t.Fatalf("unmarshal task: %v", err)
 	}
@@ -68,7 +69,7 @@ func decodeTaskData(t *testing.T, resp api.Response) Task {
 
 // createTaskViaAPI issues a POST to create a task and returns the decoded
 // response. It fails the test on a non-200 response.
-func createTaskViaAPI(t *testing.T, engine *route.Engine, body string) Task {
+func createTaskViaAPI(t *testing.T, engine *route.Engine, body string) task.Task {
 	t.Helper()
 	w := doTaskRequest(engine, "POST", taskBasePath, []byte(body))
 	if w.Code != http.StatusOK {
@@ -149,38 +150,38 @@ func stubJWTAuth(ctx context.Context, arc *app.RequestContext) {
 // handler tests.
 type memoryTaskService struct {
 	mu     sync.Mutex
-	tasks  map[int64]*Task
+	tasks  map[int64]*task.Task
 	nextID int64
 }
 
 // NewMemoryTaskService creates an in-memory Service suitable for tests.
 func NewMemoryTaskService() Service {
-	return &memoryTaskService{tasks: make(map[int64]*Task)}
+	return &memoryTaskService{tasks: make(map[int64]*task.Task)}
 }
 
-func (s *memoryTaskService) ListTasks(_ context.Context, page, size int, filter Filter) ([]Task, int64, error) {
+func (s *memoryTaskService) ListTasks(_ context.Context, page, size int, filter Filter) ([]*task.Task, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var result []Task
+	var result []*task.Task
 	for _, t := range s.tasks {
 		if filter.Group != "" && t.Group != filter.Group {
 			continue
 		}
-		result = append(result, *t)
+		result = append(result, t)
 	}
 	total := int64(len(result))
 	start := (page - 1) * size
 	if start >= len(result) {
-		return []Task{}, total, nil
+		return []*task.Task{}, total, nil
 	}
 	end := start + size
 	end = min(end, len(result))
 	return result[start:end], total, nil
 }
 
-func (s *memoryTaskService) GetTask(_ context.Context, id int64) (*Task, error) {
+func (s *memoryTaskService) GetTask(_ context.Context, id int64) (*task.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, ok := s.tasks[id]
@@ -191,7 +192,7 @@ func (s *memoryTaskService) GetTask(_ context.Context, id int64) (*Task, error) 
 	return &cp, nil
 }
 
-func (s *memoryTaskService) CreateTask(_ context.Context, req *Task) (*Task, error) {
+func (s *memoryTaskService) CreateTask(_ context.Context, req *task.Task) (*task.Task, error) {
 	if req == nil {
 		return nil, errBadRequest()
 	}
@@ -208,7 +209,7 @@ func (s *memoryTaskService) CreateTask(_ context.Context, req *Task) (*Task, err
 	return &cp, nil
 }
 
-func (s *memoryTaskService) UpdateTask(_ context.Context, id int64, req *Task) (*Task, error) {
+func (s *memoryTaskService) UpdateTask(_ context.Context, id int64, req *task.Task) (*task.Task, error) {
 	if req == nil {
 		return nil, errBadRequest()
 	}
@@ -264,15 +265,15 @@ func (s *memoryTaskService) ResumeTask(_ context.Context, id int64) error {
 }
 
 func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int,
-	_ ExecutionFilter) ([]Execution, int64, error) {
-	return []Execution{}, 0, nil
+	_ ExecutionFilter) ([]*task.Execution, int64, error) {
+	return []*task.Execution{}, 0, nil
 }
 
-func (s *memoryTaskService) GetExecution(_ context.Context, _, _ int64) (*Execution, error) {
+func (s *memoryTaskService) GetExecution(_ context.Context, _, _ int64) (*task.Execution, error) {
 	return nil, errNotFound()
 }
 
-func (s *memoryTaskService) CopyTask(_ context.Context, id int64, newName string) (*Task, error) {
+func (s *memoryTaskService) CopyTask(_ context.Context, id int64, newName string) (*task.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, ok := s.tasks[id]
@@ -294,7 +295,9 @@ func (s *memoryTaskService) CopyTask(_ context.Context, id int64, newName string
 	return &cp, nil
 }
 
-func (s *memoryTaskService) GetExecutionStats(_ context.Context, from, to time.Time) (ExecutionStats, error) {
+func (s *memoryTaskService) GetExecutionStats(
+	_ context.Context, from, to time.Time, _ int64, _ int,
+) (ExecutionStats, error) {
 	return ExecutionStats{}, nil
 }
 
@@ -326,10 +329,10 @@ func (e handlerError) Code() int       { return e.code }
 func TestUpdateTaskConfigFields(t *testing.T) {
 	engine := newTaskTestEngine(t, nil)
 	created := createTaskViaAPI(t, engine,
-		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+		`{"name":"task-1","executor_type":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	w := doTaskRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID),
-		[]byte(`{"name":"task-1-updated","executor":"tcp","schedule":"*/5 * * * *",`+
+		[]byte(`{"name":"task-1-updated","executor_type":"tcp","schedule":"*/5 * * * *",`+
 			`"enabled":false,"description":"updated desc","group":"backup","tags":["critical"]}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusOK, w.Body.String())
@@ -342,8 +345,8 @@ func TestUpdateTaskConfigFields(t *testing.T) {
 	if r.Name != "task-1-updated" {
 		t.Errorf("Name = %q, want %q", r.Name, "task-1-updated")
 	}
-	if r.Executor != "tcp" {
-		t.Errorf("Executor = %q, want %q", r.Executor, "tcp")
+	if r.ExecutorType != "tcp" {
+		t.Errorf("ExecutorType = %q, want %q", r.ExecutorType, "tcp")
 	}
 	if r.Schedule != "*/5 * * * *" {
 		t.Errorf("Schedule = %q, want %q", r.Schedule, "*/5 * * * *")
@@ -366,7 +369,7 @@ func TestUpdateTaskConfigFields(t *testing.T) {
 func TestUpdateTaskNotFound(t *testing.T) {
 	engine := newTaskTestEngine(t, nil)
 
-	w := doTaskRequest(engine, "PUT", taskBasePath+"/999", []byte(`{"name":"x","executor":"http"}`))
+	w := doTaskRequest(engine, "PUT", taskBasePath+"/999", []byte(`{"name":"x","executor_type":"http"}`))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusNotFound, w.Body.String())
 	}
@@ -380,7 +383,7 @@ func TestUpdateTaskNotFound(t *testing.T) {
 func TestUpdateTaskInvalidID(t *testing.T) {
 	engine := newTaskTestEngine(t, nil)
 
-	w := doTaskRequest(engine, "PUT", taskBasePath+"/abc", []byte(`{"name":"x","executor":"http"}`))
+	w := doTaskRequest(engine, "PUT", taskBasePath+"/abc", []byte(`{"name":"x","executor_type":"http"}`))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusBadRequest, w.Body.String())
 	}
@@ -395,9 +398,9 @@ func TestUpdateTaskInvalidID(t *testing.T) {
 func TestUpdateTaskAPIKeyOnlyReturns401(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
 	created := createTaskViaAPI(t, engine,
-		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+		`{"name":"task-1","executor_type":"http","schedule":"*/1 * * * *","enabled":true}`)
 
-	body := []byte(`{"name":"task-1-updated","executor":"tcp"}`)
+	body := []byte(`{"name":"task-1-updated","executor_type":"tcp"}`)
 	utBody := &ut.Body{Body: bytes.NewReader(body), Len: len(body)}
 	w := ut.PerformRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID), utBody,
 		ut.Header{Key: "Content-Type", Value: "application/json"},
@@ -417,10 +420,10 @@ func TestUpdateTaskAPIKeyOnlyReturns401(t *testing.T) {
 func TestUpdateTaskNoAuthReturns401(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
 	created := createTaskViaAPI(t, engine,
-		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+		`{"name":"task-1","executor_type":"http","schedule":"*/1 * * * *","enabled":true}`)
 
 	w := doTaskRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID),
-		[]byte(`{"name":"task-1-updated","executor":"tcp"}`))
+		[]byte(`{"name":"task-1-updated","executor_type":"tcp"}`))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusUnauthorized, w.Body.String())
 	}
@@ -435,9 +438,9 @@ func TestUpdateTaskNoAuthReturns401(t *testing.T) {
 func TestUpdateTaskWithJWTAccepted(t *testing.T) {
 	engine := newTaskTestEngine(t, stubJWTAuth)
 	created := createTaskViaAPI(t, engine,
-		`{"name":"task-1","executor":"http","schedule":"*/1 * * * *","enabled":true}`)
+		`{"name":"task-1","executor_type":"http","schedule":"*/1 * * * *","enabled":true}`)
 
-	body := []byte(`{"name":"task-1-updated","executor":"tcp"}`)
+	body := []byte(`{"name":"task-1-updated","executor_type":"tcp"}`)
 	utBody := &ut.Body{Body: bytes.NewReader(body), Len: len(body)}
 	w := ut.PerformRequest(engine, "PUT", taskBasePath+"/"+itoa(created.ID), utBody,
 		ut.Header{Key: "Content-Type", Value: "application/json"},

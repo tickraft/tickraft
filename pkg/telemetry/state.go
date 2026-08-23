@@ -58,10 +58,15 @@ func newStateManager(
 
 // RegisterAsset adds a timeout entry to the time wheel for the given asset.
 // It initializes the cached status to StatusUnknown when the asset is seen
-// for the first time.
+// for the first time. A re-registration replaces the previous wheel entry:
+// the old entry is removed first so it cannot fire after being superseded.
 func (sm *stateManager) RegisterAsset(assetID int64, timeout time.Duration) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	if prev, exists := sm.entries[assetID]; exists {
+		sm.wheel.Remove(prev.entryID)
+	}
 
 	entryID := sm.wheel.Add(timeout, func(_ timewheel.EntryID) {
 		sm.logger.Info("asset timeout detected",
@@ -97,15 +102,38 @@ func (sm *stateManager) UnregisterAsset(assetID int64) {
 	delete(sm.cache, assetID)
 }
 
-// UpdateActive renews the timeout entry for an asset (heartbeat).
+// UpdateActive renews the timeout entry for an asset (heartbeat). An asset
+// whose entry is missing — it has no passive point registered, e.g. it was
+// created while the engine was down or reports without any passive point —
+// is auto-registered with the default threshold so heartbeat-loss detection
+// still covers it.
 func (sm *stateManager) UpdateActive(assetID int64) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	entry, exists := sm.entries[assetID]
 	if !exists {
-		sm.logger.Warn("attempted to update active for unregistered asset",
+		entry.timeout = DefaultHeartbeatTimeout
+		entryID := sm.wheel.Add(entry.timeout, func(_ timewheel.EntryID) {
+			sm.logger.Info("asset timeout detected",
+				zap.Int64("asset_id", assetID),
+				zap.Duration("timeout", entry.timeout),
+			)
+			ctx := context.Background()
+			if sm.onTimeout != nil {
+				sm.onTimeout(ctx, assetID)
+			}
+		})
+		sm.entries[assetID] = timeoutEntry{
+			entryID: entryID,
+			timeout: entry.timeout,
+		}
+		if _, cached := sm.cache[assetID]; !cached {
+			sm.cache[assetID] = types.AssetStatusUnknown
+		}
+		sm.logger.Info("asset auto-registered for observation on first report",
 			zap.Int64("asset_id", assetID),
+			zap.Duration("timeout", entry.timeout),
 		)
 		return
 	}

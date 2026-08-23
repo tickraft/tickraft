@@ -252,50 +252,6 @@ func TestStoreRecordExecutionOutcome(t *testing.T) {
 	}
 }
 
-// TestStoreMigrateDropsLegacyTables verifies that Migrate removes the
-// orphaned pre-rename tables (sys_remediation_rule / sys_remediation_record)
-// and is idempotent.
-func TestStoreMigrateDropsLegacyTables(t *testing.T) {
-	store, cleanup := setupRemediationStore(t)
-	defer cleanup()
-	ctx := context.Background()
-
-	legacyTables := []string{"sys_remediation_rule", "sys_remediation_record"}
-	for _, table := range legacyTables {
-		stmt := "CREATE TABLE " + table + " (id INTEGER PRIMARY KEY)"
-		if err := store.dbc.WithContext(ctx).Exec(stmt).Error; err != nil {
-			t.Fatalf("create legacy table %s: %v", table, err)
-		}
-	}
-
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-
-	tableExists := func(name string) bool {
-		var count int64
-		if err := store.dbc.WithContext(ctx).
-			Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", name).
-			Scan(&count).Error; err != nil {
-			t.Fatalf("query sqlite_master for %s: %v", name, err)
-		}
-		return count > 0
-	}
-	for _, table := range legacyTables {
-		if tableExists(table) {
-			t.Errorf("legacy table %s still present after migrate", table)
-		}
-	}
-	if !tableExists("sys_prism_remediation_rule") {
-		t.Error("sys_prism_remediation_rule missing after migrate")
-	}
-
-	// A second run must succeed: the DROPs are IF EXISTS.
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatalf("second migrate: %v", err)
-	}
-}
-
 // TestStoreGetRules pins the engine-facing query: enabled active rules
 // only, trigger filter, tenant scope, and global (asset_id = 0) rules
 // returned alongside asset-scoped ones.
@@ -340,7 +296,7 @@ func TestStoreGetRules(t *testing.T) {
 
 	// An asset-7 metric event: scoped + global + paused rules — the SQL
 	// filters on enabled/trigger/tenant/asset; the paused-status gate is
-	// applied in the Manager's decision loop.
+	// applied in the Engine's decision loop.
 	rules, err := store.GetRules(ctx, 0, 7, string(TriggerMetric))
 	if err != nil {
 		t.Fatalf("get rules: %v", err)

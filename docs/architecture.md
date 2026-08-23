@@ -35,13 +35,15 @@ The executor subscribes to `TaskTriggered`, looks up the right executor implemen
 - **Worker pool** — a bounded semaphore caps concurrent executions (default 100); when saturated the work degrades to inline execution rather than spawning unbounded goroutines.
 - **Retry** — retry count and interval are read from the task metadata and applied transparently.
 - **Status inference** — the result of each execution is mapped to a resource status (`Normal` / `Abnormal`).
-- **Executor registry** — executors register by `Type()` and are classified as `Actuator` (write actions: `local`, `webhook`) or `Prober` (read-only probes: `icmp`, `tcp`, `http`, `udp`, `dns`).
+- **Executor registry** — executors register by name and declare a capability bitmask: write actions (`local` commands, `webhook` notification callbacks), read-only probes (`icmp`, `tcp`), and the dual-mode `http` (`CapProbe | CapExec`) that both probes endpoints and runs as a scheduled task action. Task creation rejects types without a write capability and active monitor points reject types without probe capability, both with an immediate 400.
+- **Operation kinds and record routing** — every execution carries an operation (`probe` or `execute`). The finished record is handed to a routing store wired at the assembly layer: `execute` records persist to the task execution log (`sys_schedule_log`), `probe` records to the telemetry probe record table (`sys_probe_record`). Neither domain package knows about the other's storage.
 
 ### collector — data collection engine
 
 The collector ingests externally reported data and is fully decoupled from the scheduler — it subscribes to no scheduler events.
 
 - **Listener SPI** — passive receivers model every ingestion channel (webhook, syslog, SNMP trap, MQTT, …) as a `Listener`.
+- **Active probing** — monitor points schedule probes as synthetic tasks through the scheduler/executor pipeline. Each result is stored as a structured probe record — one row per probe holding status, latency, status code, output, and error — and refreshes the point's runtime status column. A probe record is the result of an operation the runtime performed; it is distinct from the logs and metrics listeners ingest from external reporters, which are observations about an asset.
 - **Validator** — inbound reports are checked for structural correctness, asset existence, tenant ownership, and size limits.
 - **Aggregator** — metrics are bucketed into fixed tumbling windows and reduced to avg / max / min / count / sum statistics.
 - **Persistence** — metrics and logs are batched into the stores.
@@ -59,6 +61,8 @@ The event bus (`pkg/event`) is the only communication channel between the three 
 
 ![Event bus flow](./diagrams/event-bus.svg)
 
+Execution lifecycle events carry an `operation` field (`probe` or `execute`); consumers treat an empty value as `execute` for compatibility with events published before the field existed.
+
 The collector never subscribes to scheduler events, which guarantees the collection engine can run in isolation.
 
 ## Data flows
@@ -66,6 +70,7 @@ The collector never subscribes to scheduler events, which guarantees the collect
 1. **Schedule → execute** — the time wheel fires → `TaskTriggered` published → executor runner consumes → executor runs (with retry) → status inferred → `TaskCompleted` published → scheduler updates dependencies → execution record persisted.
 2. **Ingest → persist** — external report → listener receives → validator checks → processor determines status → state manager detects change → aggregator windows the metrics → persistence batch-writes metrics and logs.
 3. **Event-driven** — collector emits `StatusChange` → scheduler subscribes → triggers an associated event-driven task → flows into the schedule → execute path.
+4. **Active probe → record** — monitor point fires → synthetic probe task published → executor runs the prober → the `probe` record is routed to `sys_probe_record` and the point's runtime status is refreshed. Task executions follow the same pipeline but persist to `sys_schedule_log`; the operation kind decides the destination.
 
 ## Common components
 
@@ -78,6 +83,8 @@ The collector never subscribes to scheduler events, which guarantees the collect
 ## Persistence model
 
 The open-source edition persists all state in a single SQLite file. Every business table carries a `tenant_id` column that enables row-level isolation; even though the open-source edition is single-tenant by default, the column is present so downstream extensions can enable multi-tenancy without a schema migration. Database schema is managed by GORM `AutoMigrate` at startup — there is no hand-written migration SQL to maintain.
+
+Execution results live in two domain-owned tables: `sys_schedule_log` for task executions (`execute` operations) and `sys_probe_record` for monitor-point probes (`probe` operations). Passive collection data stays in `sys_collect_metric` and `sys_collect_log`.
 
 ## Related documents
 

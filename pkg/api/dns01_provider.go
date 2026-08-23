@@ -12,7 +12,7 @@
 // The adapter exists so the ACMEManager (acme.go) can drive the RFC 8555
 // flow uniformly for both challenge types: it only interacts with
 // ACMEProvider, while the DNS-specific Present/CleanUp/Timeout contract lives
-// in pkg/cert.DNSProvider and is shared with the cert.Manager self-sign path.
+// in pkg/cert.DNSProvider.
 
 package api
 
@@ -81,7 +81,7 @@ func (p *DNS01Provider) FulfillChallenge(ctx context.Context, params ACMEChallen
 		return nil, err
 	}
 	cleanup := func() {
-		_ = p.provider.CleanUp(ctx, params.Domain, params.Token, params.Response)
+		_ = p.provider.Cleanup(ctx, params.Domain, params.Token, params.Response)
 	}
 	return cleanup, nil
 }

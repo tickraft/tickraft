@@ -116,7 +116,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	// and asset events as the alert pipeline and dispatches matching
 	// remediation rules to their operators, persisting each run to the
 	// remediation record store. Started and stopped with the Engine.
-	remediationMgr, err := remediation.New(
+	remediationEngine, err := remediation.New(
 		remediation.WithEventBus(cfg.Bus),
 		remediation.WithStore(stores.remediation),
 		remediation.WithRecordStore(stores.remediation),
@@ -127,7 +127,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prism: create remediation engine: %w", err)
 	}
-	engine.remediationMgr = remediationMgr
+	engine.remediationEngine = remediationEngine
 	if ruleEng != nil {
 		engine.ruleEngineStopFn = func(stopCtx context.Context) error {
 			return ruleEng.Stop(stopCtx)
@@ -220,11 +220,11 @@ func newDispatchEngine(cfg Config, logger *zap.Logger, onAlert OnAlertFunc) (*En
 // loadEnabledChannels loads the enabled channels from the database into
 // the dispatch engine.
 func loadEnabledChannels(ctx context.Context, engine *Engine, channelStore *channel.Store, logger *zap.Logger) error {
-	enabledRecords, err := channelStore.ListEnabled(ctx)
+	enabledChannels, err := channelStore.ListEnabled(ctx)
 	if err != nil {
 		return fmt.Errorf("prism: list enabled channels: %w", err)
 	}
-	channels, err := BuildChannelsFromRecords(enabledRecords)
+	channels, err := BuildChannels(enabledChannels)
 	if err != nil {
 		logger.Warn("prism: some channels failed to build", zap.Error(err))
 	}

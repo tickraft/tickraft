@@ -9,7 +9,6 @@ package local
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,7 +18,10 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/bytedance/sonic"
+
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/executor/internal/deadline"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -139,7 +141,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	}
 
 	var cfg config
-	if err := json.Unmarshal([]byte(req.Config), &cfg); err != nil {
+	if err := sonic.Unmarshal([]byte(req.Config), &cfg); err != nil {
 		return nil, fmt.Errorf("local: parse config: %w", err)
 	}
 	if cfg.Command == "" {
@@ -156,10 +158,14 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		return nil, fmt.Errorf("local: command %q is not in the allowed list", cfg.Command)
 	}
 
-	// Timeout control: apply the executor's configured timeout when set.
+	// Timeout control: the caller's context is the single source (the
+	// runner's lifecycle derives it from the task's TimeoutSeconds); the
+	// executor's configured timeout only applies to direct callers whose
+	// context has no deadline, so it never shortens a configured task
+	// timeout.
 	if e.timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, e.timeout)
+		ctx, cancel = deadline.Fallback(ctx, e.timeout)
 		defer cancel()
 	}
 

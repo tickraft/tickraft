@@ -90,7 +90,9 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 //
 //nolint:dupl // metric and log stores differ in model, filter and ordering
 func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, int64, error) {
-	query := s.dbc.WithContext(ctx).
+	// Model is set explicitly: Count cannot infer the table from a plain
+	// Where chain, and the mock-based unit tests never exercise SQL.
+	query := s.dbc.WithContext(ctx).Model(&CollectMetric{}).
 		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
 			q.TenantID, q.AssetID, q.Start, q.End)
 	if q.MetricName != "" {
@@ -161,7 +163,7 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 //
 //nolint:dupl // metric and log stores differ in model, filter and ordering
 func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int64, error) {
-	query := s.dbc.WithContext(ctx).
+	query := s.dbc.WithContext(ctx).Model(&CollectLog{}).
 		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
 			q.TenantID, q.AssetID, q.Start, q.End)
 

@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package telemetry exposes telemetry monitor CRUD, the unified report
+// endpoint, and history/log query endpoints.
 package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -31,36 +34,19 @@ var (
 	ErrInvalidRequest = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
 )
 
-// Payload size limits for the unified telemetry report endpoint. The limit
-// is selected based on Telemetry.Kind: heartbeats are tiny status pings,
-// metrics carry moderate batches of numerical samples, and logs may contain
-// large blocks of text.
-const (
-	// maxHeartbeatBodySize limits Telemetry{Kind:"heartbeat"} payloads to 1 KiB.
-	maxHeartbeatBodySize = 1 << 10
-	// maxMetricsBodySize limits Telemetry{Kind:"metrics"} payloads to 64 KiB.
-	maxMetricsBodySize = 64 << 10
-	// maxLogsBodySize limits Telemetry{Kind:"logs"} payloads to 1 MiB.
-	maxLogsBodySize = 1 << 20
-)
-
 // Handler implements the telemetry monitoring point CRUD endpoints
-// (registered under /api/v1/telemetry/monitors) and the unified report
-// endpoint (POST /api/v1/telemetry) for the runtime. The CRUD
+// (registered under /api/v1/telemetry/monitors) for the runtime. The CRUD
 // methods delegate to an injected Service. The monitoring points are
 // unified via the Mode field (active/passive), aligning with the
-// telemetry.MonitorPoint model. The Report method reads a Telemetry body,
-// applies a differentiated payload size limit based on Kind, and returns an
-// Accepted response; concrete report processing is provided by an injected
-// ReportHandler implementation (e.g. wrapping the collector HTTP listener).
+// telemetry.MonitorPoint model. The unified report endpoint
+// (POST /api/v1/telemetry) is registered separately via
+// WithTelemetryReportHandler.
 type Handler struct {
-	svc         Service
-	metricStore MetricStoreInjector
-	logStore    LogStoreInjector
+	svc          Service
+	metricStore  MetricStore
+	logStore     LogStore
+	probeRecords ProbeRecordStore
 }
-
-// Compile-time assertion that Handler satisfies the ReportHandler interface.
-var _ ReportHandler = (*Handler)(nil)
 
 // NewHandler creates a Handler backed by the given service. The service must
 // be non-nil; callers must inject a concrete database-backed implementation.
@@ -69,11 +55,19 @@ func NewHandler(svc Service) *Handler {
 }
 
 // SetDataStores injects the metric and log stores used by the history and
-// logs endpoints. Either store may be nil to disable the corresponding query
-// path.
-func (h *Handler) SetDataStores(metricStore MetricStoreInjector, logStore LogStoreInjector) {
+// logs endpoints of passive monitor points. Either store may be nil to
+// disable the corresponding query path.
+func (h *Handler) SetDataStores(metricStore MetricStore, logStore LogStore) {
 	h.metricStore = metricStore
 	h.logStore = logStore
+}
+
+// SetProbeRecordStore injects the probe record store used by the status,
+// history, and logs endpoints of active monitor points. A nil store
+// disables the probe-backed query paths and the endpoints fall back to the
+// enabled-derived defaults.
+func (h *Handler) SetProbeRecordStore(store ProbeRecordStore) {
+	h.probeRecords = store
 }
 
 // ListTelemetry handles GET /api/v1/telemetry/monitors. It returns a page
@@ -111,7 +105,7 @@ func (h *Handler) GetTelemetry(ctx context.Context, arc *app.RequestContext) {
 
 // CreateTelemetry handles POST /api/v1/telemetry.
 func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) {
-	var req Task
+	var req telemetry.MonitorPoint
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -143,7 +137,7 @@ func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) 
 	if !ok {
 		return
 	}
-	var req Task
+	var req telemetry.MonitorPoint
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -180,19 +174,56 @@ func (h *Handler) DeleteTelemetry(ctx context.Context, arc *app.RequestContext) 
 }
 
 // monitorStatus is the response for the monitoring point status endpoint. It
-// reports the task's enabled state and a derived health status.
+// reports the task's enabled state, a derived health status, and — for
+// active points with probe history — the latest probe timing and latency.
 type monitorStatus struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	Status  string `json:"status"`
+	ID          int64      `json:"id"`
+	Name        string     `json:"name"`
+	Enabled     bool       `json:"enabled"`
+	Status      string     `json:"status"`
+	LastProbeAt *time.Time `json:"last_probe_at,omitempty"`
+	LatencyMs   int64      `json:"latency_ms,omitempty"`
+}
+
+// monitorStatusResponse builds the status response for a monitoring point.
+// Passive points and disabled points derive their status from Enabled.
+// Active enabled points report the runtime-maintained Status column
+// ("active" after a normal probe, "error" after a failed one, "inactive"
+// before the first probe), enriched with the latest probe's timing and
+// latency when a probe record store is injected.
+func (h *Handler) monitorStatusResponse(ctx context.Context, point *telemetry.MonitorPoint) (monitorStatus, error) {
+	status := telemetry.MonitorStatusInactive
+	if point.Enabled {
+		status = telemetry.MonitorStatusActive
+		if point.IsActive() && point.Status != "" {
+			status = point.Status
+		}
+	}
+	resp := monitorStatus{
+		ID:      point.ID,
+		Name:    point.Name,
+		Enabled: point.Enabled,
+		Status:  status,
+	}
+	if !point.IsActive() || h.probeRecords == nil {
+		return resp, nil
+	}
+	latest, err := h.probeRecords.LatestByPoint(ctx, point.ID)
+	if err != nil {
+		if errors.Is(err, errdefs.ErrNotFound) {
+			return resp, nil
+		}
+		return resp, fmt.Errorf("query latest probe: %w", err)
+	}
+	resp.LastProbeAt = &latest.StartedAt
+	resp.LatencyMs = latest.Duration
+	return resp, nil
 }
 
 // GetMonitorStatus handles GET /api/v1/telemetry/monitors/:id/status. It
-// loads the telemetry task and returns its enabled state and a derived
-// status string. The default implementation derives status from the task's
-// Enabled field; the callers enriches this with real-time probe
-// results.
+// loads the telemetry task and returns its enabled state and status. Active
+// points report the probe-maintained runtime status plus the latest probe
+// timing and latency.
 func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -203,16 +234,12 @@ func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext)
 		api.Fail(arc, err)
 		return
 	}
-	status := telemetry.MonitorStatusInactive
-	if task.Enabled {
-		status = telemetry.MonitorStatusActive
+	resp, err := h.monitorStatusResponse(ctx, task)
+	if err != nil {
+		api.Fail(arc, err)
+		return
 	}
-	api.Success(arc, monitorStatus{
-		ID:      task.ID,
-		Name:    task.Name,
-		Enabled: task.Enabled,
-		Status:  status,
-	})
+	api.Success(arc, resp)
 }
 
 // monitorHistoryEntry represents a single historical data point for a
@@ -221,14 +248,18 @@ type monitorHistoryEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     any       `json:"value"`
 	Status    string    `json:"status"`
+	// Metric names the quantity carried by Value: "latency_ms" for active
+	// probe rows, the collected metric name for passive rows. Passive rows
+	// leave Status empty — the metric name is not a status.
+	Metric string `json:"metric,omitempty"`
 }
 
-// GetMonitorHistory handles GET /api/v1/telemetry/monitors/:id/history. It
-// returns historical metric data points for the monitoring task. When a
-// MetricStore is injected and the task has an AssetID, metrics are queried
-// from the persistent store; otherwise an empty list is returned.
-//
-//nolint:dupl // monitors history and logs share handler shape but query distinct stores and entry types
+// GetMonitorHistory handles GET /api/v1/telemetry/monitors/:id/history.
+// Active points return their probe history from the probe record store:
+// one entry per probe with its latency (milliseconds) and result status.
+// Passive points with an AssetID query the asset's collected metrics from
+// the persistent metric store. Without a matching store an empty list is
+// returned.
 func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -246,9 +277,32 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 	history := make([]monitorHistoryEntry, 0)
 	var total int64
 
-	if h.metricStore != nil && task.AssetID > 0 {
-		end := time.Now()
-		start := end.AddDate(0, 0, -7) // last 7 days
+	end := time.Now()
+	start := end.AddDate(0, 0, -7) // last 7 days
+
+	switch {
+	case task.IsActive() && h.probeRecords != nil:
+		records, count, qErr := h.probeRecords.QueryByPoint(ctx, telemetry.ProbeQuery{
+			PointID: task.ID,
+			Start:   start,
+			End:     end,
+			Page:    page,
+			Size:    size,
+		})
+		if qErr != nil {
+			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
+			return
+		}
+		total = count
+		for i := range records {
+			history = append(history, monitorHistoryEntry{
+				Timestamp: records[i].StartedAt,
+				Value:     records[i].Duration,
+				Status:    string(records[i].Status),
+				Metric:    "latency_ms",
+			})
+		}
+	case h.metricStore != nil && task.AssetID > 0:
 		metrics, count, qErr := h.metricStore.QueryMetrics(ctx, telemetry.MetricQuery{
 			AssetID: task.AssetID,
 			Start:   start,
@@ -265,7 +319,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 			history = append(history, monitorHistoryEntry{
 				Timestamp: metrics[i].Timestamp,
 				Value:     metrics[i].MetricValue,
-				Status:    metrics[i].MetricName,
+				Metric:    metrics[i].MetricName,
 			})
 		}
 	}
@@ -274,29 +328,26 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 }
 
 // ProbeMonitor handles POST /api/v1/telemetry/monitors/:id/probe. It
-// returns the monitoring task's current runtime status. A full on-demand
-// probe dispatch requires the executor pipeline and is provided by the
-// extended edition; the open-source runtime returns the persisted status.
+// dispatches a real on-demand probe through the prober scheduling engine
+// and responds 202 Accepted with the point's current status; the probe
+// outcome is recorded asynchronously and clients poll the status/history
+// endpoints for the refreshed result.
 func (h *Handler) ProbeMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.ProbeNow(ctx, id)
 	if err != nil {
 		api.Fail(arc, err)
 		return
 	}
-	status := telemetry.MonitorStatusInactive
-	if task.Enabled {
-		status = telemetry.MonitorStatusActive
+	resp, err := h.monitorStatusResponse(ctx, point)
+	if err != nil {
+		api.Fail(arc, err)
+		return
 	}
-	api.Success(arc, monitorStatus{
-		ID:      task.ID,
-		Name:    task.Name,
-		Enabled: task.Enabled,
-		Status:  status,
-	})
+	api.SuccessAccepted(arc, resp)
 }
 
 // monitorLogEntry represents a single log line for a monitoring task.
@@ -306,12 +357,11 @@ type monitorLogEntry struct {
 	Message   string    `json:"message"`
 }
 
-// GetMonitorLogs handles GET /api/v1/telemetry/monitors/:id/logs. It
-// returns log entries for the monitoring task. When a LogStore is injected
-// and the task has an AssetID, logs are queried from the persistent store;
-// otherwise an empty list is returned.
-//
-//nolint:dupl // monitors history and logs share handler shape but query distinct stores and entry types
+// GetMonitorLogs handles GET /api/v1/telemetry/monitors/:id/logs. Active
+// points return their probe records rendered as log entries (level = probe
+// status, message = error or output). Passive points with an AssetID query
+// the asset's collected logs from the persistent log store. Without a
+// matching store an empty list is returned.
 func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
@@ -329,9 +379,35 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	logs := make([]monitorLogEntry, 0)
 	var total int64
 
-	if h.logStore != nil && task.AssetID > 0 {
-		end := time.Now()
-		start := end.AddDate(0, 0, -7) // last 7 days
+	end := time.Now()
+	start := end.AddDate(0, 0, -7) // last 7 days
+
+	switch {
+	case task.IsActive() && h.probeRecords != nil:
+		records, count, qErr := h.probeRecords.QueryByPoint(ctx, telemetry.ProbeQuery{
+			PointID: task.ID,
+			Start:   start,
+			End:     end,
+			Page:    page,
+			Size:    size,
+		})
+		if qErr != nil {
+			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
+			return
+		}
+		total = count
+		for i := range records {
+			message := records[i].Error
+			if message == "" {
+				message = records[i].Output
+			}
+			logs = append(logs, monitorLogEntry{
+				Timestamp: records[i].StartedAt,
+				Level:     string(records[i].Status),
+				Message:   message,
+			})
+		}
+	case h.logStore != nil && task.AssetID > 0:
 		entries, count, qErr := h.logStore.QueryLogs(ctx, telemetry.LogQuery{
 			AssetID: task.AssetID,
 			Start:   start,
@@ -398,79 +474,14 @@ func (h *Handler) DisableMonitor(ctx context.Context, arc *app.RequestContext) {
 	api.Success(arc, updated)
 }
 
-// Report handles POST /api/v1/telemetry. It reads a Telemetry body,
-// selects a payload size limit based on Kind (heartbeat 1 KiB, metrics
-// 64 KiB, logs 1 MiB), enforces that limit, and returns a success
-// response. Asset-key authentication is enforced by the middleware
-// registered on the route group; the handler itself does not repeat that
-// check. An unknown Kind results in a 400 Bad Request.
-func (h *Handler) Report(_ context.Context, arc *app.RequestContext) {
-	var req Telemetry
-	if !api.BindAndValidate(arc, &req) {
-		return
-	}
-	maxSize, ok := kindBodyLimit(req.Kind)
-	if !ok {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
-			"unknown telemetry kind: "+string(req.Kind))
-		return
-	}
-	if !readLimitedBody(arc, maxSize) {
-		return
-	}
-	api.Success(arc, nil)
-}
-
-// kindBodyLimit returns the payload size limit for the given Kind.
-// The second return value is false when kind is not recognized.
-func kindBodyLimit(kind telemetry.Kind) (int, bool) {
-	switch kind {
-	case telemetry.KindHeartbeat:
-		return maxHeartbeatBodySize, true
-	case telemetry.KindMetrics:
-		return maxMetricsBodySize, true
-	case telemetry.KindLogs:
-		return maxLogsBodySize, true
-	default:
-		return 0, false
-	}
-}
-
-// readLimitedBody reads and discards the request body, enforcing a maximum
-// size limit. It writes a 413 response when the body exceeds the limit and
-// returns false so the caller can return early. The body is consumed and
-// discarded because the stub does not process the payload; a
-// concrete ReportHandler implementation injected via
-// WithTelemetryReportHandler would read the body itself before this stub
-// runs.
-func readLimitedBody(arc *app.RequestContext, maxSize int) bool {
-	body := arc.Request.Body()
-	if len(body) > maxSize {
-		api.FailWithCode(arc, http.StatusRequestEntityTooLarge, errdefs.CodeBadRequest, "request body too large")
-		return false
-	}
-	return true
-}
-
 // --- Monitor point type metadata ---
 //
-// The probers and listeners endpoints return the collection types supported
-// by the current runtime. These correspond to the Type field of the unified
-// MonitorPoint model: active points (Mode=active) use prober types (icmp,
-// tcp, http, udp); passive points (Mode=passive) use listener types
-// (webhook). The callers may extend these lists with DNS/SSL probers
-// and Syslog/SNMP/MQTT listeners via the Plugin SPI.
-
-// ProberType describes a supported active monitoring point type.
-type ProberType struct {
-	// Type is the prober identifier (icmp, tcp, http, udp). This value
-	// populates the Type field of a MonitorPoint with Mode=active.
-	Type string `json:"type"`
-	// Name is the human-readable display name.
-	Name string `json:"name"`
-	// Description is a short summary of the prober capability.
-	Description string `json:"description,omitempty"`
-}
+// The listeners endpoint returns the passive collection types supported by
+// the current runtime. These correspond to the Type field of the unified
+// MonitorPoint model: passive points (Mode=passive) use listener types
+// (webhook). The callers may extend this list with Syslog/SNMP/MQTT
+// listeners via the Plugin SPI. Active point (prober) types are enumerated
+// from the executor registry by the executor handler package.
 
 // ListenerType describes a supported passive monitoring point type.
 type ListenerType struct {
@@ -483,30 +494,11 @@ type ListenerType struct {
 	Description string `json:"description,omitempty"`
 }
 
-// ceProberTypes returns the prober types supported by the default
-// runtime. The callers may extend this list with DNS and SSL probers
-// via the Plugin SPI.
-var ceProberTypes = []ProberType{
-	{Type: "icmp", Name: "ICMP Ping", Description: "Probe host reachability via ICMP echo requests"},
-	{Type: "tcp", Name: "TCP Port", Description: "Probe TCP port connectivity and response time"},
-	{Type: "http", Name: "HTTP", Description: "Probe HTTP endpoint availability and status code"},
-	{Type: "udp", Name: "UDP Port", Description: "Probe UDP port connectivity"},
-}
-
 // ceListenerTypes returns the listener types supported by the default
 // runtime. The callers may extend this list with Syslog, SNMP, and MQTT
 // listeners via the Plugin SPI.
 var ceListenerTypes = []ListenerType{
 	{Type: "webhook", Name: "HTTP Webhook", Description: "Receive events via HTTP POST webhook"},
-}
-
-// ListProbers handles GET /api/v1/telemetry/probers. It returns the list of
-// active monitoring point types (probers) supported by the current runtime.
-// The default runtime supports ICMP, TCP, HTTP, and UDP; the callers
-// may add DNS and SSL via the Plugin SPI.
-func (h *Handler) ListProbers(ctx context.Context, arc *app.RequestContext) {
-	_ = ctx
-	api.Success(arc, ceProberTypes)
 }
 
 // ListListeners handles GET /api/v1/telemetry/listeners. It returns the list
@@ -516,4 +508,17 @@ func (h *Handler) ListProbers(ctx context.Context, arc *app.RequestContext) {
 func (h *Handler) ListListeners(ctx context.Context, arc *app.RequestContext) {
 	_ = ctx
 	api.Success(arc, ceListenerTypes)
+}
+
+// GetMonitorSummary handles GET /api/v1/telemetry/monitors/summary. It
+// returns aggregate monitor point counts (active/passive/enabled/disabled)
+// computed over the full dataset, so the list summary chips stay correct
+// regardless of pagination.
+func (h *Handler) GetMonitorSummary(ctx context.Context, arc *app.RequestContext) {
+	summary, err := h.svc.Summary(ctx)
+	if err != nil {
+		api.Fail(arc, err)
+		return
+	}
+	api.Success(arc, summary)
 }

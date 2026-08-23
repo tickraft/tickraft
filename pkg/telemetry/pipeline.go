@@ -27,7 +27,7 @@ import (
 // submission (closed or caller context cancelled) the telemetry is
 // processed synchronously as a fallback so no telemetry is silently
 // dropped due to pool unavailability.
-func (m *Manager) processLoop(ctx context.Context) {
+func (m *Engine) processLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -43,7 +43,7 @@ func (m *Manager) processLoop(ctx context.Context) {
 // telemetry is processed inline to avoid silent data loss. The inline
 // fallback is wrapped with a panic recover so a buggy processor cannot
 // crash the processLoop goroutine.
-func (m *Manager) dispatchReport(ctx context.Context, t *Telemetry) {
+func (m *Engine) dispatchReport(ctx context.Context, t *Telemetry) {
 	if m.reportPool == nil {
 		m.processReportSafe(ctx, t)
 		return
@@ -64,14 +64,14 @@ func (m *Manager) dispatchReport(ctx context.Context, t *Telemetry) {
 // processReportSafe wraps processReport with panic recovery. It is used on
 // the inline fallback path where the worker pool is unavailable; the pool
 // itself already recovers panics for submitted jobs.
-func (m *Manager) processReportSafe(ctx context.Context, t *Telemetry) {
+func (m *Engine) processReportSafe(ctx context.Context, t *Telemetry) {
 	defer m.recoverPanic("processReport inline")
 	m.processReport(ctx, t)
 }
 
 // processReport handles a single telemetry through the
 // Validate -> Processor -> StateManager -> Emitter -> Aggregate -> Persist pipeline.
-func (m *Manager) processReport(ctx context.Context, t *Telemetry) {
+func (m *Engine) processReport(ctx context.Context, t *Telemetry) {
 	// Validate the telemetry before any processing. Invalid telemetry is discarded.
 	if m.validator != nil {
 		if err := m.validator.Validate(ctx, t); err != nil {
@@ -171,7 +171,7 @@ func (m *Manager) processReport(ctx context.Context, t *Telemetry) {
 // aggregateAndPersist aggregates the telemetry's metrics and persists its
 // log content. Metrics are aggregated when an aggregator is configured;
 // log content is persisted directly (logs are not aggregated).
-func (m *Manager) aggregateAndPersist(ctx context.Context, t *Telemetry) {
+func (m *Engine) aggregateAndPersist(ctx context.Context, t *Telemetry) {
 	// Aggregate metrics when an aggregator is configured.
 	if m.aggregator != nil && len(t.Metrics) > 0 {
 		metrics := make([]Metric, 0, len(t.Metrics))
@@ -211,7 +211,7 @@ func (m *Manager) aggregateAndPersist(ctx context.Context, t *Telemetry) {
 
 // consumeAggregated drains the aggregator flush channel and persists each
 // aggregated metric batch. It runs until the context is cancelled.
-func (m *Manager) consumeAggregated(ctx context.Context) {
+func (m *Engine) consumeAggregated(ctx context.Context) {
 	if m.aggregator == nil {
 		return
 	}
@@ -229,7 +229,7 @@ func (m *Manager) consumeAggregated(ctx context.Context) {
 // persistAggregated converts an aggregated metric into persisted model records
 // and writes them through the persistence layer. One aggregated metric produces
 // five records suffixed with _avg, _max, _min, _count, and _sum.
-func (m *Manager) persistAggregated(ctx context.Context, am *aggregatedMetric) {
+func (m *Engine) persistAggregated(ctx context.Context, am *aggregatedMetric) {
 	if m.persistence == nil {
 		return
 	}
@@ -257,7 +257,7 @@ func (m *Manager) persistAggregated(ctx context.Context, am *aggregatedMetric) {
 // handleTimeout is the callback invoked when an asset times out. It runs on
 // the time wheel goroutine; a panic in the processor chain is recovered so
 // the time wheel keeps ticking for other assets.
-func (m *Manager) handleTimeout(ctx context.Context, assetID int64) {
+func (m *Engine) handleTimeout(ctx context.Context, assetID int64) {
 	defer m.recoverPanic("handleTimeout")
 
 	// Look up the asset to determine its type.

@@ -36,6 +36,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -193,9 +194,10 @@ type registerConfig struct {
 	remediationRuleService remediation.Service
 	systemService          system.Service
 	telemetryService       telemetry.Service
-	telemetryReportHandler telemetry.ReportHandler
-	telemetryMetricStore   telemetry.MetricStoreInjector
-	telemetryLogStore      telemetry.LogStoreInjector
+	telemetryReportHandler app.HandlerFunc
+	telemetryMetricStore   telemetry.MetricStore
+	telemetryLogStore      telemetry.LogStore
+	telemetryProbeRecords  telemetry.ProbeRecordStore
 	assetHandler           *asset.Handler
 	templateHandler        *telemetry.TemplateHandler
 	healthzHandler         *healthz.Handler
@@ -203,6 +205,7 @@ type registerConfig struct {
 	certificateHandler     *certificates.Handler
 	i18nHandler            *i18n.Handler
 	wsHandler              *wsapi.Handler
+	executorRegistry       *executor.Registry
 }
 
 // taskServiceOption provides the task.Service implementation for task
@@ -288,6 +291,21 @@ func (o assetHandlerOption) apply(c *registerConfig) { c.assetHandler = o.h }
 // route group is not registered.
 func WithAssetHandler(h *asset.Handler) RegisterOption { return assetHandlerOption{h: h} }
 
+// executorRegistryOption provides the executor registry backing the
+// executor type enumeration endpoints.
+type executorRegistryOption struct {
+	reg *executor.Registry
+}
+
+func (o executorRegistryOption) apply(c *registerConfig) { c.executorRegistry = o.reg }
+
+// WithExecutorRegistry provides the executor registry used to derive the
+// /api/v1/executors and /api/v1/telemetry/probers type lists. When omitted,
+// the enumeration endpoints return empty lists.
+func WithExecutorRegistry(reg *executor.Registry) RegisterOption {
+	return executorRegistryOption{reg: reg}
+}
+
 // telemetryServiceOption provides the telemetry.Service implementation for
 // the telemetry collection task CRUD API.
 type telemetryServiceOption struct {
@@ -303,27 +321,26 @@ func WithTelemetryService(svc telemetry.Service) RegisterOption {
 	return telemetryServiceOption{svc: svc}
 }
 
-// telemetryReportHandlerOption provides the ReportHandler for the
-// distributed telemetry report endpoints.
+// telemetryReportHandlerOption provides the Hertz handler for the
+// unified telemetry report endpoint.
 type telemetryReportHandlerOption struct {
-	h telemetry.ReportHandler
+	h app.HandlerFunc
 }
 
 func (o telemetryReportHandlerOption) apply(c *registerConfig) { c.telemetryReportHandler = o.h }
 
-// WithTelemetryReportHandler provides the ReportHandler for the
-// distributed telemetry report endpoints at /api/v1/telemetry/heartbeat,
-// /api/v1/telemetry/metrics, and /api/v1/telemetry/logs. When omitted, the
+// WithTelemetryReportHandler provides the Hertz handler for the unified
+// telemetry report endpoint at POST /api/v1/telemetry. When omitted, the
 // report route group is not registered.
-func WithTelemetryReportHandler(h telemetry.ReportHandler) RegisterOption {
+func WithTelemetryReportHandler(h app.HandlerFunc) RegisterOption {
 	return telemetryReportHandlerOption{h: h}
 }
 
 // telemetryDataStoresOption provides the MetricStore and LogStore used by
 // the telemetry handler's history/logs endpoints.
 type telemetryDataStoresOption struct {
-	metricStore telemetry.MetricStoreInjector
-	logStore    telemetry.LogStoreInjector
+	metricStore telemetry.MetricStore
+	logStore    telemetry.LogStore
 }
 
 func (o telemetryDataStoresOption) apply(c *registerConfig) {
@@ -333,9 +350,26 @@ func (o telemetryDataStoresOption) apply(c *registerConfig) {
 
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil.
-func WithTelemetryDataStores(metricStore telemetry.MetricStoreInjector,
-	logStore telemetry.LogStoreInjector) RegisterOption {
+func WithTelemetryDataStores(metricStore telemetry.MetricStore,
+	logStore telemetry.LogStore) RegisterOption {
 	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
+}
+
+// telemetryProbeRecordsOption provides the probe record store used by the
+// telemetry handler's status/history/logs endpoints for active points.
+type telemetryProbeRecordsOption struct {
+	store telemetry.ProbeRecordStore
+}
+
+func (o telemetryProbeRecordsOption) apply(c *registerConfig) {
+	c.telemetryProbeRecords = o.store
+}
+
+// WithTelemetryProbeRecords provides the probe record store used by the
+// telemetry handler's status/history/logs endpoints for active monitor
+// points. A nil store disables the probe-backed query paths.
+func WithTelemetryProbeRecords(store telemetry.ProbeRecordStore) RegisterOption {
+	return telemetryProbeRecordsOption{store: store}
 }
 
 // templateHandlerOption provides the TemplateHandler for the telemetry
@@ -596,7 +630,9 @@ func buildHandlerOptions(
 		handler.WithTelemetryService(rc.telemetryService),
 		handler.WithTelemetryReportHandler(rc.telemetryReportHandler),
 		handler.WithTelemetryDataStores(rc.telemetryMetricStore, rc.telemetryLogStore),
+		handler.WithTelemetryProbeRecords(rc.telemetryProbeRecords),
 		handler.WithAssetHandler(rc.assetHandler),
+		handler.WithExecutorRegistry(rc.executorRegistry),
 	}
 	if rc.healthzHandler != nil {
 		handlerOpts = append(handlerOpts, handler.WithHealthzHandler(rc.healthzHandler))

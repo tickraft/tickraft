@@ -5,11 +5,12 @@
 package i18n
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/bytedance/sonic"
 )
 
 // flattenAny recursively walks the value, joining keys with dots. Non-map
@@ -50,7 +51,7 @@ func flattenAny(prefix string, in map[string]any, out map[string]string) {
 // parseJSON parses JSON bytes into a flattened map[string]string.
 func parseJSON(data []byte) (map[string]string, error) {
 	var anyMap map[string]any
-	if err := json.Unmarshal(data, &anyMap); err != nil {
+	if err := sonic.Unmarshal(data, &anyMap); err != nil {
 		return nil, err
 	}
 	out := make(map[string]string, len(anyMap))

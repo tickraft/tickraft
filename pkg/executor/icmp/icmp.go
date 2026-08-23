@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/ipv4"
 
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/executor/internal/deadline"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -147,9 +148,13 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 		timeout = 5 * time.Second
 	}
 
-	// Wrap the caller's context with the prober's timeout so that both
-	// context cancellation and the timeout deadline are enforced.
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	// Single-source timeout: honor the caller's context deadline when
+	// present (the runner lifecycle derives it from the task's
+	// TimeoutSeconds); the prober timeout is only a fallback for direct
+	// callers with an unbounded context, so it never shortens a configured
+	// task timeout. DNS resolution and the connection read below both
+	// observe the resulting deadline.
+	ctx, cancel := deadline.Fallback(ctx, timeout)
 	defer cancel()
 
 	// Resolve the target address to an IP address. The resolver is bound
@@ -194,8 +199,11 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	}
 	defer func() { _ = conn.Close() }() // best-effort close, error not actionable
 
-	// Set the connection deadline from the timeout context.
-	if err = conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+	// Set the connection deadline from the context deadline. Fallback
+	// above guarantees one is present; a zero deadline (the impossible
+	// no-deadline case) would simply clear the connection deadline.
+	dl, _ := ctx.Deadline()
+	if err = conn.SetDeadline(dl); err != nil {
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal
 		r.ErrorMsg = fmt.Sprintf("set deadline failed: %v", err)

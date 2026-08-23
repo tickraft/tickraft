@@ -69,6 +69,18 @@ func MarkOffline(
 		payload.AssetType = string(a.AssetType)
 	}
 
+	// Already-offline assets stay offline: skip the redundant store write
+	// and event so a timeout fire after a processor-driven offline
+	// transition does not publish a duplicate.
+	if prevStatus == types.AssetStatusOffline {
+		if logger != nil {
+			logger.Debug("asset already offline, skipping timeout transition",
+				zap.Int64("asset_id", params.AssetID),
+			)
+		}
+		return nil
+	}
+
 	if err := store.UpdateStatus(ctx, params.AssetID, types.AssetStatusOffline, time.Now()); err != nil {
 		return fmt.Errorf("telemetry: update status on timeout: %w", err)
 	}

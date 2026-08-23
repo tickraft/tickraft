@@ -162,20 +162,19 @@ func TestStoreGetAndDelete(t *testing.T) {
 
 // TestStoreListEnabled covers the engine's load path: only enabled
 // rules are returned, ordered by priority descending then id ascending,
-// and MetadataMap decodes the metadata column tolerantly.
+// and metadata round-trips through the tolerantjson serializer.
 func TestStoreListEnabled(t *testing.T) {
 	store, cleanup := setupStore(t)
 	defer cleanup()
 	ctx := context.Background()
 
 	mustCreate(t, store, &Rule{
-		Name: "low", Expression: "true", Enabled: true, Priority: 1, Metadata: `{"team":"ops"}`,
+		Name: "low", Expression: "true", Enabled: true, Priority: 1,
+		Metadata: map[string]string{"team": "ops"},
 	})
 	mustCreate(t, store, &Rule{Name: "high", Expression: "true", Enabled: true, Priority: 10})
 	mustCreate(t, store, &Rule{Name: "disabled", Expression: "true", Enabled: false})
-	mustCreate(t, store, &Rule{
-		Name: "malformed-meta", Expression: "true", Enabled: true, Priority: 5, Metadata: `not-json`,
-	})
+	mustCreate(t, store, &Rule{Name: "no-meta", Expression: "true", Enabled: true, Priority: 5})
 
 	rules, err := store.ListEnabled(ctx, 0)
 	if err != nil {
@@ -184,24 +183,23 @@ func TestStoreListEnabled(t *testing.T) {
 	if len(rules) != 3 {
 		t.Fatalf("ListEnabled returned %d rules, want 3 (disabled excluded)", len(rules))
 	}
-	wantOrder := []string{"high", "malformed-meta", "low"}
+	wantOrder := []string{"high", "no-meta", "low"}
 	for i, rule := range rules {
 		if rule.Name != wantOrder[i] {
 			t.Errorf("rules[%d].Name = %q, want %q (priority DESC, id ASC)", i, rule.Name, wantOrder[i])
 		}
 	}
 
-	// MetadataMap: valid metadata decodes; malformed metadata yields nil.
+	// Metadata round-trips: the map persists and reloads as-is.
 	for _, rule := range rules {
-		metadata := rule.MetadataMap()
 		switch rule.Name {
 		case "low":
-			if metadata["team"] != "ops" {
-				t.Errorf("low: MetadataMap = %v, want team=ops", metadata)
+			if rule.Metadata["team"] != "ops" {
+				t.Errorf("low: Metadata = %v, want team=ops", rule.Metadata)
 			}
-		case "malformed-meta":
-			if metadata != nil {
-				t.Errorf("malformed-meta: MetadataMap = %v, want nil", metadata)
+		case "no-meta":
+			if rule.Metadata != nil {
+				t.Errorf("no-meta: Metadata = %v, want nil", rule.Metadata)
 			}
 		}
 	}

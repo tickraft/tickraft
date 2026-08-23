@@ -201,3 +201,32 @@ func TestExecuteExpectStatus(t *testing.T) {
 		t.Errorf("Status: got %q, want %q (mismatch on expect_status)", result.Status, types.AssetStatusAbnormal)
 	}
 }
+
+// TestExecuteMetrics verifies the observability metrics aligned with the
+// http executor: response_ms, status_code, and content_length on success.
+func TestExecuteMetrics(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("hello"))
+	}))
+	defer srv.Close()
+
+	e := New()
+	cfgBytes, err := json.Marshal(config{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	result, err := e.Execute(context.Background(), executor.ExecutionRequest{Config: string(cfgBytes)})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := result.Metrics["status_code"]; got != float64(http.StatusOK) {
+		t.Errorf("Metrics status_code: got %v, want 200", got)
+	}
+	if got := result.Metrics["content_length"]; got != float64(len("hello")) {
+		t.Errorf("Metrics content_length: got %v, want %d", got, len("hello"))
+	}
+	if _, ok := result.Metrics["response_ms"]; !ok {
+		t.Error("Metrics response_ms missing")
+	}
+}

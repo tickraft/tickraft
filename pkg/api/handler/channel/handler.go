@@ -15,6 +15,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
 )
 
 // Handler exposes notification channel CRUD endpoints.
@@ -59,7 +60,7 @@ func (h *Handler) GetChannel(ctx context.Context, arc *app.RequestContext) {
 
 // CreateChannel handles POST /api/v1/prism/channels.
 func (h *Handler) CreateChannel(ctx context.Context, arc *app.RequestContext) {
-	var req Channel
+	var req channel.Channel
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -94,7 +95,7 @@ func (h *Handler) UpdateChannel(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	var req Channel
+	var req channel.Channel
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}

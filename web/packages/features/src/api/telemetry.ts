@@ -3,7 +3,6 @@
 // Dual-licensed — see LICENSE for details.
 
 import { request } from '@tickraft/core'
-import type { Asset } from '../types/asset'
 import type {
   ApplyTemplateParams,
   ListenerTypeInfo,
@@ -13,29 +12,12 @@ import type {
   MonitorMode,
   MonitorPoint,
   MonitorStatus,
+  MonitorSummary,
   MonitorUpdateParams,
   ProberTypeInfo,
   TelemetryTemplate,
-  TemplateCreateParams,
-  TemplateUpdateParams,
 } from '../types/telemetry'
 import type { PageData, PageParams } from '@tickraft/core'
-
-/**
- * Get asset list.
- *
- * Retained for prober target-asset selection; CE asset management UI has been
- * removed per storyboard §5.7.
- */
-export function getAssets(
-  params: PageParams & { assetType?: string; status?: string; keyword?: string },
-): Promise<PageData<Asset>> {
-  return request<PageData<Asset>>({
-    url: '/assets',
-    method: 'get',
-    params,
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Unified Monitor Point API — aligns with backend /api/v1/telemetry/monitors
@@ -57,6 +39,19 @@ export function getMonitors(
     url: '/telemetry/monitors',
     method: 'get',
     params,
+  })
+}
+
+/**
+ * Get monitor point summary counts (active/passive/enabled/disabled).
+ *
+ * The counts span the whole dataset, not the current page, so the list
+ * page's summary chips stay correct under pagination.
+ */
+export function getMonitorSummary(): Promise<MonitorSummary> {
+  return request<MonitorSummary>({
+    url: '/telemetry/monitors/summary',
+    method: 'get',
   })
 }
 
@@ -183,8 +178,9 @@ export function getMonitorLogs(
 /**
  * Get supported prober types (active monitoring point types).
  *
- * Returns the list of prober types supported by the current runtime
- * (ICMP, TCP, HTTP, UDP for CE; extension may add DNS/SSL via Plugin SPI).
+ * Returns the list of prober types supported by the current runtime,
+ * derived from the executor registry (ICMP, TCP, HTTP for CE; extensions
+ * may add more via Plugin SPI).
  */
 export function getProbers(): Promise<ProberTypeInfo[]> {
   return request<ProberTypeInfo[]>({
@@ -233,46 +229,6 @@ export function getBuiltinTemplates(): Promise<TelemetryTemplate[]> {
   return request<TelemetryTemplate[]>({
     url: '/telemetry/templates/builtin',
     method: 'get',
-  })
-}
-
-/**
- * Get a single telemetry template by ID.
- */
-export function getTemplate(id: number): Promise<TelemetryTemplate> {
-  return request<TelemetryTemplate>({
-    url: `/telemetry/templates/${id}`,
-    method: 'get',
-  })
-}
-
-/**
- * Create a custom telemetry template.
- *
- * Built-in templates cannot be created through this endpoint; only custom
- * templates are created with isBuiltin=false.
- */
-export function createTemplate(params: TemplateCreateParams): Promise<TelemetryTemplate> {
-  return request<TelemetryTemplate>({
-    url: '/telemetry/templates',
-    method: 'post',
-    data: params,
-  })
-}
-
-/**
- * Update a custom telemetry template.
- *
- * Built-in templates are read-only; attempting to update one returns 403.
- */
-export function updateTemplate(
-  id: number,
-  params: TemplateUpdateParams,
-): Promise<TelemetryTemplate> {
-  return request<TelemetryTemplate>({
-    url: `/telemetry/templates/${id}`,
-    method: 'put',
-    data: params,
   })
 }
 

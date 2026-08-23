@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"sort"
 
+	"github.com/bytedance/sonic"
 	"gorm.io/gorm"
 )
 
@@ -144,7 +145,7 @@ func readBuiltinTemplate(name string) (builtinTemplateFile, error) {
 		return builtinTemplateFile{}, fmt.Errorf("telemetry: read builtin template %q: %w", name, err)
 	}
 	var t builtinTemplateFile
-	if err := json.Unmarshal(data, &t); err != nil {
+	if err := sonic.Unmarshal(data, &t); err != nil {
 		return builtinTemplateFile{}, fmt.Errorf("telemetry: parse builtin template %q: %w", name, err)
 	}
 	return t, nil

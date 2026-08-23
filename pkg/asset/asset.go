@@ -24,7 +24,7 @@ type Asset struct {
 	// (idx_assets_tenant_key) so that duplicate asset keys within the same
 	// tenant are rejected at the database level with a unique-constraint
 	// violation, which the store layer maps to errdefs.ErrConflict.
-	TenantID int64 `json:"tenant_id" gorm:"column:tenant_id;not null;uniqueIndex:idx_assets_tenant_key,priority:1"`
+	TenantID int64 `json:"-" gorm:"column:tenant_id;not null;uniqueIndex:idx_assets_tenant_key,priority:1"`
 	// AssetType categorizes the asset.
 	AssetType types.AssetType `json:"asset_type" gorm:"column:asset_type;not null"`
 	// AssetKey is the tenant-unique identifier for the asset. It is the

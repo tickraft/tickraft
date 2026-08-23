@@ -19,8 +19,14 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { DataTable, ConfirmDialog, usePermission } from '@tickraft/core'
-import type { MonitorMode, MonitorPoint } from '../../../../types/telemetry'
-import { getMonitors, deleteMonitor, enableMonitor, disableMonitor } from '../../../../api/telemetry'
+import type { MonitorMode, MonitorPoint, MonitorSummary } from '../../../../types/telemetry'
+import {
+  getMonitors,
+  getMonitorSummary,
+  deleteMonitor,
+  enableMonitor,
+  disableMonitor,
+} from '../../../../api/telemetry'
 
 type ModeFilter = '' | MonitorMode
 
@@ -57,6 +63,10 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
   ssl: 'tk-type-badge--ssl',
 }
 
+/** Summary counts from the dedicated endpoint (spans all pages, unlike the
+ *  former current-page computation); zero-valued until the first load */
+const summary = ref<MonitorSummary>({ active: 0, passive: 0, enabled: 0, disabled: 0 })
+
 /** Tab items for mode filtering */
 const tabItems = computed(() => [
   { value: '' as ModeFilter, label: t('telemetry.monitor.list.tabAll') },
@@ -64,34 +74,25 @@ const tabItems = computed(() => [
   { value: 'passive' as ModeFilter, label: t('telemetry.monitor.list.tabPassive') },
 ])
 
-/** Summary bar computed counts */
-const summaryCounts = computed(() => {
-  const data = tableData.value ?? []
-  const enabled = data.filter((item) => item.enabled).length
-  const active = data.filter((item) => item.mode === 'active').length
-  const passive = data.filter((item) => item.mode === 'passive').length
-  return { enabled, disabled: data.length - enabled, active, passive }
-})
-
 const summaryItems = computed(() => [
   {
     label: t('telemetry.monitor.list.summaryActive'),
-    value: summaryCounts.value.active,
+    value: summary.value.active,
     dot: 'var(--tk-primary-color)',
   },
   {
     label: t('telemetry.monitor.list.summaryPassive'),
-    value: summaryCounts.value.passive,
+    value: summary.value.passive,
     dot: 'var(--tk-success-color)',
   },
   {
     label: t('telemetry.monitor.list.summaryEnabled'),
-    value: summaryCounts.value.enabled,
+    value: summary.value.enabled,
     dot: 'var(--tk-success-color)',
   },
   {
     label: t('telemetry.monitor.list.summaryDisabled'),
-    value: summaryCounts.value.disabled,
+    value: summary.value.disabled,
     dot: 'var(--tk-text-placeholder)',
   },
 ])
@@ -101,9 +102,19 @@ const columns = computed(() => [
   { prop: 'mode', label: t('telemetry.monitor.list.mode'), minWidth: 120, slot: 'mode' },
   { prop: 'type', label: t('telemetry.monitor.list.type'), minWidth: 100, slot: 'type' },
   { prop: 'schedule', label: t('telemetry.monitor.list.interval'), minWidth: 100, slot: 'schedule' },
+  { prop: 'status', label: t('telemetry.monitor.list.healthStatus'), minWidth: 100, slot: 'status' },
   { prop: 'enabled', label: t('telemetry.monitor.list.status'), minWidth: 100, slot: 'enabled' },
   { prop: 'createdAt', label: t('telemetry.monitor.list.createdAt'), minWidth: 180, align: 'center' as const },
 ])
+
+/** Fetch the dataset-wide summary counts */
+async function fetchSummary(): Promise<void> {
+  try {
+    summary.value = await getMonitorSummary()
+  } catch {
+    // Summary chips are non-critical; keep the last known counts
+  }
+}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -164,6 +175,7 @@ async function handleToggleEnable(row: MonitorPoint, value: boolean): Promise<vo
     }
     row.enabled = value
     ElMessage.success(value ? t('common.app.enabled') : t('common.app.disabled'))
+    void fetchSummary()
   } catch {
     // Errors are handled centrally by the interceptor; revert UI state
     row.enabled = !value
@@ -178,7 +190,7 @@ async function confirmDelete(): Promise<void> {
     ElMessage.success(t('telemetry.monitor.list.deleteSuccess'))
     deleteVisible.value = false
     deleteTarget.value = null
-    await fetchData()
+    await Promise.all([fetchData(), fetchSummary()])
   } catch {
     // Errors are handled centrally by the interceptor
   } finally {
@@ -195,8 +207,29 @@ function formatSchedule(schedule: string): string {
   return schedule
 }
 
+/** Runtime health status of a row, derived with the same rule as the
+ *  backend status endpoint (disabled or passive points are "inactive";
+ *  active points carry the probe-maintained status). */
+function rowHealthStatus(row: MonitorPoint): string {
+  if (row.mode !== 'active' || !row.enabled) return 'inactive'
+  return row.status || 'inactive'
+}
+
+function healthTagType(status: string): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'active') return 'success'
+  if (status === 'error') return 'danger'
+  return 'info'
+}
+
+function healthLabel(status: string): string {
+  if (status === 'active') return t('telemetry.monitor.detail.statusActive')
+  if (status === 'error') return t('common.status.failed')
+  return t('telemetry.monitor.detail.statusInactive')
+}
+
 onMounted(() => {
   void fetchData()
+  void fetchSummary()
 })
 </script>
 
@@ -293,6 +326,20 @@ onMounted(() => {
 
         <template #schedule="{ row }">
           <span class="tk-mono">{{ formatSchedule((row as MonitorPoint).schedule) }}</span>
+        </template>
+
+        <template #status="{ row }">
+          <el-tag
+            v-if="(row as MonitorPoint).mode === 'active'"
+            :type="healthTagType(rowHealthStatus(row as MonitorPoint))"
+            size="small"
+          >
+            {{ healthLabel(rowHealthStatus(row as MonitorPoint)) }}
+          </el-tag>
+          <span
+            v-else
+            class="tk-mono"
+          >-</span>
         </template>
 
         <template #enabled="{ row }">

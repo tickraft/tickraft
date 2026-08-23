@@ -43,7 +43,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 func newTestAuthenticator(t *testing.T) (auth.Authenticator, user.Store, authcore.BlacklistStore) {
 	t.Helper()
 	dbc := newTestDB(t)
-	users := user.NewStore(dbc, nil)
+	users := user.NewStore(dbc)
 	blacklist := authcore.NewBlacklistStore(dbc, nil)
 	mgr, err := jwt.New(jwt.Config{Secret: testSecret}, nil)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestVerifyInvalidToken(t *testing.T) {
 
 func TestVerifyBlacklistedToken(t *testing.T) {
 	dbc := newTestDB(t)
-	users := user.NewStore(dbc, nil)
+	users := user.NewStore(dbc)
 	blacklist := authcore.NewBlacklistStore(dbc, nil)
 
 	blacklistChecker := func(jti string) (bool, error) {
@@ -193,7 +193,7 @@ func TestVerifyUserDeletedFromStore(t *testing.T) {
 
 func TestNewAuthenticatorWithJWT(t *testing.T) {
 	dbc := newTestDB(t)
-	users := user.NewStore(dbc, nil)
+	users := user.NewStore(dbc)
 	blacklist := authcore.NewBlacklistStore(dbc, nil)
 	mgr, err := jwt.New(jwt.Config{
 		Secret:        testSecret,

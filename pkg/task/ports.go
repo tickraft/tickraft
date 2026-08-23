@@ -50,6 +50,17 @@ type ExecutionStatsResult struct {
 	AverageDurationMs float64 `json:"average_duration_ms"`
 }
 
+// DailyStat holds one day's aggregated execution counts, keyed by the
+// calendar date of created_at (server-local, YYYY-MM-DD form). Days
+// without executions are absent from store results; callers zero-fill
+// gaps when a contiguous series is required (trend charts).
+type DailyStat struct {
+	Date    string `json:"date"`
+	Total   int64  `json:"total"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
+}
+
 // ExecutionQuery holds optional filtering criteria for querying execution
 // history. A zero-value query matches all executions.
 type ExecutionQuery struct {
@@ -60,11 +71,14 @@ type ExecutionQuery struct {
 	// empty slice matches nothing (used when a task-name search yields no
 	// tasks). Ignored when nil.
 	TaskIDs []int64
-	// Status filters by the persisted execution status ("normal",
-	// "abnormal", "triggered", ...); empty matches all.
+	// Status filters by the persisted execution status ("success",
+	// "failed", "running", "unknown"); empty matches all.
 	Status string
 	// ExecutorType filters by executor type; empty matches all.
 	ExecutorType string
+	// TriggerType filters by the trigger source ("schedule", "manual",
+	// "event"); empty matches all.
+	TriggerType string
 }
 
 // ExecutionStore persists task execution history.
@@ -86,12 +100,19 @@ type ExecutionStore interface {
 	// for retention-based cleanup of stale execution history.
 	DeleteExecutionsOlderThan(ctx context.Context, before time.Time) error
 	// Stats returns aggregated execution statistics for the given time
-	// range (inclusive on both ends). A range with no executions returns a
-	// zero-valued result. SuccessCount counts executions whose status
-	// indicates success; FailureCount counts those indicating failure;
-	// intermediate statuses (e.g. "triggered") are included in
-	// TotalExecutions but not in either count.
-	Stats(ctx context.Context, from, to time.Time) (ExecutionStatsResult, error)
+	// range (inclusive on both ends). A positive taskID scopes the
+	// aggregation to that task's executions; zero aggregates across all
+	// tasks. A range with no executions returns a zero-valued result.
+	// SuccessCount counts executions whose status indicates success;
+	// FailureCount counts those indicating failure; non-terminal statuses
+	// are included in TotalExecutions but not in either count.
+	Stats(ctx context.Context, from, to time.Time, taskID int64) (ExecutionStatsResult, error)
+	// StatsByDay returns per-day aggregates for the given time range
+	// (inclusive), grouped by the server-local calendar date of created_at
+	// and ordered by date. A positive taskID scopes the aggregation to
+	// that task; zero aggregates across all tasks. Days without
+	// executions are omitted from the result.
+	StatsByDay(ctx context.Context, from, to time.Time, taskID int64) ([]DailyStat, error)
 	// Migrate creates or updates the sys_schedule_log table schema.
 	Migrate(ctx context.Context) error
 }

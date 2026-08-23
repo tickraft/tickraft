@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Record is the GORM persistence model for the sys_prism_channel
+// Channel is the GORM persistence model for the sys_prism_channel
 // table. It stores notification channel definitions managed through the
 // CRUD API at /api/v1/prism/channels.
 //
@@ -19,7 +19,7 @@ import (
 // database row. The open-source edition supports the "webhook" and "email"
 // types; additional types are injected via the extension SPI
 // (channel.Register).
-type Record struct {
+type Channel struct {
 	// ID is the auto-incremented primary key.
 	ID int64 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	// Name is the human-readable channel name.
@@ -34,7 +34,7 @@ type Record struct {
 	// Enabled indicates whether the channel is active and eligible to
 	// receive alert notifications.
 	Enabled bool `gorm:"column:enabled;not null;default:true" json:"enabled"`
-	// LastUsedAt records the last time the channel successfully
+	// LastUsedAt channels the last time the channel successfully
 	// delivered a notification. It is updated by the prism engine
 	// after a successful Send. A nil value means the channel has never
 	// been used.
@@ -43,9 +43,9 @@ type Record struct {
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	// UpdatedAt is the channel last-update timestamp.
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
-	// DeletedAt records the soft-delete timestamp.
+	// DeletedAt channels the soft-delete timestamp.
 	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
 }
 
-// TableName returns the database table name for Record.
-func (Record) TableName() string { return "sys_prism_channel" }
+// TableName returns the database table name for Channel.
+func (Channel) TableName() string { return "sys_prism_channel" }

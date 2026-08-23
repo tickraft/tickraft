@@ -45,6 +45,9 @@ export interface MonitorPoint {
   description?: string
   /** Asset type (host, service, website, device) */
   assetType: string
+  /** Linked asset ID; passive history/logs and active probe records
+   *  are queried through the linked asset / point */
+  assetId?: number
   /** Monitoring mode: "active" (probed) or "passive" (receives) */
   mode: MonitorMode
   /** Prober executor type or listener type */
@@ -52,6 +55,9 @@ export interface MonitorPoint {
   /** Schedule: cron expression or interval string */
   schedule: string
   enabled: boolean
+  /** Derived runtime status (active/inactive/error), maintained by the
+   *  backend probe loop for active points; read-only */
+  status?: string
   /** Type-specific configuration (host, port, url, etc.) */
   config?: Record<string, unknown>
   createdAt: string
@@ -66,6 +72,8 @@ export interface MonitorCreateParams {
   name: string
   description?: string
   assetType: string
+  /** Linked asset ID (sent as asset_id) */
+  assetId?: number
   mode: MonitorMode
   type: MonitorType
   schedule: string
@@ -82,6 +90,8 @@ export interface MonitorUpdateParams {
   name: string
   description?: string
   assetType: string
+  /** Linked asset ID (sent as asset_id) */
+  assetId?: number
   mode: MonitorMode
   type: MonitorType
   schedule: string
@@ -97,6 +107,22 @@ export interface MonitorStatus {
   name: string
   enabled: boolean
   status: string
+  /** Timestamp of the latest probe (active points with probe history) */
+  lastProbeAt?: string
+  /** Latest probe latency in milliseconds (active points) */
+  latencyMs?: number
+}
+
+/**
+ * Monitor point summary counts — aligns with backend telemetry.PointSummary
+ * returned by GET /api/v1/telemetry/monitors/summary (counts span all
+ * pages and tabs, unlike the former per-current-page chip computation).
+ */
+export interface MonitorSummary {
+  active: number
+  passive: number
+  enabled: number
+  disabled: number
 }
 
 /**
@@ -134,8 +160,12 @@ export interface MonitorHistoryEntry {
   timestamp: string
   /** Measured value */
   value: unknown
-  /** Derived status string */
+  /** Probe result status (asset vocabulary: normal/abnormal/offline/unknown);
+   * empty for passive metric rows */
   status: string
+  /** Name of the measured quantity: "latency_ms" for active probe rows, the
+   * collected metric name for passive rows */
+  metric?: string
 }
 
 /**
@@ -180,30 +210,6 @@ export interface TelemetryTemplate {
   isBuiltin: boolean
   createdAt: string
   updatedAt: string
-}
-
-/**
- * Template creation parameters — matches backend templateRequest for
- * POST /api/v1/telemetry/templates.
- */
-export interface TemplateCreateParams {
-  name: string
-  description: string
-  category: string
-  executorType: string
-  config: Record<string, unknown>
-}
-
-/**
- * Template update parameters — same shape as creation, used for
- * PUT /api/v1/telemetry/templates/:id.
- */
-export interface TemplateUpdateParams {
-  name: string
-  description: string
-  category: string
-  executorType: string
-  config: Record<string, unknown>
 }
 
 /**

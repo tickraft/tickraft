@@ -5,7 +5,7 @@
 package alert
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/expr"
@@ -105,7 +105,7 @@ func tagsFromMetadata(raw string) map[string]string {
 	}
 	// Best-effort decode: a non-object or malformed blob leaves the
 	// map empty, which rules read as "no tags".
-	_ = json.Unmarshal([]byte(raw), &tags)
+	_ = sonic.Unmarshal([]byte(raw), &tags)
 	if tags == nil {
 		return map[string]string{}
 	}

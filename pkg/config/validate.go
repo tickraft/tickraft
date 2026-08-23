@@ -90,8 +90,11 @@ func (c *AuthConfig) validate() error {
 	if len(c.JWTSecret) < 32 {
 		return fmt.Errorf("config: auth.jwt_secret must be at least 32 bytes, got %d", len(c.JWTSecret))
 	}
-	if c.TokenTTL.IsZero() {
-		return fmt.Errorf("config: auth.token_ttl must be greater than zero")
+	if c.AccessTTL.IsZero() {
+		return fmt.Errorf("config: auth.access_ttl must be greater than zero")
+	}
+	if c.RefreshTTL.IsZero() {
+		return fmt.Errorf("config: auth.refresh_ttl must be greater than zero")
 	}
 	// Validate the admin username with the canonical rule shared with
 	// pkg/user.ValidateUsername and pkg/db.EnsureAdminUser. Failing fast at

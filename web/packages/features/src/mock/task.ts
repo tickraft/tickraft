@@ -7,17 +7,21 @@ import type { MockMethod } from './types'
 /**
  * Task seed shape (snake_case wire format mirroring backend handler.Task).
  * The request layer camelizes response keys, so the frontend receives
- * { id, name, executor, schedule, config, group, tags, runId, retryPolicy,
- *   concurrency, enabled, createdAt, updatedAt }.
+ * { id, name, executorType, schedule, config, timeout, maxRetries,
+ *   retryInterval, group, tags, runId, retryPolicy, concurrency, enabled,
+ *   createdAt, updatedAt }.
  */
 interface TaskSeed {
   id: number
   name: string
   description: string
-  executor: string
+  executor_type: string
   schedule: string
   enabled: boolean
   config: Record<string, unknown>
+  timeout?: number
+  max_retries?: number
+  retry_interval?: number
   group: string
   tags: string[]
   run_id?: string
@@ -34,99 +38,99 @@ interface TaskSeed {
 const mockTasks: TaskSeed[] = [
   {
     id: 1, name: 'API health check', description: 'Probe the public API health endpoint every minute',
-    executor: 'http', schedule: '60s', enabled: true,
-    config: { url: 'https://api.tickraft.io/health', method: 'GET', headers: '', timeout: 10 },
+    executor_type: 'http', schedule: '60s', enabled: true, timeout: 10,
+    config: { url: 'https://api.tickraft.io/health', method: 'GET', headers: '' },
     group: 'web', tags: ['critical', 'production'], retry_policy: 'fixed', concurrency: 3, run_id: 'run-20260630-135800',
     created_at: '2026-06-01 10:00:00', updated_at: '2026-06-15 09:30:00',
   },
   {
     id: 2, name: 'MySQL master-slave sync check', description: 'Check MySQL master-slave port connectivity every 5 minutes',
-    executor: 'tcp', schedule: '*/5 * * * *', enabled: true,
-    config: { host: 'prod-db-02', port: 3306, timeout: 5 },
+    executor_type: 'tcp', schedule: '*/5 * * * *', enabled: true, timeout: 5, max_retries: 3, retry_interval: 30,
+    config: { host: 'prod-db-02', port: 3306 },
     group: 'database', tags: ['production'], retry_policy: 'fixed',
     created_at: '2026-06-02 11:20:00', updated_at: '2026-06-12 14:00:00',
   },
   {
     id: 3, name: 'CDN edge ICMP probe', description: 'Ping the CDN edge node every 30 seconds to measure latency',
-    executor: 'icmp', schedule: '30s', enabled: true,
-    config: { host: 'cdn-edge-01.tickraft.io', count: 4, timeout: 3 },
+    executor_type: 'icmp', schedule: '30s', enabled: true, timeout: 3,
+    config: { host: 'cdn-edge-01.tickraft.io', count: 4 },
     group: 'web', tags: ['edge'], retry_policy: 'fixed', run_id: 'run-20260630-140030',
     created_at: '2026-06-03 09:00:00', updated_at: '2026-06-20 16:30:00',
   },
   {
     id: 4, name: 'Nightly log archive', description: 'Archive previous day logs at 02:00 every day',
-    executor: 'local', schedule: '0 2 * * *', enabled: true,
-    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/archive_logs.sh --keep-days 30', timeout: 600 },
+    executor_type: 'local', schedule: '0 2 * * *', enabled: true, timeout: 600,
+    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/archive_logs.sh --keep-days 30' },
     group: 'infra', tags: ['nightly'], retry_policy: 'fixed', concurrency: 1,
     created_at: '2026-05-28 18:00:00', updated_at: '2026-06-25 09:15:00',
   },
   {
     id: 5, name: 'Webhook alert forwarding', description: 'Forward alert payloads to the external webhook endpoint on demand',
-    executor: 'webhook', schedule: '', enabled: true,
+    executor_type: 'webhook', schedule: '', enabled: true,
     config: { url: 'https://hooks.example.com/alert', method: 'POST', headers: 'Authorization: Bearer wh_*****' },
     group: 'alerting', tags: ['critical'], retry_policy: 'exponential',
     created_at: '2026-06-05 14:00:00', updated_at: '2026-06-22 11:45:00',
   },
   {
     id: 6, name: 'Redis cache cleanup', description: 'Clean expired cache keys every 6 hours',
-    executor: 'local', schedule: '0 */6 * * *', enabled: true,
-    config: { interpreter: 'bash', source: 'redis-cli --scan --pattern "tmp:*" | xargs -r redis-cli del', timeout: 120 },
+    executor_type: 'local', schedule: '0 */6 * * *', enabled: true, timeout: 120, max_retries: 3, retry_interval: 30,
+    config: { interpreter: 'bash', source: 'redis-cli --scan --pattern "tmp:*" | xargs -r redis-cli del' },
     group: 'database', tags: ['maintenance'], retry_policy: 'fixed',
     created_at: '2026-05-30 10:00:00', updated_at: '2026-06-18 13:00:00',
   },
   {
     id: 7, name: 'API benchmark smoke test', description: 'One-shot benchmark against the staging API (disabled)',
-    executor: 'http', schedule: '', enabled: false,
-    config: { url: 'http://prod-api-03:8080/benchmark', method: 'POST', headers: '', timeout: 300 },
+    executor_type: 'http', schedule: '', enabled: false, timeout: 300,
+    config: { url: 'http://prod-api-03:8080/benchmark', method: 'POST', headers: '' },
     group: 'web', tags: ['benchmark'], retry_policy: 'fixed', concurrency: 5,
     created_at: '2026-06-25 14:30:00', updated_at: '2026-06-28 11:00:00',
   },
   {
     id: 8, name: 'Weekly backup upload to OSS', description: 'Upload archived backups to OSS at 03:00 every Sunday',
-    executor: 'local', schedule: '0 3 * * 0', enabled: true,
-    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/upload_oss.sh --bucket=backup', timeout: 1800 },
+    executor_type: 'local', schedule: '0 3 * * 0', enabled: true, timeout: 1800,
+    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/upload_oss.sh --bucket=backup' },
     group: 'infra', tags: ['backup', 'weekly'], retry_policy: 'fixed',
     created_at: '2026-05-25 09:00:00', updated_at: '2026-06-26 10:00:00',
   },
   {
     id: 9, name: 'DNS resolution probe', description: 'Resolve the public API domain via the intranet DNS server every 5 minutes',
-    executor: 'local', schedule: '5m', enabled: true,
-    config: { interpreter: 'bash', source: 'dig +short api.tickraft.io @10.0.0.53', timeout: 15 },
+    executor_type: 'local', schedule: '5m', enabled: true, timeout: 15,
+    config: { interpreter: 'bash', source: 'dig +short api.tickraft.io @10.0.0.53' },
     group: 'network', tags: ['dns'], retry_policy: 'fixed',
     created_at: '2026-06-07 13:00:00', updated_at: '2026-06-24 16:00:00',
   },
   {
     id: 10, name: 'PostgreSQL port listen check', description: 'Check the PostgreSQL 5432 port every 2 minutes',
-    executor: 'tcp', schedule: '120s', enabled: true,
-    config: { host: 'prod-db-03', port: 5432, timeout: 5 },
+    executor_type: 'tcp', schedule: '120s', enabled: true, timeout: 5,
+    config: { host: 'prod-db-03', port: 5432 },
     group: 'database', tags: [], retry_policy: 'fixed',
     created_at: '2026-06-04 10:00:00', updated_at: '2026-06-21 14:30:00',
   },
   {
     id: 11, name: 'Intranet gateway ICMP probe', description: 'Ping the intranet gateway every minute',
-    executor: 'icmp', schedule: '60s', enabled: true,
-    config: { host: '10.0.0.1', count: 4, timeout: 3 },
+    executor_type: 'icmp', schedule: '60s', enabled: true, timeout: 3,
+    config: { host: '10.0.0.1', count: 4 },
     group: 'network', tags: ['critical'], retry_policy: 'fixed', run_id: 'run-20260630-140000',
     created_at: '2026-06-06 11:00:00', updated_at: '2026-06-23 09:00:00',
   },
   {
     id: 12, name: 'Config file sync', description: 'Triggered by config change events, sync to all nodes (disabled)',
-    executor: 'local', schedule: '', enabled: false,
-    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/sync_config.sh --all-nodes', timeout: 60 },
+    executor_type: 'local', schedule: '', enabled: false, timeout: 60,
+    config: { interpreter: 'bash', source: '/opt/tickraft/scripts/sync_config.sh --all-nodes' },
     group: 'infra', tags: [], retry_policy: 'fixed',
     created_at: '2026-05-29 14:00:00', updated_at: '2026-06-27 15:30:00',
   },
   {
     id: 13, name: 'Payment callback availability check', description: 'Check the payment callback API availability every 10 minutes',
-    executor: 'http', schedule: '*/10 * * * *', enabled: true,
-    config: { url: 'https://api.tickraft.io/pay/callback', method: 'GET', headers: '', timeout: 8 },
+    executor_type: 'http', schedule: '*/10 * * * *', enabled: true, timeout: 8, max_retries: 3, retry_interval: 60,
+    config: { url: 'https://api.tickraft.io/pay/callback', method: 'GET', headers: '' },
     group: 'web', tags: ['critical', 'payment'], retry_policy: 'exponential', concurrency: 5,
     created_at: '2026-06-08 13:00:00', updated_at: '2026-06-26 16:00:00',
   },
   {
     id: 14, name: 'Kafka broker port check', description: 'Check the Kafka 9092 port every 90 seconds (disabled)',
-    executor: 'tcp', schedule: '90s', enabled: false,
-    config: { host: 'prod-kafka-01', port: 9092, timeout: 5 },
+    executor_type: 'tcp', schedule: '90s', enabled: false, timeout: 5,
+    config: { host: 'prod-kafka-01', port: 9092 },
     group: 'middleware', tags: ['production'], retry_policy: 'fixed',
     created_at: '2026-06-09 10:30:00', updated_at: '2026-06-25 11:00:00',
   },
@@ -257,10 +261,13 @@ export default [
         id: Math.max(0, ...mockTasks.map((t) => t.id)) + 1,
         name: String(body.name ?? ''),
         description: String(body.description ?? ''),
-        executor: String(body.executor ?? 'local'),
+        executor_type: String(body.executor_type ?? 'local'),
         schedule: String(body.schedule ?? ''),
         enabled: body.enabled === undefined ? true : Boolean(body.enabled),
         config: asConfig(body.config),
+        timeout: Number(body.timeout ?? 30) || 30,
+        max_retries: Number(body.max_retries ?? 0) || 0,
+        retry_interval: Number(body.retry_interval ?? 0) || 0,
         group: String(body.group ?? ''),
         tags: asStringArray(body.tags),
         retry_policy: String(body.retry_policy ?? 'fixed'),
@@ -272,16 +279,29 @@ export default [
       return { code: 0, message: 'success', data: task }
     },
   },
-  // Execution stats for an optional time range.
+  // Execution stats for an optional time range, task_id scope, or days
+  // window (zero-filled server-local daily series).
   // NOTE: must stay above /tasks/:id — the mock server matches routes in
   // array order and ":id" would otherwise capture the literal "stats".
   {
     url: '/api/v1/tasks/stats',
     method: 'get',
     response: ({ query }: { query: Record<string, string> }) => {
-      const fromTs = query?.from ? new Date(query.from).getTime() : 0
-      const toTs = query?.to ? new Date(query.to).getTime() : 0
-      const inRange = mockLogs.filter((l) => {
+      let pool = [...mockLogs]
+      const taskId = Number(query?.task_id ?? 0)
+      if (taskId) pool = pool.filter((l) => l.task_id === taskId)
+
+      const days = Number(query?.days ?? 0)
+      let fromTs = query?.from ? new Date(query.from).getTime() : 0
+      let toTs = query?.to ? new Date(query.to).getTime() : 0
+      let windowStart: Date | null = null
+      if (days > 0) {
+        const now = new Date()
+        windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1))
+        fromTs = windowStart.getTime()
+        toTs = now.getTime()
+      }
+      const inRange = pool.filter((l) => {
         const ts = new Date(l.started_at.replace(' ', 'T')).getTime()
         if (fromTs && ts < fromTs) return false
         if (toTs && ts > toTs) return false
@@ -293,6 +313,32 @@ export default [
       const avgDuration = total
         ? Math.round(inRange.reduce((sum, l) => sum + (l.duration || 0), 0) / total)
         : 0
+
+      // Zero-filled contiguous daily series keyed by local calendar date,
+      // mirroring the backend fillDailySeries semantics.
+      let daily: { date: string; total: number; success: number; failed: number }[] | undefined
+      if (days > 0 && windowStart) {
+        const pad = (n: number): string => String(n).padStart(2, '0')
+        const localDate = (d: Date): string =>
+          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+        const byDate = new Map<string, { total: number; success: number; failed: number }>()
+        for (const l of inRange) {
+          const key = localDate(new Date(l.started_at.replace(' ', 'T')))
+          const entry = byDate.get(key) ?? { total: 0, success: 0, failed: 0 }
+          entry.total++
+          if (l.status === 'success') entry.success++
+          if (l.status === 'failed') entry.failed++
+          byDate.set(key, entry)
+        }
+        daily = []
+        for (let i = 0; i < days; i++) {
+          const key = localDate(
+            new Date(windowStart.getFullYear(), windowStart.getMonth(), windowStart.getDate() + i),
+          )
+          daily.push({ date: key, ...(byDate.get(key) ?? { total: 0, success: 0, failed: 0 }) })
+        }
+      }
+
       return {
         code: 0,
         message: 'success',
@@ -302,6 +348,7 @@ export default [
           failure_count: failed,
           success_rate: total ? Math.round((success / total) * 10000) / 100 : 0,
           average_duration_ms: avgDuration,
+          ...(daily ? { daily } : {}),
         },
       }
     },
@@ -384,7 +431,7 @@ export default [
     },
   },
   // Execution log list (sub-resource: /tasks/:id/executions).
-  // Filters: page/size/task_name/executor/status; taskId=0 means all tasks.
+  // Filters: page/size/task_name/executor_type/status; taskId=0 means all tasks.
   {
     url: '/api/v1/tasks/:id/executions',
     method: 'get',
@@ -400,8 +447,8 @@ export default [
         const keyword = query.task_name.trim().toLowerCase()
         filtered = filtered.filter((l) => (l.task_name || '').toLowerCase().includes(keyword))
       }
-      if (query?.executor) {
-        filtered = filtered.filter((l) => l.executor_type === query.executor)
+      if (query?.executor_type) {
+        filtered = filtered.filter((l) => l.executor_type === query.executor_type)
       }
       if (query?.status) {
         filtered = filtered.filter((l) => l.status === query.status)
@@ -421,5 +468,21 @@ export default [
       const log = mockLogs.find((l) => l.id === execId)
       return { code: 0, message: 'success', data: log || mockLogs[0] }
     },
+  },
+
+  // Executor catalog (registry-derived; matches the backend's task-executable
+  // capability predicate, so probe-only executors like icmp/tcp are absent)
+  {
+    url: '/api/v1/executors',
+    method: 'get',
+    response: () => ({
+      code: 0,
+      message: 'success',
+      data: [
+        { type: 'http', name: 'HTTP Request', description: 'Call an HTTP/HTTPS endpoint and validate the response' },
+        { type: 'local', name: 'Local Script', description: 'Run a local shell script through the configured interpreter' },
+        { type: 'webhook', name: 'Webhook', description: 'Deliver a signed webhook notification to an external system' },
+      ],
+    }),
   },
 ] as MockMethod[]

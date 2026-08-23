@@ -36,14 +36,17 @@ type Runner interface {
 // RecordStore persists execution records.
 // Implementations must be safe for concurrent use.
 type RecordStore interface {
-	// Save persists an execution record.
-	Save(record ExecutionRecord) error
+	// Save persists an execution record. The runner passes a context
+	// detached from the execution's own deadline so the durable write
+	// survives execution timeouts and shutdown; implementations should
+	// treat it as a carrier of request-scoped values, not cancellation.
+	Save(ctx context.Context, record ExecutionRecord) error
 }
 
 // noopRecordStore is a no-op implementation used when no store is configured.
 type noopRecordStore struct{}
 
-func (noopRecordStore) Save(_ ExecutionRecord) error { return nil }
+func (noopRecordStore) Save(_ context.Context, _ ExecutionRecord) error { return nil }
 
 // runner is the default Runner implementation.
 type runner struct {
@@ -364,16 +367,19 @@ func (r *runner) dispatch(ctx context.Context, ev event.Event[event.ExecutionPay
 	tenantID, _ := strconv.ParseInt(payload.TenantID, 10, 64)
 	assetID, _ := strconv.ParseInt(payload.AssetID, 10, 64)
 	req := ExecutionRequest{
-		ID:           taskID,
-		TenantID:     tenantID,
-		AssetID:      assetID,
-		ExecutorName: payload.ExecutorType,
-		Config:       payload.Config,
-		Operation:    operationOrDefault(payload.Action),
-		Timeout:      time.Duration(payload.Timeout),
-		RunID:        payload.RunID,
-		TriggerType:  payload.TriggerType,
-		Metadata:     ev.Metadata,
+		ID:            taskID,
+		TenantID:      tenantID,
+		AssetID:       assetID,
+		ExecutorName:  payload.ExecutorType,
+		Config:        payload.Config,
+		Operation:     operationOrDefault(payload.Operation),
+		Timeout:       time.Duration(payload.TimeoutSeconds) * time.Second,
+		MaxRetries:    payload.MaxRetries,
+		RetryInterval: time.Duration(payload.RetryIntervalSeconds) * time.Second,
+		RunID:         payload.RunID,
+		TriggerType:   payload.TriggerType,
+		TriggeredAt:   time.Now(),
+		Metadata:      ev.Metadata,
 	}
 
 	// Guard against adding to a drained WaitGroup after Stop. The read

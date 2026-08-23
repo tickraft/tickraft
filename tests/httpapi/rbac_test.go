@@ -56,12 +56,12 @@ func TestRBACRoleMatrix(t *testing.T) {
 
 	// Developer: task writes allowed (create + delete own task).
 	taskBody := map[string]any{
-		"name":        "rbac-dev-task",
-		"description": "created by developer",
-		"executor":    "local",
-		"schedule":    "0 0 1 1 *",
-		"enabled":     false,
-		"config":      map[string]any{"command": "echo rbac"},
+		"name":          "rbac-dev-task",
+		"description":   "created by developer",
+		"executor_type": "local",
+		"schedule":      "0 0 1 1 *",
+		"enabled":       false,
+		"config":        map[string]any{"command": "echo rbac"},
 	}
 	status, env = hs.do("POST", "/api/v1/tasks", taskBody, developerToken)
 	if status != http.StatusCreated && status != http.StatusOK {

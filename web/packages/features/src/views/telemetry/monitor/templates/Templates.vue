@@ -38,6 +38,22 @@ const searchModel = reactive<Record<string, unknown>>({
   category: '',
 })
 
+/** Category filter options derived from the templates actually loaded —
+ * the backend vocabulary (network/web/database/security/...) is the source
+ * of truth, so no stale hardcoded options can appear. */
+const categoryOptions = computed(() => {
+  const categories = new Set<string>()
+  for (const item of allTemplates.value) {
+    if (item.category) {
+      categories.add(item.category)
+    }
+  }
+  return Array.from(categories).map((category) => ({
+    label: t(`telemetry.monitor.templates.categoryName.${category}`, category),
+    value: category,
+  }))
+})
+
 const searchFields = computed(() => [
   {
     prop: 'category',
@@ -45,10 +61,7 @@ const searchFields = computed(() => [
     type: 'select' as const,
     placeholder: t('telemetry.monitor.templates.allCategories'),
     span: 8,
-    options: [
-      { label: t('telemetry.monitor.templates.categoryProbe'), value: 'probe' },
-      { label: t('telemetry.monitor.templates.categoryMonitor'), value: 'monitor' },
-    ],
+    options: categoryOptions.value,
   },
 ])
 
@@ -107,7 +120,7 @@ const pagedData = computed(() => {
 /** Table columns */
 const columns = computed(() => [
   { prop: 'name', label: t('telemetry.monitor.templates.name'), minWidth: 160 },
-  { prop: 'category', label: t('telemetry.monitor.templates.category'), width: 120 },
+  { prop: 'category', label: t('telemetry.monitor.templates.category'), width: 120, slot: 'category' },
   { prop: 'executorType', label: t('telemetry.monitor.templates.executorType'), width: 120, slot: 'executorType' },
   { prop: 'isBuiltin', label: t('telemetry.monitor.templates.builtin'), width: 100, slot: 'isBuiltin' },
   { prop: 'updatedAt', label: t('telemetry.monitor.templates.updatedAt'), width: 180, slot: 'updatedAt' },
@@ -299,6 +312,9 @@ onMounted(() => {
       row-key="id"
       @page-change="handlePageChange"
     >
+      <template #category="{ row }">
+        {{ t(`telemetry.monitor.templates.categoryName.${row.category}`, row.category) }}
+      </template>
       <template #executorType="{ row }">
         <span
           class="tk-type-badge"
@@ -309,7 +325,10 @@ onMounted(() => {
         </span>
       </template>
       <template #isBuiltin="{ row }">
-        <el-tag :type="row.isBuiltin ? 'info' : 'success'" size="small">
+        <el-tag
+          :type="row.isBuiltin ? 'info' : 'success'"
+          size="small"
+        >
           {{ row.isBuiltin ? t('telemetry.monitor.templates.builtinYes') : t('telemetry.monitor.templates.builtinNo') }}
         </el-tag>
       </template>

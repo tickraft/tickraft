@@ -6,11 +6,12 @@ package event
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
@@ -65,7 +66,7 @@ func (s *failedEventStore) Migrate(ctx context.Context) error {
 // The envelope payload is JSON-encoded; unencodable payloads are stored as
 // their fmt-formatted string representation so no failed event is ever lost.
 func (s *failedEventStore) Save(ctx context.Context, env Envelope, err error) error {
-	payloadBytes, mErr := json.Marshal(env.Payload)
+	payloadBytes, mErr := sonic.Marshal(env.Payload)
 	payloadStr := string(payloadBytes)
 	if mErr != nil {
 		payloadStr = fmt.Sprintf("%v", env.Payload)

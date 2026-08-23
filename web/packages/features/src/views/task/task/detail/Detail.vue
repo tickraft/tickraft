@@ -72,7 +72,9 @@ async function fetchData(): Promise<void> {
     const [taskData, logsData, stats] = await Promise.all([
       getTask(taskId),
       getLogs(taskId, { page: 1, size: 10 }),
-      getExecutionStats().catch(() => null),
+      // Scoped to this task; the global aggregate would misrepresent the
+      // per-task success rate shown on this page.
+      getExecutionStats({ taskId }).catch(() => null),
     ])
     task.value = taskData
     logs.value = logsData.items
@@ -128,11 +130,19 @@ onMounted(() => { void fetchData() })
 </script>
 
 <template>
-  <div v-loading="loading" class="tk-task-detail tk-page-container">
+  <div
+    v-loading="loading"
+    class="tk-task-detail tk-page-container"
+  >
     <!-- Not found -->
     <template v-if="notFound">
       <PageEmpty :description="t('task.task.detail.notFound', { id: taskId })">
-        <el-button type="primary" @click="handleBack">{{ t('task.task.detail.back') }}</el-button>
+        <el-button
+          type="primary"
+          @click="handleBack"
+        >
+          {{ t('task.task.detail.back') }}
+        </el-button>
       </PageEmpty>
     </template>
 
@@ -140,19 +150,38 @@ onMounted(() => { void fetchData() })
       <!-- Header: back + eyebrow + title + badges + actions -->
       <div class="tk-detail-header">
         <div class="tk-detail-header__left">
-          <button class="tk-detail-header__back" :title="t('task.task.detail.back')" @click="handleBack">
-            <el-icon :size="16"><ArrowLeft /></el-icon>
+          <button
+            class="tk-detail-header__back"
+            :title="t('task.task.detail.back')"
+            @click="handleBack"
+          >
+            <el-icon :size="16">
+              <ArrowLeft />
+            </el-icon>
           </button>
           <div class="tk-detail-header__title-block">
-            <div class="tk-detail-header__eyebrow">{{ t('task.task.detail.eyebrow', { id: taskId }) }}</div>
+            <div class="tk-detail-header__eyebrow">
+              {{ t('task.task.detail.eyebrow', { id: taskId }) }}
+            </div>
             <div class="tk-detail-header__title-row">
-              <h1 class="tk-detail-header__title">{{ task.name }}</h1>
-              <span class="tk-executor-badge" :class="`tk-executor-badge--${task.executor}`">
+              <h1 class="tk-detail-header__title">
+                {{ task.name }}
+              </h1>
+              <span
+                class="tk-executor-badge"
+                :class="`tk-executor-badge--${task.executorType}`"
+              >
                 <span class="tk-executor-badge__dot" />
-                {{ EXECUTOR_LABELS[task.executor] || task.executor }}
-                <span v-if="PRO_EXECUTORS[task.executor]" class="tk-executor-badge__edition">PRO</span>
+                {{ EXECUTOR_LABELS[task.executorType] || task.executorType }}
+                <span
+                  v-if="PRO_EXECUTORS[task.executorType]"
+                  class="tk-executor-badge__edition"
+                >PRO</span>
               </span>
-              <span class="tk-status-tag" :class="task.enabled ? 'tk-status-tag--success' : 'tk-status-tag--unknown'">
+              <span
+                class="tk-status-tag"
+                :class="task.enabled ? 'tk-status-tag--success' : 'tk-status-tag--unknown'"
+              >
                 <span class="tk-status-tag__dot" />
                 {{ task.enabled ? t('common.app.enabled') : t('common.app.disabled') }}
               </span>
@@ -161,56 +190,131 @@ onMounted(() => { void fetchData() })
           </div>
         </div>
         <div class="tk-detail-header__actions">
-          <el-button @click="handleEdit"><el-icon><Edit /></el-icon>{{ t('task.task.detail.edit') }}</el-button>
-          <el-button type="primary" :loading="triggerLoading" @click="handleTrigger">
+          <el-button @click="handleEdit">
+            <el-icon><Edit /></el-icon>{{ t('task.task.detail.edit') }}
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="triggerLoading"
+            @click="handleTrigger"
+          >
             <el-icon><Lightning /></el-icon>{{ t('task.task.detail.trigger') }}
           </el-button>
-          <el-button v-if="canDelete('task')" type="danger" @click="handleDelete"><el-icon><Delete /></el-icon>{{ t('task.task.detail.delete') }}</el-button>
+          <el-button
+            v-if="canDelete('task')"
+            type="danger"
+            @click="handleDelete"
+          >
+            <el-icon><Delete /></el-icon>{{ t('task.task.detail.delete') }}
+          </el-button>
         </div>
       </div>
 
       <!-- Stat strip: 4 tiles with accent borders -->
       <div class="tk-stat-strip">
         <div class="tk-stat-tile">
-          <div class="tk-stat-tile__label">{{ t('task.task.detail.totalExec') }}</div>
-          <div class="tk-stat-tile__value">{{ totalExec }}</div>
-          <div class="tk-stat-tile__sub">{{ t('task.task.detail.totalExecSub') }}</div>
+          <div class="tk-stat-tile__label">
+            {{ t('task.task.detail.totalExec') }}
+          </div>
+          <div class="tk-stat-tile__value">
+            {{ totalExec }}
+          </div>
+          <div class="tk-stat-tile__sub">
+            {{ t('task.task.detail.totalExecSub') }}
+          </div>
         </div>
         <div class="tk-stat-tile tk-stat-tile--ok">
-          <div class="tk-stat-tile__label">{{ t('task.task.detail.successRate') }}</div>
-          <div class="tk-stat-tile__value">{{ successRate }}%</div>
-          <div class="tk-stat-tile__sub tk-stat-tile__sub--ok">{{ t('task.task.detail.successRateSub', { count: successCount }) }}</div>
+          <div class="tk-stat-tile__label">
+            {{ t('task.task.detail.successRate') }}
+          </div>
+          <div class="tk-stat-tile__value">
+            {{ successRate }}%
+          </div>
+          <div class="tk-stat-tile__sub tk-stat-tile__sub--ok">
+            {{ t('task.task.detail.successRateSub', { count: successCount }) }}
+          </div>
         </div>
         <div class="tk-stat-tile tk-stat-tile--warn">
-          <div class="tk-stat-tile__label">{{ t('task.task.detail.failed') }}</div>
-          <div class="tk-stat-tile__value">{{ failedCount }}</div>
-          <div class="tk-stat-tile__sub tk-stat-tile__sub--fail">{{ t('task.task.detail.failedSub') }}</div>
+          <div class="tk-stat-tile__label">
+            {{ t('task.task.detail.failed') }}
+          </div>
+          <div class="tk-stat-tile__value">
+            {{ failedCount }}
+          </div>
+          <div class="tk-stat-tile__sub tk-stat-tile__sub--fail">
+            {{ t('task.task.detail.failedSub') }}
+          </div>
         </div>
         <div class="tk-stat-tile tk-stat-tile--info">
-          <div class="tk-stat-tile__label">{{ t('task.task.detail.avgDuration') }}</div>
-          <div class="tk-stat-tile__value">{{ formatDuration(avgDuration) }}</div>
-          <div class="tk-stat-tile__sub">{{ t('task.task.detail.avgDurationSub', { count: Math.min(totalExec, 20) }) }}</div>
+          <div class="tk-stat-tile__label">
+            {{ t('task.task.detail.avgDuration') }}
+          </div>
+          <div class="tk-stat-tile__value">
+            {{ formatDuration(avgDuration) }}
+          </div>
+          <div class="tk-stat-tile__sub">
+            {{ t('task.task.detail.avgDurationSub', { count: Math.min(totalExec, 20) }) }}
+          </div>
         </div>
       </div>
 
       <!-- Tabs card -->
       <div class="tk-detail-card">
-        <el-tabs v-model="activeTab" class="tk-detail-tabs">
+        <el-tabs
+          v-model="activeTab"
+          class="tk-detail-tabs"
+        >
           <!-- Basic Info -->
-          <el-tab-pane :label="t('task.task.detail.basicInfo')" name="basic">
+          <el-tab-pane
+            :label="t('task.task.detail.basicInfo')"
+            name="basic"
+          >
             <div class="tk-descriptions">
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.list.name') }}</span><span class="tk-desc-item__value">{{ task.name }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">ID</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.id }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.executorType') }}</span><span class="tk-desc-item__value">{{ EXECUTOR_LABELS[task.executor] || task.executor }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.scheduleExpr') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.schedule || '—' }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.create.group') }}</span><span class="tk-desc-item__value">{{ task.group || '—' }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.list.tags') }}</span><span class="tk-desc-item__value">{{ tagsText }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.create.retryPolicy') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.retryPolicy || '—' }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.create.concurrency') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.concurrency ?? 0 }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.enabled') }}</span><span class="tk-desc-item__value">{{ task.enabled ? t('common.app.enabled') : t('common.app.disabled') }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.description') }}</span><span class="tk-desc-item__value">{{ task.description || '—' }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.createdAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(task.createdAt) }}</span></div>
-              <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.task.detail.updatedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(task.updatedAt) }}</span></div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.list.name') }}</span><span class="tk-desc-item__value">{{ task.name }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">ID</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.id }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.executorType') }}</span><span class="tk-desc-item__value">{{ EXECUTOR_LABELS[task.executorType] || task.executorType }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.scheduleExpr') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.schedule || '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.group') }}</span><span class="tk-desc-item__value">{{ task.group || '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.list.tags') }}</span><span class="tk-desc-item__value">{{ tagsText }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.retryPolicy') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.retryPolicy || '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.maxRetries') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.maxRetries ?? 0 }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.retryInterval') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.retryInterval ? `${task.retryInterval}s` : '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.timeout') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.timeout ? `${task.timeout}s` : '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.create.concurrency') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ task.concurrency ?? 0 }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.enabled') }}</span><span class="tk-desc-item__value">{{ task.enabled ? t('common.app.enabled') : t('common.app.disabled') }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.description') }}</span><span class="tk-desc-item__value">{{ task.description || '—' }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.createdAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(task.createdAt) }}</span>
+              </div>
+              <div class="tk-desc-item">
+                <span class="tk-desc-item__label">{{ t('task.task.detail.updatedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(task.updatedAt) }}</span>
+              </div>
             </div>
           </el-tab-pane>
 
@@ -228,25 +332,57 @@ onMounted(() => { void fetchData() })
               density="compact"
               @row-click="handleLogDetail"
             >
-              <template #id="{ row }"><span class="tk-mono-id">#{{ (row as LogModel).id }}</span></template>
-              <template #status="{ row }"><StatusTag category="log" :status="(row as LogModel).status" size="sm" /></template>
-              <template #startedAt="{ row }"><span class="tk-mono-text">{{ formatDate((row as LogModel).startedAt) }}</span></template>
+              <template #id="{ row }">
+                <span class="tk-mono-id">#{{ (row as LogModel).id }}</span>
+              </template>
+              <template #status="{ row }">
+                <StatusTag
+                  category="log"
+                  :status="(row as LogModel).status"
+                  size="sm"
+                />
+              </template>
+              <template #startedAt="{ row }">
+                <span class="tk-mono-text">{{ formatDate((row as LogModel).startedAt) }}</span>
+              </template>
             </DataTable>
-            <div v-else class="tk-empty-inline">{{ t('task.task.detail.noLogs') }}</div>
-            <div v-if="logs.length > 0" class="tk-logs-footer">
-              <el-button link type="primary" @click="handleViewAllLogs">{{ t('task.task.detail.viewAllLogs') }} →</el-button>
+            <div
+              v-else
+              class="tk-empty-inline"
+            >
+              {{ t('task.task.detail.noLogs') }}
+            </div>
+            <div
+              v-if="logs.length > 0"
+              class="tk-logs-footer"
+            >
+              <el-button
+                link
+                type="primary"
+                @click="handleViewAllLogs"
+              >
+                {{ t('task.task.detail.viewAllLogs') }} →
+              </el-button>
             </div>
           </el-tab-pane>
 
           <!-- Trend -->
-          <el-tab-pane :label="t('task.task.detail.trend')" name="trend">
+          <el-tab-pane
+            :label="t('task.task.detail.trend')"
+            name="trend"
+          >
             <TrendTab :logs="logs" />
           </el-tab-pane>
 
           <!-- Config -->
-          <el-tab-pane :label="t('task.task.detail.configJson')" name="config">
+          <el-tab-pane
+            :label="t('task.task.detail.configJson')"
+            name="config"
+          >
             <div class="tk-code-section">
-              <div class="tk-code-section__label">{{ t('task.task.detail.configArgs') }}</div>
+              <div class="tk-code-section__label">
+                {{ t('task.task.detail.configArgs') }}
+              </div>
               <pre class="tk-json-view">{{ configJson }}</pre>
             </div>
           </el-tab-pane>
@@ -255,9 +391,14 @@ onMounted(() => { void fetchData() })
     </template>
   </div>
 
-  <ConfirmDialog v-model="deleteVisible" :title="t('task.task.detail.delete')"
+  <ConfirmDialog
+    v-model="deleteVisible"
+    :title="t('task.task.detail.delete')"
     :content="t('task.task.list.deleteConfirm', { name: task?.name ?? '' })"
-    :loading="deleteLoading" type="danger" @confirm="confirmDelete" />
+    :loading="deleteLoading"
+    type="danger"
+    @confirm="confirmDelete"
+  />
 </template>
 
 <style scoped lang="scss">

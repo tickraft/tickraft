@@ -18,6 +18,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/executor/internal/deadline"
+	"github.com/tickraft/tickraft/pkg/executor/internal/httputil"
 	"github.com/tickraft/tickraft/pkg/httpx"
 	"github.com/tickraft/tickraft/pkg/types"
 )
@@ -58,9 +60,14 @@ func (o httpClientOption) apply(e *Executor) { e.client = o.client }
 func WithHTTPClient(client *http.Client) Option { return httpClientOption{client: client} }
 
 // New creates a new webhook executor.
+//
+// Per-request timeouts are controlled by the caller's context (this executor
+// applies req.Timeout on top; the runner's lifecycle and the remediation
+// operator wrap every call too). The pooled client only carries the defensive
+// httputil.HardTimeout ceiling.
 func New(options ...Option) *Executor {
 	e := &Executor{
-		client: httpx.NewPoolClient(httpx.Config{Timeout: 30 * time.Second}),
+		client: httpx.NewPoolClient(httpx.Config{Timeout: httputil.HardTimeout}),
 		logger: zap.NewNop(),
 	}
 	for _, o := range options {
@@ -82,8 +89,8 @@ type config struct {
 	Headers map[string][]string `json:"headers,omitempty"`
 	Body    string              `json:"body,omitempty"`
 	// ExpectStatus is the required HTTP response status code. Zero (the
-	// default) accepts any 2xx status as normal, matching the http
-	// executor's semantics.
+	// default) accepts any 2xx status as normal, sharing the judgment of
+	// httputil.ResponseStatus with the http executor.
 	ExpectStatus int `json:"expect_status,omitempty"`
 }
 
@@ -104,22 +111,6 @@ func parseConfig(raw string) (*config, error) {
 		cfg.Method = http.MethodPost
 	}
 	return &cfg, nil
-}
-
-// responseStatus maps an HTTP status code to an asset status: an explicit
-// expect_status requires an exact match; otherwise any 2xx is normal
-// (aligned with the http executor).
-func responseStatus(expect, code int) types.AssetStatus {
-	if expect > 0 {
-		if code == expect {
-			return types.AssetStatusNormal
-		}
-		return types.AssetStatusAbnormal
-	}
-	if code >= 200 && code < 300 {
-		return types.AssetStatusNormal
-	}
-	return types.AssetStatusAbnormal
 }
 
 // Execute runs the webhook task and returns the result.
@@ -148,12 +139,15 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		return nil, err
 	}
 
-	// Timeout control.
+	// Timeout control. The caller's context is the single source: through
+	// the runner's lifecycle it already carries req.Timeout as its
+	// deadline. The fallback below only serves direct callers whose
+	// context has no deadline.
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := deadline.Fallback(ctx, timeout)
 	defer cancel()
 
 	start := time.Now()
@@ -184,18 +178,22 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		r.Status = types.AssetStatusAbnormal
 		r.ErrorMsg = err.Error()
 		r.Duration = duration
+		r.Metrics["response_ms"] = float64(duration.Milliseconds())
 		return r, nil
 	}
 	defer func() { _ = resp.Body.Close() }() // best-effort close, error not actionable
 
-	// Read response body with truncation protection (64KB).
-	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	// Read response body with truncation protection.
+	bodyBytes := httputil.ReadBody(resp.Body, httputil.ActionBodyLimit)
 
 	r := executor.AcquireResult()
-	r.Status = responseStatus(cfg.ExpectStatus, resp.StatusCode)
+	r.Status = httputil.ResponseStatus(cfg.ExpectStatus, resp.StatusCode)
 	r.StatusCode = resp.StatusCode
 	r.Body = string(bodyBytes)
 	r.Duration = duration
+	r.Metrics["response_ms"] = float64(duration.Milliseconds())
+	r.Metrics["status_code"] = float64(resp.StatusCode)
+	r.Metrics["content_length"] = float64(len(bodyBytes))
 	return r, nil
 }
 

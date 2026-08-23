@@ -9,6 +9,7 @@ import type {
   TaskUpdateParams,
   LogModel,
   ExecutionStats,
+  ExecutorTypeInfo,
 } from '../types/task'
 import type { PageData, PageParams } from '@tickraft/core'
 
@@ -24,9 +25,11 @@ export interface LogListParams extends PageParams {
   /** Case-insensitive substring match on the task name */
   taskName?: string
   /** Executor type filter (http/tcp/icmp/local/webhook) */
-  executor?: string
-  /** Lifecycle status filter (success/failed/running) */
+  executorType?: string
+  /** Lifecycle status filter (success/failed/running/timeout) */
   status?: string
+  /** Trigger source filter (schedule/manual/event) */
+  triggerType?: string
 }
 
 /** Execution stats query parameters */
@@ -35,6 +38,10 @@ export interface ExecutionStatsParams {
   from?: string
   /** RFC3339 timestamp for range end */
   to?: string
+  /** Scope the aggregation to a single task; omit for the global aggregate */
+  taskId?: number
+  /** Day-window size (1-90, server-local midnights); returns a zero-filled daily series */
+  days?: number
 }
 
 /**
@@ -165,6 +172,20 @@ export function getLogs(taskId: number, params: LogListParams): Promise<PageData
 export function getLog(taskId: number, execId: number): Promise<LogModel> {
   return request<LogModel>({
     url: `/tasks/${taskId}/executions/${execId}`,
+    method: 'get',
+  })
+}
+
+/**
+ * Get the executor types available for task execution.
+ *
+ * Derived from the backend executor registry with the same capability
+ * predicate the task CRUD precheck uses, so the returned types are exactly
+ * the ones a new task may select.
+ */
+export function getExecutors(): Promise<ExecutorTypeInfo[]> {
+  return request<ExecutorTypeInfo[]>({
+    url: '/executors',
     method: 'get',
   })
 }

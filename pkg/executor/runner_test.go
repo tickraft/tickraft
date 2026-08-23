@@ -90,7 +90,7 @@ type countingRecordStore struct {
 	mu    sync.Mutex
 }
 
-func (c *countingRecordStore) Save(record ExecutionRecord) error {
+func (c *countingRecordStore) Save(_ context.Context, record ExecutionRecord) error {
 	c.calls.Add(1)
 	c.mu.Lock()
 	c.last = record
@@ -235,12 +235,14 @@ func TestRunnerExecutesLookedUpExecutor(t *testing.T) {
 	wantTimeout := 5 * time.Second
 	wantMeta := map[string]string{"key": "value"}
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "42",
-		TenantID:     "7",
-		AssetID:      "99",
-		ExecutorType: "http",
-		Config:       `{"url":"http://example.com"}`,
-		Timeout:      int64(wantTimeout),
+		ExecutionID:          "42",
+		TenantID:             "7",
+		AssetID:              "99",
+		ExecutorType:         "http",
+		Config:               `{"url":"http://example.com"}`,
+		TimeoutSeconds:       5,
+		MaxRetries:           2,
+		RetryIntervalSeconds: 30,
 	}, event.WithMetadata(wantMeta))
 
 	waitCompleted(t, completed)
@@ -263,6 +265,12 @@ func TestRunnerExecutesLookedUpExecutor(t *testing.T) {
 	}
 	if got.Timeout != wantTimeout {
 		t.Errorf("req.Timeout: got %v, want %v", got.Timeout, wantTimeout)
+	}
+	if got.MaxRetries != 2 {
+		t.Errorf("req.MaxRetries: got %d, want 2", got.MaxRetries)
+	}
+	if got.RetryInterval != 30*time.Second {
+		t.Errorf("req.RetryInterval: got %v, want 30s", got.RetryInterval)
 	}
 	if got.Metadata["key"] != "value" {
 		t.Errorf("req.Metadata: got %v, want key=value", got.Metadata)
@@ -406,10 +414,8 @@ func TestRunnerRetrySucceedsAfterFailures(t *testing.T) {
 		TenantID:     "1",
 		AssetID:      "1",
 		ExecutorType: "flaky",
-	}, event.WithMetadata(map[string]string{
-		"max_retries":    "3",
-		"retry_interval": "1ms",
-	}))
+		MaxRetries:   3,
+	})
 
 	ev := waitCompleted(t, completed)
 
@@ -444,10 +450,8 @@ func TestRunnerRetryExhausted(t *testing.T) {
 		TenantID:     "1",
 		AssetID:      "1",
 		ExecutorType: "always-fail",
-	}, event.WithMetadata(map[string]string{
-		"max_retries":    "2",
-		"retry_interval": "1ms",
-	}))
+		MaxRetries:   2,
+	})
 
 	ev := waitCompleted(t, completed)
 
@@ -759,32 +763,32 @@ func TestRunnerPoolCallerRuns(t *testing.T) {
 
 	// Trigger A: occupies the single worker and blocks.
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "1",
-		TenantID:     "1",
-		AssetID:      "1",
-		ExecutorType: "block",
-		Timeout:      int64(30 * time.Second),
+		ExecutionID:    "1",
+		TenantID:       "1",
+		AssetID:        "1",
+		ExecutorType:   "block",
+		TimeoutSeconds: 30,
 	})
 	waitStarted(t, blockExec.started)
 
 	// Trigger B: fills the 1-slot queue (Submit returns immediately).
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "2",
-		TenantID:     "1",
-		AssetID:      "2",
-		ExecutorType: "block",
-		Timeout:      int64(30 * time.Second),
+		ExecutionID:    "2",
+		TenantID:       "1",
+		AssetID:        "2",
+		ExecutorType:   "block",
+		TimeoutSeconds: 30,
 	})
 
 	// Trigger C: pool is saturated (worker busy + queue full). Under
 	// RejectionCallerRuns it runs inline and completes synchronously,
 	// producing a TaskCompleted event before A is released.
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "3",
-		TenantID:     "1",
-		AssetID:      "3",
-		ExecutorType: "quick",
-		Timeout:      int64(5 * time.Second),
+		ExecutionID:    "3",
+		TenantID:       "1",
+		AssetID:        "3",
+		ExecutorType:   "quick",
+		TimeoutSeconds: 5,
 	})
 
 	ev := waitCompleted(t, completed)
@@ -964,14 +968,13 @@ func TestRunnerAsyncRetrySucceedsAfterFailures(t *testing.T) {
 	completed := subscribeCompleted(bus)
 
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "1",
-		TenantID:     "1",
-		AssetID:      "1",
-		ExecutorType: "flaky",
-	}, event.WithMetadata(map[string]string{
-		"max_retries":    "3",
-		"retry_interval": "1s",
-	}))
+		ExecutionID:          "1",
+		TenantID:             "1",
+		AssetID:              "1",
+		ExecutorType:         "flaky",
+		MaxRetries:           3,
+		RetryIntervalSeconds: 1,
+	})
 
 	ev := waitCompleted(t, completed)
 
@@ -1003,14 +1006,13 @@ func TestRunnerAsyncRetryExhausted(t *testing.T) {
 	completed := subscribeCompleted(bus)
 
 	publishTrigger(bus, event.ExecutionPayload{
-		ExecutionID:  "1",
-		TenantID:     "1",
-		AssetID:      "1",
-		ExecutorType: "always-fail",
-	}, event.WithMetadata(map[string]string{
-		"max_retries":    "2",
-		"retry_interval": "1s",
-	}))
+		ExecutionID:          "1",
+		TenantID:             "1",
+		AssetID:              "1",
+		ExecutorType:         "always-fail",
+		MaxRetries:           2,
+		RetryIntervalSeconds: 1,
+	})
 
 	ev := waitCompleted(t, completed)
 
@@ -1128,10 +1130,9 @@ func TestRunnerJudgmentDrivesRetry(t *testing.T) {
 		TenantID:     "1",
 		AssetID:      "1",
 		ExecutorType: "judged-retry",
+		MaxRetries:   2,
 	}, event.WithMetadata(map[string]string{
-		"max_retries":    "2",
-		"retry_interval": "1ms",
-		"expression":     "code != 200",
+		"expression": "code != 200",
 	}))
 
 	ev := waitCompleted(t, completed)
@@ -1171,7 +1172,8 @@ func TestRunnerEmptyJudgmentKeepsProtocolDefault(t *testing.T) {
 		TenantID:     "1",
 		AssetID:      "1",
 		ExecutorType: "plain",
-	}, event.WithMetadata(map[string]string{"max_retries": "2"}))
+		MaxRetries:   2,
+	})
 
 	ev := waitCompleted(t, completed)
 

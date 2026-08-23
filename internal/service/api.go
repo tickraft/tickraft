@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/common/adaptor"
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/internal/api/router"
-	"github.com/tickraft/tickraft/internal/api/service/prism"
-	"github.com/tickraft/tickraft/internal/api/service/scheduler"
-	"github.com/tickraft/tickraft/internal/api/service/system"
-	telemetrysvc "github.com/tickraft/tickraft/internal/api/service/telemetry"
+	"github.com/tickraft/tickraft/pkg/api/service/prism"
+	"github.com/tickraft/tickraft/pkg/api/service/scheduler"
+	"github.com/tickraft/tickraft/pkg/api/service/system"
 	"github.com/tickraft/tickraft/internal/web"
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
@@ -27,11 +27,13 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsHandler "github.com/tickraft/tickraft/pkg/api/handler/ws"
+	telemetrysvc "github.com/tickraft/tickraft/pkg/api/service/telemetry"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/config"
+	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
-	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
+	"github.com/tickraft/tickraft/pkg/telemetry/http"
 )
 
 // startAPIServer initializes auth, builds the HTTP API server, registers
@@ -156,7 +158,7 @@ func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]route
 	}
 	routeOpts = append(routeOpts, assetOpts...)
 
-	telemetryOpts, telemetrySvc, err := newTelemetryRouteOptions(rt)
+	telemetryOpts, telemetrySvc, err := newTelemetryRouteOptions(ctx, rt)
 	if err != nil {
 		return nil, err
 	}
@@ -254,25 +256,25 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if rt.prismEngine == nil {
 		return nil, fmt.Errorf("start api server: prism engine is nil; prism engine may not have started")
 	}
-	eng := rt.prismEngine
-	if eng.RuleStore() == nil || eng.RecordStore() == nil {
+	engine := rt.prismEngine
+	if engine.RuleStore() == nil || engine.RecordStore() == nil {
 		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
 	}
-	alertSvc := prism.NewAlertService(eng.RuleStore(), eng.RecordStore(), eng.RuleEngine())
+	alertSvc := prism.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
 
 	// Channel service: backed by the persistent channel store accessed
 	// via the prism engine.
-	if eng.ChannelStore() == nil {
+	if engine.ChannelStore() == nil {
 		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
 	}
-	channelSvc := prism.NewChannelService(eng.ChannelStore(), eng)
+	channelSvc := prism.NewChannelService(engine.ChannelStore(), engine)
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.
-	if eng.RemediationStore() == nil {
+	if engine.RemediationStore() == nil {
 		return nil, fmt.Errorf("start api server: prism remediation store is nil; prism engine may not have started")
 	}
-	remediationRuleSvc := prism.NewRemediationService(eng.RemediationStore())
+	remediationRuleSvc := prism.NewRemediationService(engine.RemediationStore())
 
 	return []router.RegisterOption{
 		router.WithAlertService(alertSvc),
@@ -295,9 +297,17 @@ func newTaskRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 		rt.schedulerEngine,
 		rt.schedulerTaskStore,
 		rt.schedulerExecStore,
+		rt.executorRegistry,
 		rt.logger,
 	)
-	return []router.RegisterOption{router.WithTaskService(taskSvc)}, nil
+	// The executor registry backs the /executors and /telemetry/probers
+	// enumeration endpoints; it is set by startWorkerEngines, which runs
+	// before startAPIServer in standalone mode.
+	opts := []router.RegisterOption{router.WithTaskService(taskSvc)}
+	if rt.executorRegistry != nil {
+		opts = append(opts, router.WithExecutorRegistry(rt.executorRegistry))
+	}
+	return opts, nil
 }
 
 // newAssetRouteOptions builds the asset management handler route option.
@@ -314,30 +324,72 @@ func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 // newTelemetryRouteOptions builds the telemetry route options — the telemetry
 // CRUD service (with prober hooks and data stores) and the unified report
 // handler — and returns the constructed service for the template handler.
-func newTelemetryRouteOptions(rt *runtime) ([]router.RegisterOption, *telemetrysvc.Service, error) {
+func newTelemetryRouteOptions(
+	ctx context.Context, rt *runtime,
+) ([]router.RegisterOption, *telemetrysvc.Service, error) {
 	// Telemetry service: backed by the persistent MonitorStore (monitor_points
 	// table) created by the worker engines. All CRUD operations survive
-	// process restarts. Prober hooks are wired so active monitoring points
-	// are scheduled/unscheduled in real time through the ProberService.
+	// process restarts. Point hooks are wired with mode branching: active
+	// points are scheduled/unscheduled in real time through the ProberService,
+	// passive points reconcile the offline-detection timeout wheel via
+	// SyncAssetObservation (register when the asset has an enabled passive
+	// point, unregister otherwise).
 	monitorStore := telemetry.NewMonitorStore(rt.dbc)
+	// Per-point webhook secret registry: loaded from the persisted passive
+	// points below and kept in sync by the point CRUD hooks, so
+	// X-Tickraft-Signature headers signed with a point's own config secret
+	// verify without a restart.
+	secretRegistry := http.NewSecretRegistry()
+	if err := http.LoadSecrets(ctx, secretRegistry, monitorStore, rt.logger); err != nil {
+		return nil, nil, fmt.Errorf("start api server: load webhook point secrets: %w", err)
+	}
+	// syncObservation reconciles an asset's passive offline-detection
+	// registration after its points change.
+	syncObservation := func(ctx context.Context, assetID int64) error {
+		return telemetry.SyncAssetObservation(ctx, monitorStore, rt.telemetryCollector, rt.logger, assetID)
+	}
 	var telemetryOpts []telemetrysvc.Option
-	if rt.proberSvc != nil {
-		telemetryOpts = append(telemetryOpts, telemetrysvc.WithPointHandlers(
-			func(ctx context.Context, point telemetry.MonitorPoint) error {
-				return rt.proberSvc.RegisterPoint(ctx, point)
-			},
-			func(ctx context.Context, pointID int64) error {
-				return rt.proberSvc.UnregisterPoint(ctx, pointID)
+	telemetryOpts = append(telemetryOpts, telemetrysvc.WithPointHandlers(
+		func(ctx context.Context, point telemetry.MonitorPoint) error {
+			if point.Mode == telemetry.ModePassive {
+				secretRegistry.SetPoint(point)
+				return syncObservation(ctx, point.AssetID)
+			}
+			if rt.proberSvc == nil {
+				return nil
+			}
+			return rt.proberSvc.RegisterPoint(ctx, point)
+		},
+		func(ctx context.Context, point telemetry.MonitorPoint) error {
+			if point.Mode == telemetry.ModePassive {
+				secretRegistry.RemovePoint(point.ID)
+				return syncObservation(ctx, point.AssetID)
+			}
+			if rt.proberSvc == nil {
+				return nil
+			}
+			return rt.proberSvc.UnregisterPoint(ctx, point.ID)
+		},
+	))
+	if rt.executorRegistry != nil {
+		telemetryOpts = append(telemetryOpts, telemetrysvc.WithExecutorValidator(
+			func(executorType string) error {
+				_, err := rt.executorRegistry.LookupWithOp(executorType, executor.OpProbe)
+				return err
 			},
 		))
+	}
+	if rt.proberSvc != nil {
+		telemetryOpts = append(telemetryOpts, telemetrysvc.WithProbeTrigger(rt.proberSvc.ProbeNow))
 	}
 	telemetrySvc := telemetrysvc.NewService(monitorStore, rt.logger, telemetryOpts...)
 
 	// Telemetry report handler: wires the webhook listener to the telemetry
 	// collector so POST /api/v1/telemetry forwards received payloads into
-	// the processing pipeline. The webhook listener exposes a net/http.Handler
-	// via ReportHandler(); the Hertz/net/http adapter wraps it so it can be
-	// mounted on the Hertz route registered by WithTelemetryReportHandler.
+	// the processing pipeline. The webhook listener exposes a net/http
+	// handler via ReportHandler(); adaptor.HertzHandler bridges it onto the
+	// Hertz route registered by WithTelemetryReportHandler, and
+	// WithReportAudit adds the ingestion audit log.
 	//
 	// In standalone mode the telemetry collector is always started by the
 	// worker engines; nil indicates a startup order bug.
@@ -347,12 +399,14 @@ func newTelemetryRouteOptions(rt *runtime) ([]router.RegisterOption, *telemetrys
 	ingest := func(_ context.Context, t *telemetry.Telemetry) {
 		rt.telemetryCollector.Submit(t)
 	}
-	webhookListener := telemetryhttp.New(
-		telemetryhttp.WithStore(rt.assetStore),
-		telemetryhttp.WithIngest(ingest),
-		telemetryhttp.WithLogger(rt.logger),
+	webhookListener := http.New(
+		http.WithStore(rt.assetStore),
+		http.WithSecretRegistry(secretRegistry),
+		http.WithIngest(ingest),
+		http.WithLogger(rt.logger),
 	)
-	reportAdapter := telemetryhandler.NewTelemetryReportHandlerAdapter(webhookListener.ReportHandler(), rt.logger)
+	reportHandler := telemetryhandler.WithReportAudit(
+		adaptor.HertzHandler(webhookListener.ReportHandler()), rt.logger)
 
 	// Telemetry data stores: wire the metric and log stores (created by the
 	// worker engines) so the telemetry handler's history/logs endpoints
@@ -360,7 +414,8 @@ func newTelemetryRouteOptions(rt *runtime) ([]router.RegisterOption, *telemetrys
 	return []router.RegisterOption{
 		router.WithTelemetryService(telemetrySvc),
 		router.WithTelemetryDataStores(rt.metricStore, rt.logStore),
-		router.WithTelemetryReportHandler(reportAdapter),
+		router.WithTelemetryProbeRecords(rt.probeRecordStore),
+		router.WithTelemetryReportHandler(reportHandler),
 	}, telemetrySvc, nil
 }
 
@@ -534,6 +589,7 @@ func startMaintenanceLoop(
 	go runMaintenanceLoop(maintCtx, &wg, rt.logger, maintenanceConfig{
 		blacklistStore: blacklistStore,
 		executionStore: rt.schedulerExecStore,
+		probeStore:     rt.probeRecordStore,
 		retentionDays:  retentionDays,
 		interval:       maintenanceInterval,
 	})
@@ -568,6 +624,7 @@ func startMaintenanceLoop(
 type maintenanceConfig struct {
 	blacklistStore auth.BlacklistStore
 	executionStore task.ExecutionStore
+	probeStore     *telemetry.ProbeRecordStore
 	retentionDays  int
 	interval       time.Duration
 }
@@ -590,36 +647,47 @@ func runMaintenanceLoop(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			runMaintenanceSweep(ctx, logger, cfg.blacklistStore, cfg.executionStore, cfg.retentionDays)
+			runMaintenanceSweep(ctx, logger, cfg)
 		}
 	}
 }
 
 // runMaintenanceSweep performs a single maintenance sweep. It cleans up
-// expired token blacklist entries and, when an execution store and a positive
-// retention window are configured, deletes execution log records older than
-// the retention period. The two cleanups are independent: a failure in one
-// does not skip the other.
+// expired token blacklist entries and, when stores and a positive retention
+// window are configured, deletes execution log and probe record rows older
+// than the retention period. The cleanups are independent: a failure in one
+// does not skip the others.
 func runMaintenanceSweep(
 	ctx context.Context,
 	logger *zap.Logger,
-	blacklistStore auth.BlacklistStore,
-	executionStore task.ExecutionStore,
-	retentionDays int,
+	cfg maintenanceConfig,
 ) {
-	if err := blacklistStore.CleanExpired(ctx); err != nil {
+	if err := cfg.blacklistStore.CleanExpired(ctx); err != nil {
 		logger.Error("maintenance: clean expired blacklist tokens", zap.Error(err))
 	} else {
 		logger.Info("maintenance: cleaned expired blacklist tokens")
 	}
 
-	if executionStore != nil && retentionDays > 0 {
-		before := time.Now().AddDate(0, 0, -retentionDays)
-		if err := executionStore.DeleteExecutionsOlderThan(ctx, before); err != nil {
+	if cfg.retentionDays <= 0 {
+		return
+	}
+	before := time.Now().AddDate(0, 0, -cfg.retentionDays)
+	if cfg.executionStore != nil {
+		if err := cfg.executionStore.DeleteExecutionsOlderThan(ctx, before); err != nil {
 			logger.Error("maintenance: delete old execution logs", zap.Error(err))
 		} else {
 			logger.Info("maintenance: deleted old execution logs",
-				zap.Int("retention_days", retentionDays),
+				zap.Int("retention_days", cfg.retentionDays),
+				zap.Time("before", before),
+			)
+		}
+	}
+	if cfg.probeStore != nil {
+		if err := cfg.probeStore.DeleteOlderThan(ctx, before); err != nil {
+			logger.Error("maintenance: delete old probe records", zap.Error(err))
+		} else {
+			logger.Info("maintenance: deleted old probe records",
+				zap.Int("retention_days", cfg.retentionDays),
 				zap.Time("before", before),
 			)
 		}

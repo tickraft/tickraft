@@ -16,6 +16,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
 // Handler exposes alert rule and record CRUD endpoints.
@@ -60,7 +61,7 @@ func (h *Handler) GetAlertRule(ctx context.Context, arc *app.RequestContext) {
 
 // CreateAlertRule handles POST /api/v1/prism/alert/rules.
 func (h *Handler) CreateAlertRule(ctx context.Context, arc *app.RequestContext) {
-	var req Rule
+	var req alert.Rule
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -92,7 +93,7 @@ func (h *Handler) UpdateAlertRule(ctx context.Context, arc *app.RequestContext) 
 	if !ok {
 		return
 	}
-	var req Rule
+	var req alert.Rule
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -135,7 +136,7 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	if !ok {
 		return
 	}
-	filter := RecordFilter{
+	filter := alert.RecordFilter{
 		Severity: arc.Query("severity"),
 		Status:   arc.Query("status"),
 	}

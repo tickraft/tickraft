@@ -71,16 +71,16 @@ func TestValidateUsername(t *testing.T) {
 // TestUsernameRegex_CanonicalBoundary verifies the boundary lengths (3 and 64)
 // of the canonical username regex directly, documenting the exact policy.
 func TestUsernameRegex_CanonicalBoundary(t *testing.T) {
-	if !UsernameRegex.MatchString(strings.Repeat("a", 3)) {
-		t.Error("UsernameRegex should match a 3-char string")
+	if !NameRegex.MatchString(strings.Repeat("a", 3)) {
+		t.Error("NameRegex should match a 3-char string")
 	}
-	if !UsernameRegex.MatchString(strings.Repeat("a", 64)) {
-		t.Error("UsernameRegex should match a 64-char string")
+	if !NameRegex.MatchString(strings.Repeat("a", 64)) {
+		t.Error("NameRegex should match a 64-char string")
 	}
-	if UsernameRegex.MatchString(strings.Repeat("a", 2)) {
-		t.Error("UsernameRegex should NOT match a 2-char string")
+	if NameRegex.MatchString(strings.Repeat("a", 2)) {
+		t.Error("NameRegex should NOT match a 2-char string")
 	}
-	if UsernameRegex.MatchString(strings.Repeat("a", 65)) {
-		t.Error("UsernameRegex should NOT match a 65-char string")
+	if NameRegex.MatchString(strings.Repeat("a", 65)) {
+		t.Error("NameRegex should NOT match a 65-char string")
 	}
 }

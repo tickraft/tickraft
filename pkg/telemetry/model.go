@@ -7,32 +7,14 @@ package telemetry
 import (
 	"time"
 
+	"github.com/bytedance/sonic"
+
+	// Registers the tolerantjson serializer that MonitorPoint.Config
+	// depends on. The blank import guarantees registration before any
+	// schema parse.
+	_ "github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/types"
 )
-
-// CollectionConfig is the GORM model for the sys_collect_config table.
-// It stores the observation configuration for each registered asset.
-type CollectionConfig struct {
-	ID int64 `gorm:"primaryKey;autoIncrement" json:"id"`
-	// TenantID is the tenant identifier for multi-tenancy isolation.
-	// The runtime is single-tenant: this field is always 0.
-	// The runtime injects the actual tenant ID via the store layer.
-	TenantID      int64     `gorm:"index;not null" json:"tenant_id"`
-	AssetID       int64     `gorm:"uniqueIndex;not null" json:"asset_id"`
-	AssetType     string    `gorm:"size:32;not null" json:"asset_type"`
-	CollectType   string    `gorm:"size:32;not null" json:"collect_type"`
-	CollectConfig string    `gorm:"type:text" json:"collect_config"`
-	Timeout       int       `gorm:"not null" json:"timeout"`
-	ProbeInterval int       `gorm:"not null;default:0" json:"probe_interval"`
-	Enable        bool      `gorm:"not null;default:true" json:"enable"`
-	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt     time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-// TableName returns the database table name for CollectionConfig.
-func (CollectionConfig) TableName() string {
-	return "sys_collect_config"
-}
 
 // StatusHistory is the GORM model for the sys_collect_status_history table.
 // It records every status transition for audit and analysis.
@@ -121,11 +103,11 @@ type MonitorPoint struct {
 	// TenantID is the tenant identifier for multi-tenancy isolation.
 	// The runtime is single-tenant: this field is always 0.
 	// The runtime injects the actual tenant ID via the store layer.
-	TenantID int64 `gorm:"index;not null" json:"tenant_id"`
+	TenantID int64 `gorm:"index;not null" json:"-"`
 	// Name is the human-readable display name of the monitoring point.
 	Name string `gorm:"size:255;not null" json:"name"`
-	// Description is an optional human-readable description of the monitoring
-	// point.
+	// Description is an optional human-readable description of the
+	// monitoring point.
 	Description string `gorm:"size:1024" json:"description,omitempty"`
 	// AssetType is the category of the monitored asset (e.g. host, service,
 	// website, device).
@@ -142,25 +124,34 @@ type MonitorPoint struct {
 	// the listener type (webhook).
 	Type string `gorm:"size:32;not null" json:"type"`
 	// Status is the derived runtime status of the monitoring point
-	// (active, inactive, error). See MonitorStatus constants in point.go.
-	Status string `gorm:"size:32;not null;default:inactive" json:"status"`
+	// (active, inactive, error), maintained by the runtime: for active
+	// points ProbeRecordStore refreshes it on every probe result. See
+	// MonitorStatus constants in point.go. Read-only on the wire; not
+	// API-editable.
+	Status string `gorm:"size:32;not null;default:inactive" json:"status,omitempty"`
 	// Schedule is the probe schedule expression: a Go duration string
 	// (e.g. "60s") for interval-based probing or a cron expression. Empty
 	// means use Interval.
 	Schedule string `gorm:"size:64" json:"schedule,omitempty"`
 	// Interval is the probe interval in seconds for active points.
-	// Ignored for passive points (interval=0).
-	Interval int `gorm:"not null;default:60" json:"interval"`
+	// Runtime-managed fallback when Schedule is empty; not API-editable.
+	Interval int `gorm:"not null;default:60" json:"-"`
 	// Timeout is the probe timeout in seconds for active points, or the
-	// offline detection threshold for passive points.
-	Timeout int `gorm:"not null;default:10" json:"timeout"`
+	// offline detection threshold for passive points. Runtime-managed;
+	// not API-editable.
+	Timeout int `gorm:"not null;default:10" json:"-"`
 	// Enabled controls whether the monitoring point is active. When false,
 	// the prober service skips scheduling and the listener rejects data.
-	Enabled bool `gorm:"not null;default:true" json:"enabled"`
-	// Config is the JSON-encoded type-specific configuration. For an ICMP
-	// prober this might contain {"target":"192.0.2.1"}; for a webhook
-	// listener it might contain {"path":"/api/v1/telemetry","auth":"asset-key"}.
-	Config string `gorm:"type:text" json:"config,omitempty"`
+	// No column default: GORM substitutes the default for zero-valued
+	// fields on insert, which would store disabled (false) points as
+	// enabled.
+	Enabled bool `gorm:"not null" json:"enabled"`
+	// Config is the type-specific configuration, persisted as JSON in a
+	// text column via the tolerantjson serializer. For an ICMP prober it
+	// might contain {"target":"192.0.2.1"}; for a webhook listener
+	// {"path":"/api/v1/telemetry","auth":"asset-key"}. Reads never fail:
+	// an empty, "null", or malformed column decodes to nil.
+	Config map[string]any `gorm:"column:config;type:text;serializer:tolerantjson" json:"config,omitempty"`
 	// CreatedAt is the point creation timestamp.
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	// UpdatedAt is the last update timestamp.
@@ -169,6 +160,20 @@ type MonitorPoint struct {
 
 // TableName returns the database table name for MonitorPoint.
 func (MonitorPoint) TableName() string { return "monitor_points" }
+
+// ConfigJSON returns the point's config marshalled to the JSON string
+// form consumed by the executor SPI (task.Task.Config, executor config
+// payloads). A nil or empty map yields the empty string.
+func (p *MonitorPoint) ConfigJSON() string {
+	if len(p.Config) == 0 {
+		return ""
+	}
+	raw, err := sonic.Marshal(p.Config)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
 
 // IsActive reports whether the monitoring point is in active probing mode.
 func (p MonitorPoint) IsActive() bool { return p.Mode == ModeActive }

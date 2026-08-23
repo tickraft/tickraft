@@ -5,8 +5,9 @@
 package remediation
 
 import (
-	"encoding/json"
 	"strconv"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
@@ -96,7 +97,7 @@ func ValidateExpression(expression string) error {
 }
 
 // triggerEvent is the raw event payload projection consumed by the
-// Manager for rule loading, gating, records, and env construction. It
+// Engine for rule loading, gating, records, and env construction. It
 // carries plumbing fields (tenant id, per-trigger raw data) that are
 // not expression variables; the expression surface is RemediationEnv.
 type triggerEvent struct {
@@ -163,7 +164,7 @@ func tagsFromMetadata(raw string) map[string]string {
 	}
 	// Best-effort decode: a non-object or malformed blob leaves the
 	// map empty, which rules read as "no tags".
-	_ = json.Unmarshal([]byte(raw), &tags)
+	_ = sonic.Unmarshal([]byte(raw), &tags)
 	if tags == nil {
 		return map[string]string{}
 	}

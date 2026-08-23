@@ -28,12 +28,23 @@ type ExecutionRequest struct {
 	Operation Operation
 	// Timeout is the maximum execution duration.
 	Timeout time.Duration
+	// MaxRetries is the number of retry attempts after a failed
+	// execution; 0 disables retries.
+	MaxRetries int
+	// RetryInterval is the delay between retry attempts; zero applies the
+	// retry policy's default spacing.
+	RetryInterval time.Duration
 	// RunID is the unique identifier of this execution run, used for
 	// idempotency control. It is propagated to the execution record.
 	RunID string
 	// TriggerType records the execution trigger source ("schedule",
 	// "manual", "event"). It is propagated to the execution record.
 	TriggerType string
+	// TriggeredAt is the moment the runner received the trigger event,
+	// captured at dispatch. The gap between TriggeredAt and the record's
+	// StartedAt is the worker pool pickup delay. It is propagated to the
+	// execution record.
+	TriggeredAt time.Time
 	// Metadata holds optional key-value extension data.
 	Metadata map[string]string
 }
@@ -72,6 +83,22 @@ type ExecutionRecord struct {
 	// TriggerType records the execution trigger source ("schedule",
 	// "manual", "event"). Propagated from ExecutionRequest.
 	TriggerType string
+	// TriggeredAt is the moment the runner received the trigger event.
+	// Propagated from ExecutionRequest; the gap to StartedAt is the worker
+	// pool pickup delay.
+	TriggeredAt time.Time
+	// Node is the hostname of the worker that executed the task, for
+	// locating executions in multi-node deployments.
+	Node string
+	// ExitCode is the process exit code for command executors (local);
+	// 0 for protocol executors and successful runs. Propagated from the
+	// executor Result.
+	ExitCode int
+	// TimedOut marks an execution that ended because the runner context
+	// deadline expired. It is orthogonal to Status (which stays in the
+	// asset vocabulary): consumers translate it into the persisted
+	// execution vocabulary's distinct "timeout" state.
+	TimedOut bool
 }
 
 // TargetConfig describes the target configuration for an execution action.

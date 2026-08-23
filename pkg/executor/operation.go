@@ -4,7 +4,9 @@
 
 package executor
 
-import "encoding/json"
+import (
+	"github.com/bytedance/sonic"
+)
 
 // Operation describes the type of operation an executor supports.
 // The operation type determines the capability (Capability) required for
@@ -87,14 +89,14 @@ func (o Operation) isSupportedBy(caps Capability) bool {
 
 // MarshalJSON serializes Operation as a JSON string ("probe" or "execute").
 func (o Operation) MarshalJSON() ([]byte, error) {
-	return json.Marshal(o.String())
+	return sonic.Marshal(o.String())
 }
 
 // UnmarshalJSON deserializes Operation from a JSON string (accepts "probe"
 // or "execute").
 func (o *Operation) UnmarshalJSON(data []byte) error {
 	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := sonic.Unmarshal(data, &s); err != nil {
 		return err
 	}
 	switch s {

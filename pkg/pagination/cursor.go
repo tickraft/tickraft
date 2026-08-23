@@ -6,10 +6,11 @@ package pagination
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/bytedance/sonic"
 )
 
 // Direction selects the ordering of the keyset column.
@@ -55,7 +56,7 @@ func (c Cursor) Encode() (string, error) {
 	if c.Value == "" && c.Value2 == "" {
 		return "", nil
 	}
-	data, err := json.Marshal(c)
+	data, err := sonic.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("pagination: encode cursor: %w", err)
 	}
@@ -75,7 +76,7 @@ func DecodeCursor(token string) (Cursor, error) {
 		return Cursor{}, fmt.Errorf("pagination: decode cursor: %w", err)
 	}
 	var c Cursor
-	if err = json.Unmarshal(data, &c); err != nil {
+	if err = sonic.Unmarshal(data, &c); err != nil {
 		return Cursor{}, fmt.Errorf("pagination: decode cursor: %w", err)
 	}
 	return c, nil

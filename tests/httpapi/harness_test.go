@@ -20,20 +20,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/common/adaptor"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/internal/api/router"
-	prismsvc "github.com/tickraft/tickraft/internal/api/service/prism"
-	"github.com/tickraft/tickraft/internal/api/service/scheduler"
-	systemsvc "github.com/tickraft/tickraft/internal/api/service/system"
-	telemetrysvc "github.com/tickraft/tickraft/internal/api/service/telemetry"
+	prismsvc "github.com/tickraft/tickraft/pkg/api/service/prism"
+	"github.com/tickraft/tickraft/pkg/api/service/scheduler"
+	systemsvc "github.com/tickraft/tickraft/pkg/api/service/system"
 	cequota "github.com/tickraft/tickraft/internal/quota"
 	"github.com/tickraft/tickraft/pkg/api"
 	assethandler "github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	telemetrysvc "github.com/tickraft/tickraft/pkg/api/service/telemetry"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -78,6 +79,7 @@ type harness struct {
 	schedEngine *task.Service
 	execRunner  executor.Runner
 	assetStore  asset.Store
+	workerBus   event.Bus
 }
 
 var h *harness
@@ -120,7 +122,7 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	lru := cache.NewLRU(1024, 5*time.Minute)
-	userStore := user.NewStore(dbc, lru)
+	userStore := user.NewStore(dbc)
 	seedUser(ctx, t, userStore, seedUserParams{
 		username: viewerUsername,
 		pwd:      viewerPassword,
@@ -143,7 +145,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("create jwt: %v", err)
 	}
-	apiKeyStore := user.NewAPIKeyStore(dbc, lru)
+	apiKeyStore := user.NewAPIKeyStore(dbc)
 	authz := auth.NewService(jwtMgr, userStore, apiKeyStore, blacklistStore)
 
 	// Asset store.
@@ -167,19 +169,30 @@ func newHarness(t *testing.T) *harness {
 		webhook.New(webhook.WithLogger(logger)),
 		icmp.New(5 * time.Second),
 		tcp.New(5 * time.Second),
-		httpprober.New(10 * time.Second),
+		httpprober.New(httpprober.WithLogger(logger)),
 	} {
 		if err := reg.Register(e); err != nil {
 			t.Fatalf("register executor %q: %v", e.Name(), err)
 		}
 	}
 	workerBus := event.NewBus()
+	// Mirror the production worker wiring: probe records route to the
+	// telemetry store, task executions to the task execution log. The
+	// production routingRecordStore lives in internal/service (unexported);
+	// the harness is its own assembly and repeats the dispatch.
+	probeStore := telemetry.NewProbeRecordStore(dbc)
+	if err := probeStore.Migrate(); err != nil {
+		t.Fatalf("migrate probe records: %v", err)
+	}
 	execRunner, err := executor.New(
 		executor.WithExecutorRegistry(reg),
 		executor.WithWorkerPoolSize(4),
 		executor.WithEventBus(workerBus),
 		executor.WithLogger(logger),
-		executor.WithRecordStore(task.NewExecutionRecordStore(execStore)),
+		executor.WithRecordStore(routingRecordStore{
+			tasks:  task.NewExecutionRecordStore(execStore),
+			probes: probeStore,
+		}),
 	)
 	if err != nil {
 		t.Fatalf("create executor runner: %v", err)
@@ -210,19 +223,30 @@ func newHarness(t *testing.T) *harness {
 
 	// Telemetry stores + builtin templates.
 	if err := dbc.AutoMigrate(
-		&telemetry.CollectionConfig{}, &telemetry.StatusHistory{},
+		&telemetry.StatusHistory{},
 		&telemetry.CollectMetric{}, &telemetry.CollectLog{}, &telemetry.Template{},
 	); err != nil {
 		t.Fatalf("migrate telemetry tables: %v", err)
 	}
-	if err := telemetry.Migrate(ctx, dbc, logger); err != nil {
+	if err := telemetry.Migrate(ctx, dbc); err != nil {
 		t.Fatalf("migrate telemetry: %v", err)
 	}
 	if err := telemetry.LoadBuiltinTemplates(dbc); err != nil {
 		t.Fatalf("load builtin templates: %v", err)
 	}
 	monitorStore := telemetry.NewMonitorStore(dbc)
-	telemetrySrv := telemetrysvc.NewService(monitorStore, logger)
+	// On-demand probe trigger, mirroring the production wiring in
+	// internal/service (ProberService over the shared task.Manager).
+	proberSvc := telemetry.NewProberService(
+		schedEngine, logger, telemetry.WithProberMonitorStore(monitorStore))
+	telemetrySrv := telemetrysvc.NewService(monitorStore, logger,
+		telemetrysvc.WithProbeTrigger(proberSvc.ProbeNow),
+		telemetrysvc.WithExecutorValidator(
+			func(executorType string) error {
+				_, err := reg.LookupWithOp(executorType, executor.OpProbe)
+				return err
+			},
+		))
 	templateHandler := telemetryhandler.NewTemplateHandler(
 		telemetry.NewTemplateStore(dbc), telemetrySrv)
 
@@ -232,8 +256,8 @@ func newHarness(t *testing.T) *harness {
 		telemetryhttp.WithIngest(func(context.Context, *telemetry.Telemetry) {}),
 		telemetryhttp.WithLogger(logger),
 	)
-	reportAdapter := telemetryhandler.NewTelemetryReportHandlerAdapter(
-		webhookListener.ReportHandler(), logger)
+	reportHandler := telemetryhandler.WithReportAudit(
+		adaptor.HertzHandler(webhookListener.ReportHandler()), logger)
 
 	// System service.
 	systemSrv := systemsvc.New(dbc, logger, taskStore, execStore, assetStore)
@@ -257,17 +281,19 @@ func newHarness(t *testing.T) *harness {
 	srv := api.NewServer(cfg)
 
 	routeOpts := []router.RegisterOption{
-		router.WithTaskService(scheduler.NewTaskService(schedEngine, taskStore, execStore, logger)),
+		router.WithTaskService(scheduler.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
 		router.WithAlertService(prismsvc.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
 		router.WithChannelService(prismsvc.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
 		router.WithRemediationRuleService(prismsvc.NewRemediationService(prismEngine.RemediationStore())),
 		router.WithSystemService(systemSrv),
 		router.WithTelemetryService(telemetrySrv),
-		router.WithTelemetryReportHandler(reportAdapter),
+		router.WithTelemetryReportHandler(reportHandler),
 		router.WithTelemetryDataStores(telemetry.NewMetricStore(dbc), telemetry.NewLogStore(dbc)),
+		router.WithTelemetryProbeRecords(probeStore),
 		router.WithAssetHandler(assethandler.NewHandler(assetStore, logger)),
 		router.WithTemplateHandler(templateHandler),
+		router.WithExecutorRegistry(reg),
 		router.WithHealthzHandler(healthz.NewHandler(dbc, nil)),
 		router.WithReadyzHandler(readyz.NewHandler(dbc, nil)),
 	}
@@ -291,6 +317,7 @@ func newHarness(t *testing.T) *harness {
 		schedEngine: schedEngine,
 		execRunner:  execRunner,
 		assetStore:  assetStore,
+		workerBus:   workerBus,
 	}
 	waitHealthy(t, h.baseURL)
 	return h

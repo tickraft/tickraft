@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
+// Package task exposes the scheduled-task and execution HTTP endpoints.
+// Request bodies bind directly onto the shared pkg/task model; the Service
+// interface defined here is what x deployments implement to reuse the routes.
 package task
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,6 +24,10 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/task"
 )
+
+// maxStatsDays bounds the days parameter of GET /tasks/stats; larger
+// windows would scan unbounded history for a chart series.
+const maxStatsDays = 90
 
 // Handler exposes task and execution CRUD endpoints.
 // It is injected via the WithTaskService RouteOption and registered on
@@ -79,7 +87,7 @@ func (h *Handler) GetTask(ctx context.Context, arc *app.RequestContext) {
 
 // CreateTask handles POST /api/v1/tasks.
 func (h *Handler) CreateTask(ctx context.Context, arc *app.RequestContext) {
-	var req Task
+	var req task.Task
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -106,7 +114,7 @@ func (h *Handler) UpdateTask(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	var req Task
+	var req task.Task
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
@@ -195,7 +203,11 @@ func (h *Handler) CopyTask(ctx context.Context, arc *app.RequestContext) {
 	api.Success(arc, copied)
 }
 
-// GetExecutionStats handles GET /api/v1/tasks/stats.
+// GetExecutionStats handles GET /api/v1/tasks/stats. Supported query
+// parameters: from/to (RFC3339, default last 24h), the optional task_id
+// filter that scopes the aggregation to a single task's executions, and
+// the optional days filter (1-90) that switches the range to the last N
+// UTC days and adds a zero-filled per-day series.
 func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext) {
 	to := time.Now()
 	from := to.Add(-24 * time.Hour)
@@ -217,7 +229,27 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 			return
 		}
 	}
-	stats, err := h.svc.GetExecutionStats(ctx, from, to)
+	var taskID int64
+	if v := arc.Query("task_id"); v != "" {
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || parsed <= 0 {
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid 'task_id', expected a positive integer")
+			return
+		}
+		taskID = parsed
+	}
+	days := 0
+	if v := arc.Query("days"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed < 1 || parsed > maxStatsDays {
+			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+				fmt.Sprintf("invalid 'days', expected an integer between 1 and %d", maxStatsDays))
+			return
+		}
+		days = parsed
+	}
+	stats, err := h.svc.GetExecutionStats(ctx, from, to, taskID, days)
 	if err != nil {
 		api.Fail(arc, err)
 		return
@@ -226,8 +258,8 @@ func (h *Handler) GetExecutionStats(ctx context.Context, arc *app.RequestContext
 }
 
 // ListExecutions handles GET /api/v1/tasks/:id/executions. Supported query
-// parameters: page, size, status (pending/running/success/failed),
-// executor (executor type) and task_name (substring match). A task id of 0
+// parameters: page, size, status (success/failed/timeout/running/unknown),
+// executor_type and task_name (substring match). A task id of 0
 // lists executions across all tasks.
 func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 	taskID, ok := httputil.ParseID(arc)
@@ -239,9 +271,10 @@ func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	filter := ExecutionFilter{
-		Status:       task.ToStoredStatus(arc.Query("status")),
-		ExecutorType: arc.Query("executor"),
+		Status:       arc.Query("status"),
+		ExecutorType: arc.Query("executor_type"),
 		TaskName:     arc.Query("task_name"),
+		TriggerType:  arc.Query("trigger_type"),
 	}
 	items, total, err := h.svc.ListExecutions(ctx, taskID, page, size, filter)
 	if err != nil {

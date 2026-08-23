@@ -21,7 +21,7 @@ import (
 func newTestRegistrarStore(t *testing.T) user.Store {
 	t.Helper()
 	dbc := newTestDB(t)
-	return user.NewStore(dbc, nil)
+	return user.NewStore(dbc)
 }
 
 func TestRegistrar_Register(t *testing.T) {

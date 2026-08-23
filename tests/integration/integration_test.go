@@ -354,14 +354,12 @@ func TestFaultRemediationLoop(t *testing.T) {
 
 	// Register an event-driven task for asset 1.
 	tk := task.Task{
-		ID:           100,
-		TenantID:     1,
-		AssetID:      1,
-		ExecutorName: "remediation",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		ID:             100,
+		TenantID:       1,
+		AssetID:        1,
+		ExecutorType:   "remediation",
+		TimeoutSeconds: 5,
+		Enabled:        true,
 	}
 	if err := sched.Register(ctx, tk); err != nil {
 		t.Fatalf("register event task: %v", err)
@@ -658,11 +656,11 @@ func TestExecutorRunnerIntegration(t *testing.T) {
 	wantTimeout := 5 * time.Second
 
 	_ = event.Publish(context.Background(), bus, event.TypeExecutionTriggered, event.ExecutionPayload{
-		ExecutionID:  strconv.FormatInt(wantTaskID, 10),
-		TenantID:     strconv.FormatInt(wantTenantID, 10),
-		AssetID:      strconv.FormatInt(wantResourceID, 10),
-		ExecutorType: "remediation",
-		Timeout:      int64(wantTimeout),
+		ExecutionID:    strconv.FormatInt(wantTaskID, 10),
+		TenantID:       strconv.FormatInt(wantTenantID, 10),
+		AssetID:        strconv.FormatInt(wantResourceID, 10),
+		ExecutorType:   "remediation",
+		TimeoutSeconds: int64(wantTimeout / time.Second),
 	})
 
 	// --- Verify ExecutionCompleted event ---
@@ -783,19 +781,19 @@ func TestShardDistribution(t *testing.T) {
 			return nil
 		})
 
-	// Register tasks on both schedulers with "once" schedule (fires immediately).
-	// In a real deployment, both nodes load the same tasks from the DB.
+	// Register tasks on both schedulers with a short-interval schedule so
+	// they fire immediately. In a real deployment, both nodes load the same
+	// tasks from the DB.
 	taskIDs := []int64{1, 2, 3, 4, 5, 6}
 	for _, id := range taskIDs {
 		tk := task.Task{
-			ID:           id,
-			TenantID:     1,
-			AssetID:      id,
-			ExecutorName: "webhook",
-			Timeout:      5 * time.Second,
-			Metadata: map[string]string{
-				"schedule_type": "once",
-			},
+			ID:             id,
+			TenantID:       1,
+			AssetID:        id,
+			ExecutorType:   "webhook",
+			TimeoutSeconds: 5,
+			Schedule:       "1ms",
+			Enabled:        true,
 		}
 		if err := sched0.Register(ctx, tk); err != nil {
 			t.Fatalf("sched0 register task %d: %v", id, err)

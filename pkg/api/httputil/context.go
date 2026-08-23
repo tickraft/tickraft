@@ -29,8 +29,8 @@ const (
 )
 
 // GetRequestID returns the request ID from context.
-func GetRequestID(c *app.RequestContext) string {
-	val, _ := c.Get(requestIDKey)
+func GetRequestID(arc *app.RequestContext) string {
+	val, _ := arc.Get(requestIDKey)
 	if s, ok := val.(string); ok {
 		return s
 	}
@@ -38,18 +38,18 @@ func GetRequestID(c *app.RequestContext) string {
 }
 
 // SetRequestID stores the request ID in context.
-func SetRequestID(c *app.RequestContext, id string) {
-	c.Set(requestIDKey, id)
+func SetRequestID(arc *app.RequestContext, id string) {
+	arc.Set(requestIDKey, id)
 }
 
 // SetUserClaims stores the authenticated user claims in the Hertz request context.
-func SetUserClaims(c *app.RequestContext, claims *jwt.UserClaims) {
-	c.Set(userClaimsKey, claims)
+func SetUserClaims(arc *app.RequestContext, claims *jwt.UserClaims) {
+	arc.Set(userClaimsKey, claims)
 }
 
 // GetUserClaims retrieves the authenticated user claims from the Hertz request context.
-func GetUserClaims(c *app.RequestContext) (*jwt.UserClaims, bool) {
-	val, _ := c.Get(userClaimsKey)
+func GetUserClaims(arc *app.RequestContext) (*jwt.UserClaims, bool) {
+	val, _ := arc.Get(userClaimsKey)
 	if claims, ok := val.(*jwt.UserClaims); ok {
 		return claims, true
 	}
@@ -57,13 +57,13 @@ func GetUserClaims(c *app.RequestContext) (*jwt.UserClaims, bool) {
 }
 
 // SetAPIKeyID stores the API key ID in the Hertz request context.
-func SetAPIKeyID(c *app.RequestContext, keyID int64) {
-	c.Set(apiKeyIDKey, keyID)
+func SetAPIKeyID(arc *app.RequestContext, keyID int64) {
+	arc.Set(apiKeyIDKey, keyID)
 }
 
 // GetAPIKeyID retrieves the API key ID from the Hertz request context.
-func GetAPIKeyID(c *app.RequestContext) (int64, bool) {
-	val, _ := c.Get(apiKeyIDKey)
+func GetAPIKeyID(arc *app.RequestContext) (int64, bool) {
+	val, _ := arc.Get(apiKeyIDKey)
 	if keyID, ok := val.(int64); ok {
 		return keyID, true
 	}
@@ -72,13 +72,13 @@ func GetAPIKeyID(c *app.RequestContext) (int64, bool) {
 
 // BindAndValidate binds request parameters to obj and validates.
 // Returns true on success; on failure, writes a 400 error response automatically.
-func BindAndValidate(c *app.RequestContext, obj any) bool {
-	if err := c.Bind(obj); err != nil {
-		FailWithCode(c, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request parameters")
+func BindAndValidate(arc *app.RequestContext, obj any) bool {
+	if err := arc.Bind(obj); err != nil {
+		FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request parameters")
 		return false
 	}
-	if err := c.Validate(obj); err != nil {
-		FailWithCode(c, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
+	if err := arc.Validate(obj); err != nil {
+		FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 		return false
 	}
 	return true
@@ -88,8 +88,8 @@ func BindAndValidate(c *app.RequestContext, obj any) bool {
 // It is intended for use by the trusted-proxy middleware so downstream
 // handlers and loggers read a single, authoritative client IP through
 // GetClientIP regardless of proxy headers.
-func SetClientIP(c *app.RequestContext, ip string) {
-	c.Set(clientIPKey, ip)
+func SetClientIP(arc *app.RequestContext, ip string) {
+	arc.Set(clientIPKey, ip)
 }
 
 // GetClientIP returns the client's real IP.
@@ -104,15 +104,15 @@ func SetClientIP(c *app.RequestContext, ip string) {
 // directly: they can be spoofed by clients. Operators who run behind a
 // reverse proxy must configure TrustedProxies so the trusted-proxy
 // middleware can securely resolve the real client IP.
-func GetClientIP(c *app.RequestContext) string {
+func GetClientIP(arc *app.RequestContext) string {
 	// 1. Authoritative value set by trusted-proxy middleware.
-	if val, ok := c.Get(clientIPKey); ok {
+	if val, ok := arc.Get(clientIPKey); ok {
 		if s, ok := val.(string); ok && s != "" {
 			return s
 		}
 	}
 	// 2. Fall back to RemoteAddr
-	return c.RemoteAddr().String()
+	return arc.RemoteAddr().String()
 }
 
 // regionCtxKey is a context key for storing the resolved routing region.
@@ -156,14 +156,14 @@ func GetLocale(ctx context.Context) i18n.Locale {
 const userKey = "auth.user"
 
 // SetUser stores the authenticated user in the Hertz request context.
-func SetUser(ctx *app.RequestContext, u *user.User) {
-	ctx.Set(userKey, u)
+func SetUser(arc *app.RequestContext, u *user.User) {
+	arc.Set(userKey, u)
 }
 
 // GetUser retrieves the authenticated user from the Hertz request context.
 // Returns nil if no user is set.
-func GetUser(ctx *app.RequestContext) *user.User {
-	val, _ := ctx.Get(userKey)
+func GetUser(arc *app.RequestContext) *user.User {
+	val, _ := arc.Get(userKey)
 	if u, ok := val.(*user.User); ok {
 		return u
 	}

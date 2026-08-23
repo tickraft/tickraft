@@ -243,8 +243,10 @@ type AuthConfig struct {
 	// JWTSecret is the secret used to sign JWT tokens. Required. Use
 	// environment variable interpolation, e.g. ${TICKRAFT_JWT_SECRET}.
 	JWTSecret string `yaml:"jwt_secret" json:"jwt_secret"`
-	// TokenTTL is the lifetime of issued JWT tokens (default "24h").
-	TokenTTL Duration `yaml:"token_ttl" json:"token_ttl"`
+	// AccessTTL is the lifetime of issued access tokens (default "2h").
+	AccessTTL Duration `yaml:"access_ttl" json:"access_ttl"`
+	// RefreshTTL is the lifetime of issued refresh tokens (default "168h").
+	RefreshTTL Duration `yaml:"refresh_ttl" json:"refresh_ttl"`
 	// AdminUsername is the built-in admin username (default "admin").
 	AdminUsername string `yaml:"admin_username" json:"admin_username"`
 	// AdminPassword is the built-in admin password. When empty, a random
@@ -341,7 +343,8 @@ func (c *DatabaseConfig) SetDefaults() {
 
 // SetDefaults populates AuthConfig with default values.
 func (c *AuthConfig) SetDefaults() {
-	c.TokenTTL = Duration(24 * time.Hour)
+	c.AccessTTL = Duration(2 * time.Hour)
+	c.RefreshTTL = Duration(7 * 24 * time.Hour)
 	c.AdminUsername = defaultAdminUsername
 	// JWTSecret has no default; it is a required field.
 	// AdminPassword defaults to empty (random password generated at startup).

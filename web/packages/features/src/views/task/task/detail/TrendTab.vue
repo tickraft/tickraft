@@ -21,8 +21,9 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-/** Compute duration in milliseconds from startedAt and finishedAt */
-function computeDurationMs(log: LogModel): number {
+/** Execution duration in milliseconds; backend duration is authoritative, timestamps are a legacy-row fallback */
+function durationMs(log: LogModel): number {
+  if (typeof log.duration === 'number') return log.duration
   if (!log.finishedAt) return 0
   const start = new Date(log.startedAt).getTime()
   const end = new Date(log.finishedAt).getTime()
@@ -44,13 +45,13 @@ const failedCount = computed(() =>
 )
 const maxDuration = computed(() => {
   if (recentLogs.value.length === 0) return 0
-  return Math.max(...recentLogs.value.map((l) => computeDurationMs(l)))
+  return Math.max(...recentLogs.value.map((l) => durationMs(l)))
 })
 
 const chartData = computed(() => {
   return recentLogs.value.map((log, i) => ({
     time: `#${i + 1}`,
-    value: computeDurationMs(log),
+    value: durationMs(log),
   }))
 })
 

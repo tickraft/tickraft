@@ -20,7 +20,7 @@
 // Key abstractions:
 //   - Manager: the task lifecycle management interface.
 //   - Service: the core implementation, holding a scheduler.Engine.
-//   - Task: the scheduler's view of a task for executor consumption.
+//   - Task / Execution: the single dual-tag models (GORM + wire) for the
+//     sys_schedule_task and sys_schedule_log tables.
 //   - Store / ExecutionStore: persistence SPIs for tasks and history.
-//   - ScheduleTask / ScheduleLog: GORM persistence models.
 package task

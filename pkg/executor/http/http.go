@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package http implements the HTTP executor, which runs tasks by issuing HTTP
-// requests to configured endpoints and reporting status, metrics and logs.
+// Package http implements the dual-mode HTTP executor. In probe mode
+// (OpProbe) it checks endpoint availability and measures response time; in
+// task mode (OpExecute) it issues configured HTTP requests as scheduled
+// actions (refresh callbacks, trigger calls, heartbeat posts). Both modes
+// share one judgment: an explicit expect_status requires an exact match,
+// otherwise any 2xx counts as normal/successful.
 package http
 
 import (
@@ -19,14 +23,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/executor/internal/httputil"
 	"github.com/tickraft/tickraft/pkg/httpx"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
-const (
-	executorName    = string(types.ExecutorHTTP)
-	httpMaxBodySize = 4 * 1024 // 4 KiB
-)
+const executorName = string(types.ExecutorHTTP)
 
 // Option configures an HTTP prober at construction time.
 type Option interface {
@@ -91,7 +93,6 @@ func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger}
 // response time. It implements the executor.Executor interface and is safe
 // for concurrent use.
 type Executor struct {
-	timeout      time.Duration
 	method       string
 	headers      map[string]string
 	body         string
@@ -103,20 +104,18 @@ type Executor struct {
 // Compile-time assertion that Executor implements executor.Executor.
 var _ executor.Executor = (*Executor)(nil)
 
-// New creates a new HTTP prober with the given timeout and options.
+// New creates a new HTTP executor with the given options.
 // Defaults: method GET, expectStatus 0 (any 2xx is normal).
-// A non-positive timeout defaults to 10 seconds.
-func New(timeout time.Duration, options ...Option) *Executor {
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
+//
+// Per-request timeouts are controlled by the caller's context (the runner's
+// lifecycle or the remediation operator); the pooled client only carries the
+// defensive httputil.HardTimeout ceiling.
+func New(options ...Option) *Executor {
 	h := &Executor{
-		timeout:      timeout,
-		method:       nethttp.MethodGet,
-		headers:      make(map[string]string),
-		expectStatus: 0,
+		method:  nethttp.MethodGet,
+		headers: make(map[string]string),
 		client: httpx.NewPoolClient(httpx.Config{
-			Timeout: timeout,
+			Timeout: httputil.HardTimeout,
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: false,
 			},
@@ -134,9 +133,11 @@ func (p *Executor) Name() string {
 	return executorName
 }
 
-// Capabilities returns the executor capability bitmask.
+// Capabilities returns the executor capability bitmask. The executor is
+// dual-mode: it probes endpoints (OpProbe) and issues HTTP requests as
+// scheduled actions (OpExecute), so it declares CapProbe | CapExec.
 func (p *Executor) Capabilities() executor.Capability {
-	return executor.CapProbe
+	return executor.CapProbe | executor.CapExec
 }
 
 // config holds the per-execution configuration parsed from
@@ -151,11 +152,12 @@ type config struct {
 	Params       map[string]string `json:"params,omitempty"`
 }
 
-// Execute runs the HTTP probe based on the execution request.
-// It parses the Config JSON into a config and performs the HTTP probe.
-// When HTTP-specific fields are present in the config, a derived prober is
-// constructed to apply the per-request overrides without mutating the shared
-// receiver, preserving concurrency safety.
+// Execute runs the HTTP request described by the execution request. It serves
+// both operations — probes (OpProbe) and task actions (OpExecute) — with one
+// judgment: expect_status or any 2xx maps to normal/success. It parses the
+// Config JSON into a config; when HTTP-specific fields are present, a derived
+// executor is constructed to apply the per-request overrides without mutating
+// the shared receiver, preserving concurrency safety.
 //
 // Panic isolation: a defer-recover catches any unexpected panic from the
 // HTTP client or config parsing, logs it at Error level, and returns an
@@ -199,24 +201,36 @@ func (p *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	return runner.probe(ctx, target)
 }
 
-// newDerived constructs a fresh HTTP prober that inherits the receiver's
-// timeout and applies the per-request config overrides. This keeps the
-// internal probe logic unchanged while supporting per-request customization.
+// newDerived constructs a per-request view of the executor with the config
+// overrides applied on top of the receiver's constructor-time defaults. The
+// derived executor shares the receiver's pooled HTTP client: building a
+// fresh pool per request would discard connection reuse, which is the main
+// win of pooling for a per-interval prober.
 func newDerived(base *Executor, cfg config) *Executor {
-	opts := []Option{WithLogger(base.logger)}
+	derived := &Executor{
+		method:       base.method,
+		headers:      make(map[string]string, len(base.headers)+len(cfg.Headers)),
+		body:         base.body,
+		expectStatus: base.expectStatus,
+		client:       base.client,
+		logger:       base.logger,
+	}
+	for k, v := range base.headers {
+		derived.headers[k] = v
+	}
 	if cfg.Method != "" {
-		opts = append(opts, WithMethod(cfg.Method))
+		derived.method = cfg.Method
 	}
 	if cfg.Body != "" {
-		opts = append(opts, WithBody(cfg.Body))
+		derived.body = cfg.Body
 	}
 	if cfg.ExpectStatus > 0 {
-		opts = append(opts, WithExpectStatus(cfg.ExpectStatus))
+		derived.expectStatus = cfg.ExpectStatus
 	}
-	if len(cfg.Headers) > 0 {
-		opts = append(opts, WithHeaders(cfg.Headers))
+	for k, v := range cfg.Headers {
+		derived.headers[k] = v
 	}
-	return New(base.timeout, opts...)
+	return derived
 }
 
 // probe sends an HTTP request to the target URL and checks the response
@@ -260,24 +274,11 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	}
 	defer func() { _ = resp.Body.Close() }() // best-effort close, error not actionable
 
-	// Read up to httpMaxBodySize of the response body for status reporting.
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, httpMaxBodySize))
-
-	// Determine status based on the expected status code.
-	status := types.AssetStatusNormal
-	if p.expectStatus > 0 {
-		if resp.StatusCode != p.expectStatus {
-			status = types.AssetStatusAbnormal
-		}
-	} else {
-		// Default: any 2xx is normal; everything else is abnormal.
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			status = types.AssetStatusAbnormal
-		}
-	}
+	// Read up to the probe body limit for status reporting and judgment.
+	body := httputil.ReadBody(resp.Body, httputil.ProbeBodyLimit)
 
 	r := executor.AcquireResult()
-	r.Status = status
+	r.Status = httputil.ResponseStatus(p.expectStatus, resp.StatusCode)
 	r.StatusCode = resp.StatusCode
 	r.Body = string(body)
 	r.Duration = duration

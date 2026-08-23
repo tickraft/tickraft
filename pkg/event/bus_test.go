@@ -77,7 +77,6 @@ func TestGenericPublishSubscribe(t *testing.T) {
 		TaskID:       "task-001",
 		ExecutionID:  "exec-001",
 		ExecutorType: "http",
-		Category:     "Actuator",
 		TenantID:     "tenant-001",
 		Action:       "triggered",
 	}

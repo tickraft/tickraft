@@ -236,7 +236,7 @@ onMounted(() => {
             {{ t('prism.record.detail.statFiredAt') }}
           </span>
           <span class="tk-prism-record-detail__stat-value">
-            {{ formatTime(record.firedAt) }}
+            {{ formatTime(record.triggeredAt) }}
           </span>
         </div>
       </div>
@@ -277,8 +277,8 @@ onMounted(() => {
               show-icon
             />
           </el-descriptions-item>
-          <el-descriptions-item :label="t('prism.record.detail.firedAt')">
-            {{ formatTime(record.firedAt) }}
+          <el-descriptions-item :label="t('prism.record.detail.triggeredAt')">
+            {{ formatTime(record.triggeredAt) }}
           </el-descriptions-item>
           <el-descriptions-item :label="t('prism.record.detail.acknowledgedAt')">
             {{ formatTime(record.acknowledgedAt) }}
@@ -359,7 +359,7 @@ onMounted(() => {
           <el-timeline>
             <el-timeline-item
               type="danger"
-              :timestamp="formatTime(record.firedAt)"
+              :timestamp="formatTime(record.triggeredAt)"
             >
               <strong>{{ t('prism.record.detail.fired') }}</strong>
               <span> — {{ record.message }}</span>

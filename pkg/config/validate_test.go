@@ -304,13 +304,23 @@ func TestValidate_ZeroPoolSizesAllowed(t *testing.T) {
 
 func TestValidate_ZeroTokenTTL(t *testing.T) {
 	c := newValidConfig()
-	c.Auth.TokenTTL = Duration(0)
+	c.Auth.AccessTTL = Duration(0)
 	err := c.Validate()
 	if err == nil {
-		t.Fatalf("Validate: expected error for zero token_ttl, got nil")
+		t.Fatalf("Validate: expected error for zero access_ttl, got nil")
 	}
-	if !strings.Contains(err.Error(), "auth.token_ttl") {
-		t.Errorf("Validate error = %q, want substring %q", err.Error(), "auth.token_ttl")
+	if !strings.Contains(err.Error(), "auth.access_ttl") {
+		t.Errorf("Validate error = %q, want substring %q", err.Error(), "auth.access_ttl")
+	}
+
+	c = newValidConfig()
+	c.Auth.RefreshTTL = Duration(0)
+	err = c.Validate()
+	if err == nil {
+		t.Fatalf("Validate: expected error for zero refresh_ttl, got nil")
+	}
+	if !strings.Contains(err.Error(), "auth.refresh_ttl") {
+		t.Errorf("Validate error = %q, want substring %q", err.Error(), "auth.refresh_ttl")
 	}
 }
 

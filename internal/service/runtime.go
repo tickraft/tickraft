@@ -33,6 +33,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/task"
@@ -100,6 +101,12 @@ type runtime struct {
 	schedulerTaskStore task.Store
 	schedulerExecStore task.ExecutionStore
 
+	// executorRegistry is the registry built by startWorkerEngines. It is
+	// consumed by startAPIServer to prevalidate executor_type values at
+	// task/monitor-point creation time, so capability mismatches fail with
+	// a 400 instead of failing every scheduled run.
+	executorRegistry *executor.Registry
+
 	// i18nRegistry holds the locale bundles used for alert message rendering
 	// and the /api/v1/i18n/locales endpoint. The runtime loads builtin
 	// locales (zh-Hans, en-US) from the embedded asset filesystem; the extended
@@ -120,6 +127,11 @@ type runtime struct {
 	// the telemetry handler's history/logs endpoints.
 	metricStore telemetry.MetricStore
 	logStore    telemetry.LogStore
+
+	// probeRecordStore persists active probe results (sys_probe_record).
+	// It is created by startWorkerEngines and consumed by startAPIServer
+	// to wire the monitor status/history/logs endpoints for active points.
+	probeRecordStore *telemetry.ProbeRecordStore
 
 	// proberSvc coordinates active probing. It is created by
 	// startWorkerEngines and consumed by startAPIServer to wire
@@ -331,16 +343,16 @@ func initAuth(_ context.Context, rt *runtime) error {
 	}
 	jwtMgr, err := jwt.New(jwt.Config{
 		Secret:        jwtSecret,
-		AccessExpire:  0, // use default 2h
-		RefreshExpire: 0, // use default 7d
+		AccessExpire:  rt.cfg.Auth.AccessTTL.Duration(),
+		RefreshExpire: rt.cfg.Auth.RefreshTTL.Duration(),
 		Issuer:        "tickraft",
 	}, blacklistChecker)
 	if err != nil {
 		return fmt.Errorf("init jwt manager: %w", err)
 	}
 
-	userStore := user.NewStore(rt.dbc, rt.cache)
-	apiKeyStore := user.NewAPIKeyStore(rt.dbc, rt.cache)
+	userStore := user.NewStore(rt.dbc)
+	apiKeyStore := user.NewAPIKeyStore(rt.dbc)
 	authz := auth.NewService(jwtMgr, userStore, apiKeyStore, blacklistStore)
 
 	rt.jwt = jwtMgr

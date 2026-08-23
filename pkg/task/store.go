@@ -6,11 +6,8 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -21,10 +18,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
-// store is the GORM-backed implementation of Store. It persists task
-// configurations to the sys_schedule_task table using ScheduleTask,
-// converting between the domain Task type and the persistence model on each
-// operation.
+// store is the GORM-backed implementation of Store. Task is itself the GORM
+// model for sys_schedule_task, so persistence is a direct row mapping with
+// no conversion layer.
 type store struct {
 	dbc *gorm.DB
 }
@@ -40,7 +36,7 @@ const defaultExecutionListLimit = 200
 
 // Migrate creates or updates the sys_schedule_task table schema.
 func (s *store) Migrate(ctx context.Context) error {
-	if err := s.dbc.WithContext(ctx).AutoMigrate(&ScheduleTask{}); err != nil {
+	if err := s.dbc.WithContext(ctx).AutoMigrate(&Task{}); err != nil {
 		return fmt.Errorf("task: migrate task table: %w", err)
 	}
 	return nil
@@ -53,17 +49,22 @@ func (s *store) Save(ctx context.Context, t *Task) error {
 	if t == nil {
 		return fmt.Errorf("task: save: nil task")
 	}
-	m, err := taskToModel(t)
-	if err != nil {
-		return fmt.Errorf("task: save: %w", err)
-	}
 	// Use OnConflict upsert so that both first-time inserts (Register) and
 	// subsequent updates (Update) are handled by a single query. Hard-delete
 	// in Delete ensures no soft-deleted rows collide with the conflict target.
-	if err := s.dbc.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns(taskUpsertColumns),
-	}).Create(m).Error; err != nil {
+	//
+	// The explicit Select is required because GORM omits zero-valued fields
+	// that carry a column default (enabled default:true, concurrency
+	// default:1) from the INSERT column list; on conflict the excluded row
+	// would then carry the column default instead of the field value, so a
+	// disabled task (Enabled=false) would silently persist as enabled.
+	if err := s.dbc.WithContext(ctx).
+		Select(taskWriteColumns).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns(taskWriteColumns),
+		}).
+		Create(t).Error; err != nil {
 		return fmt.Errorf("task: save: %w", errmap.MapError(err))
 	}
 	return nil
@@ -72,13 +73,9 @@ func (s *store) Save(ctx context.Context, t *Task) error {
 // Get retrieves a task by its ID. Returns errdefs.ErrNotFound if no task
 // with the given ID exists.
 func (s *store) Get(ctx context.Context, id int64) (*Task, error) {
-	var m ScheduleTask
-	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
+	var t Task
+	if err := s.dbc.WithContext(ctx).First(&t, id).Error; err != nil {
 		return nil, fmt.Errorf("task: get: %w", errmap.MapError(err))
-	}
-	t, err := m.ToTask()
-	if err != nil {
-		return nil, fmt.Errorf("task: get: %w", err)
 	}
 	return &t, nil
 }
@@ -90,26 +87,22 @@ func (s *store) Get(ctx context.Context, id int64) (*Task, error) {
 // false-positive substring matches. Given the runtime's modest
 // task volume, in-memory tag filtering is acceptable.
 func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
-	var models []ScheduleTask
+	var tasks []*Task
 	query := s.dbc.WithContext(ctx)
 	if opts.Group != "" {
 		query = query.Where("`group` = ?", opts.Group)
 	}
-	if err := query.Find(&models).Error; err != nil {
+	if err := query.Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("task: list: %w", errmap.MapError(err))
 	}
-	tasks := make([]*Task, 0, len(models))
-	for i := range models {
-		t, err := models[i].ToTask()
-		if err != nil {
-			return nil, fmt.Errorf("task: list: parse task %d: %w", models[i].ID, err)
-		}
+	filtered := make([]*Task, 0, len(tasks))
+	for _, t := range tasks {
 		if !matchAnyTag(t.Tags, opts.Tags) {
 			continue
 		}
-		tasks = append(tasks, &t)
+		filtered = append(filtered, t)
 	}
-	return tasks, nil
+	return filtered, nil
 }
 
 // matchAnyTag reports whether the task's tags contain at least one of the
@@ -134,7 +127,7 @@ func matchAnyTag(taskTags, requested []string) bool {
 // the row is hard-deleted (not soft-deleted), allowing the same task ID to
 // be re-registered later without colliding with a soft-deleted record.
 func (s *store) Delete(ctx context.Context, id int64) error {
-	if err := s.dbc.WithContext(ctx).Unscoped().Delete(&ScheduleTask{}, id).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Unscoped().Delete(&Task{}, id).Error; err != nil {
 		return fmt.Errorf("task: delete: %w", errmap.MapError(err))
 	}
 	return nil
@@ -143,18 +136,19 @@ func (s *store) Delete(ctx context.Context, id int64) error {
 // Compile-time assertion that store implements Store.
 var _ Store = (*store)(nil)
 
-// taskUpsertColumns lists the columns updated on conflict during Save.
-// created_at and deleted_at are excluded so that the original creation
-// timestamp and soft-delete state are preserved across updates.
-var taskUpsertColumns = []string{
+// taskWriteColumns lists every column Save writes, both in the INSERT
+// column list and in the ON CONFLICT update set. created_at and deleted_at
+// are excluded so that the original creation timestamp and soft-delete
+// state are preserved across updates.
+var taskWriteColumns = []string{
+	"id",
 	"tenant_id",
 	"asset_id",
 	"name",
+	"description",
 	"executor_type",
+	"schedule",
 	"executor_config",
-	metaKeyScheduleType,
-	metaKeyCronExpr,
-	string(ScheduleTypeInterval),
 	"timeout",
 	"priority",
 	"depends_on",
@@ -170,73 +164,8 @@ var taskUpsertColumns = []string{
 	"updated_at",
 }
 
-// taskToModel converts a scheduler.Task domain object to a ScheduleTask for
-// persistence. Schedule-related columns (schedule_type, cron_expr, interval)
-// are populated from the task's Metadata map for query convenience; the
-// Metadata JSON column remains the source of truth consumed by ToTask.
-func taskToModel(t *Task) (*ScheduleTask, error) {
-	var metadataJSON string
-	if t.Metadata != nil {
-		b, err := json.Marshal(t.Metadata)
-		if err != nil {
-			return nil, fmt.Errorf("marshal metadata: %w", err)
-		}
-		metadataJSON = string(b)
-	}
-
-	m := &ScheduleTask{
-		ID:             t.ID,
-		TenantID:       t.TenantID,
-		AssetID:        t.AssetID,
-		ExecutorType:   t.ExecutorName,
-		ExecutorConfig: t.Config,
-		Timeout:        int64(t.Timeout.Seconds()),
-		Priority:       t.Priority,
-		DependsOn:      t.DependsOn,
-		Enabled:        true,
-		Metadata:       metadataJSON,
-		Group:          t.Group,
-		Tags:           strings.Join(t.Tags, ","),
-		RunID:          t.RunID,
-		RetryPolicy:    t.RetryPolicy,
-		Concurrency:    t.Concurrency,
-	}
-
-	// Populate dedicated schedule columns from Metadata for queryability.
-	if t.Metadata != nil {
-		// Name is persisted in Metadata by the handler adapter; copy it to the
-		// dedicated column so it can be queried directly.
-		if v, ok := t.Metadata["name"]; ok {
-			m.Name = v
-		}
-		if v, ok := t.Metadata[metaKeyScheduleType]; ok {
-			m.ScheduleType = v
-		}
-		if v, ok := t.Metadata[metaKeyCronExpr]; ok {
-			m.CronExpr = v
-		}
-		if v, ok := t.Metadata[string(ScheduleTypeInterval)]; ok {
-			if d, err := time.ParseDuration(v); err == nil {
-				m.Interval = int64(d.Seconds())
-			}
-		}
-		// Honor the enabled flag persisted in Metadata by the handler
-		// adapter and the engine's Pause/Resume. Default to true when the
-		// key is absent so existing tasks remain enabled.
-		if v, ok := t.Metadata["enabled"]; ok {
-			if b, err := strconv.ParseBool(v); err == nil {
-				m.Enabled = b
-			}
-		}
-	}
-
-	return m, nil
-}
-
 // executionStore is the GORM-backed implementation of ExecutionStore. It
-// persists task execution history to the sys_schedule_log table using
-// ScheduleLog, converting between the domain Execution type and the
-// persistence model on each operation.
+// persists task execution history to the sys_schedule_log table.
 type executionStore struct {
 	dbc *gorm.DB
 }
@@ -248,7 +177,7 @@ func NewExecutionStore(dbc *gorm.DB) ExecutionStore {
 
 // Migrate creates or updates the sys_schedule_log table schema.
 func (s *executionStore) Migrate(ctx context.Context) error {
-	if err := s.dbc.WithContext(ctx).AutoMigrate(&ScheduleLog{}); err != nil {
+	if err := s.dbc.WithContext(ctx).AutoMigrate(&Execution{}); err != nil {
 		return fmt.Errorf("task: migrate execution table: %w", err)
 	}
 	return nil
@@ -261,12 +190,9 @@ func (s *executionStore) Save(ctx context.Context, exec *Execution) error {
 	if exec == nil {
 		return fmt.Errorf("task: save execution: nil execution")
 	}
-	m := ExecutionToModel(exec)
-	if err := s.dbc.WithContext(ctx).Create(m).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Create(exec).Error; err != nil {
 		return fmt.Errorf("task: save execution: %w", errmap.MapError(err))
 	}
-	// Reflect the assigned ID back to the caller.
-	exec.ID = m.ID
 	return nil
 }
 
@@ -279,20 +205,15 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 	if limit <= 0 {
 		limit = defaultExecutionListLimit
 	}
-	var models []ScheduleLog
+	var execs []*Execution
 	query := s.dbc.WithContext(ctx).
 		Where("task_id = ?", taskID).
 		Order("id DESC").
 		Limit(limit)
-	if err := query.Find(&models).Error; err != nil {
+	if err := query.Find(&execs).Error; err != nil {
 		return nil, fmt.Errorf("task: list executions: %w", errmap.MapError(err))
 	}
-	result := make([]*Execution, 0, len(models))
-	for i := range models {
-		exec := models[i].ToExecution()
-		result = append(result, &exec)
-	}
-	return result, nil
+	return execs, nil
 }
 
 // Query returns a page of executions matching the filter, ordered by most
@@ -301,7 +222,7 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error) {
 	page, size = pagination.Clamp(page, size)
 
-	query := s.dbc.WithContext(ctx).Model(&ScheduleLog{})
+	query := s.dbc.WithContext(ctx).Model(&Execution{})
 	if q.TaskID > 0 {
 		query = query.Where("task_id = ?", q.TaskID)
 	}
@@ -317,39 +238,36 @@ func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size
 	if q.ExecutorType != "" {
 		query = query.Where("executor_type = ?", q.ExecutorType)
 	}
+	if q.TriggerType != "" {
+		query = query.Where("trigger_type = ?", q.TriggerType)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
 	}
 
-	var models []ScheduleLog
+	var execs []*Execution
 	if err := query.
 		Order("id DESC").
 		Offset((page - 1) * size).
 		Limit(size).
-		Find(&models).Error; err != nil {
+		Find(&execs).Error; err != nil {
 		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
 	}
-	result := make([]*Execution, 0, len(models))
-	for i := range models {
-		exec := models[i].ToExecution()
-		result = append(result, &exec)
-	}
-	return result, total, nil
+	return execs, total, nil
 }
 
 // Get retrieves a single execution record by its ID. It returns
 // ErrExecutionNotFound when no record with the given ID exists.
 func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) {
-	var m ScheduleLog
-	if err := s.dbc.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+	var exec Execution
+	if err := s.dbc.WithContext(ctx).First(&exec, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrExecutionNotFound
 		}
 		return nil, fmt.Errorf("task: get execution: %w", errmap.MapError(err))
 	}
-	exec := m.ToExecution()
 	return &exec, nil
 }
 
@@ -359,24 +277,25 @@ func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) 
 // scoped to a specific task or tenant) because the caller is expected to be a
 // system-level maintenance routine.
 func (s *executionStore) DeleteExecutionsOlderThan(ctx context.Context, before time.Time) error {
-	if err := s.dbc.WithContext(ctx).Where("created_at < ?", before).Delete(&ScheduleLog{}).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).Where("created_at < ?", before).Delete(&Execution{}).Error; err != nil {
 		return fmt.Errorf("task: delete old executions: %w", errmap.MapError(err))
 	}
 	return nil
 }
 
 // Stats returns aggregated execution statistics for the given time range.
-// The query scans the sys_schedule_log table filtering by created_at between
-// [from, to] (inclusive) and computes:
+// A positive taskID scopes the aggregation to that task's executions; zero
+// aggregates across all tasks. The query scans the sys_schedule_log table
+// filtering by created_at between [from, to] (inclusive) and computes:
 //   - TotalExecutions: total row count in the range
-//   - SuccessCount: rows whose status is "normal" (types.AssetStatusNormal)
-//   - FailureCount: rows whose status is "abnormal" (types.AssetStatusAbnormal)
+//   - SuccessCount: rows whose status is StatusSuccess
+//   - FailureCount: rows whose status is StatusFailed
 //   - AverageDurationMs: average of the duration column (milliseconds)
 //
 // SuccessRate is computed as SuccessCount/TotalExecutions*100, with a
 // zero-total range yielding 0. COALESCE is used so that an empty range
 // produces zero-valued aggregates rather than NULLs.
-func (s *executionStore) Stats(ctx context.Context, from, to time.Time) (ExecutionStatsResult, error) {
+func (s *executionStore) Stats(ctx context.Context, from, to time.Time, taskID int64) (ExecutionStatsResult, error) {
 	// statsRow is a local struct used to scan the aggregated query result.
 	// GORM maps the snake_case column aliases to the exported fields by name.
 	var row struct {
@@ -385,16 +304,19 @@ func (s *executionStore) Stats(ctx context.Context, from, to time.Time) (Executi
 		Failure     int64
 		AvgDuration float64
 	}
-	err := s.dbc.WithContext(ctx).
-		Model(&ScheduleLog{}).
+	query := s.dbc.WithContext(ctx).
+		Model(&Execution{}).
 		Select(`
 			COUNT(*) AS total,
-			COALESCE(SUM(CASE WHEN status = 'normal' THEN 1 ELSE 0 END), 0) AS success,
-			COALESCE(SUM(CASE WHEN status = 'abnormal' THEN 1 ELSE 0 END), 0) AS failure,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS success,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failure,
 			COALESCE(AVG(duration), 0) AS avg_duration
-		`).
-		Where("created_at BETWEEN ? AND ?", from, to).
-		Scan(&row).Error
+		`, StatusSuccess, StatusFailed).
+		Where("created_at BETWEEN ? AND ?", from, to)
+	if taskID > 0 {
+		query = query.Where("task_id = ?", taskID)
+	}
+	err := query.Scan(&row).Error
 	if err != nil {
 		return ExecutionStatsResult{}, fmt.Errorf("task: compute execution stats: %w", errmap.MapError(err))
 	}
@@ -411,6 +333,50 @@ func (s *executionStore) Stats(ctx context.Context, from, to time.Time) (Executi
 	return result, nil
 }
 
+// StatsByDay returns per-day aggregates for the given time range, grouped
+// by the server-local calendar date of created_at and ordered by date. Days without
+// executions are omitted; callers zero-fill gaps when a contiguous series
+// is required.
+//
+// SQLite normalizes timestamp strings with a timezone offset to UTC before
+// DATE() evaluates, so the 'localtime' modifier is required to group by
+// the server-local day and stay consistent with the local-midnight window
+// the service layer computes.
+func (s *executionStore) StatsByDay(ctx context.Context, from, to time.Time, taskID int64) ([]DailyStat, error) {
+	var rows []struct {
+		Date    string
+		Total   int64
+		Success int64
+		Failed  int64
+	}
+	query := s.dbc.WithContext(ctx).
+		Model(&Execution{}).
+		Select(`
+			DATE(created_at, 'localtime') AS date,
+			COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS success,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failed
+		`, StatusSuccess, StatusFailed).
+		Where("created_at BETWEEN ? AND ?", from, to).
+		Order("date")
+	if taskID > 0 {
+		query = query.Where("task_id = ?", taskID)
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("task: compute daily execution stats: %w", errmap.MapError(err))
+	}
+	stats := make([]DailyStat, 0, len(rows))
+	for _, row := range rows {
+		stats = append(stats, DailyStat{
+			Date:    row.Date,
+			Total:   row.Total,
+			Success: row.Success,
+			Failed:  row.Failed,
+		})
+	}
+	return stats, nil
+}
+
 // Compile-time assertion that executionStore implements ExecutionStore.
 var _ ExecutionStore = (*executionStore)(nil)
 
@@ -418,8 +384,8 @@ var _ ExecutionStore = (*executionStore)(nil)
 // table schemas. It is intended to be called once during application startup.
 func Migrate(ctx context.Context, dbc *gorm.DB) error {
 	if err := dbc.WithContext(ctx).AutoMigrate(
-		&ScheduleTask{},
-		&ScheduleLog{},
+		&Task{},
+		&Execution{},
 	); err != nil {
 		return fmt.Errorf("task: migrate tables: %w", err)
 	}
@@ -430,16 +396,16 @@ func Migrate(ctx context.Context, dbc *gorm.DB) error {
 // executor.RecordStore interface.
 //
 // The executor Runner persists execution results through
-// executor.RecordStore.Save(record ExecutionRecord), which has no context
-// parameter. The scheduler's persistent ExecutionStore exposes
-// Save(ctx, *Execution) instead. This adapter bridges the two so that real
-// execution results (Status, Output, Error, Duration, StatusCode,
-// FinishedAt) flow into the same sys_schedule_log table that
-// ListExecutions reads from.
+// executor.RecordStore.Save(ctx, record); the scheduler's persistent
+// ExecutionStore exposes Save(ctx, *Execution) instead. This adapter bridges
+// the two so that real execution results (Status, Output, Error, Duration,
+// StatusCode, FinishedAt) flow into the same sys_schedule_log table that
+// ListExecutions reads from. The asset-status vocabulary carried on
+// executor records is translated to the persisted execution vocabulary
+// here — this is the single bridge between the two.
 //
-// A background context is used for the underlying Save call because the
-// executor.RecordStore.Save signature does not accept one. The adapter is
-// safe for concurrent use because the wrapped ExecutionStore is.
+// The adapter is safe for concurrent use because the wrapped
+// ExecutionStore is.
 type ExecutionRecordStore struct {
 	store ExecutionStore
 }
@@ -454,30 +420,46 @@ func NewExecutionRecordStore(store ExecutionStore) *ExecutionRecordStore {
 }
 
 // Save implements executor.RecordStore. It converts the executor record into
-// the domain Execution type and persists it via the wrapped
-// task.ExecutionStore. Errors are returned to the caller, which is the
-// executor Runner; the Runner logs them but does not fail the task.
-func (s *ExecutionRecordStore) Save(record executor.ExecutionRecord) error {
+// the task Execution type and persists it via the wrapped ExecutionStore.
+// Errors are returned to the caller, which is the executor Runner; the Runner
+// logs them but does not fail the task.
+func (s *ExecutionRecordStore) Save(ctx context.Context, record executor.ExecutionRecord) error {
 	if s == nil || s.store == nil {
 		return nil
+	}
+	// Timeout takes precedence over the bridged asset status: a deadline
+	// expiry is not a plain failure and is persisted as the distinct
+	// "timeout" state so UIs can surface it separately.
+	status := ExecutionStatusFromAsset(record.Status)
+	if record.TimedOut {
+		status = StatusTimeout
 	}
 	exec := &Execution{
 		TaskID:       record.TaskID,
 		TenantID:     record.TenantID,
 		AssetID:      record.AssetID,
-		ExecutorName: record.ExecutorName,
-		Status:       string(record.Status),
+		ExecutorType: record.ExecutorName,
+		Status:       status,
 		StatusCode:   record.StatusCode,
 		Output:       record.Output,
 		Error:        record.ErrorMsg,
 		Duration:     int64(record.Duration / 1_000_000),
 		RetryCount:   record.RetryCount,
 		StartedAt:    record.StartedAt,
-		FinishedAt:   record.FinishedAt,
 		RunID:        record.RunID,
 		TriggerType:  record.TriggerType,
+		Node:         record.Node,
+		ExitCode:     record.ExitCode,
 	}
-	if err := s.store.Save(context.Background(), exec); err != nil {
+	if !record.TriggeredAt.IsZero() {
+		triggeredAt := record.TriggeredAt
+		exec.TriggeredAt = &triggeredAt
+	}
+	if !record.FinishedAt.IsZero() {
+		finishedAt := record.FinishedAt
+		exec.FinishedAt = &finishedAt
+	}
+	if err := s.store.Save(ctx, exec); err != nil {
 		return fmt.Errorf("task: persist execution record: %w", err)
 	}
 	return nil

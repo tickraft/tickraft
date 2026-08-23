@@ -20,6 +20,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/api/handler/ws"
+	executorpkg "github.com/tickraft/tickraft/pkg/executor"
 )
 
 // RouteOption configures route registration with middleware and services.
@@ -42,9 +43,10 @@ type routeConfig struct {
 	remediationRuleSvc     remediation.Service
 	systemSvc              system.Service
 	telemetrySvc           telemetry.Service
-	telemetryReportHandler telemetry.ReportHandler
-	telemetryMetricStore   telemetry.MetricStoreInjector
-	telemetryLogStore      telemetry.LogStoreInjector
+	telemetryReportHandler app.HandlerFunc
+	telemetryMetricStore   telemetry.MetricStore
+	telemetryLogStore      telemetry.LogStore
+	telemetryProbeRecords  telemetry.ProbeRecordStore
 	assetHandler           *asset.Handler
 	healthzHandler         *healthz.Handler
 	readyzHandler          *readyz.Handler
@@ -52,6 +54,7 @@ type routeConfig struct {
 	templateHandler        *telemetry.TemplateHandler
 	i18nHandler            *i18n.Handler
 	wsHandler              *ws.Handler
+	executorRegistry       *executorpkg.Registry
 }
 
 // jwtAuthOption provides the JWT authentication middleware.
@@ -174,26 +177,26 @@ func WithTelemetryService(svc telemetry.Service) RouteOption {
 	return telemetryServiceOption{svc: svc}
 }
 
-// telemetryReportHandlerOption provides the ReportHandler for the
+// telemetryReportHandlerOption provides the Hertz handler for the
 // unified telemetry report endpoint.
 type telemetryReportHandlerOption struct {
-	h telemetry.ReportHandler
+	h app.HandlerFunc
 }
 
 func (o telemetryReportHandlerOption) apply(c *routeConfig) { c.telemetryReportHandler = o.h }
 
-// WithTelemetryReportHandler provides the ReportHandler for the
-// unified telemetry report endpoint at POST /api/v1/telemetry. When omitted,
-// the report route group is not registered.
-func WithTelemetryReportHandler(h telemetry.ReportHandler) RouteOption {
+// WithTelemetryReportHandler provides the Hertz handler for the unified
+// telemetry report endpoint at POST /api/v1/telemetry. When omitted, the
+// report route group is not registered.
+func WithTelemetryReportHandler(h app.HandlerFunc) RouteOption {
 	return telemetryReportHandlerOption{h: h}
 }
 
 // telemetryDataStoresOption provides the MetricStore and LogStore used by
 // the telemetry handler's history/logs endpoints.
 type telemetryDataStoresOption struct {
-	metricStore telemetry.MetricStoreInjector
-	logStore    telemetry.LogStoreInjector
+	metricStore telemetry.MetricStore
+	logStore    telemetry.LogStore
 }
 
 func (o telemetryDataStoresOption) apply(c *routeConfig) {
@@ -205,10 +208,27 @@ func (o telemetryDataStoresOption) apply(c *routeConfig) {
 // telemetry handler's history/logs endpoints. Both stores may be nil to
 // disable the corresponding query path.
 func WithTelemetryDataStores(
-	metricStore telemetry.MetricStoreInjector,
-	logStore telemetry.LogStoreInjector,
+	metricStore telemetry.MetricStore,
+	logStore telemetry.LogStore,
 ) RouteOption {
 	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
+}
+
+// telemetryProbeRecordsOption provides the ProbeRecordStore used by the
+// telemetry handler's status/history/logs endpoints for active points.
+type telemetryProbeRecordsOption struct {
+	store telemetry.ProbeRecordStore
+}
+
+func (o telemetryProbeRecordsOption) apply(c *routeConfig) {
+	c.telemetryProbeRecords = o.store
+}
+
+// WithTelemetryProbeRecords provides the probe record store used by the
+// telemetry handler's status/history/logs endpoints for active monitor
+// points. A nil store disables the probe-backed query paths.
+func WithTelemetryProbeRecords(store telemetry.ProbeRecordStore) RouteOption {
+	return telemetryProbeRecordsOption{store: store}
 }
 
 // healthzHandlerOption provides the HealthzHandler for the /healthz endpoint.
@@ -288,3 +308,18 @@ func (o wsHandlerOption) apply(c *routeConfig) { c.wsHandler = o.h }
 // WithWSHandler provides the WebSocket handler for the /ws realtime
 // push endpoint. When omitted, the route is not registered.
 func WithWSHandler(h *ws.Handler) RouteOption { return wsHandlerOption{h: h} }
+
+// executorRegistryOption provides the executor registry backing the
+// executor type enumeration endpoints (/executors and /telemetry/probers).
+type executorRegistryOption struct {
+	reg *executorpkg.Registry
+}
+
+func (o executorRegistryOption) apply(c *routeConfig) { c.executorRegistry = o.reg }
+
+// WithExecutorRegistry provides the executor registry used to derive the
+// executor and prober type lists. When omitted, the enumeration endpoints
+// return empty lists.
+func WithExecutorRegistry(reg *executorpkg.Registry) RouteOption {
+	return executorRegistryOption{reg: reg}
+}

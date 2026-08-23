@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/tickraft/tickraft/pkg/api"
@@ -64,6 +65,10 @@ type applyTemplateRequest struct {
 	// Name overrides the monitoring point name. When empty, defaults to
 	// "<template name> (applied)".
 	Name string `json:"name"`
+	// AssetID optionally links the resulting monitoring point to an asset
+	// so the point's history/logs endpoints can surface the asset's
+	// collected data for passive points.
+	AssetID int64 `json:"asset_id,omitempty"`
 	// Overrides merges into the template config to customise the resulting
 	// monitoring point. Top-level keys in Overrides replace the
 	// corresponding keys in the template config.
@@ -308,7 +313,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	// Parse the template config into a map for merging.
 	cfg := make(map[string]any)
 	if t.Config != "" {
-		if err = json.Unmarshal([]byte(t.Config), &cfg); err != nil {
+		if err = sonic.Unmarshal([]byte(t.Config), &cfg); err != nil {
 			api.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal,
 				fmt.Sprintf("invalid template config: %v", err))
 			return
@@ -326,10 +331,17 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 		name = t.Name + " (applied)"
 	}
 
-	task := &Task{
+	// Applying a probe template instantiates an active monitor point: the
+	// template's executor type becomes the point's Type (its probe
+	// executor), and Mode/AssetID bind the point into the prober service.
+	// AssetType is not set from the executor type — it describes the
+	// monitored asset's category, not the probe executor.
+	task := &telemetry.MonitorPoint{
 		Name:        name,
 		Description: t.Description,
-		AssetType:   t.ExecutorType,
+		AssetID:     req.AssetID,
+		Mode:        telemetry.ModeActive,
+		Type:        t.ExecutorType,
 		Schedule:    schedule,
 		Enabled:     true,
 		Config:      cfg,
@@ -366,7 +378,7 @@ func validateTemplateRequest(req *templateRequest) error {
 	}
 	// Verify the config is valid JSON.
 	var tmp any
-	if err := json.Unmarshal(req.Config, &tmp); err != nil {
+	if err := sonic.Unmarshal(req.Config, &tmp); err != nil {
 		return fmt.Errorf("config is not valid JSON: %w", err)
 	}
 	return nil
@@ -377,7 +389,7 @@ func validateTemplateRequest(req *templateRequest) error {
 func toTemplateResponse(t *telemetry.Template) (templateResponse, error) {
 	var cfg map[string]any
 	if t.Config != "" {
-		if err := json.Unmarshal([]byte(t.Config), &cfg); err != nil {
+		if err := sonic.Unmarshal([]byte(t.Config), &cfg); err != nil {
 			return templateResponse{}, fmt.Errorf("parse template config: %w", err)
 		}
 	}

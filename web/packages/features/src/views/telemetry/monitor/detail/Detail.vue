@@ -94,6 +94,62 @@ const configParsed = computed<Record<string, unknown>>(() => {
 /** Whether this is an active monitor */
 const isActive = computed(() => detail.value?.mode === 'active')
 
+/** Last-probe sub line for the status tile: real probe timing and latency
+ *  when the backend reported them, the generic caption otherwise. */
+const statusSub = computed(() => {
+  if (statusInfo.value?.lastProbeAt) {
+    return t('telemetry.monitor.detail.statLastProbeSub', {
+      time: formatDate(statusInfo.value.lastProbeAt),
+      ms: statusInfo.value.latencyMs ?? 0,
+    })
+  }
+  return t('telemetry.monitor.detail.statStatusSub')
+})
+
+/** Passive reporting guide: endpoint, authentication mode, and a ready-to-run
+ *  curl example derived from the point's saved config. */
+const reportEndpoint = computed(
+  () => `${window.location.origin}/api/v1/telemetry`,
+)
+
+const reportAuth = computed<'hmac' | 'asset-key'>(() => {
+  const authType = configParsed.value.authType
+  return authType === 'asset-key' ? 'asset-key' : 'hmac'
+})
+
+const reportSecret = computed(() => String(configParsed.value.secret ?? ''))
+
+const reportCurl = computed(() => {
+  if (reportAuth.value === 'asset-key') {
+    const identity = detail.value?.assetId
+      ? `"asset_id": ${detail.value.assetId}`
+      : '"asset_key": "your-asset-key", "tenant_id": 1'
+    return [
+      `curl -X POST ${reportEndpoint.value} \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -d '{"kind":"heartbeat", ${identity}}'`,
+    ].join('\n')
+  }
+  const secret = reportSecret.value || '$POINT_SECRET'
+  return [
+    `BODY='{"kind":"heartbeat"}'`,
+    `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac '${secret}' | awk '{print $2}')`,
+    `curl -X POST ${reportEndpoint.value} \\`,
+    `  -H 'Content-Type: application/json' \\`,
+    `  -H "X-Tickraft-Signature: $SIG" -d "$BODY"`,
+  ].join('\n')
+})
+
+/** Copy the report example to clipboard */
+async function handleCopyReportExample(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(reportCurl.value)
+    ElMessage.success(t('telemetry.monitor.detail.copySuccess'))
+  } catch {
+    ElMessage.error(t('common.app.failed'))
+  }
+}
+
 /** Status tag type */
 function statusTagType(status: string): 'success' | 'warning' | 'danger' | 'info' {
   if (status === 'active') return 'success'
@@ -124,28 +180,58 @@ const logColumns = computed(() => [
   { prop: 'message', label: t('telemetry.monitor.detail.logMessage'), minWidth: 300, slot: 'logMessage' },
 ])
 
-/** Log level tag type */
-function logLevelType(level: string): 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = level.toLowerCase()
-  if (normalized === 'error' || normalized === 'fatal') return 'danger'
-  if (normalized === 'warn' || normalized === 'warning') return 'warning'
-  if (normalized === 'info') return 'info'
-  if (normalized === 'debug' || normalized === 'trace') return 'info'
-  return 'success'
+/** Probe-status tag type for the asset vocabulary (normal/abnormal/offline/
+ * unknown) used by probe records and probe-rendered logs. Unknown values
+ * render neutral. */
+function probeStatusType(status: string): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'normal') return 'success'
+  if (status === 'abnormal') return 'danger'
+  if (status === 'offline') return 'warning'
+  return 'info'
 }
 
-/** Trigger an immediate probe */
+/** Log level tag type. Active points render probe records as logs, so the
+ * level carries the asset status vocabulary first (normal/abnormal/offline);
+ * passive points render collected log levels (info/warn/error/...). */
+function logLevelType(level: string): 'success' | 'warning' | 'danger' | 'info' {
+  const normalized = level.toLowerCase()
+  if (normalized === 'normal') return 'success'
+  if (normalized === 'abnormal' || normalized === 'error' || normalized === 'fatal') return 'danger'
+  if (normalized === 'offline' || normalized === 'warn' || normalized === 'warning') return 'warning'
+  if (normalized === 'unknown') return 'info'
+  if (normalized === 'info' || normalized === 'debug' || normalized === 'trace') return 'info'
+  return 'info'
+}
+
+/** Trigger an on-demand probe (202 Accepted): the probe runs asynchronously,
+ * so poll the status endpoint for the refreshed outcome. */
 async function handleProbe(): Promise<void> {
   if (!detail.value) return
   probing.value = true
   try {
-    const result = await probeMonitor(detail.value.id)
-    statusInfo.value = result
-    ElMessage.success(t('telemetry.monitor.detail.probeSuccess'))
+    await probeMonitor(detail.value.id)
+    ElMessage.success(t('telemetry.monitor.detail.probeTriggered'))
+    setTimeout(() => void refreshStatusAfterProbe(), 1500)
+    setTimeout(() => {
+      void refreshStatusAfterProbe()
+      void fetchHistory()
+      void fetchLogs()
+    }, 3000)
   } catch {
     // Errors are handled centrally by the interceptor
   } finally {
     probing.value = false
+  }
+}
+
+/** Refresh the runtime status tile after a dispatched probe. */
+async function refreshStatusAfterProbe(): Promise<void> {
+  const id = getMonitorId()
+  if (!id) return
+  try {
+    statusInfo.value = await getMonitorStatus(id)
+  } catch {
+    // keep the last known status on transient errors
   }
 }
 
@@ -215,10 +301,12 @@ async function fetchLogs(): Promise<void> {
   }
 }
 
-/** Get config field display value */
-function configField(key: string): string {
-  const val = configParsed.value[key]
-  if (val === undefined || val === null) return '-'
+/** Get config field display value; fallback keys cover points stored
+ *  before the executor-contract alignment (host/url/expectCode). */
+function configField(key: string, ...fallbacks: string[]): string {
+  const parsed = configParsed.value
+  const val = [key, ...fallbacks].map((k) => parsed[k]).find((v) => v !== undefined && v !== null)
+  if (val === undefined) return '-'
   return String(val)
 }
 
@@ -236,7 +324,11 @@ onMounted(() => {
       <!-- Header -->
       <div class="tk-detail-header">
         <div class="tk-detail-header__title-row">
-          <el-button circle class="tk-detail-header__back" @click="handleBack">
+          <el-button
+            circle
+            class="tk-detail-header__back"
+            @click="handleBack"
+          >
             <el-icon><ArrowLeft /></el-icon>
           </el-button>
           <div class="tk-detail-header__title-block">
@@ -244,7 +336,9 @@ onMounted(() => {
               {{ t('telemetry.monitor.detail.eyebrowId', { id: detail.id }) }}
             </div>
             <div class="tk-detail-header__title-row2">
-              <h1 class="tk-detail-header__title">{{ detail.name }}</h1>
+              <h1 class="tk-detail-header__title">
+                {{ detail.name }}
+              </h1>
               <span
                 class="tk-mode-badge"
                 :class="MODE_BADGE_CLASS[detail.mode] ?? 'tk-mode-badge--default'"
@@ -259,7 +353,10 @@ onMounted(() => {
                 <span class="tk-type-badge__dot" />
                 {{ t(`telemetry.monitor.type.${detail.type}`, detail.type) }}
               </span>
-              <el-tag :type="detail.enabled ? 'success' : 'info'" size="small">
+              <el-tag
+                :type="detail.enabled ? 'success' : 'info'"
+                size="small"
+              >
                 {{ detail.enabled ? t('common.app.enabled') : t('common.app.disabled') }}
               </el-tag>
             </div>
@@ -278,7 +375,11 @@ onMounted(() => {
             <el-icon><Edit /></el-icon>
             {{ t('common.app.edit') }}
           </el-button>
-          <el-button v-if="canDelete('device')" type="danger" @click="handleDelete">
+          <el-button
+            v-if="canDelete('device')"
+            type="danger"
+            @click="handleDelete"
+          >
             <el-icon><Delete /></el-icon>
             {{ t('common.app.delete') }}
           </el-button>
@@ -288,29 +389,44 @@ onMounted(() => {
       <!-- Stat strip -->
       <div class="tk-stat-strip">
         <div class="tk-stat-tile">
-          <span class="tk-stat-tile__accent" style="background: var(--tk-primary-color, #409eff)" />
+          <span
+            class="tk-stat-tile__accent"
+            style="background: var(--tk-primary-color, #409eff)"
+          />
           <span class="tk-stat-tile__label">{{ t('telemetry.monitor.detail.statMode') }}</span>
           <span class="tk-stat-tile__value tk-stat-tile__value--sm">{{ t(`telemetry.monitor.mode.${detail.mode}`) }}</span>
           <span class="tk-stat-tile__sub">{{ t('telemetry.monitor.detail.statModeSub') }}</span>
         </div>
         <div class="tk-stat-tile">
-          <span class="tk-stat-tile__accent" style="background: var(--tk-success-color, #67c23a)" />
+          <span
+            class="tk-stat-tile__accent"
+            style="background: var(--tk-success-color, #67c23a)"
+          />
           <span class="tk-stat-tile__label">{{ t('telemetry.monitor.detail.statStatus') }}</span>
           <span class="tk-stat-tile__value tk-stat-tile__value--sm">
-            <el-tag :type="statusTagType(statusInfo?.status ?? 'inactive')" size="small">
+            <el-tag
+              :type="statusTagType(statusInfo?.status ?? 'inactive')"
+              size="small"
+            >
               {{ statusLabel(statusInfo?.status ?? 'inactive') }}
             </el-tag>
           </span>
-          <span class="tk-stat-tile__sub">{{ t('telemetry.monitor.detail.statStatusSub') }}</span>
+          <span class="tk-stat-tile__sub">{{ statusSub }}</span>
         </div>
         <div class="tk-stat-tile">
-          <span class="tk-stat-tile__accent" style="background: var(--tk-warning-color, #e6a23c)" />
+          <span
+            class="tk-stat-tile__accent"
+            style="background: var(--tk-warning-color, #e6a23c)"
+          />
           <span class="tk-stat-tile__label">{{ t('telemetry.monitor.detail.statSchedule') }}</span>
           <span class="tk-stat-tile__value tk-stat-tile__value--sm">{{ detail.schedule }}</span>
           <span class="tk-stat-tile__sub">{{ t('telemetry.monitor.detail.statScheduleSub') }}</span>
         </div>
         <div class="tk-stat-tile">
-          <span class="tk-stat-tile__accent" style="background: var(--tk-info-color, #909399)" />
+          <span
+            class="tk-stat-tile__accent"
+            style="background: var(--tk-info-color, #909399)"
+          />
           <span class="tk-stat-tile__label">{{ t('telemetry.monitor.detail.statUpdatedAt') }}</span>
           <span class="tk-stat-tile__value tk-stat-tile__value--sm">{{ detail.updatedAt }}</span>
           <span class="tk-stat-tile__sub">{{ t('telemetry.monitor.detail.statUpdatedAtSub') }}</span>
@@ -362,11 +478,17 @@ onMounted(() => {
             </div>
             <div class="tk-desc-item">
               <span class="tk-desc-item__label">{{ t('telemetry.monitor.detail.enableStatus') }}</span>
-              <el-tag :type="detail.enabled ? 'success' : 'info'" size="small">
+              <el-tag
+                :type="detail.enabled ? 'success' : 'info'"
+                size="small"
+              >
                 {{ detail.enabled ? t('common.app.enabled') : t('common.app.disabled') }}
               </el-tag>
             </div>
-            <div v-if="detail.description" class="tk-desc-item">
+            <div
+              v-if="detail.description"
+              class="tk-desc-item"
+            >
               <span class="tk-desc-item__label">{{ t('telemetry.monitor.detail.description') }}</span>
               <span class="tk-desc-item__value">{{ detail.description }}</span>
             </div>
@@ -385,13 +507,16 @@ onMounted(() => {
           </div>
 
           <!-- Type-specific config fields -->
-          <div v-if="Object.keys(configParsed).length > 0" class="tk-detail-card__extra">
+          <div
+            v-if="Object.keys(configParsed).length > 0"
+            class="tk-detail-card__extra"
+          >
             <div class="tk-config-fields">
               <!-- Active: ICMP config -->
               <template v-if="detail.type === 'icmp'">
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.targetHost') }}</span>
-                  <span class="tk-config-field__value">{{ configField('host') }}</span>
+                  <span class="tk-config-field__value">{{ configField('address', 'host') }}</span>
                 </div>
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.pingCount') }}</span>
@@ -403,7 +528,7 @@ onMounted(() => {
               <template v-if="detail.type === 'tcp'">
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.targetHost') }}</span>
-                  <span class="tk-config-field__value">{{ configField('host') }}</span>
+                  <span class="tk-config-field__value">{{ configField('address', 'host') }}</span>
                 </div>
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.targetPort') }}</span>
@@ -419,11 +544,11 @@ onMounted(() => {
                 </div>
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.requestUrl') }}</span>
-                  <span class="tk-config-field__value">{{ configField('url') }}</span>
+                  <span class="tk-config-field__value">{{ configField('address', 'url') }}</span>
                 </div>
                 <div class="tk-config-field">
                   <span class="tk-config-field__label">{{ t('telemetry.monitor.create.expectCode') }}</span>
-                  <span class="tk-config-field__value">{{ configField('expectCode') }}</span>
+                  <span class="tk-config-field__value">{{ configField('expect_status', 'expectCode') }}</span>
                 </div>
               </template>
 
@@ -439,6 +564,67 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- Passive reporting guide -->
+      <div
+        v-if="detail.mode === 'passive'"
+        class="tk-detail-card"
+      >
+        <div class="tk-detail-card__header">
+          <div class="tk-detail-card__title">
+            <el-icon><InfoFilled /></el-icon>
+            <span>{{ t('telemetry.monitor.report.title') }}</span>
+          </div>
+          <span class="tk-detail-card__hint">{{ t('telemetry.monitor.report.hint') }}</span>
+        </div>
+        <div class="tk-detail-card__body">
+          <div class="tk-report-grid">
+            <div class="tk-config-field">
+              <span class="tk-config-field__label">{{ t('telemetry.monitor.report.endpointLabel') }}</span>
+              <span class="tk-config-field__value">{{ reportEndpoint }}</span>
+            </div>
+            <div class="tk-config-field">
+              <span class="tk-config-field__label">{{ t('telemetry.monitor.report.authLabel') }}</span>
+              <span class="tk-config-field__value">
+                {{ reportAuth === 'asset-key'
+                  ? t('telemetry.monitor.report.authAssetKey') : t('telemetry.monitor.report.authHmac') }}
+              </span>
+            </div>
+            <div class="tk-config-field">
+              <span class="tk-config-field__label">Secret</span>
+              <span class="tk-config-field__value">
+                {{ reportSecret
+                  ? t('telemetry.monitor.report.secretConfigured')
+                  : t('telemetry.monitor.report.secretMissing') }}
+              </span>
+            </div>
+            <div class="tk-config-field">
+              <span class="tk-config-field__label">{{ t('telemetry.monitor.report.noteLabel') }}</span>
+              <span class="tk-config-field__value">
+                {{ reportAuth === 'asset-key'
+                  ? t('telemetry.monitor.report.assetKeyNote') : t('telemetry.monitor.report.hmacNote') }}
+              </span>
+            </div>
+          </div>
+          <div class="tk-detail-card__extra">
+            <div class="tk-report-example">
+              <div class="tk-report-example__head">
+                <span class="tk-report-example__label">{{ t('telemetry.monitor.report.exampleTitle') }}</span>
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  @click="handleCopyReportExample"
+                >
+                  <el-icon><CopyDocument /></el-icon>
+                  {{ t('telemetry.monitor.report.copyExample') }}
+                </el-button>
+              </div>
+              <pre class="tk-json-view">{{ reportCurl }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Raw config card -->
       <div class="tk-detail-card">
         <div class="tk-detail-card__header">
@@ -446,7 +632,12 @@ onMounted(() => {
             <el-icon><Document /></el-icon>
             <span>{{ t('telemetry.monitor.detail.rawConfig') }}</span>
           </div>
-          <el-button link type="primary" size="small" @click="handleCopyJson">
+          <el-button
+            link
+            type="primary"
+            size="small"
+            @click="handleCopyJson"
+          >
             <el-icon><CopyDocument /></el-icon>
             {{ t('telemetry.monitor.detail.copyJson') }}
           </el-button>
@@ -486,9 +677,17 @@ onMounted(() => {
               <span class="tk-mono-text">{{ formatDate(row.timestamp) }}</span>
             </template>
             <template #status="{ row }">
-              <el-tag :type="row.status === 'success' ? 'success' : row.status === 'error' ? 'danger' : 'info'" size="small">
+              <el-tag
+                v-if="row.status"
+                :type="probeStatusType(row.status)"
+                size="small"
+              >
                 {{ row.status }}
               </el-tag>
+              <span
+                v-else
+                class="tk-mono-text"
+              >{{ row.metric || '-' }}</span>
             </template>
             <template #value="{ row }">
               <span class="tk-mono-text">{{ JSON.stringify(row.value) }}</span>
@@ -531,7 +730,10 @@ onMounted(() => {
               <span class="tk-mono-text">{{ formatDate(row.timestamp) }}</span>
             </template>
             <template #logLevel="{ row }">
-              <el-tag :type="logLevelType(row.level)" size="small">
+              <el-tag
+                :type="logLevelType(row.level)"
+                size="small"
+              >
                 {{ row.level }}
               </el-tag>
             </template>
@@ -701,6 +903,30 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--tk-spacing-md, 24px);
+}
+
+/* Passive reporting guide */
+.tk-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--tk-spacing-md, 24px);
+}
+
+.tk-report-example {
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--tk-spacing-sm, 12px);
+  }
+
+  &__label {
+    font-family: var(--tk-font-mono, 'Monaco', monospace);
+    font-size: var(--tk-font-size-xs, 12px);
+    color: var(--tk-text-secondary, #909399);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
 }
 
 .tk-config-field {

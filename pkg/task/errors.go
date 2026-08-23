@@ -23,7 +23,8 @@ var (
 	// and the task's Concurrency is set to 1 (no concurrent execution).
 	ErrTaskRunning = errors.New("task: previous execution still running")
 	// ErrDependencyNotMet is returned (or logged) when a task's upstream
-	// dependency has not yet completed with StatusNormal. The Manager's
+	// dependency has not yet completed with asset status normal. The
+	// Manager's
 	// onFire path uses this sentinel when recording the skip reason so
 	// that callers and observability tooling can distinguish "dependency
 	// not met" from a generic execution failure. The task remains

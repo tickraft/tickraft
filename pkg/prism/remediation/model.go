@@ -13,7 +13,7 @@ import (
 )
 
 // TriggerType identifies the category of event that activates a remediation
-// rule. It maps 1:1 to the event types the Manager subscribes to.
+// rule. It maps 1:1 to the event types the Engine subscribes to.
 type TriggerType string
 
 const (
@@ -40,7 +40,7 @@ const (
 
 // Rule is the GORM model for the sys_prism_remediation_rule table.
 //
-// It persists remediation rule definitions that the Manager evaluates
+// It persists remediation rule definitions that the Engine evaluates
 // against incoming events. When an event matches a rule's trigger type and
 // condition expression, the rule's configured operator is invoked to perform
 // automated remediation.
@@ -55,7 +55,7 @@ type Rule struct {
 	// TenantID scopes the rule to a tenant for multi-tenant isolation.
 	// The runtime is single-tenant: this field is always 0.
 	// The extended runtime injects the actual tenant ID.
-	TenantID int64 `gorm:"column:tenant_id;not null;index;default:0" json:"tenant_id"`
+	TenantID int64 `gorm:"column:tenant_id;not null;index;default:0" json:"-"`
 	// Name is the human-readable rule name.
 	Name string `gorm:"column:name;type:varchar(255);not null" json:"name"`
 	// Description is an optional free-form rule description.
@@ -103,8 +103,8 @@ type Rule struct {
 	ConsecutiveFailures int `gorm:"column:consecutive_failures;not null;default:0" json:"consecutive_failures"`
 	// Metadata is a reserved JSON blob for extension key-value pairs.
 	// The circuit breaker no longer stores its counter here (it moved to
-	// the consecutive_failures column).
-	Metadata string `gorm:"column:metadata;type:text" json:"metadata,omitempty"`
+	// the consecutive_failures column). Not part of the API contract.
+	Metadata string `gorm:"column:metadata;type:text" json:"-"`
 	// CreatedAt is the rule creation timestamp.
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	// UpdatedAt is the rule last-update timestamp.

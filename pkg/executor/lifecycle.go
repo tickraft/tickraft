@@ -6,7 +6,9 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -19,6 +21,10 @@ import (
 
 // defaultExecutionTimeout is used when the request does not specify a timeout.
 const defaultExecutionTimeout = 30 * time.Second
+
+// nodeHostname identifies this worker node in execution records. Resolved
+// once at startup; an unresolvable hostname leaves it empty.
+var nodeHostname, _ = os.Hostname()
 
 // doExecute performs the actual task execution: look up executor, run with
 // timeout and retry, infer status, publish completion event, and record
@@ -50,7 +56,7 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 				zap.Any("panic", rec),
 				zap.Stack("stack"),
 			)
-			r.finish(req, executionOutcome{
+			r.finish(ctx, req, executionOutcome{
 				result:     nil,
 				execErr:    fmt.Errorf("executor panic: %v", rec),
 				retryCount: 0,
@@ -68,7 +74,7 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 			zap.String("operation", req.Operation.String()),
 			zap.Error(err),
 		)
-		r.finish(req, executionOutcome{
+		r.finish(ctx, req, executionOutcome{
 			result:     nil,
 			execErr:    err,
 			retryCount: 0,
@@ -150,7 +156,7 @@ func (r *runner) doExecute(ctx context.Context, req ExecutionRequest, release fu
 		if attempts > 1 {
 			retryCount = attempts - 1
 		}
-		r.finish(req, executionOutcome{
+		r.finish(ctx, req, executionOutcome{
 			result:     lastResult,
 			execErr:    execErr,
 			retryCount: retryCount,
@@ -224,11 +230,12 @@ type executionOutcome struct {
 // finish saves the execution record and publishes the completion event.
 // retryCount is the number of retries attempted (0 when the task succeeded
 // on the first attempt or when no retry config was applied).
-func (r *runner) finish(req ExecutionRequest, outcome executionOutcome) {
+func (r *runner) finish(ctx context.Context, req ExecutionRequest, outcome executionOutcome) {
 	duration := time.Since(outcome.start)
 	finishedAt := time.Now()
 
 	status, errorMsg := inferStatus(outcome.result, outcome.execErr)
+	timedOut := errors.Is(outcome.execErr, context.DeadlineExceeded)
 
 	// Save execution record before publishing the completion event so that
 	// by the time any subscriber observes the completion, the record is
@@ -249,12 +256,19 @@ func (r *runner) finish(req ExecutionRequest, outcome executionOutcome) {
 		ErrorMsg:     errorMsg,
 		RunID:        req.RunID,
 		TriggerType:  req.TriggerType,
+		TriggeredAt:  req.TriggeredAt,
+		Node:         nodeHostname,
+		TimedOut:     timedOut,
 	}
 	if outcome.result != nil {
 		record.StatusCode = outcome.result.StatusCode
 		record.Output = outcome.result.Body
+		record.ExitCode = outcome.result.ExitCode
 	}
-	if saveErr := r.records.Save(record); saveErr != nil {
+	// The record write must outlive the execution it describes: detach the
+	// context's cancellation (execution timeout, Stop shutdown) while
+	// keeping its request-scoped values for the store.
+	if saveErr := r.records.Save(context.WithoutCancel(ctx), record); saveErr != nil {
 		r.logger.Warn("failed to save execution record",
 			zap.Int64("task_id", req.ID),
 			zap.Error(saveErr),
@@ -267,6 +281,8 @@ func (r *runner) finish(req ExecutionRequest, outcome executionOutcome) {
 			ExecutionID: strconv.FormatInt(req.ID, 10),
 			TenantID:    strconv.FormatInt(req.TenantID, 10),
 			AssetID:     strconv.FormatInt(req.AssetID, 10),
+			Operation:   req.Operation.String(),
+			Action:      "completed",
 			Status:      string(status),
 			Error:       errorMsg,
 		}
@@ -291,29 +307,15 @@ func (r *runner) finish(req ExecutionRequest, outcome executionOutcome) {
 	)
 }
 
-// buildRetry constructs a retry.Retry from the request metadata.
-// It reads max_retries and retry_interval from req.Metadata.
-// If max_retries is 0 or absent, a single-attempt (no-retry) config is returned.
+// buildRetry constructs a retry.Retry from the request's explicit retry
+// fields (MaxRetries, RetryInterval). If MaxRetries is 0, a single-attempt
+// (no-retry) config is returned. A RetryInterval <= 0 means immediate
+// retries (zero-delay fixed interval); no hidden default backoff is applied.
 func (r *runner) buildRetry(req ExecutionRequest) (*retry.Retry, error) {
-	maxRetries := 0
-	if req.Metadata != nil {
-		if v, ok := req.Metadata["max_retries"]; ok {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
-				maxRetries = n
-			}
-		}
+	opts := []retry.Option{
+		retry.WithMaxAttempts(req.MaxRetries + 1),
+		retry.WithBackoff(retry.NewFixedInterval(req.RetryInterval)),
 	}
-
-	opts := []retry.Option{retry.WithMaxAttempts(maxRetries + 1)}
-
-	if req.Metadata != nil {
-		if v, ok := req.Metadata["retry_interval"]; ok {
-			if d, err := time.ParseDuration(v); err == nil && d > 0 {
-				opts = append(opts, retry.WithBackoff(retry.NewFixedInterval(d)))
-			}
-		}
-	}
-
 	return retry.New(opts...)
 }
 

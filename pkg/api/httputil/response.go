@@ -46,6 +46,17 @@ func Success(arc *app.RequestContext, data any) {
 	})
 }
 
+// SuccessAccepted writes a 202 Accepted response for requests whose work
+// has been queued/dispatched but not completed yet (e.g. an on-demand
+// probe). Clients poll the relevant resource for the outcome.
+func SuccessAccepted(arc *app.RequestContext, data any) {
+	arc.JSON(http.StatusAccepted, Response{
+		Code:    0,
+		Message: "accepted",
+		Data:    data,
+	})
+}
+
 // Fail writes an error response by auto-mapping the error to HTTP status and code.
 // It checks: 1) ErrorCoder interface, 2) known sentinel errors, 3) fallback to 500.
 func Fail(arc *app.RequestContext, err error) {

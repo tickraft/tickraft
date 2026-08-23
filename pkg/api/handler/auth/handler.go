@@ -14,7 +14,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
-	authpkg "github.com/tickraft/tickraft/pkg/auth"
+	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
@@ -34,15 +34,6 @@ func NewHandler(svc Service) *Handler {
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-}
-
-// tokenData is the response data for endpoints that return tokens.
-type tokenData struct {
-	AccessToken        string `json:"access_token,omitempty"`
-	RefreshToken       string `json:"refresh_token,omitempty"`
-	MustChangePassword bool   `json:"must_change_password,omitempty"`
-	MFARequired        bool   `json:"mfa_required,omitempty"`
-	MFATicket          string `json:"mfa_ticket,omitempty"`
 }
 
 // refreshRequest is the request body for the refresh endpoint.
@@ -97,13 +88,7 @@ func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	api.Success(c, tokenData{
-		AccessToken:        tokenPair.AccessToken,
-		RefreshToken:       tokenPair.RefreshToken,
-		MustChangePassword: tokenPair.MustChangePassword,
-		MFARequired:        tokenPair.MFARequired,
-		MFATicket:          tokenPair.MFATicket,
-	})
+	api.Success(c, tokenPair)
 }
 
 // Logout handles POST /api/v1/auth/logout.
@@ -145,10 +130,9 @@ func (h *Handler) Refresh(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	api.Success(c, tokenData{
-		AccessToken:  tokenPair.AccessToken,
-		RefreshToken: tokenPair.RefreshToken,
-	})
+	// Refresh responses carry only the token pair; the remaining TokenPair
+	// fields are omitempty and zero, so the wire shape is unchanged.
+	api.Success(c, tokenPair)
 }
 
 // ChangePassword handles POST /api/v1/auth/password.
@@ -186,7 +170,7 @@ func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
 		api.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
-	if claims.Role < authpkg.RoleAdmin {
+	if claims.Role < auth.RoleAdmin {
 		api.FailWithCode(c, 403, errdefs.CodeForbidden, "admin role required")
 		return
 	}

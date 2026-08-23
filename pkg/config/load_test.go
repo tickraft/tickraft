@@ -31,7 +31,8 @@ database:
   dsn: ${TICKRAFT_TEST_DB_DSN}
 auth:
   jwt_secret: ${TICKRAFT_TEST_JWT_SECRET}
-  token_ttl: "24h"
+  access_ttl: "2h"
+  refresh_ttl: "168h"
 logger:
   level: "info"
   mode: "debug"
@@ -60,8 +61,11 @@ func TestLoadFromBytes_FullConfig(t *testing.T) {
 	if cfg.Auth.JWTSecret != "super-secret-key-with-at-least-32-bytes" {
 		t.Errorf("auth.jwt_secret = %q, want interpolated value", cfg.Auth.JWTSecret)
 	}
-	if cfg.Auth.TokenTTL.Duration() != 24*time.Hour {
-		t.Errorf("auth.token_ttl = %v, want 24h", cfg.Auth.TokenTTL)
+	if cfg.Auth.AccessTTL.Duration() != 2*time.Hour {
+		t.Errorf("auth.access_ttl = %v, want 2h", cfg.Auth.AccessTTL)
+	}
+	if cfg.Auth.RefreshTTL.Duration() != 7*24*time.Hour {
+		t.Errorf("auth.refresh_ttl = %v, want 168h", cfg.Auth.RefreshTTL)
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate failed: %v", err)
@@ -113,8 +117,11 @@ auth:
 		t.Errorf("server.maintenance_interval default = %v, want 5m", cfg.Server.MaintenanceInterval)
 	}
 	// Auth defaults.
-	if cfg.Auth.TokenTTL.Duration() != 24*time.Hour {
-		t.Errorf("auth.token_ttl default = %v, want 24h", cfg.Auth.TokenTTL)
+	if cfg.Auth.AccessTTL.Duration() != 2*time.Hour {
+		t.Errorf("auth.access_ttl default = %v, want 2h", cfg.Auth.AccessTTL)
+	}
+	if cfg.Auth.RefreshTTL.Duration() != 7*24*time.Hour {
+		t.Errorf("auth.refresh_ttl default = %v, want 168h", cfg.Auth.RefreshTTL)
 	}
 	// Logger defaults.
 	if cfg.Logger.Level != "info" {
@@ -134,7 +141,7 @@ database:
   dsn: "/tmp/test.db"
 auth:
   jwt_secret: "secret"
-  token_ttl: "1h"
+  access_ttl: "1h"
 logger:
   level: "debug"
 `
@@ -148,8 +155,8 @@ logger:
 	if cfg.Server.EnableCORS {
 		t.Errorf("server.enable_cors = true, want false (YAML override)")
 	}
-	if cfg.Auth.TokenTTL.Duration() != 1*time.Hour {
-		t.Errorf("auth.token_ttl = %v, want 1h (YAML override)", cfg.Auth.TokenTTL)
+	if cfg.Auth.AccessTTL.Duration() != 1*time.Hour {
+		t.Errorf("auth.access_ttl = %v, want 1h (YAML override)", cfg.Auth.AccessTTL)
 	}
 	if cfg.Logger.Level != "debug" {
 		t.Errorf("logger.level = %q, want %q (YAML override)", cfg.Logger.Level, "debug")
@@ -395,7 +402,7 @@ database:
   dsn: "path"
 auth:
   jwt_secret: "secret"
-  token_ttl: "not-a-duration"
+  access_ttl: "not-a-duration"
 `
 	_, err := LoadFromBytes([]byte(yaml))
 	if err == nil {

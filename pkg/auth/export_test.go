@@ -7,6 +7,8 @@ package auth
 import (
 	"sync"
 	"time"
+
+	"github.com/tickraft/tickraft/pkg/auth/jwt"
 )
 
 // This file exposes unexported symbols for use by external test packages
@@ -72,6 +74,13 @@ func (s *Service) CleanupExpiredFails() { s.evictExpiredFails() }
 
 // StartCleanupLoop exposes the unexported launchCleanupLoop method.
 func (s *Service) StartCleanupLoop() { s.launchCleanupLoop() }
+
+// ParseTokenForTest parses token as an access token via the service's
+// internal JWT manager, so external tests can inspect the claims of tokens
+// the service issued.
+func (s *Service) ParseTokenForTest(token string) (*jwt.UserClaims, error) {
+	return s.jwt.ValidateToken(token, jwt.TokenTypeAccess)
+}
 
 // ValidateUsername exposes the unexported checkUsername function.
 func ValidateUsername(username string) error { return checkUsername(username) }

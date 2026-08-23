@@ -32,37 +32,51 @@ func NewStore(dbc *gorm.DB) *Store {
 	return &Store{dbc: dbc}
 }
 
-// Migrate runs AutoMigrate for the Record table. It is intended to be
+// Migrate runs AutoMigrate for the Channel table. It is intended to be
 // invoked from the application's migration phase at startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	if err := s.dbc.WithContext(ctx).AutoMigrate(&Record{}); err != nil {
+	if err := s.dbc.WithContext(ctx).AutoMigrate(&Channel{}); err != nil {
 		return fmt.Errorf("migrate channel table: %w", err)
 	}
 	return nil
 }
 
-// Create inserts a new channel record. The ID, CreatedAt, and UpdatedAt
+// Create inserts a new channel. The ID, CreatedAt, and UpdatedAt
 // are populated by the database on success.
-func (s *Store) Create(ctx context.Context, m *Record) error {
+func (s *Store) Create(ctx context.Context, m *Channel) error {
 	if m == nil {
-		return fmt.Errorf("channel: create record: nil model")
+		return fmt.Errorf("channel: create channel: nil model")
 	}
 	if err := s.dbc.WithContext(ctx).Create(m).Error; err != nil {
-		return fmt.Errorf("channel: create record: %w", errmap.MapError(err))
+		return fmt.Errorf("channel: create channel: %w", errmap.MapError(err))
 	}
 	return nil
 }
 
-// Update saves the channel record. The ID field identifies the row to
-// update; CreatedAt is preserved by the caller before invoking Update.
-// A RowsAffected count of zero is reported as ErrChannelNotFound.
-func (s *Store) Update(ctx context.Context, rec *Record) error {
-	if rec == nil {
-		return fmt.Errorf("channel: update record: nil model")
+// recordUpdateColumns lists the user-editable columns touched by Update.
+// Engine-owned state (last_used_at) and lifecycle fields (tenant_id,
+// created_at, deleted_at) are deliberately absent so a request-bound model
+// can never clear them.
+var recordUpdateColumns = []string{
+	"name", "type", "config", "enabled", "updated_at",
+}
+
+// Update applies a column-level update limited to the user-editable
+// columns. The ID field identifies the row to update; engine-owned state
+// (last_used_at) is never touched, so a PUT cannot reset the channel's
+// usage bookkeeping. A RowsAffected count of zero is reported as
+// ErrChannelNotFound.
+func (s *Store) Update(ctx context.Context, ch *Channel) error {
+	if ch == nil {
+		return fmt.Errorf("channel: update channel: nil model")
 	}
-	result := s.dbc.WithContext(ctx).Save(rec)
+	result := s.dbc.WithContext(ctx).
+		Model(&Channel{}).
+		Where("id = ?", ch.ID).
+		Select(recordUpdateColumns).
+		Updates(ch)
 	if result.Error != nil {
-		return fmt.Errorf("channel: update record: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("channel: update channel: %w", errmap.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrChannelNotFound
@@ -70,52 +84,52 @@ func (s *Store) Update(ctx context.Context, rec *Record) error {
 	return nil
 }
 
-// GetByID retrieves a channel record by its ID. Returns
-// ErrChannelNotFound when no record with the given ID exists.
-func (s *Store) GetByID(ctx context.Context, id int64) (*Record, error) {
-	var rec Record
-	if err := s.dbc.WithContext(ctx).First(&rec, id).Error; err != nil {
+// GetByID retrieves a channel by its ID. Returns
+// ErrChannelNotFound when no channel with the given ID exists.
+func (s *Store) GetByID(ctx context.Context, id int64) (*Channel, error) {
+	var ch Channel
+	if err := s.dbc.WithContext(ctx).First(&ch, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChannelNotFound
 		}
-		return nil, fmt.Errorf("channel: get record: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("channel: get channel: %w", errmap.MapError(err))
 	}
-	return &rec, nil
+	return &ch, nil
 }
 
-// List returns a page of channel records ordered by descending ID, plus
+// List returns a page of channels ordered by descending ID, plus
 // the total count. page starts at 1; size is the maximum number of items
 // returned. Soft-deleted rows are excluded.
-func (s *Store) List(ctx context.Context, page, size int) ([]*Record, int64, error) {
+func (s *Store) List(ctx context.Context, page, size int) ([]*Channel, int64, error) {
 	page, size = pagination.Clamp(page, size)
 
 	var total int64
-	if err := s.dbc.WithContext(ctx).Model(&Record{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("channel: list records: %w", errmap.MapError(err))
+	if err := s.dbc.WithContext(ctx).Model(&Channel{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("channel: list channels: %w", errmap.MapError(err))
 	}
 
-	var records []*Record
+	var channels []*Channel
 	offset := (page - 1) * size
 	if err := s.dbc.WithContext(ctx).
 		Order("id DESC").
 		Offset(offset).
 		Limit(size).
-		Find(&records).Error; err != nil {
-		return nil, 0, fmt.Errorf("channel: list records: %w", errmap.MapError(err))
+		Find(&channels).Error; err != nil {
+		return nil, 0, fmt.Errorf("channel: list channels: %w", errmap.MapError(err))
 	}
-	return records, total, nil
+	return channels, total, nil
 }
 
-// DeleteByID soft-deletes the channel record identified by id. A
+// DeleteByID soft-deletes the channel identified by id. A
 // RowsAffected count of zero is reported as ErrChannelNotFound so
 // callers can detect the missing-channel case without inspecting the
 // underlying error type.
 func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 	result := s.dbc.WithContext(ctx).
 		Where("id = ?", id).
-		Delete(&Record{})
+		Delete(&Channel{})
 	if result.Error != nil {
-		return fmt.Errorf("channel: delete record: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("channel: delete channel: %w", errmap.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrChannelNotFound
@@ -130,7 +144,7 @@ func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 // missing channel without a separate GetByID round trip.
 func (s *Store) TouchLastUsedAt(ctx context.Context, id int64, at time.Time) error {
 	result := s.dbc.WithContext(ctx).
-		Model(&Record{}).
+		Model(&Channel{}).
 		Where("id = ?", id).
 		Update("last_used_at", at)
 	if result.Error != nil {
@@ -142,11 +156,11 @@ func (s *Store) TouchLastUsedAt(ctx context.Context, id int64, at time.Time) err
 	return nil
 }
 
-// ListEnabled returns all enabled channel records ordered by ID ascending.
+// ListEnabled returns all enabled channels ordered by ID ascending.
 // It is used by the prism engine to load active channels into memory at
 // startup and during hot-reload.
-func (s *Store) ListEnabled(ctx context.Context) ([]*Record, error) {
-	var models []*Record
+func (s *Store) ListEnabled(ctx context.Context) ([]*Channel, error) {
+	var models []*Channel
 	if err := s.dbc.WithContext(ctx).
 		Where("enabled = ?", true).
 		Order("id ASC").

@@ -10,20 +10,23 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/task"
 )
 
-// proberTaskIDOffset separates prober task IDs from regular scheduled task
+// ProbeTaskIDOffset separates prober task IDs from regular scheduled task
 // IDs in the shared task.Manager. Regular tasks use auto-increment IDs from
 // sys_schedule_task (starting at 1). Prober tasks use this offset plus the
 // monitor_point ID to avoid collision in the scheduling engine and task store.
-const proberTaskIDOffset = int64(1) << 40
+// ProbeRecordStore inverts the mapping (task ID − offset = point ID) to key
+// probe records by their originating monitor point.
+const ProbeTaskIDOffset int64 = 1 << 40
 
 func proberTaskID(pointID int64) int64 {
-	return proberTaskIDOffset + pointID
+	return ProbeTaskIDOffset + pointID
 }
 
 // ProberService manages active probing by holding a task.Manager
@@ -37,9 +40,7 @@ func proberTaskID(pointID int64) int64 {
 // Mode=ModeActive. Passive points (Mode=ModePassive) are handled by the
 // listener pipeline and are never touched by this service.
 type ProberService struct {
-	sched   task.Manager
-	execReg *executor.Registry
-	manager *Manager
+	sched task.Manager
 	// store persists and queries monitoring points backed by the
 	// monitor_points table.
 	store  *MonitorStore
@@ -65,22 +66,18 @@ func WithProberMonitorStore(store *MonitorStore) ProberOption {
 	return proberMonitorStoreOption{store: store}
 }
 
-// NewProberService creates a ProberService with the given task engine,
-// executor registry, and optional configuration. The variadic options allow
-// callers to inject a MonitorStore for point persistence without changing
-// the positional signature.
+// NewProberService creates a ProberService with the given task manager and
+// optional configuration. The variadic options allow callers to inject a
+// MonitorStore for point persistence without changing the positional
+// signature.
 func NewProberService(
 	sched task.Manager,
-	execReg *executor.Registry,
-	manager *Manager,
 	logger *zap.Logger,
 	options ...ProberOption,
 ) *ProberService {
 	s := &ProberService{
-		sched:   sched,
-		execReg: execReg,
-		manager: manager,
-		logger:  logger,
+		sched:  sched,
+		logger: logger,
 	}
 	for _, o := range options {
 		o.apply(s)
@@ -137,6 +134,42 @@ func (s *ProberService) UnregisterPoint(ctx context.Context, pointID int64) erro
 	return nil
 }
 
+// ProbeNow dispatches an on-demand probe for an active monitoring point by
+// manually triggering its prober task (TriggerTypeManual). When the task is
+// not yet registered with the scheduling engine (e.g. registration raced a
+// restart), the point is re-registered from the store before the retry.
+// The probe itself runs asynchronously; callers poll the probe record store
+// for the outcome.
+func (s *ProberService) ProbeNow(ctx context.Context, pointID int64) error {
+	if s.sched == nil {
+		return fmt.Errorf("telemetry: probe point %d: scheduler is nil", pointID)
+	}
+	taskID := proberTaskID(pointID)
+	err := s.sched.Schedule(ctx, taskID)
+	if err == nil {
+		s.logger.Info("on-demand probe dispatched", zap.Int64("point_id", pointID))
+		return nil
+	}
+	// The task may be missing from the in-memory store (startup race or a
+	// registration failure). Re-register from the persisted point, then
+	// retry the manual trigger once.
+	if s.store == nil {
+		return fmt.Errorf("telemetry: probe point %d: %w", pointID, err)
+	}
+	point, pErr := s.store.GetByID(ctx, pointID)
+	if pErr != nil {
+		return fmt.Errorf("telemetry: probe point %d: %w", pointID, err)
+	}
+	if rErr := s.RegisterPoint(ctx, *point); rErr != nil {
+		return fmt.Errorf("telemetry: probe point %d: %w", pointID, err)
+	}
+	if err := s.sched.Schedule(ctx, taskID); err != nil {
+		return fmt.Errorf("telemetry: probe point %d: %w", pointID, err)
+	}
+	s.logger.Info("on-demand probe dispatched after re-register", zap.Int64("point_id", pointID))
+	return nil
+}
+
 // Start loads all active, enabled monitoring points from the store and
 // registers each with the scheduling engine. Points with invalid schedules
 // are skipped with a warning log.
@@ -189,57 +222,62 @@ func (s *ProberService) Stop(_ context.Context) error {
 // pointToProbeTask converts a MonitorPoint to a task.Task for registration
 // with the scheduling engine.
 func pointToProbeTask(point MonitorPoint) task.Task {
-	scheduleType, cronExpr, interval := parsePointSchedule(point)
-	timeout := time.Duration(point.Timeout) * time.Second
-	if timeout <= 0 {
-		timeout = 10 * time.Second
+	timeoutSeconds := int64(point.Timeout)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 10
 	}
 	metadata := map[string]string{
-		"schedule_type":    string(scheduleType),
 		"monitor_point_id": strconv.FormatInt(point.ID, 10),
-	}
-	switch scheduleType {
-	case task.ScheduleTypeInterval:
-		metadata["interval"] = interval.String()
-	case task.ScheduleTypeCron:
-		metadata["cron_expr"] = cronExpr
-	case task.ScheduleTypeOnce, task.ScheduleTypeEvent:
-		// Monitor points never produce one-shot or event-driven schedules.
 	}
 	// Execution judgment transmission (rule-engine-design §6.3.3): the
 	// optional "expression" key of the point's config JSON rides the task
 	// metadata through the trigger event into the runner, which applies it
 	// to the probe result.
-	if exprStr := executor.ConfigExpression(point.Config); exprStr != "" {
+	cfgJSON := point.ConfigJSON()
+	if exprStr := executor.ConfigExpression(cfgJSON); exprStr != "" {
 		metadata["expression"] = exprStr
 	}
+	var config map[string]any
+	if cfgJSON != "" {
+		// A malformed config blob registers the task with an empty
+		// config; the executor surfaces the misconfiguration on fire.
+		if err := sonic.Unmarshal([]byte(cfgJSON), &config); err != nil {
+			config = nil
+		}
+	}
 	return task.Task{
-		ID:           proberTaskID(point.ID),
-		TenantID:     point.TenantID,
-		AssetID:      point.AssetID,
-		ExecutorName: point.Type,
-		Config:       point.Config,
-		Operation:    executor.OpProbe,
-		Timeout:      timeout,
-		Metadata:     metadata,
-		Group:        "prober",
+		ID:             proberTaskID(point.ID),
+		TenantID:       point.TenantID,
+		AssetID:        point.AssetID,
+		Name:           fmt.Sprintf("prober-%d", point.ID),
+		Enabled:        true,
+		ExecutorType:   point.Type,
+		Schedule:       probeSchedule(point),
+		Config:         config,
+		Operation:      executor.OpProbe,
+		TimeoutSeconds: timeoutSeconds,
+		Metadata:       metadata,
+		Group:          "prober",
+		// Concurrency 1 serializes probes per point: the engine's
+		// no-overlap gate keeps a slow probe from stacking on itself when
+		// the interval is shorter than the probe duration, which in turn
+		// keeps probe records strictly ordered per point.
+		Concurrency: 1,
 	}
 }
 
-// parsePointSchedule derives the schedule type, cron expression, and interval
-// from a MonitorPoint's Schedule and Interval fields. A non-empty Schedule is
-// tried as a Go duration first, then as a cron expression. An empty Schedule
-// falls back to the Interval field (seconds).
-func parsePointSchedule(point MonitorPoint) (task.ScheduleType, string, time.Duration) {
+// probeSchedule derives the task schedule string from a MonitorPoint's
+// Schedule and Interval fields. A non-empty Schedule is used verbatim (a Go
+// duration string or a cron expression; the engine classifies it). An empty
+// Schedule falls back to the Interval field rendered as a duration,
+// defaulting to 60s.
+func probeSchedule(point MonitorPoint) string {
 	if point.Schedule != "" {
-		if d, err := time.ParseDuration(point.Schedule); err == nil && d > 0 {
-			return task.ScheduleTypeInterval, "", d
-		}
-		return task.ScheduleTypeCron, point.Schedule, 0
+		return point.Schedule
 	}
-	interval := time.Duration(point.Interval) * time.Second
+	interval := point.Interval
 	if interval <= 0 {
-		interval = 60 * time.Second
+		interval = 60
 	}
-	return task.ScheduleTypeInterval, "", interval
+	return (time.Duration(interval) * time.Second).String()
 }

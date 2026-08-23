@@ -58,14 +58,15 @@ var _ Matcher = (*AlertMatcher)(nil)
 //nolint:revive // AlertMatcher is the design-doc contract name, kept for cross-repo symmetry with tickraft-x
 type AlertMatcher struct {
 	engine *Engine
-	store  asset.Store
+	store  asset.Getter
 }
 
 // NewAlertMatcher creates an AlertMatcher backed by the supplied engine
-// and optional asset store. The store enriches the evaluation
-// environment with the asset associated with the alert; a nil store
-// leaves the asset domain limited to the event's asset id.
-func NewAlertMatcher(engine *Engine, store asset.Store) *AlertMatcher {
+// and optional asset.Getter (satisfied by any asset.Store). The getter
+// enriches the evaluation environment with the asset associated with
+// the alert; a nil getter leaves the asset domain limited to the
+// event's asset id.
+func NewAlertMatcher(engine *Engine, store asset.Getter) *AlertMatcher {
 	return &AlertMatcher{engine: engine, store: store}
 }
 

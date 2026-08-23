@@ -110,7 +110,7 @@
     "alertStatus": "状态",
     "alertSeverity": "级别",
     "alertMessage": "告警内容",
-    "alertFiredAt": "触发时间",
+    "alertTriggeredAt": "触发时间",
     "alertThreshold": "告警阈值",
     "viewAll": "查看全部",
     "viewDetail": "详情",

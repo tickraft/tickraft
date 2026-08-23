@@ -13,7 +13,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/auth"
+	"github.com/tickraft/tickraft/pkg/db"
+	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/task"
+	"github.com/tickraft/tickraft/pkg/telemetry"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // mockBlacklistStore records CleanExpired invocations so tests can assert that
@@ -57,8 +61,11 @@ func (m *mockExecutionStore) DeleteExecutionsOlderThan(_ context.Context, before
 	m.deleteBefore = before
 	return m.deleteErr
 }
-func (m *mockExecutionStore) Stats(context.Context, time.Time, time.Time) (task.ExecutionStatsResult, error) {
+func (m *mockExecutionStore) Stats(context.Context, time.Time, time.Time, int64) (task.ExecutionStatsResult, error) {
 	return task.ExecutionStatsResult{}, nil
+}
+func (m *mockExecutionStore) StatsByDay(context.Context, time.Time, time.Time, int64) ([]task.DailyStat, error) {
+	return nil, nil
 }
 func (m *mockExecutionStore) Migrate(context.Context) error {
 	return nil
@@ -77,6 +84,16 @@ func newTestLogger() *zap.Logger {
 	return zap.NewNop()
 }
 
+// sweepCfg builds the maintenanceConfig for the given stores and retention
+// window, the way runMaintenance assembles it in production.
+func sweepCfg(bl auth.BlacklistStore, exec task.ExecutionStore, retentionDays int) maintenanceConfig {
+	return maintenanceConfig{
+		blacklistStore: bl,
+		executionStore: exec,
+		retentionDays:  retentionDays,
+	}
+}
+
 // TestRunMaintenanceSweep_DeletesOldExecutions verifies that when an execution
 // store and a positive retention window are provided, the sweep invokes
 // DeleteExecutionsOlderThan with a cutoff approximately retentionDays in the
@@ -87,7 +104,7 @@ func TestRunMaintenanceSweep_DeletesOldExecutions(t *testing.T) {
 	retentionDays := 7
 
 	start := time.Now()
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, exec, retentionDays)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, exec, retentionDays))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be called")
@@ -113,7 +130,7 @@ func TestRunMaintenanceSweep_DeletesOldExecutions(t *testing.T) {
 func TestRunMaintenanceSweep_NilExecutionStore(t *testing.T) {
 	bl := &mockBlacklistStore{}
 
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, nil, 7)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, nil, 7))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be called")
@@ -127,7 +144,7 @@ func TestRunMaintenanceSweep_ZeroRetentionDays(t *testing.T) {
 	bl := &mockBlacklistStore{}
 	exec := &mockExecutionStore{}
 
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, exec, 0)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, exec, 0))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be called")
@@ -143,7 +160,7 @@ func TestRunMaintenanceSweep_NegativeRetentionDays(t *testing.T) {
 	bl := &mockBlacklistStore{}
 	exec := &mockExecutionStore{}
 
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, exec, -1)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, exec, -1))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be called")
@@ -161,7 +178,7 @@ func TestRunMaintenanceSweep_DeleteErrorDoesNotAbort(t *testing.T) {
 	bl := &mockBlacklistStore{}
 	exec := &mockExecutionStore{deleteErr: errors.New("db unavailable")}
 
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, exec, 30)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, exec, 30))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be called even when delete errors")
@@ -178,7 +195,7 @@ func TestRunMaintenanceSweep_BlacklistErrorDoesNotAbortRetention(t *testing.T) {
 	bl := &mockBlacklistStore{cleanErr: errors.New("blacklist unavailable")}
 	exec := &mockExecutionStore{}
 
-	runMaintenanceSweep(context.Background(), newTestLogger(), bl, exec, 30)
+	runMaintenanceSweep(context.Background(), newTestLogger(), sweepCfg(bl, exec, 30))
 
 	if !bl.cleanCalled {
 		t.Error("expected blacklist CleanExpired to be attempted")
@@ -186,4 +203,65 @@ func TestRunMaintenanceSweep_BlacklistErrorDoesNotAbortRetention(t *testing.T) {
 	if !exec.deleteCalled {
 		t.Error("expected DeleteExecutionsOlderThan to run even when blacklist cleanup errors")
 	}
+}
+
+// TestRunMaintenanceSweep_ProbeRetention verifies that a configured probe
+// record store is swept in the same pass as the execution logs, under the
+// same retention window: records older than the cutoff disappear, newer
+// ones survive, and a nil store skips the sweep without panicking.
+func TestRunMaintenanceSweep_ProbeRetention(t *testing.T) {
+	dbc, err := db.Open(context.Background(), db.Config{Driver: "sqlite3", Addr: ":memory:"})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := dbc.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	// Save updates the monitor point row too, so both telemetry tables
+	// must exist even though the sweep only asserts probe rows.
+	if err := telemetry.Migrate(context.Background(), dbc); err != nil {
+		t.Fatalf("migrate monitor points: %v", err)
+	}
+	probeStore := telemetry.NewProbeRecordStore(dbc)
+	if err := probeStore.Migrate(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now()
+	old := executor.ExecutionRecord{
+		TaskID:       telemetry.ProbeTaskIDOffset + 1,
+		Operation:    executor.OpProbe,
+		ExecutorName: "icmp",
+		Status:       types.AssetStatusNormal,
+		StartedAt:    now.AddDate(0, 0, -40),
+	}
+	fresh := old
+	fresh.StartedAt = now.AddDate(0, 0, -1)
+	for _, rec := range []executor.ExecutionRecord{old, fresh} {
+		if err := probeStore.Save(context.Background(), rec); err != nil {
+			t.Fatalf("save seed record: %v", err)
+		}
+	}
+
+	cfg := sweepCfg(&mockBlacklistStore{}, nil, 30)
+	cfg.probeStore = probeStore
+	runMaintenanceSweep(context.Background(), newTestLogger(), cfg)
+
+	var remaining []telemetry.ProbeRecord
+	if err := dbc.Find(&remaining).Error; err != nil {
+		t.Fatalf("load remaining: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("remaining probe records = %d, want 1 (only the fresh row)", len(remaining))
+	}
+	if !remaining[0].StartedAt.Equal(fresh.StartedAt) {
+		t.Errorf("surviving record started at %v, want the fresh row %v",
+			remaining[0].StartedAt, fresh.StartedAt)
+	}
+
+	// A nil probe store skips the sweep without panicking.
+	cfg.probeStore = nil
+	runMaintenanceSweep(context.Background(), newTestLogger(), cfg)
 }

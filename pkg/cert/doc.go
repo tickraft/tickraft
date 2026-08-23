@@ -9,9 +9,9 @@
 // certificate generation (Generate, WriteToDir, ParseLeaf,
 // FingerprintSHA256) and a DNS-01 challenge provider interface (DNSProvider)
 // with a no-op default. The runtime ships only the interface
-// and the no-op default for DNS-01; callers may inject a real DNS
-// provider via WithDNSProvider to enable ACME DNS-01 challenge issuance
-// without modifying the kernel source.
+// and the no-op default for DNS-01; callers may register a real DNS
+// provider via api.SetACMEProvider(api.NewDNS01Provider(...)) to enable
+// ACME DNS-01 challenge issuance without modifying the kernel source.
 //
 // # Quick Start
 //
@@ -45,9 +45,9 @@
 // The DNSProvider interface and NoopDNSProvider default allow extended
 // editions to inject a real DNS provider at startup:
 //
-//	mgr := cert.NewManager(cert.WithDNSProvider(myDNSProvider))
+//	api.SetACMEProvider(api.NewDNS01Provider(myDNSProvider))
 //
-// When no DNS provider is injected, the no-op default returns
+// When no DNS provider is registered, the no-op default returns
 // ErrDNSChallengeNotConfigured from Present, so a misconfigured DNS-01
 // flow fails fast with a clear error instead of silently succeeding.
 //

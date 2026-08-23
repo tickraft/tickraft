@@ -37,7 +37,7 @@ The login page is the entry point to the console. Sign in with the built-in `adm
 
 **Subsequent logins.** After the initial password change, the login form accepts the new password directly. A "Remember me" checkbox keeps the session token in local storage; unchecking it stores the token only for the browser session.
 
-**Token refresh.** The access token expires after `auth.token_ttl` (default 24 h). The frontend automatically refreshes it using the refresh token. If both expire, you are redirected back to this page.
+**Token refresh.** The access token expires after `auth.access_ttl` (default 2 h). The frontend automatically refreshes it using the refresh token. If both expire, you are redirected back to this page.
 
 ## Dashboard
 
@@ -80,7 +80,7 @@ Click a task name to open its [detail page](#task-detail).
 The create page is a form split into sections:
 
 1. **Basic info** — name, description, priority, and tags.
-2. **Executor** — choose the executor type (`http`, `tcp`, `icmp`, `udp`, `local`, `webhook`). The form dynamically adapts to show the fields relevant to the chosen executor (e.g. URL + method for `http`, host + port for `tcp`).
+2. **Executor** — choose the executor type. Task-capable types: `local` (script), `webhook` (outbound callback), and `http` (dual-mode: issue an HTTP request as a task action; set `method` in the config for non-GET calls). The form dynamically adapts to show the fields relevant to the chosen executor (e.g. URL + method for `http`, host + port for `tcp`-style probes). Probe-only types (`icmp`, `tcp`) belong to monitoring points and are rejected here with a 400.
 3. **Schedule** — pick the schedule type:
    - `interval` — run every N seconds.
    - `cron` — run on a cron expression (e.g. `*/5 * * * *`).
@@ -117,7 +117,7 @@ The log detail page displays the complete execution output, error message (if an
 
 ## Collector
 
-The collector module ingests monitoring data from two sources: **probers** (active probes that Tickraft sends out) and **listeners** (passive receivers that accept inbound reports). Both feed into the asset status state machine.
+The collector module ingests monitoring data from two sources: **probers** (active probes that Tickraft sends out) and **listeners** (passive receivers that accept inbound reports). Each probe result is persisted as a probe record (`sys_probe_record`) and refreshes the monitor point's runtime status; listener reports flow through the collection pipeline and drive the asset status machine.
 
 ### Assets
 
@@ -145,7 +145,7 @@ The prober list shows every configured prober, its target asset, probe type, int
 
 ![Create prober](./screenshots/collector-prober-create.png)
 
-**Prober detail.** The detail page shows the prober configuration, the latest probe result, and a trend chart of response times or statuses over time.
+**Prober detail.** The detail page shows the prober configuration, the latest probe status and latency, and the recent probe history and logs — one entry per probe execution.
 
 ![Prober detail](./screenshots/collector-prober-detail.png)
 

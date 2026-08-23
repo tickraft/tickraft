@@ -91,7 +91,8 @@ database:
 | 字段             | 类型     | 默认值  | 说明                                                                |
 |------------------|----------|---------|---------------------------------------------------------------------|
 | `jwt_secret`     | string   | —       | 用于签发 JWT token 的密钥。**必须设置。** 请使用环境变量插值。      |
-| `token_ttl`      | duration | `24h`   | 签发的 JWT token 的有效期。                                         |
+| `access_ttl`     | duration | `2h`    | 签发的 JWT access token 的有效期。                                  |
+| `refresh_ttl`    | duration | `168h`  | 签发的 JWT refresh token 的有效期。                                 |
 | `admin_username` | string   | `admin` | 内置 admin 用户名。                                                 |
 | `admin_password` | string   | —       | 内置 admin 密码。为空时，启动时会生成一个随机密码并记录一次日志。请使用环境变量插值。 |
 

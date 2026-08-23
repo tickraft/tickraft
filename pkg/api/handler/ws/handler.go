@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/cloudwego/hertz/pkg/app"
 	hws "github.com/hertz-contrib/websocket"
 	"go.uber.org/zap"
@@ -258,11 +259,11 @@ func (h *Handler) removeClient(c *clientConn) {
 // broadcast marshals the envelope and queues it on every client's
 // outbound channel. Clients with a full queue are dropped.
 func (h *Handler) broadcast(env event.Envelope) {
-	payload, err := json.Marshal(env.Payload)
+	payload, err := sonic.Marshal(env.Payload)
 	if err != nil {
 		payload = []byte("null")
 	}
-	msg, err := json.Marshal(serverMessage{
+	msg, err := sonic.Marshal(serverMessage{
 		Type:      string(env.Type),
 		EventID:   env.EventID,
 		Timestamp: env.Timestamp,
@@ -300,7 +301,7 @@ func (h *Handler) readLoop(c *clientConn) {
 		}
 		_ = c.conn.SetReadDeadline(time.Now().Add(readWait))
 		var msg clientMessage
-		if err = json.Unmarshal(data, &msg); err != nil {
+		if err = sonic.Unmarshal(data, &msg); err != nil {
 			continue
 		}
 		if msg.Type == "ping" {

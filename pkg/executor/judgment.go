@@ -5,10 +5,11 @@
 package executor
 
 import (
-	"encoding/json"
 	"strings"
 
 	"go.uber.org/zap"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/expr"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -34,7 +35,7 @@ func ConfigExpression(config string) string {
 	var raw struct {
 		Expression string `json:"expression"`
 	}
-	if err := json.Unmarshal([]byte(config), &raw); err != nil {
+	if err := sonic.Unmarshal([]byte(config), &raw); err != nil {
 		return ""
 	}
 	return raw.Expression

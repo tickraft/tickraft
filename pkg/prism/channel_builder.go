@@ -8,10 +8,11 @@
 package prism
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
@@ -19,19 +20,19 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel/webhook"
 )
 
-// BuildChannelFromRecord constructs a runtime alert.Channel from a database
-// channel Record. It parses the record's Config JSON, looks up a registered
-// channel factory by type, and falls back to the built-in webhook and email
-// implementations.
-func BuildChannelFromRecord(record *channel.Record) (alert.Channel, error) {
-	if record == nil {
-		return nil, fmt.Errorf("channel: build from nil record")
+// BuildChannel constructs a runtime alert.Channel from a persisted
+// channel.Channel definition. It parses the channel's Config JSON, looks up
+// a registered channel factory by type, and falls back to the built-in
+// webhook and email implementations.
+func BuildChannel(ch *channel.Channel) (alert.Channel, error) {
+	if ch == nil {
+		return nil, fmt.Errorf("channel: build from nil channel")
 	}
 	var cfg channel.Config
-	if err := json.Unmarshal([]byte(record.Config), &cfg); err != nil {
+	if err := sonic.Unmarshal([]byte(ch.Config), &cfg); err != nil {
 		return nil, fmt.Errorf("parse channel config: %w", err)
 	}
-	normalizedType := strings.ToLower(record.Type)
+	normalizedType := strings.ToLower(ch.Type)
 	if factory := channel.LookupFactory(normalizedType); factory != nil {
 		return factory(cfg)
 	}
@@ -41,21 +42,21 @@ func BuildChannelFromRecord(record *channel.Record) (alert.Channel, error) {
 	case "email":
 		return buildEmailChannel(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported channel type: %s", record.Type)
+		return nil, fmt.Errorf("unsupported channel type: %s", ch.Type)
 	}
 }
 
-// BuildChannelsFromRecords converts a slice of database Records into runtime
-// alert.Channel instances. Records that fail to build are logged and
-// skipped; the returned error is non-nil only when at least one record
-// could not be built.
-func BuildChannelsFromRecords(records []*channel.Record) ([]alert.Channel, error) {
-	channels := make([]alert.Channel, 0, len(records))
+// BuildChannels converts a slice of persisted channel.Channel definitions
+// into runtime alert.Channel instances. Channels that fail to build are
+// logged and skipped; the returned error is non-nil only when at least one
+// channel could not be built.
+func BuildChannels(defs []*channel.Channel) ([]alert.Channel, error) {
+	channels := make([]alert.Channel, 0, len(defs))
 	var errs []string
-	for _, rec := range records {
-		ch, err := BuildChannelFromRecord(rec)
+	for _, def := range defs {
+		ch, err := BuildChannel(def)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("channel #%d (%s): %v", rec.ID, rec.Name, err))
+			errs = append(errs, fmt.Sprintf("channel #%d (%s): %v", def.ID, def.Name, err))
 			continue
 		}
 		channels = append(channels, ch)

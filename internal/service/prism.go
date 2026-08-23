@@ -7,7 +7,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -52,7 +51,8 @@ func startPrismEngine(
 		RemediationOperators: []remediation.Operator{
 			remediation.NewExecutorOperator(string(types.ExecutorWebhook),
 				webhook.New(webhook.WithLogger(rt.logger)), rt.logger),
-			remediation.NewExecutorOperator(string(types.ExecutorHTTP), httpprober.New(10*time.Second), rt.logger),
+			remediation.NewExecutorOperator(string(types.ExecutorHTTP),
+				httpprober.New(httpprober.WithLogger(rt.logger)), rt.logger),
 		},
 	})
 	if err != nil {

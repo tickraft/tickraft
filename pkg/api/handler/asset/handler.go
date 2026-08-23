@@ -34,7 +34,7 @@ const maxDeviceQuota = 20
 // resource id, asset key/type) so the asset lifecycle is traceable end-to-end
 // for operational forensics and compliance review.
 type Handler struct {
-	store  asset.Store
+	assets asset.Store
 	logger *zap.Logger
 }
 
@@ -47,7 +47,7 @@ func NewHandler(store asset.Store, logger *zap.Logger) *Handler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Handler{store: store, logger: logger}
+	return &Handler{assets: store, logger: logger}
 }
 
 // CreateAsset handles POST /api/v1/assets.
@@ -91,7 +91,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 	}
 	if ceiling > 0 || a.AssetType == types.AssetTypeHost {
 		const tenantID = 0
-		count, err := h.store.CountByType(ctx, tenantID, a.AssetType)
+		count, err := h.assets.CountByType(ctx, tenantID, a.AssetType)
 		if err != nil {
 			h.logger.Error("asset create quota check failed",
 				zap.String("operation", "asset.create"),
@@ -111,12 +111,12 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.Int64("current_count", count),
 				zap.Int("quota", ceiling),
 			)
-			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota_exceeded")
+			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota exceeded")
 			return
 		}
 	}
 
-	if err := h.store.Create(ctx, &a); err != nil {
+	if err := h.assets.Create(ctx, &a); err != nil {
 		if errors.Is(err, errdefs.ErrConflict) {
 			h.logger.Warn("asset create rejected: duplicate asset key",
 				zap.String("operation", "asset.create"),
@@ -161,7 +161,7 @@ func (h *Handler) ListAssets(ctx context.Context, arc *app.RequestContext) {
 		AssetType: arc.Query("asset_type"),
 		Status:    arc.Query("status"),
 	}
-	items, total, err := h.store.List(ctx, page, size, filter)
+	items, total, err := h.assets.List(ctx, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)
 		return
@@ -175,7 +175,7 @@ func (h *Handler) GetAsset(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	a, err := h.store.GetByID(ctx, id)
+	a, err := h.assets.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset get: not found",
@@ -213,7 +213,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 	}
 
 	// Verify the asset exists before updating.
-	existing, err := h.store.GetByID(ctx, id)
+	existing, err := h.assets.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset update: not found",
@@ -245,7 +245,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 	}
 	existing.ID = id
 
-	if err = h.store.Update(ctx, existing); err != nil {
+	if err = h.assets.Update(ctx, existing); err != nil {
 		h.logger.Error("asset update failed",
 			zap.String("operation", "asset.update"),
 			zap.String("outcome", "error"),
@@ -274,7 +274,7 @@ func (h *Handler) DeleteAsset(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	if err := h.store.Delete(ctx, id); err != nil {
+	if err := h.assets.Delete(ctx, id); err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset delete: not found",
 				zap.String("operation", "asset.delete"),
@@ -340,7 +340,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 	}
 
 	// Verify the asset exists before updating the status.
-	existing, err := h.store.GetByID(ctx, id)
+	existing, err := h.assets.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset status update: not found",
@@ -363,7 +363,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 
 	prevStatus := existing.Status
 
-	if err = h.store.UpdateStatus(ctx, id, req.Status, time.Now()); err != nil {
+	if err = h.assets.UpdateStatus(ctx, id, req.Status, time.Now()); err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset status update: not found",
 				zap.String("operation", "asset.status_update"),
@@ -410,7 +410,7 @@ func (h *Handler) ProbeAsset(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	a, err := h.store.GetByID(ctx, id)
+	a, err := h.assets.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
 			h.logger.Info("asset probe: not found",

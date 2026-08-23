@@ -14,10 +14,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
-// fakeAssetStore is an asset.Store whose GetByID resolves from an
-// in-memory map; every other method keeps the NoopStore behavior.
+// fakeAssetStore is an asset.Getter whose GetByID resolves from an
+// in-memory map.
 type fakeAssetStore struct {
-	asset.NoopStore
 	byID map[int64]*asset.Asset
 }
 
@@ -29,9 +28,7 @@ func (f fakeAssetStore) GetByID(_ context.Context, id int64) (*asset.Asset, erro
 }
 
 // failingAssetStore simulates an asset backend outage: GetByID errors.
-type failingAssetStore struct {
-	asset.NoopStore
-}
+type failingAssetStore struct{}
 
 func (failingAssetStore) GetByID(_ context.Context, _ int64) (*asset.Asset, error) {
 	return nil, errors.New("asset backend unavailable")

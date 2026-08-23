@@ -78,13 +78,49 @@ const timelinePhases = computed<TimelinePhase[]>(() => {
     log.status === 'timeout' ? t('task.log.detail.timelineExecTimeout') :
     log.status === 'failed' ? t('task.log.detail.timelineExecFailed') : t('task.log.detail.timelineExecComplete')
   const finalCls = log.status === 'success' ? 'ok' : log.status === 'running' ? 'info' : 'fail'
-  return [
-    { cls: 'info', title: t('task.log.detail.timelineDispatch'), time: log.startedAt, delta: '0ms', desc: t('task.log.detail.timelineStartDesc', { executor: log.executorType }) },
-    { cls: 'info', title: t('task.log.detail.timelineWorkerPickup'), time: log.startedAt, delta: '~1ms', desc: t('task.log.detail.workerLabel') },
-    { cls: finalCls, title: t('task.log.detail.timelineExecComplete'), time: log.finishedAt ?? '', delta: dur, desc: t('task.log.detail.duration') + ': ' + dur },
-    { cls: finalCls, title: finalTitle, time: log.finishedAt ?? '', delta: '', desc: hasError.value ? log.error ?? '' : '' },
-  ]
+  const phases: TimelinePhase[] = []
+  if (log.triggeredAt) {
+    phases.push({
+      cls: 'info',
+      title: t('task.log.detail.timelineTrigger'),
+      time: log.triggeredAt,
+      delta: '',
+      desc: `${t('task.log.detail.triggerLabel')}: ${triggerLabel(log.triggerType)}`,
+    })
+  }
+  const pickup = pickupDelayMs(log)
+  phases.push({
+    cls: 'info',
+    title: t('task.log.detail.timelineStart'),
+    time: log.startedAt,
+    delta: pickup !== null ? formatDuration(pickup) : '',
+    desc: t('task.log.detail.timelineStartDesc', { executor: log.executorType ?? '' }),
+  })
+  phases.push({
+    cls: finalCls,
+    title: finalTitle,
+    time: log.finishedAt ?? '',
+    delta: dur,
+    desc: hasError.value ? log.error ?? '' : `${t('task.log.detail.duration')}: ${dur}`,
+  })
+  return phases
 })
+
+/** Worker pickup delay in ms: started_at − triggered_at. Null when either
+ * timestamp is missing (legacy rows) or the values are inconsistent. */
+function pickupDelayMs(log: LogModel): number | null {
+  if (!log.triggeredAt || !log.startedAt) return null
+  const delta = new Date(log.startedAt).getTime() - new Date(log.triggeredAt).getTime()
+  return delta >= 0 ? delta : null
+}
+
+/** Translate a trigger source into its display label. */
+function triggerLabel(triggerType?: string): string {
+  if (triggerType === 'schedule') return t('task.log.list.triggerCron')
+  if (triggerType === 'manual') return t('task.log.list.triggerManual')
+  if (triggerType === 'event') return t('task.log.list.triggerEvent')
+  return triggerType || '—'
+}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -127,10 +163,18 @@ onMounted(() => { void fetchData() })
 </script>
 
 <template>
-  <div v-loading="loading" class="tk-log-detail tk-page-container">
+  <div
+    v-loading="loading"
+    class="tk-log-detail tk-page-container"
+  >
     <template v-if="notFound">
       <PageEmpty :description="t('task.log.detail.notFound', { id: logId })">
-        <el-button type="primary" @click="handleBack">{{ t('task.log.detail.back') }}</el-button>
+        <el-button
+          type="primary"
+          @click="handleBack"
+        >
+          {{ t('task.log.detail.back') }}
+        </el-button>
       </PageEmpty>
     </template>
 
@@ -138,101 +182,212 @@ onMounted(() => { void fetchData() })
       <!-- Header -->
       <div class="tk-detail-header">
         <div class="tk-detail-header__left">
-          <button class="tk-detail-header__back" @click="handleBack"><el-icon :size="16"><ArrowLeft /></el-icon></button>
+          <button
+            class="tk-detail-header__back"
+            @click="handleBack"
+          >
+            <el-icon :size="16">
+              <ArrowLeft />
+            </el-icon>
+          </button>
           <div class="tk-detail-header__title-block">
-            <div class="tk-detail-header__eyebrow">{{ t('task.log.detail.eyebrow', { id: logId }) }}</div>
+            <div class="tk-detail-header__eyebrow">
+              {{ t('task.log.detail.eyebrow', { id: logId }) }}
+            </div>
             <div class="tk-detail-header__title-row">
-              <h1 class="tk-detail-header__title">{{ detail.taskName || '—' }}</h1>
-              <span class="tk-status-tag" :class="`tk-status-tag--${statusCls}`"><span class="tk-status-tag__dot" />{{ detail.status }}</span>
-              <span class="tk-executor-badge" :class="`tk-executor-badge--${detail.executorType ?? ''}`"><span class="tk-executor-badge__dot" />{{ EXECUTOR_LABELS[detail.executorType ?? ''] || detail.executorType }}</span>
+              <h1 class="tk-detail-header__title">
+                {{ detail.taskName || '—' }}
+              </h1>
+              <span
+                class="tk-status-tag"
+                :class="`tk-status-tag--${statusCls}`"
+              ><span class="tk-status-tag__dot" />{{ detail.status }}</span>
+              <span
+                class="tk-executor-badge"
+                :class="`tk-executor-badge--${detail.executorType ?? ''}`"
+              ><span class="tk-executor-badge__dot" />{{ EXECUTOR_LABELS[detail.executorType ?? ''] || detail.executorType }}</span>
               <span class="tk-detail-header__key">LOG-{{ detail.id }}</span>
             </div>
           </div>
         </div>
         <div class="tk-detail-header__actions">
-          <el-button @click="handleBack">{{ t('task.log.detail.backToList') }}</el-button>
-          <el-button @click="handleViewTask"><el-icon><View /></el-icon>{{ t('task.log.detail.viewTask') }}</el-button>
+          <el-button @click="handleBack">
+            {{ t('task.log.detail.backToList') }}
+          </el-button>
+          <el-button @click="handleViewTask">
+            <el-icon><View /></el-icon>{{ t('task.log.detail.viewTask') }}
+          </el-button>
         </div>
       </div>
 
       <!-- Metrics strip: 4 tiles -->
       <div class="tk-metric-strip">
-        <div class="tk-metric-tile" :class="`tk-metric-tile--${statusCls}`">
-          <div class="tk-metric-tile__label">{{ t('task.log.detail.metricsStatus') }}</div>
-          <div class="tk-metric-tile__value">{{ detail.status }}</div>
-          <div class="tk-metric-tile__sub">{{ t('task.log.detail.executorType') }}: {{ detail.executorType }}</div>
+        <div
+          class="tk-metric-tile"
+          :class="`tk-metric-tile--${statusCls}`"
+        >
+          <div class="tk-metric-tile__label">
+            {{ t('task.log.detail.metricsStatus') }}
+          </div>
+          <div class="tk-metric-tile__value">
+            {{ detail.status }}
+          </div>
+          <div class="tk-metric-tile__sub">
+            {{ t('task.log.detail.executorType') }}: {{ detail.executorType }}
+          </div>
         </div>
         <div class="tk-metric-tile">
-          <div class="tk-metric-tile__label">{{ t('task.log.detail.metricsDuration') }}</div>
-          <div class="tk-metric-tile__value">{{ formatDuration(detail.duration ?? 0) }}</div>
-          <div class="tk-metric-tile__sub">{{ detail.retryCount }} {{ t('task.log.detail.retryCount') }}</div>
+          <div class="tk-metric-tile__label">
+            {{ t('task.log.detail.metricsDuration') }}
+          </div>
+          <div class="tk-metric-tile__value">
+            {{ formatDuration(detail.duration ?? 0) }}
+          </div>
+          <div class="tk-metric-tile__sub">
+            {{ detail.retryCount }} {{ t('task.log.detail.retryCount') }}
+          </div>
         </div>
         <div class="tk-metric-tile tk-metric-tile--info">
-          <div class="tk-metric-tile__label">{{ t('task.log.detail.metricsStarted') }}</div>
-          <div class="tk-metric-tile__value tk-metric-tile__value--sm">{{ formatDate(detail.startedAt) }}</div>
-          <div class="tk-metric-tile__sub">{{ t('task.log.detail.startedAt') }}</div>
+          <div class="tk-metric-tile__label">
+            {{ t('task.log.detail.metricsStarted') }}
+          </div>
+          <div class="tk-metric-tile__value tk-metric-tile__value--sm">
+            {{ formatDate(detail.startedAt) }}
+          </div>
+          <div class="tk-metric-tile__sub">
+            {{ t('task.log.detail.startedAt') }}
+          </div>
         </div>
         <div class="tk-metric-tile tk-metric-tile--info">
-          <div class="tk-metric-tile__label">{{ t('task.log.detail.metricsFinished') }}</div>
-          <div class="tk-metric-tile__value tk-metric-tile__value--sm">{{ detail.finishedAt ? formatDate(detail.finishedAt) : '—' }}</div>
-          <div class="tk-metric-tile__sub">{{ t('task.log.detail.finishedAt') }}</div>
+          <div class="tk-metric-tile__label">
+            {{ t('task.log.detail.metricsFinished') }}
+          </div>
+          <div class="tk-metric-tile__value tk-metric-tile__value--sm">
+            {{ detail.finishedAt ? formatDate(detail.finishedAt) : '—' }}
+          </div>
+          <div class="tk-metric-tile__sub">
+            {{ t('task.log.detail.finishedAt') }}
+          </div>
         </div>
       </div>
 
       <!-- Error block -->
-      <div v-if="hasError" class="tk-error-block">
-        <div class="tk-error-block__title"><el-icon><WarningFilled /></el-icon>{{ t('task.log.detail.error') }}</div>
-        <div class="tk-error-block__msg">{{ detail.error }}</div>
+      <div
+        v-if="hasError"
+        class="tk-error-block"
+      >
+        <div class="tk-error-block__title">
+          <el-icon><WarningFilled /></el-icon>{{ t('task.log.detail.error') }}
+        </div>
+        <div class="tk-error-block__msg">
+          {{ detail.error }}
+        </div>
       </div>
 
       <!-- Tabs -->
       <div class="tk-detail-card">
-        <el-tabs v-model="activeTab" class="tk-detail-tabs">
+        <el-tabs
+          v-model="activeTab"
+          class="tk-detail-tabs"
+        >
           <!-- Execution Detail -->
-          <el-tab-pane :label="t('task.log.detail.basicInfo')" name="detail">
+          <el-tab-pane
+            :label="t('task.log.detail.basicInfo')"
+            name="detail"
+          >
             <!-- Task info -->
             <div class="tk-sub-section">
-              <div class="tk-sub-section__title">{{ t('task.log.detail.taskInfo') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.taskInfoHint') }}</span></div>
+              <div class="tk-sub-section__title">
+                {{ t('task.log.detail.taskInfo') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.taskInfoHint') }}</span>
+              </div>
               <div class="tk-descriptions">
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.taskNameLabel') }}</span><span class="tk-desc-item__value">{{ detail.taskName || '—' }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.taskIdLabel') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.taskId }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.executorLabel') }}</span><span class="tk-desc-item__value">{{ EXECUTOR_LABELS[detail.executorType ?? ''] || detail.executorType }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.workerLabel') }}</span><span class="tk-desc-item__value tk-desc-item__value--placeholder">—</span></div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.taskNameLabel') }}</span><span class="tk-desc-item__value">{{ detail.taskName || '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.taskIdLabel') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.taskId }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.executorLabel') }}</span><span class="tk-desc-item__value">{{ EXECUTOR_LABELS[detail.executorType ?? ''] || detail.executorType }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.workerLabel') }}</span><span
+                    class="tk-desc-item__value"
+                    :class="detail.node ? 'tk-desc-item__value--mono' : 'tk-desc-item__value--placeholder'"
+                  >{{ detail.node || '—' }}</span>
+                </div>
               </div>
             </div>
             <!-- Exec metrics -->
             <div class="tk-sub-section">
-              <div class="tk-sub-section__title">{{ t('task.log.detail.execMetrics') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.execMetricsHint') }}</span></div>
+              <div class="tk-sub-section__title">
+                {{ t('task.log.detail.execMetrics') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.execMetricsHint') }}</span>
+              </div>
               <div class="tk-descriptions">
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.status') }}</span><span class="tk-desc-item__value">{{ detail.status }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.duration') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDuration(detail.duration ?? 0) }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.startedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(detail.startedAt) }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.finishedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.finishedAt ? formatDate(detail.finishedAt) : '—' }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.statusCode') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.statusCode }}</span></div>
-                <div class="tk-desc-item"><span class="tk-desc-item__label">{{ t('task.log.detail.retryCount') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.retryCount }}</span></div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.status') }}</span><span class="tk-desc-item__value">{{ detail.status }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.duration') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDuration(detail.duration ?? 0) }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.startedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ formatDate(detail.startedAt) }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.finishedAt') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.finishedAt ? formatDate(detail.finishedAt) : '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.statusCode') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.statusCode }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.retryCount') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.retryCount }}</span>
+                </div>
               </div>
             </div>
             <!-- Timeline -->
             <div class="tk-sub-section">
-              <div class="tk-sub-section__title">{{ t('task.log.detail.timeline') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.timelineHint') }}</span></div>
+              <div class="tk-sub-section__title">
+                {{ t('task.log.detail.timeline') }}<span class="tk-sub-section__hint">{{ t('task.log.detail.timelineHint') }}</span>
+              </div>
               <div class="tk-timeline">
-                <div v-for="(phase, idx) in timelinePhases" :key="idx" class="tk-timeline__item">
-                  <span class="tk-timeline__dot" :class="`tk-timeline__dot--${phase.cls}`" />
+                <div
+                  v-for="(phase, idx) in timelinePhases"
+                  :key="idx"
+                  class="tk-timeline__item"
+                >
+                  <span
+                    class="tk-timeline__dot"
+                    :class="`tk-timeline__dot--${phase.cls}`"
+                  />
                   <div class="tk-timeline__head">
                     <span class="tk-timeline__title">{{ phase.title }}
-                      <span v-if="phase.delta" class="tk-timeline__delta">{{ phase.delta }}</span>
+                      <span
+                        v-if="phase.delta"
+                        class="tk-timeline__delta"
+                      >{{ phase.delta }}</span>
                     </span>
                     <span class="tk-timeline__time">{{ phase.time ? formatDate(phase.time) : '—' }}</span>
                   </div>
-                  <div v-if="phase.desc" class="tk-timeline__desc">{{ phase.desc }}</div>
+                  <div
+                    v-if="phase.desc"
+                    class="tk-timeline__desc"
+                  >
+                    {{ phase.desc }}
+                  </div>
                 </div>
               </div>
             </div>
           </el-tab-pane>
 
           <!-- Output Log -->
-          <el-tab-pane :label="t('task.log.detail.output')" name="output">
-            <div v-if="hasOutput" class="tk-terminal">
+          <el-tab-pane
+            :label="t('task.log.detail.output')"
+            name="output"
+          >
+            <div
+              v-if="hasOutput"
+              class="tk-terminal"
+            >
               <div class="tk-terminal__bar">
                 <div class="tk-terminal__dots">
                   <span class="tk-terminal__dot tk-terminal__dot--red" />
@@ -241,23 +396,76 @@ onMounted(() => { void fetchData() })
                 </div>
                 <span class="tk-terminal__title">EXECUTION OUTPUT · #{{ logId }}</span>
                 <div class="tk-terminal__actions">
-                  <button class="tk-terminal__btn" @click="handleCopyOutput"><el-icon :size="12"><CopyDocument /></el-icon>{{ t('task.log.detail.copy') }}</button>
-                  <button class="tk-terminal__btn" @click="handleSaveOutput"><el-icon :size="12"><Download /></el-icon>{{ t('task.log.detail.save') }}</button>
+                  <button
+                    class="tk-terminal__btn"
+                    @click="handleCopyOutput"
+                  >
+                    <el-icon :size="12">
+                      <CopyDocument />
+                    </el-icon>{{ t('task.log.detail.copy') }}
+                  </button>
+                  <button
+                    class="tk-terminal__btn"
+                    @click="handleSaveOutput"
+                  >
+                    <el-icon :size="12">
+                      <Download />
+                    </el-icon>{{ t('task.log.detail.save') }}
+                  </button>
                 </div>
               </div>
               <div class="tk-terminal__body">
-                <span v-for="(line, i) in outputLines" :key="i" class="tk-terminal__line" :class="line.cls ? `tk-terminal__${line.cls}` : ''">{{ line.text }}<br></span>
+                <span
+                  v-for="(line, i) in outputLines"
+                  :key="i"
+                  class="tk-terminal__line"
+                  :class="line.cls ? `tk-terminal__${line.cls}` : ''"
+                >{{ line.text }}<br></span>
               </div>
             </div>
-            <div v-else class="tk-terminal__empty">{{ t('task.log.detail.noOutput') }}</div>
+            <div
+              v-else
+              class="tk-terminal__empty"
+            >
+              {{ t('task.log.detail.noOutput') }}
+            </div>
           </el-tab-pane>
 
-          <!-- Environment -->
-          <el-tab-pane :label="t('task.log.detail.environment')" name="env">
-            <div class="tk-env-placeholder">
-              <div class="tk-env-placeholder__icon"><el-icon :size="28"><View /></el-icon></div>
-              <div class="tk-env-placeholder__text">{{ t('task.log.detail.environment') }}</div>
-              <div class="tk-env-placeholder__desc">—</div>
+          <!-- Execution context -->
+          <el-tab-pane
+            :label="t('task.log.detail.contextTab')"
+            name="env"
+          >
+            <div
+              class="tk-sub-section"
+              style="margin-bottom: 0"
+            >
+              <div class="tk-sub-section__title">
+                {{ t('task.log.detail.contextTab') }}<span class="tk-sub-section__hint">CONTEXT</span>
+              </div>
+              <div class="tk-descriptions">
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.workerLabel') }}</span><span
+                    class="tk-desc-item__value"
+                    :class="detail.node ? 'tk-desc-item__value--mono' : 'tk-desc-item__value--placeholder'"
+                  >{{ detail.node || '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.triggerLabel') }}</span><span class="tk-desc-item__value">{{ detail.triggerType ? triggerLabel(detail.triggerType) : '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.triggeredAtLabel') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.triggeredAt ? formatDate(detail.triggeredAt) : '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.pickupDelay') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ pickupDelayMs(detail) !== null ? formatDuration(pickupDelayMs(detail) ?? 0) : '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.exitCode') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.exitCode ?? '—' }}</span>
+                </div>
+                <div class="tk-desc-item">
+                  <span class="tk-desc-item__label">{{ t('task.log.detail.statusCode') }}</span><span class="tk-desc-item__value tk-desc-item__value--mono">{{ detail.statusCode ?? '—' }}</span>
+                </div>
+              </div>
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -363,12 +571,6 @@ onMounted(() => { void fetchData() })
   &__warn { font-weight: bold; color: #febc2e; }
   &__info { color: #58a6ff; }
   &__empty { padding: var(--tk-spacing-12); font-family: var(--tk-font-mono); font-size: var(--tk-font-size-sm); color: var(--tk-text-secondary); text-align: center; background: var(--tk-bg-surface); border: 1px solid var(--tk-border-color-base); border-radius: var(--tk-radius-md); }
-}
-
-.tk-env-placeholder { display: flex; flex-direction: column; gap: var(--tk-spacing-4); align-items: center; justify-content: center; padding: var(--tk-spacing-16) var(--tk-spacing-8); text-align: center;
-  &__icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; color: var(--tk-text-secondary); background: var(--tk-bg-fill); border-radius: var(--tk-radius-lg); }
-  &__text { font-family: var(--tk-font-display); font-size: var(--tk-font-size-md); font-weight: var(--tk-font-weight-semibold); color: var(--tk-text-primary); }
-  &__desc { font-size: var(--tk-font-size-sm); color: var(--tk-text-secondary); }
 }
 
 @media (max-width: 960px) { .tk-metric-strip { grid-template-columns: repeat(2, 1fr); } .tk-descriptions { grid-template-columns: 1fr; } }

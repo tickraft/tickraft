@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/event"
@@ -84,28 +85,45 @@ func (m *Service) handleStatusChange(payload event.StatusChangePayload) {
 		if err != nil {
 			continue
 		}
+		if !task.Enabled {
+			continue
+		}
 		if task.AssetID != 0 && task.AssetID != assetID {
 			continue
 		}
 		if !m.shardManager.Owns(task.ID) {
 			continue
 		}
+		// Mirror onFire's Concurrency == 1 gate: claim the running slot
+		// before triggering so a burst of status-change events cannot
+		// stack overlapping runs of a no-concurrency task. trigger marks
+		// the task running but does not check-and-set, so the atomic
+		// claim must happen here.
+		if task.Concurrency == 1 && !m.tryClaimRunning(task.ID) {
+			m.logger.Warn("previous execution still running, skipping event-driven task",
+				zap.Int64("task_id", task.ID),
+				zap.String("skip_reason", ErrTaskRunning.Error()),
+			)
+			continue
+		}
 		m.logger.Info("triggering event-driven task",
 			zap.Int64("task_id", task.ID),
 			zap.Int64("asset_id", assetID),
 		)
-		m.trigger(task)
+		m.trigger(task, TriggerTypeEvent)
 	}
 }
 
 // trigger publishes an ExecutionTriggered event for the given task.
+// triggerType records how this run was initiated (schedule, manual or
+// event) and rides the payload into the persisted execution record.
 //
 // trigger marks the task as running before publishing so that the
 // Concurrency == 1 check in onFire can suppress overlapping fires. If the
 // publish fails (or the bus is nil), the running marker is released so the
 // next fire is not permanently blocked; the ExecutionCompleted subscriber is
 // the normal release path for successful publishes.
-func (m *Service) trigger(task Task) {
+func (m *Service) trigger(task Task, triggerType TriggerType) {
 	m.runningMu.Lock()
 	m.running[task.ID] = struct{}{}
 	m.runningMu.Unlock()
@@ -118,15 +136,28 @@ func (m *Service) trigger(task Task) {
 		return
 	}
 	payload := event.ExecutionPayload{
-		ExecutionID:  strconv.FormatInt(task.ID, 10),
-		TenantID:     strconv.FormatInt(task.TenantID, 10),
-		AssetID:      strconv.FormatInt(task.AssetID, 10),
-		ExecutorType: task.ExecutorName,
-		Config:       task.Config,
-		Action:       task.Operation.String(),
-		Timeout:      int64(task.Timeout),
-		RunID:        runID,
-		TriggerType:  string(TriggerTypeSchedule),
+		ExecutionID:          strconv.FormatInt(task.ID, 10),
+		TenantID:             strconv.FormatInt(task.TenantID, 10),
+		AssetID:              strconv.FormatInt(task.AssetID, 10),
+		ExecutorType:         task.ExecutorType,
+		Operation:            task.Operation.String(),
+		Action:               "triggered",
+		TimeoutSeconds:       task.TimeoutSeconds,
+		MaxRetries:           task.MaxRetries,
+		RetryIntervalSeconds: task.RetryIntervalSeconds,
+		RunID:                runID,
+		TriggerType:          string(triggerType),
+	}
+	if task.Config != nil {
+		raw, err := sonic.Marshal(task.Config)
+		if err != nil {
+			m.logger.Warn("failed to serialize task config for trigger event",
+				zap.Int64("task_id", task.ID),
+				zap.Error(err),
+			)
+		} else {
+			payload.Config = string(raw)
+		}
 	}
 	var pubOpts []event.PublishOption
 	if task.Metadata != nil {

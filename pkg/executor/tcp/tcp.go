@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/executor"
+	"github.com/tickraft/tickraft/pkg/executor/internal/deadline"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -142,8 +143,15 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 		timeout = 5 * time.Second
 	}
 
+	// Single-source timeout: the caller's context deadline (set by the
+	// runner lifecycle from the task's TimeoutSeconds) governs the dial;
+	// the executor timeout is only a fallback for direct callers with an
+	// unbounded context, so it never shortens a configured task timeout.
+	ctx, cancel := deadline.Fallback(ctx, timeout)
+	defer cancel()
+
 	start := time.Now()
-	dialer := &net.Dialer{Timeout: timeout}
+	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	duration := time.Since(start)
 

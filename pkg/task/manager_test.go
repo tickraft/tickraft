@@ -86,7 +86,7 @@ func (m *mockStore) Migrate(_ context.Context) error { return nil }
 
 func TestTaskManagerSetGet(t *testing.T) {
 	m := mustNewManager()
-	tk := Task{ID: 1, ExecutorName: "mock"}
+	tk := Task{ID: 1, ExecutorType: "mock"}
 
 	m.setTask(tk)
 
@@ -110,7 +110,7 @@ func TestTaskManagerGetNotFound(t *testing.T) {
 
 func TestTaskManagerDelete(t *testing.T) {
 	m := mustNewManager()
-	tk := Task{ID: 1, ExecutorName: "mock"}
+	tk := Task{ID: 1, ExecutorType: "mock"}
 
 	m.setTask(tk)
 	m.deleteTask(1)
@@ -173,13 +173,11 @@ func TestTaskManagerRegister(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	tk := Task{
-		ID:           1,
-		ExecutorName: "webhook",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-		},
+		ID:             1,
+		ExecutorType:   "webhook",
+		Enabled:        true,
+		Schedule:       "1h",
+		TimeoutSeconds: 5,
 	}
 
 	if err := m.Register(context.Background(), tk); err != nil {
@@ -191,8 +189,8 @@ func TestTaskManagerRegister(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("executor type = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("executor type = %q, want %q", got.ExecutorType, "webhook")
 	}
 
 	// Verify schedule is stored.
@@ -208,18 +206,42 @@ func TestTaskManagerRegister(t *testing.T) {
 	}
 }
 
+// TestTaskManagerRegisterDisabled verifies that a disabled task is stored
+// but not put on the wheel.
+func TestTaskManagerRegisterDisabled(t *testing.T) {
+	m := newTestManager(t, nil)
+	defer func() { _ = m.Stop(context.Background()) }()
+
+	tk := Task{
+		ID:           1,
+		ExecutorType: "webhook",
+		Enabled:      false,
+		Schedule:     "1h",
+	}
+	if err := m.Register(context.Background(), tk); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if _, err := m.getTask(1); err != nil {
+		t.Fatalf("disabled task should be stored: %v", err)
+	}
+	m.mu.RLock()
+	_, schedOk := m.scheds[1]
+	m.mu.RUnlock()
+	if schedOk {
+		t.Error("disabled task should not be scheduled")
+	}
+}
+
 func TestTaskManagerUnschedule(t *testing.T) {
 	m := newTestManager(t, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	tk := Task{
 		ID:           1,
-		ExecutorName: "webhook",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "1h",
 	}
 
 	if err := m.Register(context.Background(), tk); err != nil {
@@ -242,13 +264,11 @@ func TestTaskManagerUpdate(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	tk := Task{
-		ID:           1,
-		ExecutorName: "webhook",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-		},
+		ID:             1,
+		ExecutorType:   "webhook",
+		Enabled:        true,
+		Schedule:       "1h",
+		TimeoutSeconds: 5,
 	}
 
 	if err := m.Register(context.Background(), tk); err != nil {
@@ -257,13 +277,11 @@ func TestTaskManagerUpdate(t *testing.T) {
 
 	// Update with new schedule.
 	updatedTask := Task{
-		ID:           1,
-		ExecutorName: "webhook",
-		Timeout:      10 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "2h",
-		},
+		ID:             1,
+		ExecutorType:   "webhook",
+		Enabled:        true,
+		Schedule:       "2h",
+		TimeoutSeconds: 10,
 	}
 
 	if err := m.Update(context.Background(), updatedTask); err != nil {
@@ -275,8 +293,14 @@ func TestTaskManagerUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if got.Timeout != 10*time.Second {
-		t.Errorf("timeout = %v, want 10s", got.Timeout)
+	if got.TimeoutSeconds != 10 || got.Timeout() != 10*time.Second {
+		t.Errorf("timeout = %d (%v), want 10s", got.TimeoutSeconds, got.Timeout())
+	}
+	m.mu.RLock()
+	schedType := m.scheduleTypes[1]
+	m.mu.RUnlock()
+	if got.Schedule != "2h" || schedType != ScheduleTypeInterval {
+		t.Errorf("schedule after update = %q (type %v), want 2h (interval)", got.Schedule, schedType)
 	}
 }
 
@@ -312,11 +336,9 @@ func TestTaskManagerRegisterInvalidCron(t *testing.T) {
 
 	tk := Task{
 		ID:           1,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "cron",
-			"cron_expr":     "invalid-cron",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "invalid-cron",
 	}
 
 	err := m.Register(context.Background(), tk)
@@ -342,17 +364,17 @@ func TestTaskManagerSchedulePublishesTaskTriggered(t *testing.T) {
 		})
 
 	tk := Task{
-		ID:           42,
-		TenantID:     7,
-		AssetID:      99,
-		ExecutorName: "webhook",
-		Config:       `{"url":"http://example.com"}`,
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-			"key":           "value",
-		},
+		ID:                   42,
+		TenantID:             7,
+		AssetID:              99,
+		ExecutorType:         "webhook",
+		Enabled:              true,
+		Schedule:             "1h",
+		Config:               map[string]any{"url": "http://example.com"},
+		TimeoutSeconds:       5,
+		MaxRetries:           2,
+		RetryIntervalSeconds: 30,
+		Metadata:             map[string]string{"key": "value"},
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -382,8 +404,18 @@ func TestTaskManagerSchedulePublishesTaskTriggered(t *testing.T) {
 		if ev.Payload.Config != `{"url":"http://example.com"}` {
 			t.Errorf("payload.Config = %q, unexpected", ev.Payload.Config)
 		}
-		if time.Duration(ev.Payload.Timeout) != 5*time.Second {
-			t.Errorf("payload.Timeout = %d, want %d", ev.Payload.Timeout, int64(5*time.Second))
+		if ev.Payload.TimeoutSeconds != 5 {
+			t.Errorf("payload.TimeoutSeconds = %d, want 5", ev.Payload.TimeoutSeconds)
+		}
+		if ev.Payload.MaxRetries != 2 {
+			t.Errorf("payload.MaxRetries = %d, want 2", ev.Payload.MaxRetries)
+		}
+		if ev.Payload.RetryIntervalSeconds != 30 {
+			t.Errorf("payload.RetryIntervalSeconds = %d, want 30", ev.Payload.RetryIntervalSeconds)
+		}
+		if ev.Payload.TriggerType != string(TriggerTypeManual) {
+			t.Errorf("payload.TriggerType = %q, want %q (manual trigger path)",
+				ev.Payload.TriggerType, TriggerTypeManual)
 		}
 		if ev.Metadata["key"] != "value" {
 			t.Errorf("metadata[key] = %q, want %q", ev.Metadata["key"], "value")
@@ -409,14 +441,13 @@ func TestTaskManagerOnFirePublishesTaskTriggered(t *testing.T) {
 			return nil
 		})
 
-	// Register a task that fires immediately.
+	// Register a task with a sub-millisecond interval so it fires immediately.
 	tk := Task{
-		ID:           1,
-		ExecutorName: "webhook",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
+		ID:             1,
+		ExecutorType:   "webhook",
+		Enabled:        true,
+		Schedule:       "1ms",
+		TimeoutSeconds: 5,
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -426,6 +457,10 @@ func TestTaskManagerOnFirePublishesTaskTriggered(t *testing.T) {
 	case ev := <-triggered:
 		if ev.Payload.ExecutionID != "1" {
 			t.Errorf("payload.ExecutionID = %q, want %q", ev.Payload.ExecutionID, "1")
+		}
+		if ev.Payload.TriggerType != string(TriggerTypeSchedule) {
+			t.Errorf("payload.TriggerType = %q, want %q (wheel-fire path)",
+				ev.Payload.TriggerType, TriggerTypeSchedule)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for ExecutionTriggered event from onFire")
@@ -450,10 +485,9 @@ func TestTaskManagerOnFireShardFiltering(t *testing.T) {
 	// Register an odd task ID (not owned by this shard).
 	oddTask := Task{
 		ID:           1,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "10ms",
 	}
 	if err := m.Register(context.Background(), oddTask); err != nil {
 		t.Fatalf("register odd task: %v", err)
@@ -470,10 +504,9 @@ func TestTaskManagerOnFireShardFiltering(t *testing.T) {
 	// Register an even task ID (owned by this shard).
 	evenTask := Task{
 		ID:           2,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "10ms",
 	}
 	if err := m.Register(context.Background(), evenTask); err != nil {
 		t.Fatalf("register even task: %v", err)
@@ -507,9 +540,8 @@ func TestTaskManagerOnFireDependencyNotMet(t *testing.T) {
 	tk := Task{
 		ID:        1,
 		DependsOn: 100,
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
+		Enabled:   true,
+		Schedule:  "10ms",
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -522,58 +554,6 @@ func TestTaskManagerOnFireDependencyNotMet(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		// Expected: no event published.
 	}
-}
-
-// TestTaskManager_DependencyCheckerCleanup_OneTimeTask verifies that onFire
-// resets the dependencyChecker status for a one-time task after it fires.
-// One-time tasks never fire again, so their recorded status must be
-// dropped to prevent the statuses map from growing without bound.
-func TestTaskManager_DependencyCheckerCleanup_OneTimeTask(t *testing.T) {
-	m := newTestManager(t, nil)
-	defer func() { _ = m.Stop(context.Background()) }()
-
-	triggered := make(chan event.Event[event.ExecutionPayload], 1)
-	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
-		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
-			triggered <- ev
-			return nil
-		})
-
-	// Pre-record a dependency status for task 1 to simulate a stale entry
-	// left from a prior cycle. onFire for a one-time task should clear it.
-	m.deps.UpdateStatus(1, types.AssetStatusNormal)
-
-	tk := Task{
-		ID:           1,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
-	}
-	if err := m.Register(context.Background(), tk); err != nil {
-		t.Fatalf("register: %v", err)
-	}
-
-	select {
-	case <-triggered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for ExecutionTriggered event")
-	}
-
-	// onFire publishes the event during trigger, then reschedules and
-	// resets the dependency status. Poll until the entry is gone.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		m.deps.mu.RLock()
-		_, ok := m.deps.statuses[1]
-		m.deps.mu.RUnlock()
-		if !ok {
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-
-	t.Fatal("dependency status for one-time task should be cleaned up after firing")
 }
 
 // --- Service SubscribeEvents Tests ---
@@ -647,9 +627,7 @@ func TestTaskManagerSubscribeEventsStatusChangeTriggersEventTask(t *testing.T) {
 	tk := Task{
 		ID:      1,
 		AssetID: 50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled: true,
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -690,9 +668,7 @@ func TestTaskManagerSubscribeEventsStatusChangeIgnoresNormal(t *testing.T) {
 	tk := Task{
 		ID:      1,
 		AssetID: 50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled: true,
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -707,6 +683,43 @@ func TestTaskManagerSubscribeEventsStatusChangeIgnoresNormal(t *testing.T) {
 	select {
 	case <-triggered:
 		t.Fatal("event-driven task should NOT trigger on Normal status change")
+	case <-time.After(200 * time.Millisecond):
+		// Expected: no event published.
+	}
+}
+
+// TestTaskManagerSubscribeEventsStatusChangeSkipsDisabled verifies that a
+// disabled event-driven task is not triggered by a matching status change.
+func TestTaskManagerSubscribeEventsStatusChangeSkipsDisabled(t *testing.T) {
+	m := newTestManager(t, nil)
+	defer func() { _ = m.Stop(context.Background()) }()
+
+	m.SubscribeEvents(context.Background())
+
+	triggered := make(chan event.Event[event.ExecutionPayload], 10)
+	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
+		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
+			triggered <- ev
+			return nil
+		})
+
+	tk := Task{
+		ID:      1,
+		AssetID: 50,
+		Enabled: false,
+	}
+	if err := m.Register(context.Background(), tk); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	_ = event.Publish(context.Background(), m.bus, event.TypeAssetStatusChanged, event.StatusChangePayload{
+		AssetID:    "50",
+		CurrStatus: string(types.AssetStatusAbnormal),
+	})
+
+	select {
+	case <-triggered:
+		t.Fatal("disabled event-driven task should NOT trigger")
 	case <-time.After(200 * time.Millisecond):
 		// Expected: no event published.
 	}
@@ -731,9 +744,7 @@ func TestTaskManagerSubscribeEventsStatusChangeAssetismatch(t *testing.T) {
 	tk := Task{
 		ID:      1,
 		AssetID: 50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled: true,
 	}
 	if err := m.Register(context.Background(), tk); err != nil {
 		t.Fatalf("register: %v", err)
@@ -772,9 +783,7 @@ func TestTaskManagerSubscribeEventsStatusChangeShardFiltering(t *testing.T) {
 	oddTask := Task{
 		ID:      1, // 1 % 2 == 1, owned by shard 1
 		AssetID: 50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled: true,
 	}
 	if err := m.Register(context.Background(), oddTask); err != nil {
 		t.Fatalf("register odd task: %v", err)
@@ -797,9 +806,7 @@ func TestTaskManagerSubscribeEventsStatusChangeShardFiltering(t *testing.T) {
 	evenTask := Task{
 		ID:      2, // 2 % 2 == 0, owned by shard 0
 		AssetID: 50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled: true,
 	}
 	if err := m.Register(context.Background(), evenTask); err != nil {
 		t.Fatalf("register even task: %v", err)
@@ -824,7 +831,7 @@ func TestTaskManagerSubscribeEventsStatusChangeShardFiltering(t *testing.T) {
 // --- Schedule parse Tests ---
 
 func TestParseScheduleCron(t *testing.T) {
-	sched, err := parseSchedule(ScheduleTypeCron, "*/5 * * * *", 0)
+	sched, err := parseSchedule("*/5 * * * *")
 	if err != nil {
 		t.Fatalf("parse cron: %v", err)
 	}
@@ -835,7 +842,7 @@ func TestParseScheduleCron(t *testing.T) {
 }
 
 func TestParseScheduleInterval(t *testing.T) {
-	sched, err := parseSchedule(ScheduleTypeInterval, "", 10*time.Second)
+	sched, err := parseSchedule("10s")
 	if err != nil {
 		t.Fatalf("parse interval: %v", err)
 	}
@@ -845,21 +852,20 @@ func TestParseScheduleInterval(t *testing.T) {
 	}
 }
 
-func TestParseScheduleOnce(t *testing.T) {
-	sched, err := parseSchedule(ScheduleTypeOnce, "", 0)
+func TestParseScheduleEventDrivenIsNever(t *testing.T) {
+	sched, err := parseSchedule("")
 	if err != nil {
-		t.Fatalf("parse once: %v", err)
+		t.Fatalf("parse empty schedule: %v", err)
 	}
-	next := sched.Next(time.Now())
-	if next.IsZero() {
-		t.Error("expected non-zero next time for immediate one-time schedule")
+	if !sched.Next(time.Now()).IsZero() {
+		t.Error("event-driven (empty) schedule should never fire")
 	}
 }
 
 func TestParseScheduleInvalidCron(t *testing.T) {
-	_, err := parseSchedule(ScheduleTypeCron, "", 0)
+	_, err := parseSchedule("invalid-cron")
 	if err == nil {
-		t.Error("expected error for empty cron expression")
+		t.Error("expected error for invalid cron expression")
 	}
 }
 
@@ -880,10 +886,8 @@ func TestTaskManagerRestoreFromStore(t *testing.T) {
 	store := newMockStore()
 	// Pre-populate the store with tasks as if they were persisted before a restart.
 	seedTasks := []*Task{
-		{ID: 1, TenantID: 10, ExecutorName: "webhook",
-			Metadata: map[string]string{"schedule_type": "cron", "cron_expr": "*/5 * * * *"}},
-		{ID: 2, TenantID: 10, ExecutorName: "http",
-			Metadata: map[string]string{"schedule_type": "interval", "interval": "30s"}},
+		{ID: 1, TenantID: 10, ExecutorType: "webhook", Enabled: true, Schedule: "*/5 * * * *"},
+		{ID: 2, TenantID: 10, ExecutorType: "http", Enabled: true, Schedule: "30s"},
 	}
 	for _, t := range seedTasks {
 		_ = store.Save(context.Background(), t)
@@ -904,8 +908,8 @@ func TestTaskManagerRestoreFromStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get 1: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("task 1 ExecutorName = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("task 1 ExecutorType = %q, want %q", got.ExecutorType, "webhook")
 	}
 }
 
@@ -923,7 +927,7 @@ func TestTaskManagerRestoreListError(t *testing.T) {
 
 func TestTaskManagerRestoreIsIdempotent(t *testing.T) {
 	store := newMockStore()
-	_ = store.Save(context.Background(), &Task{ID: 1, ExecutorName: "webhook"})
+	_ = store.Save(context.Background(), &Task{ID: 1, ExecutorType: "webhook"})
 
 	m := newTestManagerWithStore(t, store, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
@@ -936,7 +940,7 @@ func TestTaskManagerRestoreIsIdempotent(t *testing.T) {
 	// directly to the map. Going through setTask would persist it to the store
 	// (since a store is configured), defeating the purpose of this test.
 	m.taskMu.Lock()
-	m.tasks[99] = Task{ID: 99, ExecutorName: "transient"}
+	m.tasks[99] = Task{ID: 99, ExecutorType: "transient"}
 	m.taskMu.Unlock()
 
 	// Second restore should replace the in-memory map entirely.
@@ -960,15 +964,15 @@ func TestTaskManagerSetPersistsToStore(t *testing.T) {
 	m := newTestManagerWithStore(t, store, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
 
-	m.setTask(Task{ID: 1, ExecutorName: "webhook"})
+	m.setTask(Task{ID: 1, ExecutorType: "webhook"})
 
 	// Verify the task was persisted.
 	got, err := store.Get(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("store.Get: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("persisted ExecutorName = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("persisted ExecutorType = %q, want %q", got.ExecutorType, "webhook")
 	}
 }
 
@@ -977,7 +981,7 @@ func TestTaskManagerDeletePersistsToStore(t *testing.T) {
 	m := newTestManagerWithStore(t, store, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
 
-	m.setTask(Task{ID: 1, ExecutorName: "webhook"})
+	m.setTask(Task{ID: 1, ExecutorType: "webhook"})
 	m.deleteTask(1)
 
 	// Verify the task was deleted from the store.
@@ -994,14 +998,14 @@ func TestTaskManagerSetStoreErrorDoesNotAffectMemory(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	// setTask should still update in-memory state even if the store write fails.
-	m.setTask(Task{ID: 1, ExecutorName: "webhook"})
+	m.setTask(Task{ID: 1, ExecutorType: "webhook"})
 
 	got, err := m.getTask(1)
 	if err != nil {
 		t.Fatalf("Get after failed store write: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("in-memory ExecutorName = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("in-memory ExecutorType = %q, want %q", got.ExecutorType, "webhook")
 	}
 }
 
@@ -1011,7 +1015,7 @@ func TestTaskManagerDeleteStoreErrorDoesNotAffectMemory(t *testing.T) {
 	m := newTestManagerWithStore(t, store, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
 
-	m.setTask(Task{ID: 1, ExecutorName: "webhook"})
+	m.setTask(Task{ID: 1, ExecutorType: "webhook"})
 	m.deleteTask(1)
 
 	// In-memory deletion should succeed even if the store delete fails.
@@ -1023,15 +1027,15 @@ func TestTaskManagerDeleteStoreErrorDoesNotAffectMemory(t *testing.T) {
 
 func TestTaskManagerNoStoreSkipsPersistence(t *testing.T) {
 	m := mustNewManager() // no store
-	m.setTask(Task{ID: 1, ExecutorName: "webhook"})
+	m.setTask(Task{ID: 1, ExecutorType: "webhook"})
 
 	// In-memory state should be updated.
 	got, err := m.getTask(1)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("ExecutorName = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("ExecutorType = %q, want %q", got.ExecutorType, "webhook")
 	}
 }
 
@@ -1041,14 +1045,12 @@ func TestTaskManagerRestoreSchedulesTasks(t *testing.T) {
 	store := newMockStore()
 	// Seed the store with a task that has an interval schedule.
 	seedTask := &Task{
-		ID:           1,
-		TenantID:     10,
-		ExecutorName: "webhook",
-		Timeout:      5 * time.Second,
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-		},
+		ID:             1,
+		TenantID:       10,
+		ExecutorType:   "webhook",
+		Enabled:        true,
+		Schedule:       "1h",
+		TimeoutSeconds: 5,
 	}
 	_ = store.Save(context.Background(), seedTask)
 
@@ -1064,8 +1066,8 @@ func TestTaskManagerRestoreSchedulesTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get restored task: %v", err)
 	}
-	if got.ExecutorName != "webhook" {
-		t.Errorf("ExecutorName = %q, want %q", got.ExecutorName, "webhook")
+	if got.ExecutorType != "webhook" {
+		t.Errorf("ExecutorType = %q, want %q", got.ExecutorType, "webhook")
 	}
 
 	// Verify the task is scheduled in the manager.
@@ -1081,15 +1083,44 @@ func TestTaskManagerRestoreSchedulesTasks(t *testing.T) {
 	}
 }
 
+// TestTaskManagerRestoreSkipsDisabledTask verifies that a disabled task is
+// loaded into memory but not scheduled during Restore.
+func TestTaskManagerRestoreSkipsDisabledTask(t *testing.T) {
+	store := newMockStore()
+	seedTask := &Task{
+		ID:           1,
+		TenantID:     10,
+		ExecutorType: "webhook",
+		Enabled:      false,
+		Schedule:     "1h",
+	}
+	_ = store.Save(context.Background(), seedTask)
+
+	m := newTestManagerWithStore(t, store, nil)
+	defer func() { _ = m.Stop(context.Background()) }()
+
+	if err := m.Restore(context.Background()); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	if _, err := m.getTask(1); err != nil {
+		t.Fatalf("disabled task should be loaded into memory: %v", err)
+	}
+	m.mu.RLock()
+	_, schedOk := m.scheds[1]
+	m.mu.RUnlock()
+	if schedOk {
+		t.Error("disabled task should not be scheduled during Restore")
+	}
+}
+
 func TestTaskManagerRestoreEventDrivenTask(t *testing.T) {
 	store := newMockStore()
 	seedTask := &Task{
 		ID:       2,
 		TenantID: 10,
 		AssetID:  50,
-		Metadata: map[string]string{
-			"schedule_type": "event",
-		},
+		Enabled:  true,
 	}
 	_ = store.Save(context.Background(), seedTask)
 
@@ -1118,11 +1149,9 @@ func TestTaskManagerRestoreSkipsInvalidSchedule(t *testing.T) {
 	seedTask := &Task{
 		ID:           3,
 		TenantID:     10,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "cron",
-			"cron_expr":     "invalid-cron-expr",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "invalid-cron-expr",
 	}
 	_ = store.Save(context.Background(), seedTask)
 
@@ -1151,22 +1180,22 @@ func TestTaskManagerRestoreSkipsInvalidSchedule(t *testing.T) {
 	}
 }
 
-func TestTaskManagerRestorePublishesForImmediateOnceTask(t *testing.T) {
+func TestTaskManagerRestorePublishesForShortIntervalTask(t *testing.T) {
 	store := newMockStore()
 	seedTask := &Task{
 		ID:           1,
 		TenantID:     10,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "once",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "1ms",
 	}
 	_ = store.Save(context.Background(), seedTask)
 
 	m := newTestManagerWithStore(t, store, nil)
 	defer func() { _ = m.Stop(context.Background()) }()
 
-	// Subscribe to ExecutionTriggered events to verify the restored one-time task fires.
+	// Subscribe to ExecutionTriggered events to verify the restored task
+	// fires on its schedule.
 	triggered := make(chan event.Event[event.ExecutionPayload], 1)
 	_, _ = event.Subscribe[event.ExecutionPayload](m.bus, event.TypeExecutionTriggered,
 		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
@@ -1184,7 +1213,7 @@ func TestTaskManagerRestorePublishesForImmediateOnceTask(t *testing.T) {
 			t.Errorf("payload.ExecutionID = %q, want %q", ev.Payload.ExecutionID, "1")
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for ExecutionTriggered event from restored once task")
+		t.Fatal("timed out waiting for ExecutionTriggered event from restored task")
 	}
 }
 
@@ -1248,11 +1277,9 @@ func BenchmarkTaskManagerStatusChangeHandler(b *testing.B) {
 	// Register many non-event tasks that must NOT be scanned.
 	for i := int64(1); i <= 10000; i++ {
 		if err := m.Register(context.Background(), Task{
-			ID: i,
-			Metadata: map[string]string{
-				"schedule_type": "interval",
-				"interval":      "1h",
-			},
+			ID:       i,
+			Enabled:  true,
+			Schedule: "1h",
 		}); err != nil {
 			b.Fatalf("register interval task %d: %v", i, err)
 		}
@@ -1262,9 +1289,7 @@ func BenchmarkTaskManagerStatusChangeHandler(b *testing.B) {
 		if err := m.Register(context.Background(), Task{
 			ID:      i,
 			AssetID: 50,
-			Metadata: map[string]string{
-				"schedule_type": "event",
-			},
+			Enabled: true,
 		}); err != nil {
 			b.Fatalf("register event task %d: %v", i, err)
 		}
@@ -1366,11 +1391,9 @@ func TestRestoreClearsStaleSchedules(t *testing.T) {
 	store := newMockStore()
 	_ = store.Save(context.Background(), &Task{
 		ID:           1,
-		ExecutorName: "webhook",
-		Metadata: map[string]string{
-			"schedule_type": "interval",
-			"interval":      "1h",
-		},
+		ExecutorType: "webhook",
+		Enabled:      true,
+		Schedule:     "1h",
 	})
 
 	m := newTestManagerWithStore(t, store, nil)

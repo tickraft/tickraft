@@ -5,71 +5,60 @@
 package alert
 
 import (
-	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
+
+	// Registers the tolerantjson serializer that Rule.Metadata depends on.
+	// The blank import guarantees registration before any schema parse.
+	_ "github.com/tickraft/tickraft/pkg/db"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // Rule is the alert rule model: the single representation shared by the
-// persistence layer (sys_prism_alert_rule) and the evaluation engine.
-// Metadata is stored as a JSON-encoded string column; callers that need
-// the decoded form use MetadataMap, which tolerates malformed blobs (a
-// bad payload yields nil rather than failing rule loading).
+// persistence layer (sys_prism_alert_rule), the evaluation engine, and the
+// CRUD API. It carries both gorm and json tags; internal columns
+// (TenantID, DeletedAt) are excluded from serialization so the API can
+// never read or bind them.
 type Rule struct {
 	// ID is the auto-incremented primary key.
-	ID int64 `gorm:"column:id;primaryKey;autoIncrement"`
+	ID int64 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	// TenantID scopes the rule to a tenant for multi-tenant isolation.
 	// 0 is the global scope matched against every event; tenant
 	// filtering is an engine internal, never an expression variable.
-	TenantID int64 `gorm:"column:tenant_id;not null;index"`
+	TenantID int64 `gorm:"column:tenant_id;not null;index" json:"-"`
 	// Name is the human-readable rule name.
-	Name string `gorm:"column:name;type:varchar(255);not null"`
+	Name string `gorm:"column:name;type:varchar(255);not null" json:"name"`
 	// Description is an optional free-form rule description.
-	Description string `gorm:"column:description;type:text"`
+	Description string `gorm:"column:description;type:text" json:"description,omitempty"`
 	// Expression is the expr-lang source text compiled by the Compiler.
-	Expression string `gorm:"column:expression;type:text;not null"`
+	Expression string `gorm:"column:expression;type:text;not null" json:"expression"`
 	// Enabled indicates whether the rule participates in matching. The
 	// column has no gorm default: a default tag would make GORM omit the
 	// zero value on insert, silently persisting enabled=true for rules
 	// created with Enabled=false.
-	Enabled bool `gorm:"column:enabled;not null;index"`
+	Enabled bool `gorm:"column:enabled;not null;index" json:"enabled"`
 	// Priority orders rules; higher values fire first.
-	Priority int `gorm:"column:priority;not null;default:0"`
+	Priority int `gorm:"column:priority;not null;default:0" json:"priority,omitempty"`
 	// GroupID is the resource group the rule belongs to. nil means the
 	// rule is tenant-wide (visible to all members); a non-nil value
 	// restricts visibility to members assigned to that group (B1-04).
-	GroupID *int64 `gorm:"column:group_id;index"`
-	// Metadata is the JSON-encoded extension key-value pairs.
-	Metadata string `gorm:"column:metadata;type:text"`
+	GroupID *int64 `gorm:"column:group_id;index" json:"group_id,omitempty"`
+	// Metadata holds extension key-value pairs, persisted as JSON in a
+	// text column via the tolerantjson serializer. Reads never fail: an
+	// empty, "null", or malformed column decodes to nil.
+	Metadata map[string]string `gorm:"column:metadata;type:text;serializer:tolerantjson" json:"metadata,omitempty"`
 	// CreatedAt is the rule creation timestamp. Static rules loaded from
 	// configuration files carry zero-value timestamps.
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	// UpdatedAt is the rule last-update timestamp.
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	// DeletedAt records the soft-delete timestamp.
-	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index"`
+	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
 }
 
 // TableName returns the database table name for Rule.
 func (Rule) TableName() string { return "sys_prism_alert_rule" }
-
-// MetadataMap decodes the rule's JSON metadata blob into a string map.
-// An empty or malformed blob returns nil so a bad payload never blocks
-// rule loading; readers treat nil as "no extension keys".
-func (r *Rule) MetadataMap() map[string]string {
-	if r.Metadata == "" {
-		return nil
-	}
-	var metadata map[string]string
-	if err := json.Unmarshal([]byte(r.Metadata), &metadata); err != nil {
-		return nil
-	}
-	if len(metadata) == 0 {
-		return nil
-	}
-	return metadata
-}
 
 // Alert record lifecycle statuses stored in Record.Status and the
 // sys_prism_alert_record.status column. The GORM default tag on Record.Status
@@ -115,3 +104,14 @@ type Record struct {
 
 // TableName returns the database table name.
 func (Record) TableName() string { return "sys_prism_alert_record" }
+
+// AfterFind self-heals legacy rows written before the severity column
+// gained its 'warning' default: an empty severity reads back as warning,
+// matching the API contract previously enforced by the service-layer
+// converter.
+func (r *Record) AfterFind() error {
+	if r.Severity == "" {
+		r.Severity = string(types.SeverityWarning)
+	}
+	return nil
+}

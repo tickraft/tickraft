@@ -73,13 +73,13 @@ type Engine struct {
 
 	// Orchestration fields: populated by NewFromConfig, nil when the Engine
 	// is created via New() directly (standalone dispatch engine mode).
-	ruleEngine       *alert.Engine
-	ruleStore        *alert.Store
-	recordStore      alert.RecordStore
-	channelStore     *channel.Store
-	remediationStore *remediation.Store
-	remediationMgr   *remediation.Manager
-	ruleEngineStopFn func(context.Context) error
+	ruleEngine        *alert.Engine
+	ruleStore         *alert.Store
+	recordStore       alert.RecordStore
+	channelStore      *channel.Store
+	remediationStore  *remediation.Store
+	remediationEngine *remediation.Engine
+	ruleEngineStopFn  func(context.Context) error
 }
 
 // Option configures an Engine.
@@ -302,18 +302,18 @@ func (e *Engine) SetChannels(chs []Channel) {
 }
 
 // ReloadChannels reloads notification channels from the database channel
-// store. It queries all enabled channel records, builds runtime Channel
+// store. It queries all enabled channel definitions, builds runtime Channel
 // instances, and atomically replaces the engine's channel list. This is
 // called by the API layer after channel CRUD operations.
 func (e *Engine) ReloadChannels(ctx context.Context) error {
 	if e.channelStore == nil {
 		return nil
 	}
-	records, err := e.channelStore.ListEnabled(ctx)
+	defs, err := e.channelStore.ListEnabled(ctx)
 	if err != nil {
 		return fmt.Errorf("list enabled channels: %w", err)
 	}
-	channels, err := BuildChannelsFromRecords(records)
+	channels, err := BuildChannels(defs)
 	if err != nil {
 		e.logger.Warn("reload channels: some channels failed to build", zap.Error(err))
 	}
@@ -363,8 +363,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	// Start the remediation engine first so it is draining events before
 	// the alert pipeline subscribes. On failure the partial start is
 	// rolled back so Start can be retried.
-	if e.remediationMgr != nil {
-		if err := e.remediationMgr.Start(runCtx); err != nil {
+	if e.remediationEngine != nil {
+		if err := e.remediationEngine.Start(runCtx); err != nil {
 			e.started = false
 			cancel()
 			return fmt.Errorf("prism: start remediation engine: %w", err)
@@ -433,8 +433,8 @@ func (e *Engine) Stop(ctx context.Context) error {
 	// Stop the remediation engine first so it stops accepting new
 	// dispatches, then the rule engine so its reload loop is cancelled
 	// before the dispatch engine drains.
-	if e.remediationMgr != nil {
-		if err := e.remediationMgr.Stop(ctx); err != nil {
+	if e.remediationEngine != nil {
+		if err := e.remediationEngine.Stop(ctx); err != nil {
 			e.logger.Warn("remediation engine stop returned error", zap.Error(err))
 		}
 	}

@@ -34,30 +34,11 @@ func NewStore(dbc *gorm.DB) *Store {
 	return &Store{dbc: dbc}
 }
 
-// Migrate runs AutoMigrate for the Rule and Record tables and drops the
-// orphaned pre-rename legacy tables. It is intended to be invoked from
-// the application's migration phase at startup.
+// Migrate runs AutoMigrate for the Rule and Record tables. It is intended
+// to be invoked from the application's migration phase at startup.
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.dbc.WithContext(ctx).AutoMigrate(&Rule{}, &Record{}); err != nil {
 		return fmt.Errorf("remediation: migrate rule/record tables: %w", err)
-	}
-	if err := DropLegacyTables(ctx, s.dbc); err != nil {
-		return err
-	}
-	return nil
-}
-
-// DropLegacyTables removes the orphaned pre-rename remediation tables
-// (sys_remediation_rule, sys_remediation_record) left behind by earlier
-// development builds. The project is unreleased, so no data migration
-// path exists: the live tables are sys_prism_remediation_rule and
-// sys_prism_remediation_record. Idempotent — missing tables are ignored.
-func DropLegacyTables(ctx context.Context, dbc *gorm.DB) error {
-	if err := dbc.WithContext(ctx).Exec("DROP TABLE IF EXISTS sys_remediation_rule").Error; err != nil {
-		return fmt.Errorf("remediation: drop legacy rule table: %w", errmap.MapError(err))
-	}
-	if err := dbc.WithContext(ctx).Exec("DROP TABLE IF EXISTS sys_remediation_record").Error; err != nil {
-		return fmt.Errorf("remediation: drop legacy record table: %w", errmap.MapError(err))
 	}
 	return nil
 }
@@ -67,7 +48,7 @@ var _ RecordStore = (*Store)(nil)
 
 // UpsertRecord inserts the record when no row with the same RunID exists,
 // or updates the existing row's lifecycle fields (status, error,
-// started_at, finished_at) otherwise. The Manager calls this at each
+// started_at, finished_at) otherwise. The Engine calls this at each
 // lifecycle transition of a dispatch.
 func (s *Store) UpsertRecord(ctx context.Context, record *Record) error {
 	if record == nil {

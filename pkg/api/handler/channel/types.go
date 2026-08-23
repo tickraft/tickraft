@@ -6,23 +6,15 @@ package channel
 
 import (
 	"context"
-	"time"
+
+	"github.com/tickraft/tickraft/pkg/prism/channel"
 )
 
-// Channel represents a notification channel definition managed
-// through the CRUD API at /api/v1/prism/channels. The Config field carries
-// a channel-type-specific JSON payload interpreted by the channel factory
-// selected by Type. The open-source edition supports the "webhook" type.
-type Channel struct {
-	ID         int64      `json:"id"`
-	Name       string     `json:"name"`
-	Type       string     `json:"type"`   // webhook (CE), extensible via SPI
-	Config     string     `json:"config"` // JSON-encoded channel.Config payload
-	Enabled    bool       `json:"enabled"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-}
+// The wire and storage shapes are the same model: this package carries no
+// Channel DTO. prismchannel.Channel holds both gorm and json tags, and the
+// soft-delete column serializes to nothing, so handlers bind and return the
+// model type directly. See docs/model-layering-design.md for the layering
+// contract.
 
 // Service defines the operations for managing notification channels.
 // The concrete implementation is injected via the WithChannelService
@@ -30,13 +22,13 @@ type Channel struct {
 // implementation.
 type Service interface {
 	// ListChannels returns a page of notification channels and the total count.
-	ListChannels(ctx context.Context, page, size int) ([]Channel, int64, error)
+	ListChannels(ctx context.Context, page, size int) ([]*channel.Channel, int64, error)
 	// GetChannel returns a single notification channel by ID.
-	GetChannel(ctx context.Context, id int64) (*Channel, error)
+	GetChannel(ctx context.Context, id int64) (*channel.Channel, error)
 	// CreateChannel creates a new notification channel from the given request.
-	CreateChannel(ctx context.Context, req *Channel) (*Channel, error)
+	CreateChannel(ctx context.Context, req *channel.Channel) (*channel.Channel, error)
 	// UpdateChannel updates an existing notification channel identified by ID.
-	UpdateChannel(ctx context.Context, id int64, req *Channel) (*Channel, error)
+	UpdateChannel(ctx context.Context, id int64, req *channel.Channel) (*channel.Channel, error)
 	// DeleteChannel deletes a notification channel by ID.
 	DeleteChannel(ctx context.Context, id int64) error
 	// TestChannel sends a test notification through the channel identified by

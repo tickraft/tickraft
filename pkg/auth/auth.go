@@ -50,6 +50,11 @@ type Service struct {
 	apiKeys   user.APIKeyStore
 	blacklist BlacklistStore
 
+	// jtiRecorder observes freshly issued tokens so HA callers can
+	// maintain per-user JTI registries for user-wide revocation. nil in
+	// standalone deployments.
+	jtiRecorder JTIRecorder
+
 	// Login rate limiter: username -> fail record
 	mu              sync.Mutex
 	loginFails      map[string]*loginFailRecord
@@ -80,6 +85,37 @@ func NewService(
 	}
 	s.launchCleanupLoop()
 	return s
+}
+
+// JTIRecorder observes a freshly issued token so HA deployments can keep a
+// per-user JTI registry for user-wide revocation. Implementations must be
+// safe for concurrent use and must not block: recording is best-effort.
+type JTIRecorder func(userID int64, jti string, expiresAt time.Time)
+
+// SetJTIRecorder sets the observer invoked for every token issued by this
+// service (login, direct issuance, and refresh rotation). It must be called
+// before the service starts serving traffic. A nil recorder disables
+// observation.
+func (s *Service) SetJTIRecorder(fn JTIRecorder) {
+	s.jtiRecorder = fn
+}
+
+// recordIssuedJTIs reports both tokens of a freshly issued pair to the
+// JTI recorder. It is best-effort: parse failures are logged and skipped.
+func (s *Service) recordIssuedJTIs(pair *jwt.TokenPair) {
+	if s.jtiRecorder == nil || pair == nil {
+		return
+	}
+	if claims, err := s.jwt.ValidateToken(pair.AccessToken, jwt.TokenTypeAccess); err == nil && claims.JTI != "" {
+		s.jtiRecorder(claims.UID, claims.JTI, claims.ExpiresAt)
+	} else if err != nil {
+		zap.L().Warn("auth: record issued access token", zap.Error(err))
+	}
+	if claims, err := s.jwt.ValidateToken(pair.RefreshToken, jwt.TokenTypeRefresh); err == nil && claims.JTI != "" {
+		s.jtiRecorder(claims.UID, claims.JTI, claims.ExpiresAt)
+	} else if err != nil {
+		zap.L().Warn("auth: record issued refresh token", zap.Error(err))
+	}
 }
 
 // Login authenticates a user and returns a login result containing the token
@@ -135,6 +171,7 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 			zap.Int64("user_id", u.ID), zap.Error(err))
 		return nil, fmt.Errorf("generate token pair: %w", err)
 	}
+	s.recordIssuedJTIs(tokenPair)
 
 	return &LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
@@ -166,6 +203,7 @@ func (s *Service) IssueTokens(ctx context.Context, u *user.User) (*LoginResult, 
 	if err != nil {
 		return nil, fmt.Errorf("generate token pair: %w", err)
 	}
+	s.recordIssuedJTIs(tokenPair)
 
 	return &LoginResult{
 		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
@@ -220,6 +258,7 @@ func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwt.T
 	if err != nil {
 		return nil, fmt.Errorf("refresh token: %w", err)
 	}
+	s.recordIssuedJTIs(tokenPair)
 
 	// Redeem the old refresh token: blacklist its JTI until its original
 	// expiry so the same token cannot be exchanged twice.
@@ -283,8 +322,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 }
 
 // CreateAPIKey generates a new API key.
-func (s *Service) CreateAPIKey(ctx context.Context, name string,
-	expiredAt *time.Time) (rawKey string, info *user.APIKey, err error) {
+func (s *Service) CreateAPIKey(
+	ctx context.Context,
+	name string,
+	expiredAt *time.Time,
+) (rawKey string, info *user.APIKey, err error) {
 	raw, hash, prefix, err := apikey.GenerateAPIKey()
 	if err != nil {
 		return "", nil, fmt.Errorf("generate api key: %w", err)
@@ -372,19 +414,19 @@ type UpdateProfileParams struct {
 // Only non-nil fields of p are applied; nil fields leave the corresponding
 // profile field unchanged. It returns the updated user after the change is
 // persisted.
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, p UpdateProfileParams) (*user.User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, params UpdateProfileParams) (*user.User, error) {
 	data := make(map[string]any)
-	if p.Nickname != nil {
-		data["nickname"] = *p.Nickname
+	if params.Nickname != nil {
+		data["nickname"] = *params.Nickname
 	}
-	if p.Email != nil {
-		data["email"] = *p.Email
+	if params.Email != nil {
+		data["email"] = *params.Email
 	}
-	if p.Language != nil {
-		data["language"] = *p.Language
+	if params.Language != nil {
+		data["language"] = *params.Language
 	}
-	if p.AlertFormatStyle != nil {
-		data["alert_format_style"] = *p.AlertFormatStyle
+	if params.AlertFormatStyle != nil {
+		data["alert_format_style"] = *params.AlertFormatStyle
 	}
 	if len(data) == 0 {
 		// Nothing to update; return the current user without a write.
@@ -510,9 +552,9 @@ func (s *Service) evictExpiredFails() {
 }
 
 // checkUsername checks that the username matches the canonical
-// user.UsernameRegex (3-64 chars, only letters, digits and underscores).
+// user.NameRegex (3-64 chars, only letters, digits and underscores).
 func checkUsername(username string) error {
-	if !user.UsernameRegex.MatchString(username) {
+	if !user.NameRegex.MatchString(username) {
 		return ErrInvalidUsername
 	}
 	return nil

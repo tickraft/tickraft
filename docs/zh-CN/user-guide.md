@@ -40,7 +40,7 @@
 
 **后续登录。** 完成首次密码修改后，登录表单会直接接受新密码。勾选"记住我"可将 session token 保存到本地存储；不勾选则仅在浏览器会话期间保留 token。
 
-**Token 刷新。** access token 在 `auth.token_ttl`（默认 24 小时）后过期。前端会使用 refresh token 自动刷新。若两者均过期，将跳转回本页。
+**Token 刷新。** access token 在 `auth.access_ttl`（默认 2 小时）后过期。前端会使用 refresh token 自动刷新。若两者均过期，将跳转回本页。
 
 ## 仪表盘
 
@@ -83,7 +83,7 @@ scheduler 模块管理周期性与事件驱动的任务。每个任务都定义�
 创建页是一个分段的表单：
 
 1. **基本信息** — 名称、描述、优先级与标签。
-2. **Executor** — 选择 executor 类型（`http`、`tcp`、`icmp`、`udp`、`local`、`webhook`）。表单会根据所选 executor 动态展示相关字段（例如 `http` 对应 URL + 方法，`tcp` 对应 host + port）。
+2. **Executor** — 选择 executor 类型。可作为任务的类型：`local`（脚本）、`webhook`（出站回调）与 `http`（双模式：以 HTTP 请求作为任务动作；非 GET 请求需在 config 中指定 `method`）。表单会根据所选 executor 动态展示相关字段（例如 `http` 对应 URL + 方法，`tcp` 对应 host + port）。仅探测类型（`icmp`、`tcp`）属于监控点，在此会被 400 拒绝。
 3. **调度计划** — 选择调度类型：
    - `interval` — 每 N 秒运行一次。
    - `cron` — 按 cron 表达式运行（例如 `*/5 * * * *`）。
@@ -120,7 +120,7 @@ scheduler 模块管理周期性与事件驱动的任务。每个任务都定义�
 
 ## Collector
 
-collector 模块从两类来源采集监控数据：**prober**（Tickraft 主动发出的探测）与 **listener**（接受外部上报的被动接收器）。两者都汇入资产状态机。
+collector 模块从两类来源采集监控数据：**prober**（Tickraft 主动发出的探测）与 **listener**（接受外部上报的被动接收器）。每次探测结果被持久化为探测记录（`sys_probe_record`）并刷新监控点的运行时状态；listener 上报经采集管道处理并驱动资产状态机。
 
 ### 资产
 
@@ -148,7 +148,7 @@ prober 列表展示每个已配置的 prober、其目标资产、探测类型、
 
 ![创建 prober](../screenshots/collector-prober-create.png)
 
-**Prober 详情。** 详情页展示 prober 配置、最近探测结果，以及响应时间或状态随时间变化的趋势图。
+**Prober 详情。** 详情页展示 prober 配置、最近探测状态与时延，以及最近的探测历史与日志——每次探测执行一条记录。
 
 ![Prober 详情](../screenshots/collector-prober-detail.png)
 

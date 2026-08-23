@@ -17,9 +17,21 @@ export type ExecutorType =
   | 'ssh'
   | 'mysql'
   | 'redis'
-  | 'telnet'
-  | 'snmp'
-  | 'notify'
+
+/**
+ * Executor type metadata — aligns with the registry-derived catalog returned
+ * by GET /api/v1/executors. The list reflects the runtime's actual
+ * task-executable executors (the same capability predicate the backend task
+ * CRUD precheck uses), so plugin-provided executors appear automatically.
+ */
+export interface ExecutorTypeInfo {
+  /** Executor identifier (http, tcp, icmp, local, webhook, ...) */
+  type: string
+  /** Human-readable display name */
+  name: string
+  /** Short summary of the executor capability */
+  description?: string
+}
 
 /**
  * Schedule type for form UI state only.
@@ -35,16 +47,22 @@ export type ScheduleType = 'cron' | 'interval' | 'event'
 export type RetryPolicy = 'fixed' | 'exponential'
 
 /**
- * Task model (aligned with backend handler.Task)
+ * Task model (aligned with backend task.Task wire fields)
  */
 export interface TaskModel {
   id: number
   name: string
   description?: string
-  executor: string
+  executorType: string
   schedule: string
   enabled: boolean
   config?: Record<string, unknown>
+  /** Task-level execution timeout in seconds */
+  timeout?: number
+  /** Retry attempts after a failed execution; 0 disables retries */
+  maxRetries?: number
+  /** Delay between retry attempts in seconds */
+  retryInterval?: number
   group?: string
   tags?: string[]
   runId?: string
@@ -60,17 +78,30 @@ export interface TaskModel {
 export interface LogModel {
   id: number
   taskId: number
-  status: string // pending, running, success, failed
+  status: string // success, failed, running, timeout, unknown
   output: string
   error?: string
   startedAt: string
   finishedAt?: string
+  /** Execution context (absent on legacy rows) */
+  triggerType?: string // schedule | manual | event
+  triggeredAt?: string
+  node?: string
+  exitCode?: number
   /** Display-only fields enriched by backend list joins */
   taskName?: string
   executorType?: string
   duration?: number
   statusCode?: number
   retryCount?: number
+}
+
+/** One day of the daily execution series (server-local calendar date, YYYY-MM-DD) */
+export interface DailyStat {
+  date: string
+  total: number
+  success: number
+  failed: number
 }
 
 /**
@@ -82,18 +113,26 @@ export interface ExecutionStats {
   failureCount: number
   successRate: number
   averageDurationMs: number
+  /** Contiguous zero-filled daily series, present only when days was requested */
+  daily?: DailyStat[]
 }
 
 /**
- * Task creation parameters (aligned with backend handler.Task request body)
+ * Task creation parameters (aligned with backend task.Task request body)
  */
 export interface TaskCreateParams {
   name: string
   description?: string
-  executor: string
+  executorType: string
   schedule: string
   enabled: boolean
   config?: Record<string, unknown>
+  /** Task-level execution timeout in seconds */
+  timeout?: number
+  /** Retry attempts after a failed execution; 0 disables retries */
+  maxRetries?: number
+  /** Delay between retry attempts in seconds */
+  retryInterval?: number
   group?: string
   tags?: string[]
   retryPolicy?: string
@@ -117,9 +156,15 @@ export interface TaskFormData {
   // Backend-compatible fields
   name: string
   description: string
-  executor: ExecutorType
+  executorType: ExecutorType
   schedule: string
   config: Record<string, unknown>
+  /** Task-level execution timeout in seconds */
+  timeout: number
+  /** Retry attempts after a failed execution; 0 disables retries */
+  maxRetries: number
+  /** Delay between retry attempts in seconds */
+  retryInterval: number
   group: string
   tags: string[]
   enabled: boolean

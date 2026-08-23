@@ -24,27 +24,35 @@ type ListFilter struct {
 	Status string
 }
 
+// Getter is the minimal asset read surface: resolve an asset by ID.
+// It is the dependency the rule engines (alert matcher, remediation)
+// actually consume; depending on Getter instead of the full Store keeps
+// their required interface honest and their test doubles trivial.
+type Getter interface {
+	// GetByID retrieves an asset by its ID.
+	GetByID(ctx context.Context, id int64) (*Asset, error)
+}
+
 // Store persists and queries Asset entities.
 //
 // This is the persistence port for the asset domain. The GORM-backed
-// implementation lives in store.go (NewStore); the no-op default lives
-// in noop.go (NoopStore). The callers provides its own
-// implementation with multi-tenant filtering backed by the "biz_asset"
+// implementation lives in store.go (NewStore). The callers provides its
+// own implementation with multi-tenant filtering backed by the "biz_asset"
 // table for the user-facing asset inventory.
 //
-// The interface includes the full method set (CRUD + management and quota
+// Store embeds Getter, so every Store satisfies it. The interface
+// includes the full method set (CRUD + management and quota
 // helpers) so the asset management API handler can consume it directly
 // without a separate wider interface. Implementations must be safe for
 // concurrent use.
 type Store interface {
+	Getter
 	// Migrate creates or updates the assets table schema.
 	Migrate(ctx context.Context) error
 	// Create inserts a new asset.
 	Create(ctx context.Context, a *Asset) error
 	// Update updates an existing asset.
 	Update(ctx context.Context, a *Asset) error
-	// GetByID retrieves an asset by its ID.
-	GetByID(ctx context.Context, id int64) (*Asset, error)
 	// GetByKey retrieves an asset by its unique key within a tenant.
 	GetByKey(ctx context.Context, tenantID int64, key string) (*Asset, error)
 	// UpdateStatus updates the asset status and last active time.

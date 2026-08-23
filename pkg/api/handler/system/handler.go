@@ -21,14 +21,14 @@ import (
 // Profile endpoints (GetProfile/UpdateProfile) delegate to the injected
 // auth.Service, making system a thin orchestration layer over auth.
 type Handler struct {
-	svc     Service
-	authSvc auth.Service
+	svc  Service
+	auth auth.Service
 }
 
 // NewHandler creates a new system Handler backed by the given services.
 // authSvc is required for the profile endpoints (GetProfile/UpdateProfile).
 func NewHandler(svc Service, authSvc auth.Service) *Handler {
-	return &Handler{svc: svc, authSvc: authSvc}
+	return &Handler{svc: svc, auth: authSvc}
 }
 
 // GetSystemConfig handles GET /api/v1/system/config.
@@ -82,7 +82,7 @@ func (h *Handler) GetProfile(ctx context.Context, arc *app.RequestContext) {
 		api.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
-	profile, err := h.authSvc.GetProfile(ctx, claims.UID)
+	profile, err := h.auth.GetProfile(ctx, claims.UID)
 	if err != nil {
 		api.Fail(arc, err)
 		return
@@ -101,7 +101,7 @@ func (h *Handler) UpdateProfile(ctx context.Context, arc *app.RequestContext) {
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}
-	profile, err := h.authSvc.UpdateProfile(ctx, claims.UID, &req)
+	profile, err := h.auth.UpdateProfile(ctx, claims.UID, &req)
 	if err != nil {
 		api.Fail(arc, err)
 		return

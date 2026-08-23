@@ -32,7 +32,7 @@ func (f *fakeChannel) Send(_ context.Context, _ alert.Event) error {
 // Name implements alert.Channel.
 func (f *fakeChannel) Name() string { return f.name }
 
-// capturingFactory returns a Factory that records each invocation
+// capturingFactory returns a Factory that channels each invocation
 // (so tests can assert the factory was actually called) and returns a
 // fakeChannel whose name is derived from the config Type.
 func capturingFactory(counter *int32) Factory {

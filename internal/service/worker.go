@@ -15,7 +15,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/executor"
-	httpprober "github.com/tickraft/tickraft/pkg/executor/http"
+	"github.com/tickraft/tickraft/pkg/executor/http"
 	"github.com/tickraft/tickraft/pkg/executor/icmp"
 	"github.com/tickraft/tickraft/pkg/executor/local"
 	"github.com/tickraft/tickraft/pkg/executor/tcp"
@@ -34,7 +34,7 @@ func registerBuiltinExecutors(reg *executor.Registry, probeTimeout time.Duration
 		webhook.New(webhook.WithLogger(zap.L())),
 		icmp.New(probeTimeout),
 		tcp.New(probeTimeout),
-		httpprober.New(10 * time.Second),
+		http.New(http.WithLogger(zap.L())),
 	}
 	for _, e := range executors {
 		if err := reg.Register(e); err != nil {
@@ -61,11 +61,9 @@ func registerBuiltinProcessors(reg *telemetry.ProcessorRegistry, assetStore asse
 }
 
 // migrateCollectorTables runs AutoMigrate for the telemetry's GORM models,
-// then migrates the unified monitor_points table (including optional legacy
-// data porting from sys_collect_config).
-func migrateCollectorTables(ctx context.Context, dbc *gorm.DB, logger *zap.Logger) error {
+// including the unified monitor_points table.
+func migrateCollectorTables(ctx context.Context, dbc *gorm.DB) error {
 	if err := dbc.WithContext(ctx).AutoMigrate(
-		&telemetry.CollectionConfig{},
 		&telemetry.StatusHistory{},
 		&telemetry.CollectMetric{},
 		&telemetry.CollectLog{},
@@ -73,10 +71,7 @@ func migrateCollectorTables(ctx context.Context, dbc *gorm.DB, logger *zap.Logge
 	); err != nil {
 		return fmt.Errorf("telemetry: auto migrate: %w", err)
 	}
-	// Migrate the unified monitor_points table and port legacy
-	// CollectionConfig rows into it. This runs after the CollectionConfig
-	// table is created so the legacy data migration can read from it.
-	if err := telemetry.Migrate(ctx, dbc, logger); err != nil {
+	if err := telemetry.Migrate(ctx, dbc); err != nil {
 		return fmt.Errorf("telemetry: migrate monitor_points: %w", err)
 	}
 	return nil
@@ -121,7 +116,7 @@ func startWorkerEngines(
 
 	// Collector needs the asset store (already created in initRuntime)
 	// and its own table migrations.
-	if err := migrateCollectorTables(ctx, rt.dbc, rt.logger); err != nil {
+	if err := migrateCollectorTables(ctx, rt.dbc); err != nil {
 		return nil, err
 	}
 
@@ -133,6 +128,10 @@ func startWorkerEngines(
 	if err != nil {
 		return nil, err
 	}
+	// Store the registry on the runtime so startAPIServer can prevalidate
+	// executor types at creation time (see newTaskRouteOptions and
+	// newTelemetryRouteOptions).
+	rt.executorRegistry = reg
 
 	// Migrate scheduler tables and build persistent task/execution stores
 	// before constructing the executor runner so that execution results
@@ -147,7 +146,26 @@ func startWorkerEngines(
 	}
 	taskStore := task.NewStore(rt.dbc)
 	execStore := task.NewExecutionStore(rt.dbc)
-	recordStore := task.NewExecutionRecordStore(execStore)
+
+	// Probe records live in the telemetry domain (sys_probe_record), not
+	// the task scheduling log. The routing below is the assembly-layer
+	// decision that owns domain ownership: OpExecute records flow to the
+	// task adapter (sys_schedule_log), OpProbe records to the telemetry
+	// store keyed by monitor point. One-time cleanup removes probe rows
+	// that older builds wrote into sys_schedule_log before the split.
+	probeStore := telemetry.NewProbeRecordStore(rt.dbc)
+	if err = probeStore.Migrate(); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
+		return nil, fmt.Errorf("migrate probe record table: %w", err)
+	}
+	if err = cleanupLegacyProbeRows(ctx, rt.dbc); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
+		return nil, fmt.Errorf("cleanup legacy probe rows: %w", err)
+	}
+	recordStore := routingRecordStore{
+		tasks:  task.NewExecutionRecordStore(execStore),
+		probes: probeStore,
+	}
 
 	runner, err = executor.New(
 		executor.WithExecutorRegistry(reg),
@@ -210,7 +228,7 @@ func startWorkerEngines(
 	// active, enabled points from the DB.
 	monitorStore := telemetry.NewMonitorStore(rt.dbc)
 	proberSvc := telemetry.NewProberService(
-		sched, reg, nil, rt.logger,
+		sched, rt.logger,
 		telemetry.WithProberMonitorStore(monitorStore),
 	)
 	rt.proberSvc = proberSvc
@@ -225,6 +243,7 @@ func startWorkerEngines(
 		telemetry.WithLogStore(logStore),
 		telemetry.WithAggregationWindow(time.Minute),
 		telemetry.WithProberService(proberSvc),
+		telemetry.WithMonitorStore(monitorStore),
 	)
 	if err != nil {
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
@@ -240,9 +259,11 @@ func startWorkerEngines(
 	// into the processing pipeline.
 	rt.telemetryCollector = collector
 	// Store the metric/log stores so startAPIServer can wire the telemetry
-	// handler's history/logs endpoints to real persistent data.
+	// handler's history/logs endpoints to real persistent data, and the
+	// probe record store for the monitor status/history/logs endpoints.
 	rt.metricStore = metricStore
 	rt.logStore = logStore
+	rt.probeRecordStore = probeStore
 	rt.logger.Info("telemetry started")
 
 	return func(ctx context.Context) error {
@@ -275,4 +296,40 @@ func stopWorkerEngines(
 			logger.Error("stop executor", zap.Error(err))
 		}
 	}
+}
+
+// routingRecordStore implements executor.RecordStore by dispatching each
+// record to the domain that owns it: OpProbe records (active monitor point
+// probes) go to the telemetry probe record store, everything else goes to
+// the task-domain execution log. Keeping the routing here — the assembly
+// layer — leaves the task and telemetry packages unaware of each other's
+// persistence.
+type routingRecordStore struct {
+	tasks  executor.RecordStore
+	probes executor.RecordStore
+}
+
+// Save persists the record through the domain store matching its operation.
+func (s routingRecordStore) Save(ctx context.Context, record executor.ExecutionRecord) error {
+	if record.Operation == executor.OpProbe {
+		return s.probes.Save(ctx, record)
+	}
+	return s.tasks.Save(ctx, record)
+}
+
+// Compile-time assertion that routingRecordStore satisfies the runner SPI.
+var _ executor.RecordStore = routingRecordStore{}
+
+// cleanupLegacyProbeRows removes probe execution rows that builds before the
+// task/telemetry record split wrote into sys_schedule_log. Prober task IDs
+// are ProbeTaskIDOffset + point ID, so every task_id at or above the offset
+// is a probe row; the task_id index keeps the sweep cheap. The delete is
+// idempotent — after the first run no new probe rows arrive there.
+func cleanupLegacyProbeRows(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).
+		Where("task_id >= ?", telemetry.ProbeTaskIDOffset).
+		Delete(&task.Execution{}).Error; err != nil {
+		return fmt.Errorf("delete legacy probe rows: %w", err)
+	}
+	return nil
 }

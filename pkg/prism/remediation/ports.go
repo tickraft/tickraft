@@ -15,7 +15,7 @@ import (
 //
 // The interface lives in the remediation domain because rule persistence is
 // a remediation concern. The GORM-backed implementation lives in this
-// package (store.go, see NewStore). The default Manager consumes it
+// package (store.go, see NewStore). The default Engine consumes it
 // directly; the callers wraps it to add extended columns.
 type RuleStore interface {
 	// GetRules returns enabled remediation rules for the given tenant,
@@ -37,7 +37,7 @@ type RuleStore interface {
 }
 
 // ExecutionRequest is the remediation execution context passed to an
-// Operator. It is constructed by the Manager from a matched Rule and the
+// Operator. It is constructed by the Engine from a matched Rule and the
 // triggering EventContext.
 type ExecutionRequest struct {
 	// RuleID is the matched rule identifier.

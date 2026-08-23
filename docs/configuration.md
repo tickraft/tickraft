@@ -88,7 +88,8 @@ database:
 | Field            | Type     | Default | Description                                                        |
 |------------------|----------|---------|--------------------------------------------------------------------|
 | `jwt_secret`     | string   | —       | Secret used to sign JWT tokens. **Must be set.** Use env-var interpolation. |
-| `token_ttl`      | duration | `24h`   | Lifetime of issued JWT tokens.                                     |
+| `access_ttl`     | duration | `2h`    | Lifetime of issued JWT access tokens.                              |
+| `refresh_ttl`    | duration | `168h`  | Lifetime of issued JWT refresh tokens.                             |
 | `admin_username` | string   | `admin` | Built-in admin username.                                           |
 | `admin_password` | string   | —       | Built-in admin password. When empty, a random password is generated and logged once at startup. Use env-var interpolation. |
 

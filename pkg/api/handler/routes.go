@@ -12,6 +12,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/api/handler/channel"
+	"github.com/tickraft/tickraft/pkg/api/handler/executor"
 	"github.com/tickraft/tickraft/pkg/api/handler/expr"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
@@ -57,15 +58,17 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	systemH := system.NewHandler(cfg.systemSvc, cfg.authService)
 	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
 	telemetryH.SetDataStores(cfg.telemetryMetricStore, cfg.telemetryLogStore)
+	telemetryH.SetProbeRecordStore(cfg.telemetryProbeRecords)
+	executorH := executor.NewHandler(cfg.executorRegistry)
 
 	registerHealthRoutes(server, cfg)
 	registerAuthRoutes(server, cfg, authH)
-	registerTaskRoutes(server, cfg, taskH)
+	registerTaskRoutes(server, cfg, taskH, executorH)
 	registerPrismRoutes(server, cfg, alertH, channelH, remediationH)
 	registerExprRoutes(server, cfg)
 	registerSystemRoutes(server, cfg, systemH)
 	registerAssetRoutes(server, cfg)
-	registerTelemetryRoutes(server, cfg, telemetryH)
+	registerTelemetryRoutes(server, cfg, telemetryH, executorH)
 
 	// --- WebSocket realtime push (query-token auth) ---
 	if cfg.wsHandler != nil {
@@ -160,8 +163,10 @@ func registerAuthRoutes(server *api.Server, cfg *routeConfig, authH *auth.Handle
 }
 
 // registerTaskRoutes registers the task module routes (JWT required): task
-// CRUD and lifecycle actions, execution record lookups, and task statistics.
-func registerTaskRoutes(server *api.Server, cfg *routeConfig, taskH *task.Handler) {
+// CRUD and lifecycle actions, execution record lookups, task statistics,
+// and the executor type enumeration consumed by the task form and log
+// filters.
+func registerTaskRoutes(server *api.Server, cfg *routeConfig, taskH *task.Handler, executorH *executor.Handler) {
 	// --- Task module (JWT required) ---
 	taskGroup := server.Group("/api/v1/tasks")
 	taskGroup.Use(cfg.jwtMiddleware)
@@ -184,6 +189,14 @@ func registerTaskRoutes(server *api.Server, cfg *routeConfig, taskH *task.Handle
 	taskStatsGroup := server.Group("/api/v1/tasks")
 	taskStatsGroup.Use(cfg.jwtMiddleware)
 	taskStatsGroup.GET("/stats", middleware.RequirePermission(middleware.ActionRead, "task"), taskH.GetExecutionStats)
+
+	// --- Executor type enumeration (JWT required) ---
+	// Derived from the executor registry: the list reflects what the runtime
+	// can actually execute (task CRUD prevalidates against the same
+	// predicate), including types added by plugins.
+	executorGroup := server.Group("/api/v1/executors")
+	executorGroup.Use(cfg.jwtMiddleware)
+	executorGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), executorH.List)
 }
 
 // registerPrismRoutes registers the alert rule and record routes (always) and
@@ -310,11 +323,15 @@ func registerAssetRoutes(server *api.Server, cfg *routeConfig) {
 // registerTelemetryRoutes registers the telemetry routes (JWT required):
 // prober/listener type metadata, monitor CRUD and templates, and the unified
 // asset-key-authenticated report endpoint.
-func registerTelemetryRoutes(server *api.Server, cfg *routeConfig, telemetryH *telemetry.Handler) {
+func registerTelemetryRoutes(
+	server *api.Server, cfg *routeConfig, telemetryH *telemetry.Handler, executorH *executor.Handler,
+) {
 	// --- Telemetry prober/listener type metadata (JWT required) ---
+	// Prober types are derived from the executor registry (CapProbe), so the
+	// list reflects the runtime's actual probing capabilities.
 	telemetryMetaGroup := server.Group("/api/v1/telemetry")
 	telemetryMetaGroup.Use(cfg.jwtMiddleware)
-	telemetryMetaGroup.GET("/probers", middleware.RequirePermission(middleware.ActionRead, "*"), telemetryH.ListProbers)
+	telemetryMetaGroup.GET("/probers", middleware.RequirePermission(middleware.ActionRead, "*"), executorH.ListProbers)
 	telemetryMetaGroup.GET("/listeners", middleware.RequirePermission(middleware.ActionRead, "*"),
 		telemetryH.ListListeners)
 
@@ -325,6 +342,10 @@ func registerTelemetryRoutes(server *api.Server, cfg *routeConfig, telemetryH *t
 		if cfg.telemetrySvc != nil {
 			telemetryGroup.GET("/monitors", middleware.RequirePermission(middleware.ActionRead, "device"),
 				telemetryH.ListTelemetry)
+			// The summary route must be registered before /monitors/:id so
+			// the static segment is not captured as an :id parameter.
+			telemetryGroup.GET("/monitors/summary", middleware.RequirePermission(middleware.ActionRead, "device"),
+				telemetryH.GetMonitorSummary)
 			telemetryGroup.GET("/monitors/:id", middleware.RequirePermission(middleware.ActionRead, "device"),
 				telemetryH.GetTelemetry)
 			telemetryGroup.POST("/monitors", middleware.RequirePermission(middleware.ActionWrite, "device"),
@@ -370,6 +391,6 @@ func registerTelemetryRoutes(server *api.Server, cfg *routeConfig, telemetryH *t
 		if cfg.assetKeyMiddleware != nil {
 			reportGroup.Use(cfg.assetKeyMiddleware)
 		}
-		reportGroup.POST("", cfg.telemetryReportHandler.Report)
+		reportGroup.POST("", cfg.telemetryReportHandler)
 	}
 }

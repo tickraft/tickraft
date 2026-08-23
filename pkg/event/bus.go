@@ -87,8 +87,12 @@ func Publish[T any](ctx context.Context, bus Bus, eventType Type, payload T, opt
 // Subscribe is the generic wrapper of Bus.Subscribe, providing compile-time type safety.
 // The handler parameter is a type-safe function receiving an Event[T] payload.
 // Internally it converts the generic handler into a non-generic Handler and calls Bus.Subscribe.
-func Subscribe[T any](bus Bus, eventType Type, handler func(ctx context.Context, event Event[T]) error,
-	opts ...SubscribeOption) (Subscription, error) {
+func Subscribe[T any](
+	bus Bus,
+	eventType Type,
+	handler func(ctx context.Context, event Event[T]) error,
+	opts ...SubscribeOption,
+) (Subscription, error) {
 	wrapper := func(ctx context.Context, env Envelope) error {
 		typed, ok := env.Payload.(T)
 		if !ok {
@@ -131,12 +135,12 @@ func (o priorityOption) apply(c *publishConfig) { c.priority = int(o) }
 func WithPriority(priority int) PublishOption { return priorityOption(priority) }
 
 // syncOption enables synchronous dispatch mode.
-type syncOption struct{}
+type syncOption bool
 
-func (syncOption) apply(c *publishConfig) { c.sync = true }
+func (o syncOption) apply(c *publishConfig) { c.sync = bool(o) }
 
 // WithSync enables synchronous dispatch mode: the publisher blocks until all Handlers finish.
-func WithSync() PublishOption { return syncOption{} }
+func WithSync() PublishOption { return syncOption(true) }
 
 // eventIDOption sets the event unique identifier.
 type eventIDOption string
@@ -240,12 +244,12 @@ func (o jitterOption) apply(c *subscribeConfig) {
 func WithJitter(factor float64) SubscribeOption { return jitterOption(factor) }
 
 // syncModeOption marks the subscriber as synchronous.
-type syncModeOption struct{}
+type syncModeOption bool
 
-func (syncModeOption) apply(c *subscribeConfig) { c.syncMode = true }
+func (o syncModeOption) apply(c *subscribeConfig) { c.syncMode = bool(o) }
 
 // WithSyncMode marks the subscriber as synchronous: the Handler is invoked directly in the publisher goroutine.
-func WithSyncMode() SubscribeOption { return syncModeOption{} }
+func WithSyncMode() SubscribeOption { return syncModeOption(true) }
 
 // Option configures Bus construction.
 type Option interface {

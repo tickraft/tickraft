@@ -11,30 +11,24 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
-	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/db/errmap"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
-// store is the GORM-backed implementation of Store.
+// store is the GORM-backed implementation of Store. It is deliberately
+// not cached: User objects carry a PasswordHash field tagged json:"-"
+// (to prevent hash leakage in API responses), which makes JSON-based
+// cache serialization lossy — a round-tripped cached entry would have an
+// empty PasswordHash, causing all subsequent password verifications to
+// fail. Indexed database lookups by username or ID are fast enough that
+// an in-memory cache is not warranted.
 type store struct {
-	dbc   *gorm.DB
-	cache *cache.LRUCache // retained for API compatibility; see NewStore note
+	dbc *gorm.DB
 }
 
-// NewStore creates a new Store backed by the given *gorm.DB and an optional
-// cache.
-//
-// The cache parameter is accepted for backward compatibility but is NOT
-// used for user lookups. User objects carry a PasswordHash field tagged
-// json:"-" (to prevent hash leakage in API responses), which makes
-// JSON-based cache serialization lossy: a round-tripped cached entry
-// would have an empty PasswordHash, causing all subsequent password
-// verifications to fail with "bcrypt: hashedSecret too short". Indexed
-// database lookups by username or ID are fast enough that an in-memory
-// cache is not warranted.
-func NewStore(dbc *gorm.DB, c *cache.LRUCache) Store {
-	return &store{dbc: dbc, cache: c}
+// NewStore creates a new Store backed by the given *gorm.DB.
+func NewStore(dbc *gorm.DB) Store {
+	return &store{dbc: dbc}
 }
 
 // Compile-time assertion that store implements Store.
@@ -134,21 +128,16 @@ func (s *store) List(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-// apiKeyStore is the GORM-backed implementation of APIKeyStore.
+// apiKeyStore is the GORM-backed implementation of APIKeyStore. Like
+// store, it is deliberately not cached: APIKey.KeyHash carries the
+// json:"-" tag, which makes JSON-based cache serialization lossy.
 type apiKeyStore struct {
-	dbc   *gorm.DB
-	cache *cache.LRUCache // retained for API compatibility; see NewAPIKeyStore note
+	dbc *gorm.DB
 }
 
-// NewAPIKeyStore creates a new APIKeyStore backed by the given *gorm.DB
-// and an optional cache.
-//
-// The cache parameter is accepted for backward compatibility but is NOT
-// used for API key lookups, for the same reason as NewStore: APIKey.KeyHash
-// carries the json:"-" tag, which makes JSON-based cache serialization
-// lossy.
-func NewAPIKeyStore(dbc *gorm.DB, c *cache.LRUCache) APIKeyStore {
-	return &apiKeyStore{dbc: dbc, cache: c}
+// NewAPIKeyStore creates a new APIKeyStore backed by the given *gorm.DB.
+func NewAPIKeyStore(dbc *gorm.DB) APIKeyStore {
+	return &apiKeyStore{dbc: dbc}
 }
 
 // Compile-time assertion that apiKeyStore implements APIKeyStore.

@@ -72,15 +72,15 @@ type Record struct {
 	// database.
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	// UpdatedAt records the last lifecycle update time, populated by the
-	// database.
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	// database. Internal bookkeeping, not part of the API contract.
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"-"`
 }
 
 // TableName returns the database table name for Record.
 func (Record) TableName() string { return "sys_prism_remediation_record" }
 
 // RecordStore defines the persistence operations for remediation dispatch
-// records. The Manager upserts one row per run as the dispatch progresses;
+// records. The Engine upserts one row per run as the dispatch progresses;
 // the records API reads rows through ListRecords.
 type RecordStore interface {
 	// UpsertRecord inserts the record when no row with the same RunID

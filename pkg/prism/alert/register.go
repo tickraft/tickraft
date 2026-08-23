@@ -6,7 +6,6 @@ package alert
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -85,7 +84,7 @@ func Register(ctx context.Context, target Target, cfg Config) (*Engine, error) {
 			Expression: spec.Expression,
 			Priority:   spec.Priority,
 			Enabled:    true,
-			Metadata:   marshalSpecMetadata(spec.Metadata),
+			Metadata:   spec.Metadata,
 		})
 	}
 
@@ -132,19 +131,4 @@ func Register(ctx context.Context, target Target, cfg Config) (*Engine, error) {
 		zap.Bool("asset_store_enabled", cfg.AssetStore != nil),
 		zap.Duration("eval_interval", cfg.EvalInterval))
 	return engine, nil
-}
-
-// marshalSpecMetadata encodes a static rule's metadata map into the
-// JSON string form stored in the Rule.Metadata column. A nil or empty
-// map encodes as an empty string so static rules without metadata keep
-// the column clean.
-func marshalSpecMetadata(metadata map[string]string) string {
-	if len(metadata) == 0 {
-		return ""
-	}
-	raw, err := json.Marshal(metadata)
-	if err != nil {
-		return ""
-	}
-	return string(raw)
 }

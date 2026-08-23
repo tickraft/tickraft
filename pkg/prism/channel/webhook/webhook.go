@@ -15,13 +15,14 @@ package webhook
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"go.uber.org/zap"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -84,7 +85,7 @@ func (c *Channel) Send(ctx context.Context, evt alert.Event) (err error) {
 		c.logger.Debug("webhook send suppressed: circuit breaker open")
 		return channel.ErrCircuitOpen
 	}
-	body, err := json.Marshal(evt)
+	body, err := sonic.Marshal(evt)
 	if err != nil {
 		// Marshal failures are programming errors, not transient
 		// server failures. Do not penalise the circuit breaker.

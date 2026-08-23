@@ -82,7 +82,7 @@ func NewBbolt(path string, defaultTTL time.Duration) (*BboltCache, error) {
 
 	// Ensure the cache bucket exists.
 	err = db.Update(func(tx *bbolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(bboltBucket)
+		_, err = tx.CreateBucketIfNotExists(bboltBucket)
 		return err
 	})
 	if err != nil {

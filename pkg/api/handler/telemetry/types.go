@@ -6,50 +6,40 @@ package telemetry
 
 import (
 	"context"
-	"encoding/json"
-	"time"
-
-	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
-// MetricStoreInjector is the interface a metric store must satisfy for
+// The wire and storage shapes are the same model: this package carries no
+// Task DTO. telemetry.MonitorPoint holds both gorm and json tags, and the
+// runtime-managed columns (TenantID, Interval, Timeout) serialize to
+// nothing, so handlers bind and return the model type directly. Status is
+// runtime-maintained too but exposed read-only. See
+// docs/model-layering-design.md for the layering contract.
+
+// MetricStore is the interface a metric store must satisfy for
 // injection via WithTelemetryDataStores. It mirrors telemetry.MetricStore's
 // query method.
-type MetricStoreInjector interface {
+type MetricStore interface {
 	QueryMetrics(ctx context.Context, q telemetry.MetricQuery) ([]telemetry.CollectMetric, int64, error)
 }
 
-// LogStoreInjector is the interface a log store must satisfy for injection
+// LogStore is the interface a log store must satisfy for injection
 // via WithTelemetryDataStores. It mirrors telemetry.LogStore's query method.
-type LogStoreInjector interface {
+type LogStore interface {
 	QueryLogs(ctx context.Context, q telemetry.LogQuery) ([]telemetry.CollectLog, int64, error)
 }
 
-// Task represents a telemetry collection task definition. Each task
-// describes how a specific asset is observed (probe schedule, target
-// configuration, enabled state). The concrete persistence is provided by the
-// injected Service implementation; the runtime falls
-// back to an in-memory stub when no service is injected.
-//
-// The Mode and Type fields align with the unified telemetry.MonitorPoint
-// model: Mode is "active" (probed by ProberService) or "passive" (receives
-// data via a listener); Type identifies the prober executor (icmp, tcp,
-// http) or listener type (webhook).
-type Task struct {
-	ID          int64          `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	AssetType   string         `json:"asset_type"`
-	AssetID     int64          `json:"asset_id,omitempty"`
-	Mode        string         `json:"mode"`
-	Type        string         `json:"type"`
-	Schedule    string         `json:"schedule"`
-	Enabled     bool           `json:"enabled"`
-	Config      map[string]any `json:"config,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+// ProbeRecordStore is the interface a probe record store must satisfy for
+// injection via WithTelemetryProbeRecords. It mirrors the query methods of
+// telemetry.ProbeRecordStore used by the monitor endpoints. Active monitor
+// points read their status, history, and log views from probe records;
+// passive points fall back to the asset-level metric/log stores.
+type ProbeRecordStore interface {
+	// QueryByPoint returns a page of probe records for a monitor point.
+	QueryByPoint(ctx context.Context, q telemetry.ProbeQuery) ([]telemetry.ProbeRecord, int64, error)
+	// LatestByPoint returns the most recent probe record for a point.
+	LatestByPoint(ctx context.Context, pointID int64) (*telemetry.ProbeRecord, error)
 }
 
 // Filter holds optional filtering criteria for listing telemetry
@@ -69,46 +59,22 @@ type Service interface {
 	// ListTasks returns a page of telemetry tasks ordered by ascending
 	// ID, plus the total count. The filter narrows results by mode when
 	// filter.Mode is non-empty.
-	ListTasks(ctx context.Context, page, size int, filter Filter) ([]Task, int64, error)
+	ListTasks(ctx context.Context, page, size int, filter Filter) ([]telemetry.MonitorPoint, int64, error)
 	// GetTask returns a single telemetry task by ID.
-	GetTask(ctx context.Context, id int64) (*Task, error)
+	GetTask(ctx context.Context, id int64) (*telemetry.MonitorPoint, error)
 	// CreateTask creates a new telemetry task from the given request.
-	CreateTask(ctx context.Context, req *Task) (*Task, error)
+	CreateTask(ctx context.Context, req *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error)
 	// UpdateTask updates an existing telemetry task identified by ID.
-	UpdateTask(ctx context.Context, id int64, req *Task) (*Task, error)
+	UpdateTask(ctx context.Context, id int64, req *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error)
 	// DeleteTask deletes a telemetry task by ID.
 	DeleteTask(ctx context.Context, id int64) error
-}
-
-// Telemetry is the unified payload accepted by POST /api/v1/telemetry. The
-// Kind field routes the payload to the appropriate internal handler with a
-// differentiated body size limit. This structure replaces the former
-// distributed endpoints /api/v1/telemetry/heartbeat, /metrics, and /logs.
-type Telemetry struct {
-	// Kind identifies the telemetry data category and decides the
-	// processing pipeline and payload size limit.
-	Kind telemetry.Kind `json:"kind" binding:"required"`
-	// AssetID identifies the reporting asset. It must be consistent with
-	// the asset resolved by the AssetKey middleware.
-	AssetID string `json:"asset_id" binding:"required"`
-	// Payload is the kind-specific raw payload, interpreted by the
-	// internal handler according to Kind.
-	Payload json.RawMessage `json:"payload"`
-	// Ts is the report time in Unix milliseconds.
-	Ts int64 `json:"timestamp"`
-}
-
-// ReportHandler exposes the unified telemetry report endpoint. The
-// concrete implementation is injected via the WithTelemetryReportHandler
-// RouteOption and registered on POST /api/v1/telemetry with the asset-key
-// middleware. The handler reads a Telemetry body, applies a differentiated
-// payload size limit based on Kind, and forwards the parsed report to the
-// telemetry pipeline.
-type ReportHandler interface {
-	// Report handles POST /api/v1/telemetry. The request body is a
-	// Telemetry struct; the payload size limit is determined by Kind
-	// (heartbeat 1 KiB, metrics 64 KiB, logs 1 MiB). Asset-key
-	// authentication is enforced by the middleware registered on the
-	// route group.
-	Report(ctx context.Context, arc *app.RequestContext)
+	// ProbeNow dispatches an on-demand probe for an active monitoring
+	// point. It returns the point (for status rendering) after the probe
+	// has been queued; the outcome lands in the probe record store
+	// asynchronously. Passive or disabled points are rejected.
+	ProbeNow(ctx context.Context, id int64) (*telemetry.MonitorPoint, error)
+	// Summary returns aggregate monitor point counts by mode and enabled
+	// state over the full dataset. It backs the monitor list summary chips
+	// so the counts do not depend on the current page.
+	Summary(ctx context.Context) (telemetry.PointSummary, error)
 }

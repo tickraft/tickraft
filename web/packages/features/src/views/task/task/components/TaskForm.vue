@@ -3,11 +3,18 @@
 // Dual-licensed — see LICENSE for details.
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { isValidCron, isValidUrl } from '@tickraft/core'
-import type { TaskFormData, ExecutorType, ScheduleType, RetryPolicy } from '../../../../types/task'
+import type {
+  TaskFormData,
+  ExecutorType,
+  ExecutorTypeInfo,
+  ScheduleType,
+  RetryPolicy,
+} from '../../../../types/task'
+import { getExecutors } from '../../../../api/task'
 
 interface TaskFormProps {
   initialData?: TaskFormData
@@ -28,16 +35,19 @@ const props = withDefaults(defineProps<TaskFormProps>(), {
 })
 
 const emit = defineEmits<TaskFormEmits>()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const advancedOpen = ref(false)
 
 const form = reactive<TaskFormData>(props.initialData ?? {
   name: '',
   description: '',
-  executor: 'local',
+  executorType: 'local',
   schedule: '',
   config: {},
+  timeout: 30,
+  maxRetries: 0,
+  retryInterval: 0,
   group: '',
   tags: [],
   enabled: true,
@@ -52,7 +62,45 @@ watch(form, () => emit('change'), { deep: true })
 
 watch(() => props.initialData, (val) => {
   if (val) Object.assign(form, val)
-}, { deep: true })
+  syncConfigText()
+}, { deep: true, immediate: true })
+
+watch(() => form.executorType, () => {
+  syncConfigText()
+})
+
+/** Headers are edited as "key: value" lines but travel as a JSON object,
+ * matching the executors' config contract (headers is a map, not a string).
+ * Local args are edited as one line and travel as a string array. */
+const headersText = ref('')
+
+function syncConfigText(): void {
+  headersText.value = formatHeaders(form.config?.headers)
+  if (form.executorType === 'local') {
+    form.config.argsText = Array.isArray(form.config?.args) ? form.config.args.join(' ') : ''
+  } else {
+    delete form.config.argsText
+  }
+}
+
+function parseHeaders(text: string): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const idx = line.indexOf(':')
+    if (idx <= 0) continue
+    const key = line.slice(0, idx).trim()
+    const value = line.slice(idx + 1).trim()
+    if (key) headers[key] = value
+  }
+  return headers
+}
+
+function formatHeaders(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+  return Object.entries(value as Record<string, string>)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n')
+}
 
 const scheduleTypes = computed<Array<{ value: ScheduleType; label: string; num: string }>>(() => [
   { value: 'interval', label: t('task.task.create.interval'), num: '01' },
@@ -74,14 +122,77 @@ interface ExecutorCard {
   desc: string
 }
 
-/** CE-supported executor options (pro executors SSH/MySQL/Redis are filtered out, not shown as locked) */
-const executorCards = computed<ExecutorCard[]>(() => [
-  { value: 'http', label: t('task.task.create.executorHttp'), desc: t('task.task.create.executorHttpDesc') },
-  { value: 'tcp', label: t('task.task.create.executorTcp'), desc: t('task.task.create.executorTcpDesc') },
-  { value: 'icmp', label: t('task.task.create.executorIcmp'), desc: t('task.task.create.executorIcmpDesc') },
-  { value: 'local', label: t('task.task.create.executorLocal'), desc: t('task.task.create.executorLocalDesc') },
-  { value: 'webhook', label: t('task.task.create.executorWebhook'), desc: t('task.task.create.executorWebhookDesc') },
-])
+/** Fallback catalog when the executor registry endpoint is unreachable —
+ *  keeps the form usable, mirroring the CE built-in write executors. */
+const FALLBACK_EXECUTORS: ExecutorTypeInfo[] = [
+  { type: 'http', name: 'HTTP' },
+  { type: 'tcp', name: 'TCP' },
+  { type: 'icmp', name: 'ICMP' },
+  { type: 'local', name: 'Local' },
+  { type: 'webhook', name: 'Webhook' },
+]
+
+/** Executor catalog loaded from the backend registry; reflects the exact
+ *  set of executors the task CRUD precheck accepts. */
+const executorInfos = ref<ExecutorTypeInfo[]>(FALLBACK_EXECUTORS)
+
+/** Resolve a card label for an executor: the curated i18n name when the
+ *  locale defines one, otherwise the registry's display name. */
+function executorLabel(info: ExecutorTypeInfo): string {
+  const key = `task.task.create.executor${pascalCase(info.type)}`
+  return te(key) ? t(key) : info.name
+}
+
+function executorDesc(info: ExecutorTypeInfo): string {
+  const key = `task.task.create.executor${pascalCase(info.type)}Desc`
+  return te(key) ? t(key) : (info.description ?? '')
+}
+
+function pascalCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+const executorCards = computed<ExecutorCard[]>(() =>
+  executorInfos.value.map((info) => ({
+    value: info.type as ExecutorType,
+    label: executorLabel(info),
+    desc: executorDesc(info),
+  })),
+)
+
+onMounted(async () => {
+  try {
+    const list = await getExecutors()
+    if (list.length > 0) executorInfos.value = list
+  } catch {
+    // Registry metadata is non-critical; keep the fallback catalog
+  }
+  // Re-target only the untouched default so an edited task keeps its
+  // original executor even when the runtime no longer offers it.
+  if (!props.initialData && !executorCards.value.some((c) => c.value === form.executorType)) {
+    form.executorType = executorCards.value[0]?.value ?? form.executorType
+  }
+})
+
+/** Executor types with a dedicated config form; every other registry type
+ *  (e.g. plugin-provided) edits its config as raw JSON. */
+const KNOWN_CONFIG_TYPES: ReadonlySet<string> = new Set(['http', 'tcp', 'icmp', 'local', 'webhook'])
+
+const unknownExecutorSelected = computed(() => !KNOWN_CONFIG_TYPES.has(form.executorType))
+
+const customConfigError = ref('')
+
+const customConfigText = computed({
+  get: () => JSON.stringify(form.config ?? {}, null, 2),
+  set: (value: string) => {
+    try {
+      form.config = JSON.parse(value || '{}') as Record<string, unknown>
+      customConfigError.value = ''
+    } catch {
+      customConfigError.value = 'invalid'
+    }
+  },
+})
 
 const retryPolicies = computed<Array<{ value: RetryPolicy; label: string }>>(() => [
   { value: 'fixed', label: t('task.task.create.retryPolicyFixed') },
@@ -112,8 +223,8 @@ const previewSchedule = computed(() => {
 })
 
 const previewExecutorLabel = computed(() => {
-  const card = executorCards.value.find((c) => c.value === form.executor)
-  return card?.label ?? form.executor
+  const card = executorCards.value.find((c) => c.value === form.executorType)
+  return card?.label ?? form.executorType
 })
 
 /** Tag input state for the el-select multiple tag input */
@@ -140,37 +251,43 @@ function toggleAdvanced() {
 }
 
 function selectExecutor(type: ExecutorType) {
-  form.executor = type
+  form.executorType = type
 }
 
+/** Build the wire-format executor config. Keys follow the executor request
+ * structs (address/command/headers map), not the form's display labels. */
 function buildExecutorConfig(): Record<string, unknown> {
   const cfg = form.config
-  switch (form.executor) {
+  const headers = parseHeaders(headersText.value)
+  switch (form.executorType) {
     case 'http':
       return {
-        url: cfg.url ?? '',
+        address: cfg.address ?? '',
         method: cfg.method ?? 'GET',
-        headers: cfg.headers ?? '',
-        timeout: cfg.timeout ?? 10,
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
       }
     case 'tcp':
-      return { host: cfg.host ?? '', port: cfg.port ?? 0, timeout: cfg.timeout ?? 5 }
+      return { address: cfg.address ?? '', port: cfg.port ?? 0 }
     case 'icmp':
-      return { host: cfg.host ?? '', count: cfg.count ?? 4, timeout: cfg.timeout ?? 3 }
-    case 'local':
+      return { address: cfg.address ?? '' }
+    case 'local': {
+      const args = String(cfg.argsText ?? '').trim().split(/\s+/).filter(Boolean)
       return {
-        interpreter: cfg.interpreter ?? 'bash',
-        source: cfg.source ?? '',
-        timeout: cfg.timeout ?? 60,
+        command: cfg.command ?? '',
+        ...(args.length > 0 ? { args } : {}),
       }
+    }
     case 'webhook':
       return {
         url: cfg.url ?? '',
         method: cfg.method ?? 'POST',
-        headers: cfg.headers ?? '',
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
       }
-    default:
-      return { ...cfg }
+    default: {
+      const rest = { ...cfg }
+      delete rest.argsText
+      return rest
+    }
   }
 }
 
@@ -202,24 +319,28 @@ function validate(): boolean {
     return false
   }
   const cfg = form.config
-  if (form.executor === 'http' && !isValidUrl(String(cfg.url ?? ''))) {
+  if (form.executorType === 'http' && !isValidUrl(String(cfg.address ?? ''))) {
     ElMessage.warning(t('task.task.create.httpUrl'))
     return false
   }
-  if (form.executor === 'tcp' && !String(cfg.host ?? '').trim()) {
+  if (form.executorType === 'tcp' && !String(cfg.address ?? '').trim()) {
     ElMessage.warning(t('task.task.create.tcpHost'))
     return false
   }
-  if (form.executor === 'icmp' && !String(cfg.host ?? '').trim()) {
+  if (form.executorType === 'icmp' && !String(cfg.address ?? '').trim()) {
     ElMessage.warning(t('task.task.create.icmpHost'))
     return false
   }
-  if (form.executor === 'local' && !String(cfg.source ?? '').trim()) {
-    ElMessage.warning(t('task.task.create.localSource'))
+  if (form.executorType === 'local' && !String(cfg.command ?? '').trim()) {
+    ElMessage.warning(t('task.task.create.localCommand'))
     return false
   }
-  if (form.executor === 'webhook' && !isValidUrl(String(cfg.url ?? ''))) {
+  if (form.executorType === 'webhook' && !isValidUrl(String(cfg.url ?? ''))) {
     ElMessage.warning(t('task.task.create.webhookUrl'))
+    return false
+  }
+  if (unknownExecutorSelected.value && customConfigError.value) {
+    ElMessage.warning(t('task.task.create.customConfigInvalid'))
     return false
   }
   return true
@@ -260,7 +381,10 @@ function handleCancel() {
             <span class="tk-task-form-section__hint">{{ t('task.task.create.sectionHintRequired') }}</span>
           </div>
           <div class="tk-task-form-section__body">
-            <el-form-item :label="t('task.task.list.name')" required>
+            <el-form-item
+              :label="t('task.task.list.name')"
+              required
+            >
               <el-input
                 v-model="form.name"
                 :placeholder="t('task.task.list.namePlaceholder')"
@@ -276,22 +400,30 @@ function handleCancel() {
                 maxlength="256"
               />
             </el-form-item>
-            <el-form-item :label="t('task.task.create.executorType')" required>
+            <el-form-item
+              :label="t('task.task.create.executorType')"
+              required
+            >
               <div class="tk-executor-grid">
                 <button
                   v-for="card in executorCards"
                   :key="card.value"
                   type="button"
                   class="tk-executor-card"
-                  :class="{ 'tk-executor-card--active': form.executor === card.value }"
+                  :class="{ 'tk-executor-card--active': form.executorType === card.value }"
                   @click="selectExecutor(card.value)"
                 >
                   <span class="tk-executor-card__label">{{ card.label }}</span>
                   <span class="tk-executor-card__desc">{{ card.desc }}</span>
-                  <span v-if="form.executor === card.value" class="tk-executor-card__check">&#10003;</span>
+                  <span
+                    v-if="form.executorType === card.value"
+                    class="tk-executor-card__check"
+                  >&#10003;</span>
                 </button>
               </div>
-              <div class="tk-task-form-item__help">{{ t('task.task.create.executorHelp') }}</div>
+              <div class="tk-task-form-item__help">
+                {{ t('task.task.create.executorHelp') }}
+              </div>
             </el-form-item>
           </div>
         </div>
@@ -306,7 +438,10 @@ function handleCancel() {
             <span class="tk-task-form-section__hint">{{ t('task.task.create.sectionHintSchedule') }}</span>
           </div>
           <div class="tk-task-form-section__body">
-            <el-form-item :label="t('task.task.create.scheduleType')" required>
+            <el-form-item
+              :label="t('task.task.create.scheduleType')"
+              required
+            >
               <div class="tk-schedule-tabs">
                 <button
                   v-for="item in scheduleTypes"
@@ -323,7 +458,10 @@ function handleCancel() {
             </el-form-item>
 
             <template v-if="form.scheduleType === 'cron'">
-              <el-form-item :label="t('task.task.create.cronExpr')" required>
+              <el-form-item
+                :label="t('task.task.create.cronExpr')"
+                required
+              >
                 <el-input
                   v-model="form.cronExpr"
                   :placeholder="t('task.task.create.cronExprPlaceholder')"
@@ -346,7 +484,10 @@ function handleCancel() {
             </template>
 
             <template v-else-if="form.scheduleType === 'interval'">
-              <el-form-item :label="t('task.task.create.intervalLabel')" required>
+              <el-form-item
+                :label="t('task.task.create.intervalLabel')"
+                required
+              >
                 <el-input-number
                   v-model="form.interval"
                   :min="1"
@@ -357,7 +498,9 @@ function handleCancel() {
             </template>
 
             <template v-else-if="form.scheduleType === 'event'">
-              <div class="tk-task-form-item__help">{{ t('task.task.create.eventDescPlaceholder') }}</div>
+              <div class="tk-task-form-item__help">
+                {{ t('task.task.create.eventDescPlaceholder') }}
+              </div>
             </template>
           </div>
         </div>
@@ -373,22 +516,40 @@ function handleCancel() {
           </div>
           <div class="tk-task-form-section__body">
             <!-- HTTP -->
-            <template v-if="form.executor === 'http'">
+            <template v-if="form.executorType === 'http'">
               <el-row :gutter="16">
                 <el-col :span="8">
                   <el-form-item :label="t('task.task.create.httpMethod')">
-                    <el-select v-model="form.config.method" style="width: 100%">
-                      <el-option label="GET" value="GET" />
-                      <el-option label="POST" value="POST" />
-                      <el-option label="PUT" value="PUT" />
-                      <el-option label="DELETE" value="DELETE" />
+                    <el-select
+                      v-model="form.config.method"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        label="GET"
+                        value="GET"
+                      />
+                      <el-option
+                        label="POST"
+                        value="POST"
+                      />
+                      <el-option
+                        label="PUT"
+                        value="PUT"
+                      />
+                      <el-option
+                        label="DELETE"
+                        value="DELETE"
+                      />
                     </el-select>
                   </el-form-item>
                 </el-col>
                 <el-col :span="16">
-                  <el-form-item :label="t('task.task.create.httpUrl')" required>
+                  <el-form-item
+                    :label="t('task.task.create.httpUrl')"
+                    required
+                  >
                     <el-input
-                      v-model="form.config.url"
+                      v-model="form.config.address"
                       :placeholder="t('task.task.create.httpUrlPlaceholder')"
                     />
                   </el-form-item>
@@ -396,7 +557,7 @@ function handleCancel() {
               </el-row>
               <el-form-item :label="t('task.task.create.httpHeaders')">
                 <el-input
-                  v-model="form.config.headers"
+                  v-model="headersText"
                   type="textarea"
                   :rows="3"
                   placeholder="Content-Type: application/json"
@@ -405,18 +566,24 @@ function handleCancel() {
             </template>
 
             <!-- TCP -->
-            <template v-else-if="form.executor === 'tcp'">
+            <template v-else-if="form.executorType === 'tcp'">
               <el-row :gutter="16">
                 <el-col :span="12">
-                  <el-form-item :label="t('task.task.create.tcpHost')" required>
+                  <el-form-item
+                    :label="t('task.task.create.tcpHost')"
+                    required
+                  >
                     <el-input
-                      v-model="form.config.host"
+                      v-model="form.config.address"
                       :placeholder="t('task.task.create.tcpHostPlaceholder')"
                     />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item :label="t('task.task.create.tcpPort')" required>
+                  <el-form-item
+                    :label="t('task.task.create.tcpPort')"
+                    required
+                  >
                     <el-input-number
                       v-model="form.config.port"
                       :min="1"
@@ -429,52 +596,66 @@ function handleCancel() {
             </template>
 
             <!-- ICMP -->
-            <template v-else-if="form.executor === 'icmp'">
-              <el-form-item :label="t('task.task.create.icmpHost')" required>
+            <template v-else-if="form.executorType === 'icmp'">
+              <el-form-item
+                :label="t('task.task.create.icmpHost')"
+                required
+              >
                 <el-input
-                  v-model="form.config.host"
+                  v-model="form.config.address"
                   :placeholder="t('task.task.create.tcpHostPlaceholder')"
                 />
               </el-form-item>
             </template>
 
             <!-- Local -->
-            <template v-else-if="form.executor === 'local'">
-              <el-row :gutter="16">
-                <el-col :span="12">
-                  <el-form-item :label="t('task.task.create.localInterpreter')">
-                    <el-select v-model="form.config.interpreter" style="width: 100%">
-                      <el-option label="bash" value="bash" />
-                      <el-option label="python" value="python" />
-                      <el-option label="node" value="node" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-form-item :label="t('task.task.create.localSource')" required>
+            <template v-else-if="form.executorType === 'local'">
+              <el-form-item
+                :label="t('task.task.create.localCommand')"
+                required
+              >
                 <el-input
-                  v-model="form.config.source"
-                  type="textarea"
-                  :rows="6"
-                  :placeholder="t('task.task.create.localSourcePlaceholder')"
+                  v-model="form.config.command"
+                  :placeholder="t('task.task.create.localCommandPlaceholder')"
+                />
+              </el-form-item>
+              <el-form-item :label="t('task.task.create.localArgs')">
+                <el-input
+                  v-model="form.config.argsText"
+                  :placeholder="t('task.task.create.localArgsPlaceholder')"
                 />
               </el-form-item>
             </template>
 
             <!-- Webhook -->
-            <template v-else-if="form.executor === 'webhook'">
+            <template v-else-if="form.executorType === 'webhook'">
               <el-row :gutter="16">
                 <el-col :span="8">
                   <el-form-item :label="t('task.task.create.webhookMethod')">
-                    <el-select v-model="form.config.method" style="width: 100%">
-                      <el-option label="POST" value="POST" />
-                      <el-option label="GET" value="GET" />
-                      <el-option label="PUT" value="PUT" />
+                    <el-select
+                      v-model="form.config.method"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        label="POST"
+                        value="POST"
+                      />
+                      <el-option
+                        label="GET"
+                        value="GET"
+                      />
+                      <el-option
+                        label="PUT"
+                        value="PUT"
+                      />
                     </el-select>
                   </el-form-item>
                 </el-col>
                 <el-col :span="16">
-                  <el-form-item :label="t('task.task.create.webhookUrl')" required>
+                  <el-form-item
+                    :label="t('task.task.create.webhookUrl')"
+                    required
+                  >
                     <el-input
                       v-model="form.config.url"
                       :placeholder="t('task.task.create.webhookUrlPlaceholder')"
@@ -484,11 +665,33 @@ function handleCancel() {
               </el-row>
               <el-form-item :label="t('task.task.create.webhookHeaders')">
                 <el-input
-                  v-model="form.config.headers"
+                  v-model="headersText"
                   type="textarea"
                   :rows="3"
                   placeholder="Authorization: Bearer xxx"
                 />
+              </el-form-item>
+            </template>
+
+            <!-- Registry-provided executor without a dedicated form -->
+            <template v-else>
+              <el-form-item :label="t('task.task.create.customConfig')">
+                <el-input
+                  v-model="customConfigText"
+                  type="textarea"
+                  :rows="8"
+                  class="tk-json-input"
+                  spellcheck="false"
+                />
+                <div
+                  v-if="customConfigError"
+                  class="tk-task-form-item__help tk-task-form-item__help--error"
+                >
+                  {{ t('task.task.create.customConfigInvalid') }}
+                </div>
+                <div class="tk-task-form-item__help">
+                  {{ t('task.task.create.customConfigHelp') }}
+                </div>
               </el-form-item>
             </template>
           </div>
@@ -512,7 +715,10 @@ function handleCancel() {
               <span>{{ advancedOpen ? t('task.task.create.advancedCollapse') : t('task.task.create.advancedToggle') }}</span>
             </button>
           </div>
-          <div v-show="advancedOpen" class="tk-task-form-section__body">
+          <div
+            v-show="advancedOpen"
+            class="tk-task-form-section__body"
+          >
             <el-row :gutter="16">
               <el-col :span="8">
                 <el-form-item :label="t('task.task.create.group')">
@@ -524,7 +730,10 @@ function handleCancel() {
               </el-col>
               <el-col :span="8">
                 <el-form-item :label="t('task.task.create.retryPolicy')">
-                  <el-select v-model="form.retryPolicy" style="width: 100%">
+                  <el-select
+                    v-model="form.retryPolicy"
+                    style="width: 100%"
+                  >
                     <el-option
                       v-for="item in retryPolicies"
                       :key="item.value"
@@ -542,7 +751,41 @@ function handleCancel() {
                     :max="100"
                     style="width: 100%"
                   />
-                  <div class="tk-task-form-item__help">{{ t('task.task.create.concurrencyHint') }}</div>
+                  <div class="tk-task-form-item__help">
+                    {{ t('task.task.create.concurrencyHint') }}
+                  </div>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="16">
+              <el-col :span="8">
+                <el-form-item :label="t('task.task.create.timeout')">
+                  <el-input-number
+                    v-model="form.timeout"
+                    :min="1"
+                    :max="86400"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item :label="t('task.task.create.maxRetries')">
+                  <el-input-number
+                    v-model="form.maxRetries"
+                    :min="0"
+                    :max="10"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item :label="t('task.task.create.retryInterval')">
+                  <el-input-number
+                    v-model="form.retryInterval"
+                    :min="0"
+                    :max="3600"
+                    style="width: 100%"
+                  />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -579,13 +822,18 @@ function handleCancel() {
       <div class="tk-task-form__side">
         <div class="tk-preview-card">
           <div class="tk-preview-card__header">
-            <div class="tk-preview-card__title">{{ t('task.task.create.livePreview') }}</div>
+            <div class="tk-preview-card__title">
+              {{ t('task.task.create.livePreview') }}
+            </div>
             <span class="tk-task-form-section__hint">{{ t('task.task.create.livePreviewHint') }}</span>
           </div>
           <div class="tk-preview-card__body">
             <div class="tk-preview-row">
               <span class="tk-preview-row__label">{{ t('task.task.create.previewName') }}</span>
-              <span class="tk-preview-row__value" :class="{ 'tk-preview-row__value--empty': !form.name }">
+              <span
+                class="tk-preview-row__value"
+                :class="{ 'tk-preview-row__value--empty': !form.name }"
+              >
                 {{ form.name || t('task.task.create.previewEmpty') }}
               </span>
             </div>
@@ -622,7 +870,9 @@ function handleCancel() {
 
     <!-- Footer -->
     <div class="tk-task-form__footer">
-      <div class="tk-task-form__footer-hint">{{ t('task.task.create.footerHint') }}</div>
+      <div class="tk-task-form__footer-hint">
+        {{ t('task.task.create.footerHint') }}
+      </div>
       <div class="tk-task-form__footer-actions">
         <el-button @click="handleCancel">
           {{ t('task.task.create.cancel') }}
@@ -912,6 +1162,17 @@ function handleCancel() {
   margin-top: 4px;
   font-size: var(--tk-font-size-xs);
   color: var(--tk-text-secondary);
+
+  &--error {
+    color: var(--tk-danger-color);
+  }
+}
+
+.tk-json-input {
+  :deep(textarea) {
+    font-family: var(--tk-font-mono, monospace);
+    font-size: var(--tk-font-size-xs);
+  }
 }
 
 .tk-tag-input {

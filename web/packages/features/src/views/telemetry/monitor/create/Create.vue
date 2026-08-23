@@ -28,8 +28,8 @@ import type {
   MonitorType,
   ProberTypeInfo,
 } from '../../../../types/telemetry'
+import { getAssets, getAsset } from '../../../../api/asset'
 import {
-  getAssets,
   createMonitor,
   getMonitor,
   updateMonitor,
@@ -38,6 +38,8 @@ import {
 } from '../../../../api/telemetry'
 import ExprEditor from '../../../components/ExprEditor.vue'
 
+/** Active mode configs. Field names mirror the local UI form; buildConfig
+ *  maps them onto the executor config contract (address / expect_status). */
 interface IcmpConfig {
   host: string
   count: number
@@ -80,6 +82,7 @@ const form = reactive<MonitorCreateParams>({
   name: '',
   description: '',
   assetType: 'host',
+  assetId: undefined,
   mode: 'active',
   type: 'icmp',
   schedule: '60s',
@@ -175,7 +178,9 @@ watch(() => form.mode, (newMode) => {
   }
 })
 
-/** Build config object based on selected type */
+/** Build config object based on selected type. Keys follow the executor
+ *  config contract: icmp/tcp/http parse "address" (plus per-type extras),
+ *  so the UI's host/url fields are emitted under that key. */
 function buildConfig(): Record<string, unknown> {
   // The optional execution-judgment expression travels inside the
   // point config JSON (active probes only).
@@ -184,15 +189,15 @@ function buildConfig(): Record<string, unknown> {
     judgment ? { ...base, expression: judgment } : base
   switch (form.type) {
     case 'icmp':
-      return withJudgment({ host: icmpConfig.host, count: icmpConfig.count })
+      return withJudgment({ address: icmpConfig.host, count: icmpConfig.count })
     case 'tcp':
-      return withJudgment({ host: tcpConfig.host, port: tcpConfig.port })
+      return withJudgment({ address: tcpConfig.host, port: tcpConfig.port })
     case 'http':
       return withJudgment({
+        address: httpConfig.url,
         method: httpConfig.method,
-        url: httpConfig.url,
-        expectCode: httpConfig.expectCode,
-        headers: httpConfig.headers || undefined,
+        expect_status: httpConfig.expectCode,
+        headers: parseHeaders(httpConfig.headers),
       })
     case 'webhook':
       return {
@@ -202,6 +207,20 @@ function buildConfig(): Record<string, unknown> {
     default:
       return {}
   }
+}
+
+/** Parse the headers textarea ("Key: Value" per line) into the map shape
+ *  the http executor's config expects. */
+function parseHeaders(raw: string): Record<string, string> | undefined {
+  const headers: Record<string, string> = {}
+  for (const line of raw.split('\n')) {
+    const idx = line.indexOf(':')
+    if (idx <= 0) continue
+    const key = line.slice(0, idx).trim()
+    const value = line.slice(idx + 1).trim()
+    if (key && value) headers[key] = value
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined
 }
 
 /** Live preview of config JSON */
@@ -217,8 +236,10 @@ async function handleCopyJson(): Promise<void> {
   }
 }
 
-/** Asset selection handler — updates form.assetType from the chosen asset */
+/** Asset selection handler — records the linked asset ID and keeps
+ *  form.assetType in sync with the chosen asset */
 function handleAssetChange(id: number): void {
+  form.assetId = id
   const asset = assets.value.find((r) => r.id === id)
   if (asset) {
     form.assetType = asset.assetType
@@ -288,16 +309,52 @@ function handleCancel(): void {
   router.back()
 }
 
-/** Load asset list */
-async function fetchAssets(): Promise<void> {
+/** Load asset options by remote-search keyword (server-side keyword match
+ *  keeps the option list bounded instead of capping the full list at 100) */
+async function searchAssets(keyword: string): Promise<void> {
   assetLoading.value = true
   try {
-    const res = await getAssets({ page: 1, size: 100 })
+    const res = await getAssets({ page: 1, size: 20, keyword: keyword || undefined })
     assets.value = res.items
   } catch {
     assets.value = []
   } finally {
     assetLoading.value = false
+  }
+}
+
+/** Passive reporting guide (live preview of what the saved point will look
+ *  like to reporters). */
+const reportEndpoint = `${window.location.origin}/api/v1/telemetry`
+
+const reportCurl = computed(() => {
+  if (webhookConfig.authType === 'asset-key') {
+    const identity = form.assetId
+      ? `"asset_id": ${form.assetId}`
+      : '"asset_key": "your-asset-key", "tenant_id": 1'
+    return [
+      `curl -X POST ${reportEndpoint} \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -d '{"kind":"heartbeat", ${identity}}'`,
+    ].join('\n')
+  }
+  const secret = webhookConfig.secret || '$POINT_SECRET'
+  return [
+    `BODY='{"kind":"heartbeat"}'`,
+    `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac '${secret}' | awk '{print $2}')`,
+    `curl -X POST ${reportEndpoint} \\`,
+    `  -H 'Content-Type: application/json' \\`,
+    `  -H "X-Tickraft-Signature: $SIG" -d "$BODY"`,
+  ].join('\n')
+})
+
+/** Copy the report example to clipboard */
+async function handleCopyReportExample(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(reportCurl.value)
+    ElMessage.success(t('telemetry.monitor.create.copySuccess'))
+  } catch {
+    ElMessage.error(t('common.app.failed'))
   }
 }
 
@@ -328,30 +385,51 @@ async function fetchMonitor(): Promise<void> {
     form.name = monitor.name
     form.description = monitor.description ?? ''
     form.assetType = monitor.assetType
+    form.assetId = monitor.assetId
     form.mode = monitor.mode
     form.type = monitor.type
     form.schedule = monitor.schedule
     form.enabled = monitor.enabled
     form.config = monitor.config ?? {}
 
-    // Set selectedAssetId to the first asset matching the monitor's assetType
-    const matchedAsset = assets.value.find((a) => a.assetType === monitor.assetType)
-    selectedAssetId.value = matchedAsset?.id
+    // Prefer the point's saved asset ID; fall back to the first asset
+    // matching the assetType only for legacy points without one.
+    selectedAssetId.value =
+      monitor.assetId ??
+      assets.value.find((a) => a.assetType === monitor.assetType)?.id
+    // Remote search keeps only the latest options window; make sure the
+    // bound asset is among them so the select shows its name, not the raw ID.
+    if (selectedAssetId.value && !assets.value.some((a) => a.id === selectedAssetId.value)) {
+      try {
+        assets.value = [await getAsset(selectedAssetId.value), ...assets.value]
+      } catch {
+        // Leave the option list as-is; the select falls back to the raw ID
+      }
+    }
 
-    // Parse config into reactive form objects
+    // Parse config into reactive form objects. Legacy points created before
+    // the executor-contract alignment stored host/url/expectCode; prefer the
+    // current keys and fall back to the legacy ones.
     const config = monitor.config ?? {}
     judgmentExpr.value = (config.expression as string) ?? ''
     if (form.type === 'icmp') {
-      icmpConfig.host = (config.host as string) ?? ''
+      icmpConfig.host = ((config.address ?? config.host) as string) ?? ''
       icmpConfig.count = (config.count as number) ?? 4
     } else if (form.type === 'tcp') {
-      tcpConfig.host = (config.host as string) ?? ''
+      tcpConfig.host = ((config.address ?? config.host) as string) ?? ''
       tcpConfig.port = (config.port as number) ?? 0
     } else if (form.type === 'http') {
+      const headers = config.headers
       httpConfig.method = (config.method as string) ?? 'GET'
-      httpConfig.url = (config.url as string) ?? ''
-      httpConfig.expectCode = (config.expectCode as number) ?? 200
-      httpConfig.headers = (config.headers as string) ?? ''
+      httpConfig.url = ((config.address ?? config.url) as string) ?? ''
+      httpConfig.expectCode =
+        ((config.expect_status ?? config.expectCode) as number) ?? 200
+      httpConfig.headers =
+        typeof headers === 'string'
+          ? headers
+          : Object.entries(headers ?? {})
+              .map(([k, v]) => `${k}: ${v}`)
+              .join('\n')
     } else if (form.type === 'webhook') {
       webhookConfig.secret = (config.secret as string) ?? ''
       webhookConfig.authType = (config.authType as 'hmac' | 'asset-key') ?? 'hmac'
@@ -365,8 +443,9 @@ async function fetchMonitor(): Promise<void> {
 }
 
 onMounted(async () => {
-  // Load API metadata and assets in parallel before fetching monitor data
-  await Promise.all([fetchAssets(), fetchProberTypes(), fetchListenerTypes()])
+  // Load API metadata and the first asset options window in parallel before
+  // fetching monitor data
+  await Promise.all([searchAssets(''), fetchProberTypes(), fetchListenerTypes()])
   if (isEdit.value) {
     void fetchMonitor()
   } else {
@@ -455,6 +534,10 @@ onMounted(async () => {
                   v-model="selectedAssetId"
                   :placeholder="t('telemetry.monitor.create.assetTypePlaceholder')"
                   style="width: 100%"
+                  filterable
+                  remote
+                  :remote-method="searchAssets"
+                  :loading="assetLoading"
                   @change="handleAssetChange"
                 >
                   <el-option
@@ -713,8 +796,50 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Side column: JSON preview + tips -->
+      <!-- Side column: JSON preview + tips + reporting guide -->
       <aside class="tk-monitor-create__side">
+        <!-- Passive reporting guide (live preview of the report contract) -->
+        <div
+          v-if="form.mode === 'passive' && form.type === 'webhook'"
+          class="tk-code-block"
+        >
+          <div class="tk-code-block__bar">
+            <span class="tk-code-block__label">{{ t('telemetry.monitor.report.title') }}</span>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="handleCopyReportExample"
+            >
+              <el-icon><CopyDocument /></el-icon>
+              {{ t('telemetry.monitor.report.copyExample') }}
+            </el-button>
+          </div>
+          <div class="tk-report-meta">
+            <div class="tk-report-meta__row">
+              <span class="tk-report-meta__label">{{ t('telemetry.monitor.report.endpointLabel') }}</span>
+              <span class="tk-report-meta__value">{{ reportEndpoint }}</span>
+            </div>
+            <div class="tk-report-meta__row">
+              <span class="tk-report-meta__label">{{ t('telemetry.monitor.report.authLabel') }}</span>
+              <span class="tk-report-meta__value">
+                {{ webhookConfig.authType === 'asset-key'
+                  ? t('telemetry.monitor.report.authAssetKey') : t('telemetry.monitor.report.authHmac') }}
+              </span>
+            </div>
+            <div class="tk-report-meta__row">
+              <span class="tk-report-meta__label">Secret</span>
+              <span class="tk-report-meta__value">
+                {{ webhookConfig.authType === 'asset-key' ? '—'
+                  : (webhookConfig.secret
+                    ? t('telemetry.monitor.report.secretConfigured') + ' · ' + t('telemetry.monitor.report.savedHint')
+                    : t('telemetry.monitor.report.secretMissing')) }}
+              </span>
+            </div>
+          </div>
+          <pre class="tk-code-block__code">{{ reportCurl }}</pre>
+        </div>
+
         <!-- JSON preview card -->
         <div class="tk-code-block">
           <div class="tk-code-block__bar">
@@ -833,6 +958,36 @@ onMounted(async () => {
     font-size: var(--tk-font-size-xs, 12px);
     line-height: 1.5;
     color: var(--tk-text-secondary, #909399);
+  }
+}
+
+/* Reporting guide meta rows */
+.tk-report-meta {
+  padding: var(--tk-spacing-sm, 12px) var(--tk-spacing-md, 16px);
+
+  &__row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    & + & {
+      margin-top: var(--tk-spacing-sm, 12px);
+    }
+  }
+
+  &__label {
+    font-family: var(--tk-font-mono, 'Monaco', monospace);
+    font-size: var(--tk-font-size-xs, 12px);
+    color: var(--tk-text-secondary, #909399);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  &__value {
+    font-size: var(--tk-font-size-xs, 12px);
+    line-height: 1.5;
+    color: var(--tk-text-primary, #303133);
+    word-break: break-all;
   }
 }
 

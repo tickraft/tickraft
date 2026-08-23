@@ -34,8 +34,6 @@ type Collector interface {
 type Config struct {
 	// AssetID is the ID of the asset to observe.
 	AssetID int64
-	// CollectConfig is the JSON-encoded collection configuration.
-	CollectConfig string
 	// Timeout is the offline detection threshold in seconds.
 	Timeout int
 }
@@ -64,20 +62,26 @@ type Options struct {
 	// precedence over MetricStore/LogStore.
 	Persistence *Persistence
 	// Pool injects a worker pool for concurrent telemetry processing. When
-	// nil, the manager creates a default IO pool sized to
+	// nil, the engine creates a default IO pool sized to
 	// runtime.NumCPU and owns its lifecycle. An injected pool is not
-	// shut down by the manager; the caller remains responsible for it.
+	// shut down by the engine; the caller remains responsible for it.
 	Pool pool.Pool
 	// ProberService injects the active probing coordinator. When set,
-	// the Manager starts and stops it alongside the listener pipeline.
-	// When nil, active probing is disabled and the Manager only runs
+	// the Engine starts and stops it alongside the listener pipeline.
+	// When nil, active probing is disabled and the Engine only runs
 	// the passive listener pipeline.
 	ProberService *ProberService
+	// MonitorStore injects the monitoring-point store used to bootstrap
+	// passive offline detection. When set, Start registers every asset
+	// with an enabled passive point on the timeout wheel so a silent
+	// asset is declared offline even before its first report arrives.
+	// When nil, registration stays lazy: it happens on the first report.
+	MonitorStore *MonitorStore
 	// ListenerRegistry holds the passive telemetry listeners (HTTP and
-	// protocol listeners). When set, the Manager starts all registered
+	// protocol listeners). When set, the Engine starts all registered
 	// ProtocolListeners on Start and stops them on Stop. HTTPListeners
 	// are looked up by the API router layer to mount their handlers.
-	// When nil, no protocol listeners are managed by the Manager.
+	// When nil, no protocol listeners are managed by the Engine.
 	ListenerRegistry *ListenerRegistry
 }
 
@@ -184,9 +188,9 @@ type poolOption struct {
 func (o poolOption) apply(opts *Options) { opts.Pool = o.p }
 
 // WithPool injects a worker pool used for concurrent telemetry processing.
-// When this option is not supplied the manager creates a default IO pool
+// When this option is not supplied the engine creates a default IO pool
 // sized to runtime.NumCPU and owns its lifecycle (shutting it down on
-// Stop). An injected pool is never shut down by the manager; the caller
+// Stop). An injected pool is never shut down by the engine; the caller
 // retains full lifecycle responsibility.
 func WithPool(p pool.Pool) Option { return poolOption{p: p} }
 
@@ -198,9 +202,21 @@ type proberServiceOption struct {
 func (o proberServiceOption) apply(opts *Options) { opts.ProberService = o.svc }
 
 // WithProberService injects the active probing coordinator. When set,
-// the Manager starts the ProberService alongside the listener pipeline
+// the Engine starts the ProberService alongside the listener pipeline
 // and stops it in reverse order on shutdown.
 func WithProberService(svc *ProberService) Option { return proberServiceOption{svc: svc} }
+
+// monitorStoreOption injects the monitoring-point store.
+type monitorStoreOption struct {
+	store *MonitorStore
+}
+
+func (o monitorStoreOption) apply(opts *Options) { opts.MonitorStore = o.store }
+
+// WithMonitorStore injects the monitoring-point store. When set, the Engine
+// bootstraps passive offline detection on Start by registering every asset
+// that has an enabled passive monitoring point on the timeout wheel.
+func WithMonitorStore(store *MonitorStore) Option { return monitorStoreOption{store: store} }
 
 // listenerRegistryOption injects the passive listener registry.
 type listenerRegistryOption struct {
@@ -210,7 +226,7 @@ type listenerRegistryOption struct {
 func (o listenerRegistryOption) apply(opts *Options) { opts.ListenerRegistry = o.reg }
 
 // WithListenerRegistry injects the passive listener registry. When set,
-// the Manager starts all registered ProtocolListeners on Start and stops
+// the Engine starts all registered ProtocolListeners on Start and stops
 // them on Stop. HTTPListeners in the registry are looked up by the API
 // router layer to mount their handlers on the telemetry endpoint.
 func WithListenerRegistry(reg *ListenerRegistry) Option {
@@ -220,9 +236,9 @@ func WithListenerRegistry(reg *ListenerRegistry) Option {
 // New creates a new Collector with the given options.
 //
 // Returns an error if the internal time wheel or default telemetry pool
-// cannot be initialized (see [Manager] / [timewheel.New] for details).
+// cannot be initialized (see [Engine] / [timewheel.New] for details).
 // The error path is unreachable in practice but is returned rather
 // than panicking to honor the "no panic in business logic" rule.
 func New(options ...Option) (Collector, error) {
-	return newManager(options...)
+	return newEngine(options...)
 }

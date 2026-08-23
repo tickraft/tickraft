@@ -23,7 +23,7 @@ export interface AlertRecord {
   /** firing, acknowledged, resolved */
   status: AlertStatus
   message: string
-  firedAt: string
+  triggeredAt: string
   acknowledgedAt?: string | null
   resolvedAt?: string | null
 }
