@@ -67,7 +67,6 @@ func Register(name string, factory Factory) {
 // after the read lock is released. Callers may invoke the factory
 // without holding registryMu.
 func LookupFactory(name string) Factory {
-	name = strings.ToLower(name)
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 	return registry[name]
