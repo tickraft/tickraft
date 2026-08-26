@@ -27,7 +27,7 @@ import (
 //
 // Middleware and services are injected via RouteOption values, keeping the
 // handler package free of any dependency on pkg/auth or pkg/auth/jwt.
-// The caller (internal/api/router/router.go) builds the JWT, API-key, and
+// The caller (pkg/api/router/router.go) builds the JWT, API-key, and
 // asset-key middleware using those packages and passes the resulting
 // app.HandlerFunc values here.
 //

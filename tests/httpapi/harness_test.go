@@ -24,13 +24,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/internal/api/router"
 	cequota "github.com/tickraft/tickraft/internal/quota"
 	"github.com/tickraft/tickraft/pkg/api"
 	assethandler "github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	"github.com/tickraft/tickraft/pkg/api/router"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -298,6 +298,7 @@ func newHarness(t *testing.T) *harness {
 		router.WithExecutorRegistry(reg),
 		router.WithHealthzHandler(healthz.NewHandler(dbc, nil)),
 		router.WithReadyzHandler(readyz.NewHandler(dbc, nil)),
+		router.WithAPIKeyAuth(),
 	}
 	assetKeyGetter := func(ctx context.Context, key string) (bool, error) {
 		return assetStore.ExistsByKey(ctx, key)

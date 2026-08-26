@@ -30,7 +30,7 @@ type TokenPair struct {
 // Service provides authentication and authorization operations.
 // The concrete implementation is injected via RouteOption, keeping the
 // handler package free of any dependency on pkg/auth or pkg/auth/jwt.
-// The adapter wrapping *auth.Service is created in internal/api/router/router.go.
+// The adapter wrapping *auth.Service is created in pkg/api/router/adapter.go.
 type Service interface {
 	// Login authenticates a user and returns a token pair.
 	Login(ctx context.Context, username, password string) (*TokenPair, error)

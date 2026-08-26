@@ -111,7 +111,9 @@ func TestRegisterRoutesNilAsseteyGetterDefaultsToDenyAll(t *testing.T) {
 }
 
 // TestRegisterRoutesMissingServices verifies that RegisterRoutes returns a
-// descriptive error when required services are not injected.
+// descriptive error when required services are not injected. The error
+// originates from the handler package's route validator, which is the single
+// required-service check now that this layer only aggregates options.
 func TestRegisterRoutesMissingServices(t *testing.T) {
 	srv := api.NewServer(api.ServerConfig{Addr: ":0"})
 	jwtMgr := newTestJWT(t)
@@ -121,7 +123,7 @@ func TestRegisterRoutesMissingServices(t *testing.T) {
 	if err == nil {
 		t.Fatal("RegisterRoutes without services returned nil error, want non-nil")
 	}
-	if !strings.Contains(err.Error(), "missing required services") {
-		t.Errorf("err = %q, want to contain %q", err.Error(), "missing required services")
+	if !strings.Contains(err.Error(), "required services not injected") {
+		t.Errorf("err = %q, want to contain %q", err.Error(), "required services not injected")
 	}
 }

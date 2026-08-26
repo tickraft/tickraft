@@ -13,15 +13,15 @@ import (
 // TestNoPkgAuthImport enforces the architectural constraint that the handler
 // package must NOT directly import pkg/auth or pkg/auth/jwt. The handler
 // package is the route layer; it receives middleware and
-// services as opaque interfaces from the caller (internal/api/router/router.go) so
+// services as opaque interfaces from the caller (pkg/api/router/router.go) so
 // that no auth implementation details leak into it. If this test fails,
 // somebody has added a direct import of pkg/auth or pkg/auth/jwt to a
 // non-test file under pkg/api/handler and the abstraction has been broken.
 //
 // We check DIRECT imports only (go list -f '{{.Imports}}' .), not transitive
 // dependencies: the handler package inevitably pulls pkg/auth transitively
-// through pkg/api -> internal/api, and that chain is owned by the
-// internal api package, not the handler package.
+// through pkg/api -> pkg/api/router, and that chain is owned by the
+// router package, not the handler package.
 func TestNoPkgAuthImport(t *testing.T) {
 	out, err := exec.CommandContext(t.Context(), "go", "list", "-f", `{{join .Imports "\n"}}`, ".").Output()
 	if err != nil {

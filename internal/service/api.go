@@ -14,7 +14,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/adaptor"
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/internal/api/router"
 	"github.com/tickraft/tickraft/internal/web"
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
@@ -24,6 +23,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsHandler "github.com/tickraft/tickraft/pkg/api/handler/ws"
+	"github.com/tickraft/tickraft/pkg/api/router"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/executor"
@@ -95,7 +95,7 @@ func startAPIServer(ctx context.Context, rt *runtime, errCh chan<- error) (stopF
 	if err = wsH.Start(context.Background()); err != nil {
 		return nil, fmt.Errorf("start ws handler: %w", err)
 	}
-	routeOpts = append(routeOpts, router.WithWSHandler(wsH))
+	routeOpts = append(routeOpts, router.WithWSHandler(wsH), router.WithAPIKeyAuth())
 
 	if err = router.RegisterRoutes(srv, rt.jwt, rt.authz, assetKeyGetter, routeOpts...); err != nil {
 		return nil, fmt.Errorf("register routes: %w", err)

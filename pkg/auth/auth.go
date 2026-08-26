@@ -382,7 +382,7 @@ func (s *Service) ValidateAPIKey(ctx context.Context, rawKey string) (*user.APIK
 }
 
 // GetProfile retrieves the user identified by userID. It returns the full
-// user.User so the caller (the serviceAdapter in internal/api/router) can
+// user.User so the caller (the serviceAdapter in pkg/api/router) can
 // project it into a handler-layer UserProfile without the auth package
 // depending on the handler package.
 func (s *Service) GetProfile(ctx context.Context, userID int64) (*user.User, error) {
