@@ -49,15 +49,20 @@ var (
 	ErrInvalidRequest = NewServiceError(http.StatusBadRequest, CodeBadRequest, "invalid request")
 )
 
-// InnermostMessage walks the wrap chain and returns the leaf error's
-// message. Service implementations use it to surface the underlying cause
-// (e.g. an expression compile error) instead of a stacked wrapper message.
+// InnermostMessage walks the wrap chain and returns the most informative
+// message found along it, discarding sentinel wrapper prefixes (e.g. a
+// store's "get rule" prefix) in favor of the longer underlying diagnostic
+// such as an expression compile error.
 func InnermostMessage(err error) string {
+	msg := err.Error()
 	for {
-		next := errors.Unwrap(err)
-		if next == nil {
-			return err.Error()
+		unwrapped := errors.Unwrap(err)
+		if unwrapped == nil {
+			return msg
 		}
-		err = next
+		err = unwrapped
+		if detail := err.Error(); len(detail) > len(msg) {
+			msg = detail
+		}
 	}
 }

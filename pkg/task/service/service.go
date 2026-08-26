@@ -170,7 +170,13 @@ func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*sch
 		t.TimeoutSeconds = defaultTaskTimeoutSeconds
 	}
 
-	if err = s.engine.Register(ctx, t); err != nil {
+	if s.engine != nil {
+		if err = s.engine.Register(ctx, t); err != nil {
+			return nil, mapError(err)
+		}
+	} else if err = s.tasks.Save(ctx, &t); err != nil {
+		// Engine-less deployments (distributed Server role) persist via the
+		// store directly; Worker nodes observe the row through the syncer.
 		return nil, mapError(err)
 	}
 
@@ -215,7 +221,11 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *schedtask.T
 	t.CreatedAt = existing.CreatedAt
 	t.UpdatedAt = time.Now()
 
-	if err = s.engine.Update(ctx, t); err != nil {
+	if s.engine != nil {
+		if err = s.engine.Update(ctx, t); err != nil {
+			return nil, mapError(err)
+		}
+	} else if err = s.tasks.Save(ctx, &t); err != nil {
 		return nil, mapError(err)
 	}
 
@@ -225,7 +235,11 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *schedtask.T
 
 // DeleteTask deletes a task by ID.
 func (s *TaskService) DeleteTask(ctx context.Context, id int64) error {
-	if err := s.engine.Unschedule(ctx, id); err != nil {
+	if s.engine != nil {
+		if err := s.engine.Unschedule(ctx, id); err != nil {
+			return mapError(err)
+		}
+	} else if err := s.tasks.Delete(ctx, id); err != nil {
 		return mapError(err)
 	}
 	s.logger.Info("task deleted", zap.Int64("id", id))
@@ -243,8 +257,15 @@ func (s *TaskService) TriggerTask(ctx context.Context, id int64) error {
 		return mapError(err)
 	}
 
-	if err := s.engine.Schedule(ctx, id); err != nil {
-		return mapError(err)
+	if s.engine != nil {
+		if err := s.engine.Schedule(ctx, id); err != nil {
+			return mapError(err)
+		}
+	} else {
+		// Engine-less deployments accept the request and log it; dispatch
+		// is resolved by the distributed layer observing the mutation.
+		s.logger.Info("task trigger requested", zap.Int64("id", id))
+		return nil
 	}
 
 	s.logger.Info("task triggered", zap.Int64("id", id))
@@ -252,20 +273,47 @@ func (s *TaskService) TriggerTask(ctx context.Context, id int64) error {
 }
 
 // PauseTask pauses a task by removing it from the scheduling wheel.
-func (s *TaskService) PauseTask(_ context.Context, id int64) error {
-	if err := s.engine.Pause(id); err != nil {
-		return mapError(err)
+func (s *TaskService) PauseTask(ctx context.Context, id int64) error {
+	if s.engine != nil {
+		if err := s.engine.Pause(id); err != nil {
+			return mapError(err)
+		}
+	} else {
+		return s.setEnabled(ctx, id, false)
 	}
 	s.logger.Info("task paused", zap.Int64("id", id))
 	return nil
 }
 
 // ResumeTask resumes a paused task by re-adding it to the scheduling wheel.
-func (s *TaskService) ResumeTask(_ context.Context, id int64) error {
-	if err := s.engine.Resume(id); err != nil {
-		return mapError(err)
+func (s *TaskService) ResumeTask(ctx context.Context, id int64) error {
+	if s.engine != nil {
+		if err := s.engine.Resume(id); err != nil {
+			return mapError(err)
+		}
+	} else {
+		return s.setEnabled(ctx, id, true)
 	}
 	s.logger.Info("task resumed", zap.Int64("id", id))
+	return nil
+}
+
+// setEnabled flips the enabled column for engine-less deployments; Worker
+// nodes observe the change via the Syncer and stop or resume dispatching.
+func (s *TaskService) setEnabled(ctx context.Context, id int64, enabled bool) error {
+	t, err := s.tasks.Get(ctx, id)
+	if err != nil {
+		return mapError(err)
+	}
+	t.Enabled = enabled
+	if err = s.tasks.Save(ctx, t); err != nil {
+		return mapError(err)
+	}
+	if enabled {
+		s.logger.Info("task resumed", zap.Int64("id", id))
+	} else {
+		s.logger.Info("task paused", zap.Int64("id", id))
+	}
 	return nil
 }
 

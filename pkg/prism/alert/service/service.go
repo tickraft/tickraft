@@ -20,23 +20,40 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
+// ReloadFunc hot-reloads the rule engine after a rule mutation. Returning
+// an error only logs a warning: the rule is already persisted and the
+// engine keeps its previous rule set. A nil ReloadFunc disables hot reload
+// (mutations still persist; the engine falls back to its polling reload).
+type ReloadFunc func(ctx context.Context) error
+
 // AlertService implements Service using the prism rule engine
 // and persistent rule/record stores. The wire shape and the storage shape
 // are the same alert.Rule / alert.Record models, so this service only
 // orchestrates stores and the engine reload — there is no DTO conversion.
 type AlertService struct {
-	rules      *alert.Store
-	records    alert.RecordStore
-	ruleEngine *alert.Engine
+	rules   *alert.Store
+	records alert.RecordStore
+	reload  ReloadFunc
 }
 
 // NewAlertService creates an AlertService backed by the given rule store,
-// record store, and rule engine.
+// record store, and rule engine. A nil ruleEngine disables hot reload.
 func NewAlertService(ruleStore *alert.Store, recordStore alert.RecordStore, ruleEngine *alert.Engine) *AlertService {
+	var reload ReloadFunc
+	if ruleEngine != nil {
+		reload = func(ctx context.Context) error { return ruleEngine.Reload(ctx, ruleStore) }
+	}
+	return NewAlertServiceFunc(ruleStore, recordStore, reload)
+}
+
+// NewAlertServiceFunc creates an AlertService with a custom reload hook.
+// Extended editions use it to propagate rule changes through their own
+// bus instead of reloading the in-process engine directly.
+func NewAlertServiceFunc(ruleStore *alert.Store, recordStore alert.RecordStore, reload ReloadFunc) *AlertService {
 	return &AlertService{
-		rules:      ruleStore,
-		records:    recordStore,
-		ruleEngine: ruleEngine,
+		rules:   ruleStore,
+		records: recordStore,
+		reload:  reload,
 	}
 }
 
@@ -170,12 +187,12 @@ func (s *AlertService) ResolveRecord(ctx context.Context, id int64) (*alert.Reco
 	return record, nil
 }
 
-// reloadRules reloads the rule engine from the store when both are non-nil.
+// reloadRules invokes the reload hook when one is wired.
 func (s *AlertService) reloadRules(ctx context.Context) error {
-	if s.ruleEngine == nil || s.rules == nil {
+	if s.reload == nil || s.rules == nil {
 		return nil
 	}
-	return s.ruleEngine.Reload(ctx, s.rules)
+	return s.reload(ctx)
 }
 
 // mapRuleStoreError translates a rule store error into a handler-level
