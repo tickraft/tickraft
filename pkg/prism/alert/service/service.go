@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package prism provides the API service implementations that
-// bridge the handler layer with the prism rule engine and its persistent
-// rule and record stores.
-package prism
+// Package service provides the alert rule and record management contract
+// (Service) plus its store-backed implementation, wiring the prism rule
+// engine and its persistent stores.
+package service
 
 import (
 	"context"
@@ -15,13 +15,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 )
 
-// AlertService implements alerthandler.Service using the prism rule engine
+// AlertService implements Service using the prism rule engine
 // and persistent rule/record stores. The wire shape and the storage shape
 // are the same alert.Rule / alert.Record models, so this service only
 // orchestrates stores and the engine reload — there is no DTO conversion.
@@ -64,10 +63,10 @@ func (s *AlertService) GetRule(ctx context.Context, id int64) (*alert.Rule, erro
 // CreateRule creates a new alert rule from the given request.
 func (s *AlertService) CreateRule(ctx context.Context, req *alert.Rule) (*alert.Rule, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if req.Name == "" || req.Expression == "" {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	// Server-assigned fields are dropped from the request so a client
 	// cannot pick its own row ID or timestamps; Create back-fills ID,
@@ -90,7 +89,7 @@ func (s *AlertService) CreateRule(ctx context.Context, req *alert.Rule) (*alert.
 // UpdateRule updates an existing alert rule identified by ID.
 func (s *AlertService) UpdateRule(ctx context.Context, id int64, req *alert.Rule) (*alert.Rule, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	existing, err := s.rules.GetByID(ctx, id)
 	if err != nil {
@@ -188,28 +187,16 @@ func mapRuleStoreError(err error) error {
 		return nil
 	}
 	if errors.Is(err, alert.ErrRuleNotFound) {
-		return handler.ErrRuleNotFound
+		return errdefs.ErrRuleNotFound
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
-		return handler.ErrRuleNotFound
+		return errdefs.ErrRuleNotFound
 	}
 	if errors.Is(err, alert.ErrRuleCompileFailed) {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
-			"invalid expression: "+innermostMessage(err))
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+			"invalid expression: "+errdefs.InnermostMessage(err))
 	}
-	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
-}
-
-// innermostMessage walks the wrap chain and returns the leaf error's
-// message, discarding this package's sentinel prefixes.
-func innermostMessage(err error) string {
-	for {
-		next := errors.Unwrap(err)
-		if next == nil {
-			return err.Error()
-		}
-		err = next
-	}
+	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
 }
 
 // mapRecordStoreError translates an alert record store error into a
@@ -219,7 +206,7 @@ func mapRecordStoreError(err error) error {
 		return nil
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
-		return handler.ErrRecordNotFound
+		return errdefs.ErrRecordNotFound
 	}
-	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
+	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
 }

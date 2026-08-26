@@ -19,24 +19,26 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler"
-	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
 	authapi "github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/api/handler/certificates"
-	"github.com/tickraft/tickraft/pkg/api/handler/channel"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
-	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
-	"github.com/tickraft/tickraft/pkg/api/handler/system"
-	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
+	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
+	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/system"
+	taskservice "github.com/tickraft/tickraft/pkg/task/service"
+	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -145,7 +147,7 @@ func (adapter *serviceAdapter) UpdateProfile(
 	req *authapi.UpdateProfileRequest,
 ) (*authapi.UserProfile, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	u, err := adapter.svc.UpdateProfile(ctx, userID, auth.UpdateProfileParams{
 		Nickname:         req.Nickname,
@@ -188,16 +190,16 @@ type RegisterOption interface {
 
 // registerConfig holds handlers and services injected via RegisterOption.
 type registerConfig struct {
-	taskService            task.Service
-	alertService           alert.Service
-	channelService         channel.Service
-	remediationRuleService remediation.Service
+	taskService            taskservice.Service
+	alertService           alertservice.Service
+	channelService         channelservice.Service
+	remediationRuleService remediationservice.Service
 	systemService          system.Service
-	telemetryService       telemetry.Service
+	telemetryService       telemetryservice.Service
 	telemetryReportHandler app.HandlerFunc
-	telemetryMetricStore   telemetry.MetricStore
-	telemetryLogStore      telemetry.LogStore
-	telemetryProbeRecords  telemetry.ProbeRecordStore
+	telemetryMetricStore   telemetryservice.MetricStore
+	telemetryLogStore      telemetryservice.LogStore
+	telemetryProbeRecords  telemetryservice.ProbeRecordStore
 	assetHandler           *asset.Handler
 	templateHandler        *telemetry.TemplateHandler
 	healthzHandler         *healthz.Handler
@@ -208,60 +210,60 @@ type registerConfig struct {
 	executorRegistry       *executor.Registry
 }
 
-// taskServiceOption provides the task.Service implementation for task
+// taskServiceOption provides the taskservice.Service implementation for task
 // handlers.
 type taskServiceOption struct {
-	svc task.Service
+	svc taskservice.Service
 }
 
 func (o taskServiceOption) apply(c *registerConfig) { c.taskService = o.svc }
 
-// WithTaskService provides the task.Service implementation for task
+// WithTaskService provides the taskservice.Service implementation for task
 // handlers. When omitted, the task route group is not registered; the
 // caller must inject a concrete service to persist tasks and drive
 // scheduling.
-func WithTaskService(svc task.Service) RegisterOption { return taskServiceOption{svc: svc} }
+func WithTaskService(svc taskservice.Service) RegisterOption { return taskServiceOption{svc: svc} }
 
-// alertServiceOption provides the alert.Service implementation for alert
+// alertServiceOption provides the alertservice.Service implementation for alert
 // handlers.
 type alertServiceOption struct {
-	svc alert.Service
+	svc alertservice.Service
 }
 
 func (o alertServiceOption) apply(c *registerConfig) { c.alertService = o.svc }
 
-// WithAlertService provides the alert.Service implementation for alert
+// WithAlertService provides the alertservice.Service implementation for alert
 // handlers. When omitted, the handler package falls back to an in-memory
 // implementation.
-func WithAlertService(svc alert.Service) RegisterOption { return alertServiceOption{svc: svc} }
+func WithAlertService(svc alertservice.Service) RegisterOption { return alertServiceOption{svc: svc} }
 
-// channelServiceOption provides the channel.Service implementation for
+// channelServiceOption provides the channelservice.Service implementation for
 // notification channel handlers.
 type channelServiceOption struct {
-	svc channel.Service
+	svc channelservice.Service
 }
 
 func (o channelServiceOption) apply(c *registerConfig) { c.channelService = o.svc }
 
-// WithChannelService provides the channel.Service implementation for
+// WithChannelService provides the channelservice.Service implementation for
 // notification channel handlers. When omitted, the handler package falls
 // back to an in-memory implementation.
-func WithChannelService(svc channel.Service) RegisterOption {
+func WithChannelService(svc channelservice.Service) RegisterOption {
 	return channelServiceOption{svc: svc}
 }
 
-// remediationRuleServiceOption provides the remediation.Service
+// remediationRuleServiceOption provides the remediationservice.Service
 // implementation for self-healing rule handlers.
 type remediationRuleServiceOption struct {
-	svc remediation.Service
+	svc remediationservice.Service
 }
 
 func (o remediationRuleServiceOption) apply(c *registerConfig) { c.remediationRuleService = o.svc }
 
-// WithRemediationRuleService provides the remediation.Service
+// WithRemediationRuleService provides the remediationservice.Service
 // implementation for self-healing rule handlers. When omitted, the handler
 // package falls back to an in-memory implementation.
-func WithRemediationRuleService(svc remediation.Service) RegisterOption {
+func WithRemediationRuleService(svc remediationservice.Service) RegisterOption {
 	return remediationRuleServiceOption{svc: svc}
 }
 
@@ -306,18 +308,18 @@ func WithExecutorRegistry(reg *executor.Registry) RegisterOption {
 	return executorRegistryOption{reg: reg}
 }
 
-// telemetryServiceOption provides the telemetry.Service implementation for
+// telemetryServiceOption provides the telemetryservice.Service implementation for
 // the telemetry collection task CRUD API.
 type telemetryServiceOption struct {
-	svc telemetry.Service
+	svc telemetryservice.Service
 }
 
 func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetryService = o.svc }
 
-// WithTelemetryService provides the telemetry.Service implementation for the
+// WithTelemetryService provides the telemetryservice.Service implementation for the
 // telemetry collection task CRUD API at /api/v1/telemetry. When omitted, the
 // telemetry CRUD route group is not registered.
-func WithTelemetryService(svc telemetry.Service) RegisterOption {
+func WithTelemetryService(svc telemetryservice.Service) RegisterOption {
 	return telemetryServiceOption{svc: svc}
 }
 
@@ -339,8 +341,8 @@ func WithTelemetryReportHandler(h app.HandlerFunc) RegisterOption {
 // telemetryDataStoresOption provides the MetricStore and LogStore used by
 // the telemetry handler's history/logs endpoints.
 type telemetryDataStoresOption struct {
-	metricStore telemetry.MetricStore
-	logStore    telemetry.LogStore
+	metricStore telemetryservice.MetricStore
+	logStore    telemetryservice.LogStore
 }
 
 func (o telemetryDataStoresOption) apply(c *registerConfig) {
@@ -350,15 +352,15 @@ func (o telemetryDataStoresOption) apply(c *registerConfig) {
 
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil.
-func WithTelemetryDataStores(metricStore telemetry.MetricStore,
-	logStore telemetry.LogStore) RegisterOption {
+func WithTelemetryDataStores(metricStore telemetryservice.MetricStore,
+	logStore telemetryservice.LogStore) RegisterOption {
 	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
 }
 
 // telemetryProbeRecordsOption provides the probe record store used by the
 // telemetry handler's status/history/logs endpoints for active points.
 type telemetryProbeRecordsOption struct {
-	store telemetry.ProbeRecordStore
+	store telemetryservice.ProbeRecordStore
 }
 
 func (o telemetryProbeRecordsOption) apply(c *registerConfig) {
@@ -368,7 +370,7 @@ func (o telemetryProbeRecordsOption) apply(c *registerConfig) {
 // WithTelemetryProbeRecords provides the probe record store used by the
 // telemetry handler's status/history/logs endpoints for active monitor
 // points. A nil store disables the probe-backed query paths.
-func WithTelemetryProbeRecords(store telemetry.ProbeRecordStore) RegisterOption {
+func WithTelemetryProbeRecords(store telemetryservice.ProbeRecordStore) RegisterOption {
 	return telemetryProbeRecordsOption{store: store}
 }
 

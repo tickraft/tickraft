@@ -15,9 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/internal/api/router"
-	"github.com/tickraft/tickraft/pkg/api/service/prism"
-	"github.com/tickraft/tickraft/pkg/api/service/scheduler"
-	"github.com/tickraft/tickraft/pkg/api/service/system"
 	"github.com/tickraft/tickraft/internal/web"
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
@@ -27,13 +24,18 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsHandler "github.com/tickraft/tickraft/pkg/api/handler/ws"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/api/service/telemetry"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/executor"
+	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
+	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
+	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/telemetry/http"
+	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
 
 // startAPIServer initializes auth, builds the HTTP API server, registers
@@ -260,21 +262,21 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if engine.RuleStore() == nil || engine.RecordStore() == nil {
 		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
 	}
-	alertSvc := prism.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
+	alertSvc := alertservice.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
 
 	// Channel service: backed by the persistent channel store accessed
 	// via the prism engine.
 	if engine.ChannelStore() == nil {
 		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
 	}
-	channelSvc := prism.NewChannelService(engine.ChannelStore(), engine)
+	channelSvc := channelservice.NewChannelService(engine.ChannelStore(), engine)
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.
 	if engine.RemediationStore() == nil {
 		return nil, fmt.Errorf("start api server: prism remediation store is nil; prism engine may not have started")
 	}
-	remediationRuleSvc := prism.NewRemediationService(engine.RemediationStore())
+	remediationRuleSvc := remediationservice.NewRemediationService(engine.RemediationStore())
 
 	return []router.RegisterOption{
 		router.WithAlertService(alertSvc),
@@ -293,7 +295,7 @@ func newTaskRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if rt.schedulerEngine == nil || rt.schedulerTaskStore == nil || rt.schedulerExecStore == nil {
 		return nil, fmt.Errorf("start api server: scheduler engine/stores are nil; worker engines may not have started")
 	}
-	taskSvc := scheduler.NewTaskService(
+	taskSvc := taskservice.NewTaskService(
 		rt.schedulerEngine,
 		rt.schedulerTaskStore,
 		rt.schedulerExecStore,
@@ -326,7 +328,7 @@ func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 // handler — and returns the constructed service for the template handler.
 func newTelemetryRouteOptions(
 	ctx context.Context, rt *runtime,
-) ([]router.RegisterOption, *telemetrysvc.Service, error) {
+) ([]router.RegisterOption, *telemetrysvc.TelemetryService, error) {
 	// Telemetry service: backed by the persistent MonitorStore (monitor_points
 	// table) created by the worker engines. All CRUD operations survive
 	// process restarts. Point hooks are wired with mode branching: active
@@ -382,7 +384,7 @@ func newTelemetryRouteOptions(
 	if rt.proberSvc != nil {
 		telemetryOpts = append(telemetryOpts, telemetrysvc.WithProbeTrigger(rt.proberSvc.ProbeNow))
 	}
-	telemetrySvc := telemetrysvc.NewService(monitorStore, rt.logger, telemetryOpts...)
+	telemetrySvc := telemetrysvc.NewTelemetryService(monitorStore, rt.logger, telemetryOpts...)
 
 	// Telemetry report handler: wires the webhook listener to the telemetry
 	// collector so POST /api/v1/telemetry forwards received payloads into
@@ -440,7 +442,9 @@ func newCertificateRouteOptions(srv *api.Server, tlsEnabled bool) ([]router.Regi
 }
 
 // newTemplateRouteOptions builds the telemetry template handler route option.
-func newTemplateRouteOptions(rt *runtime, telemetrySvc *telemetrysvc.Service) ([]router.RegisterOption, error) {
+func newTemplateRouteOptions(
+	rt *runtime, telemetrySvc *telemetrysvc.TelemetryService,
+) ([]router.RegisterOption, error) {
 	// Telemetry template handler: backed by the GORM template store,
 	// seeded on every startup with the CE built-in template set
 	// (icmp/tcp/http(s); LoadBuiltinTemplates is idempotent and removes
@@ -463,7 +467,7 @@ func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 	// build-time metadata for version info, and the runtime's task /
 	// asset / execution stores for global stats. Always available when
 	// the runtime is initialized.
-	systemSvc := system.New(rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore)
+	systemSvc := system.NewSystemService(rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore)
 	if err := systemSvc.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate system service: %w", err)
 	}

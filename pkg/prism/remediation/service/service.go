@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package prism
+// Package service provides the self-healing remediation rule contract
+// (Service) plus its store-backed implementation over the prism
+// remediation engine stores.
+package service
 
 import (
 	"context"
@@ -10,7 +13,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -19,11 +21,15 @@ import (
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
-// RemediationService implements remediation.Service using the
+// RemediationService implements Service using the
 // prism remediation store. The wire shape and the storage shape are the
 // same prismremediation.Rule / prismremediation.Record models, so this
 // service only validates, enforces quotas, and orchestrates the store —
 // there is no DTO conversion.
+var _ Service = (*RemediationService)(nil)
+
+// RemediationService implements Service on top of the remediation rule
+// store.
 type RemediationService struct {
 	rules *remediation.Store
 }
@@ -61,7 +67,7 @@ func (s *RemediationService) UpdateRule(
 	req *remediation.Rule,
 ) (*remediation.Rule, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if err := validateRule(req); err != nil {
 		return nil, err
@@ -140,31 +146,31 @@ var validExecutorTypes = map[string]struct{}{
 //     contract.
 func validateRule(r *remediation.Rule) error {
 	if _, ok := validTriggerEventTypes[r.TriggerEventType]; !ok {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"triggerEventType must be one of: metric, log, status_change")
 	}
 	if _, ok := validExecutorTypes[r.ExecutorType]; !ok {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"executorType must be one of: local, webhook, http")
 	}
 	if r.Cooldown < 0 {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"cooldown must be non-negative")
 	}
 	if r.CircuitBreakerThreshold < 0 {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"circuitBreakerThreshold must be non-negative")
 	}
 	if r.Expression != "" {
 		if err := remediation.ValidateExpression(r.Expression); err != nil {
-			return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
-				"invalid expression: "+innermostMessage(err))
+			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid expression: "+errdefs.InnermostMessage(err))
 		}
 	}
 	if exprStr := executor.ConfigExpression(r.ExecutorConfig); exprStr != "" {
 		if err := executor.ValidateExpression(exprStr); err != nil {
-			return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
-				"invalid executor judgment expression: "+innermostMessage(err))
+			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"invalid executor judgment expression: "+errdefs.InnermostMessage(err))
 		}
 	}
 	return nil
@@ -176,10 +182,10 @@ func (s *RemediationService) CreateRule(
 	req *remediation.Rule,
 ) (*remediation.Rule, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if req.Name == "" || req.TriggerEventType == "" || req.ExecutorType == "" {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if err := validateRule(req); err != nil {
 		return nil, err
@@ -191,7 +197,7 @@ func (s *RemediationService) CreateRule(
 			return nil, mapRemediationStoreError(err)
 		}
 		if total >= int64(ceiling) {
-			return nil, handler.NewServiceError(
+			return nil, errdefs.NewServiceError(
 				http.StatusConflict, errdefs.CodeConflict,
 				fmt.Sprintf("remediation rule quota exceeded: maximum %d rules", ceiling),
 			)
@@ -216,10 +222,10 @@ func mapRemediationStoreError(err error) error {
 		return nil
 	}
 	if errors.Is(err, remediation.ErrRuleNotFound) {
-		return handler.ErrRemediationRuleNotFound
+		return errdefs.ErrRemediationRuleNotFound
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
-		return handler.ErrRemediationRuleNotFound
+		return errdefs.ErrRemediationRuleNotFound
 	}
-	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
+	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
 }

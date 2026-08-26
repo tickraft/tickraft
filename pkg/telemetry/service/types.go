@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package telemetry
+package service
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
@@ -78,3 +80,10 @@ type Service interface {
 	// so the counts do not depend on the current page.
 	Summary(ctx context.Context) (telemetry.PointSummary, error)
 }
+
+// Sentinel service errors returned by the Service implementation. They wrap
+// the errdefs sentinels so errors.Is keeps working across layers.
+var (
+	ErrTelemetryTaskNotFound = fmt.Errorf("telemetry task not found: %w", errdefs.ErrNotFound)
+	ErrInvalidRequest        = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
+)

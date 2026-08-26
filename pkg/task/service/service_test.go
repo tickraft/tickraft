@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package scheduler
+package service
 
 import (
 	"context"
@@ -14,8 +14,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
-	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
@@ -209,7 +207,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("Create nil request returns ErrInvalidRequest", func(t *testing.T) {
 		_, err := svc.CreateTask(ctx, nil)
-		assertErrorCoder(t, err, handler.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
+		assertErrorCoder(t, err, errdefs.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
 	t.Run("Create with empty executor returns 400", func(t *testing.T) {
@@ -249,12 +247,12 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("Get non-existent returns ErrTaskNotFound", func(t *testing.T) {
 		_, err := svc.GetTask(ctx, 999999)
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("List with pagination", func(t *testing.T) {
 		// At this point we have 3 tasks: task-1, cron-task, interval-task.
-		items, total, err := svc.ListTasks(ctx, 1, 2, task.Filter{})
+		items, total, err := svc.ListTasks(ctx, 1, 2, Filter{})
 		if err != nil {
 			t.Fatalf("ListTasks failed: %v", err)
 		}
@@ -270,7 +268,7 @@ func TestSchedulerTaskService(t *testing.T) {
 		}
 
 		// Page beyond the last full page returns the trailing slice.
-		items, _, err = svc.ListTasks(ctx, 100, 2, task.Filter{})
+		items, _, err = svc.ListTasks(ctx, 100, 2, Filter{})
 		if err != nil {
 			t.Fatalf("ListTasks page 100 failed: %v", err)
 		}
@@ -281,7 +279,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("List clamps paging params", func(t *testing.T) {
 		// page=0 and size=0 should not panic and should default sanely.
-		items, total, err := svc.ListTasks(ctx, 0, 0, task.Filter{})
+		items, total, err := svc.ListTasks(ctx, 0, 0, Filter{})
 		if err != nil {
 			t.Fatalf("ListTasks(0,0) failed: %v", err)
 		}
@@ -292,7 +290,7 @@ func TestSchedulerTaskService(t *testing.T) {
 			t.Errorf("len(items) = %d, want <= 20 (default size)", len(items))
 		}
 		// size>100 capped to 100.
-		items, _, err = svc.ListTasks(ctx, 1, 500, task.Filter{})
+		items, _, err = svc.ListTasks(ctx, 1, 500, Filter{})
 		if err != nil {
 			t.Fatalf("ListTasks(1,500) failed: %v", err)
 		}
@@ -336,12 +334,12 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("Update non-existent returns ErrTaskNotFound", func(t *testing.T) {
 		_, err := svc.UpdateTask(ctx, 999999, &schedtask.Task{Name: "x", ExecutorType: "http"})
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Update nil request returns ErrInvalidRequest", func(t *testing.T) {
 		_, err := svc.UpdateTask(ctx, taskID, nil)
-		assertErrorCoder(t, err, handler.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
+		assertErrorCoder(t, err, errdefs.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
 	t.Run("Update with empty executor returns 400", func(t *testing.T) {
@@ -357,7 +355,7 @@ func TestSchedulerTaskService(t *testing.T) {
 		// completion (with trigger_type="manual"); the service must not
 		// insert a running-state placeholder row that would never be
 		// updated.
-		_, total, err := svc.ListExecutions(ctx, taskID, 1, 20, task.ExecutionFilter{})
+		_, total, err := svc.ListExecutions(ctx, taskID, 1, 20, ExecutionFilter{})
 		if err != nil {
 			t.Fatalf("ListExecutions failed: %v", err)
 		}
@@ -368,12 +366,12 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("TriggerTask non-existent returns ErrTaskNotFound", func(t *testing.T) {
 		err := svc.TriggerTask(ctx, 999999)
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("ListExecutions returns empty for task without triggers", func(t *testing.T) {
 		// The cron-task and interval-task have never been triggered.
-		items, total, err := svc.ListExecutions(ctx, taskID+1, 1, 20, task.ExecutionFilter{})
+		items, total, err := svc.ListExecutions(ctx, taskID+1, 1, 20, ExecutionFilter{})
 		if err != nil {
 			t.Fatalf("ListExecutions failed: %v", err)
 		}
@@ -384,7 +382,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("GetExecution returns ErrExecutionNotFound", func(t *testing.T) {
 		_, err := svc.GetExecution(ctx, 0, 999999)
-		assertErrorCoder(t, err, handler.ErrExecutionNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrExecutionNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Delete removes entity", func(t *testing.T) {
@@ -392,7 +390,7 @@ func TestSchedulerTaskService(t *testing.T) {
 			t.Fatalf("DeleteTask failed: %v", err)
 		}
 		_, err := svc.GetTask(ctx, taskID)
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Delete non-existent is idempotent", func(t *testing.T) {
@@ -532,10 +530,10 @@ func TestSchedulerTaskService_NilLogger(t *testing.T) {
 }
 
 // TestNewSchedulerTaskService_Interface verifies the concrete type satisfies
-// the task.Service interface (guards against accidental signature drift).
+// the Service interface (guards against accidental signature drift).
 func TestNewSchedulerTaskService_Interface(t *testing.T) {
-	var _ task.Service = (*TaskService)(nil)
-	var _ task.Service = NewTaskService(nil, nil, nil, nil, nil)
+	var _ Service = (*TaskService)(nil)
+	var _ Service = NewTaskService(nil, nil, nil, nil, nil)
 }
 
 // TestSchedulerTaskService_MapError verifies error mapping from
@@ -549,12 +547,12 @@ func TestSchedulerTaskService_MapError(t *testing.T) {
 
 	t.Run("errdefs.ErrNotFound maps to ErrTaskNotFound", func(t *testing.T) {
 		err := mapError(errdefs.ErrNotFound)
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("task.ErrTaskNotFound maps to ErrTaskNotFound", func(t *testing.T) {
 		err := mapError(schedtask.ErrTaskNotFound)
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("scheduler.ErrSchedulerStopped maps to 503", func(t *testing.T) {
@@ -633,7 +631,7 @@ func TestSchedulerTaskService_CopyTask(t *testing.T) {
 
 	t.Run("copy non-existent returns ErrTaskNotFound", func(t *testing.T) {
 		_, err := svc.CopyTask(ctx, 999999, "whatever")
-		assertErrorCoder(t, err, handler.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("source task is not modified after copy", func(t *testing.T) {
@@ -840,7 +838,7 @@ func TestSchedulerTaskService_ExecutorCapabilityGate(t *testing.T) {
 	if err == nil {
 		t.Fatal("CreateTask with probe-only executor: expected error, got nil")
 	}
-	var se *handler.ServiceError
+	var se *errdefs.ServiceError
 	if !errors.As(err, &se) || se.HTTPStatus() != http.StatusBadRequest {
 		t.Errorf("CreateTask probe-only error: got %v, want 400 ServiceError", err)
 	}

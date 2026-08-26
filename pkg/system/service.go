@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package system provides a database-backed implementation of the
-// system.Service interface. It persists system configuration in a
+// Package system provides the system configuration, runtime info, and
+// global stats contract (Service) plus its database-backed implementation. It persists system configuration in a
 // dedicated DB table and derives runtime info and global statistics
 // from build-time variables and the runtime's task / asset stores.
 package system
@@ -18,7 +18,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -28,11 +27,11 @@ import (
 // a single row (id=1) holding the global system configuration. The table
 // is created by Migrate and seeded with default values on first access.
 // The configuration fields themselves are defined once by the embedded
-// system.Config, whose gorm tags supply the column names and types.
+// Config, whose gorm tags supply the column names and types.
 type systemConfig struct {
-	ID            int64 `gorm:"primaryKey;autoIncrement:false"`
-	system.Config `gorm:"embedded"`
-	UpdatedAt     time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	ID        int64 `gorm:"primaryKey;autoIncrement:false"`
+	Config    `gorm:"embedded"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 // TableName overrides the default GORM table name.
@@ -41,10 +40,14 @@ func (systemConfig) TableName() string { return "sys_config" }
 const configRowID = int64(1)
 
 // Compile-time interface compliance check.
-var _ system.Service = (*Service)(nil)
+var _ Service = (*SystemService)(nil)
 
-// Service is a database-backed implementation of system.Service.
-type Service struct {
+// SystemService is a database-backed implementation of the Service
+// contract. The name mirrors the <Domain>Service convention of the other
+// domain service packages.
+//
+//nolint:revive // system.SystemService stutter is accepted for cross-domain naming consistency.
+type SystemService struct {
 	dbc        *gorm.DB
 	logger     *zap.Logger
 	taskStore  task.Store
@@ -53,18 +56,18 @@ type Service struct {
 	startAt    time.Time
 }
 
-// New creates a new database-backed system Service. The db must be a
+// NewSystemService creates a new database-backed system Service. The db must be a
 // connected GORM instance; taskStore, execStore, and assetStore may be
 // nil when the corresponding engines were not started (stats return 0
 // for those data sources).
-func New(
+func NewSystemService(
 	dbc *gorm.DB,
 	logger *zap.Logger,
 	taskStore task.Store,
 	execStore task.ExecutionStore,
 	assetStore asset.Store,
-) *Service {
-	return &Service{
+) *SystemService {
+	return &SystemService{
 		dbc:        dbc,
 		logger:     logger,
 		taskStore:  taskStore,
@@ -76,7 +79,7 @@ func New(
 
 // Migrate creates the sys_config table if it does not exist and seeds
 // the singleton configuration row with default values.
-func (s *Service) Migrate(ctx context.Context) error {
+func (s *SystemService) Migrate(ctx context.Context) error {
 	if err := s.dbc.WithContext(ctx).AutoMigrate(&systemConfig{}); err != nil {
 		return fmt.Errorf("migrate sys_config: %w", err)
 	}
@@ -89,7 +92,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if count == 0 {
 		seed := systemConfig{
 			ID: configRowID,
-			Config: system.Config{
+			Config: Config{
 				LogLevel:      string(types.LogLevelInfo),
 				DefaultLang:   "zh-Hans",
 				RetentionDays: 30,
@@ -103,7 +106,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 }
 
 // GetConfig returns the current system configuration from the database.
-func (s *Service) GetConfig(ctx context.Context) (*system.Config, error) {
+func (s *SystemService) GetConfig(ctx context.Context) (*Config, error) {
 	var row systemConfig
 	if err := s.dbc.WithContext(ctx).First(&row, configRowID).Error; err != nil {
 		return nil, fmt.Errorf("get system config: %w", err)
@@ -113,7 +116,7 @@ func (s *Service) GetConfig(ctx context.Context) (*system.Config, error) {
 
 // UpdateConfig updates the system configuration in the database and
 // returns the persisted result.
-func (s *Service) UpdateConfig(ctx context.Context, req *system.Config) (*system.Config, error) {
+func (s *SystemService) UpdateConfig(ctx context.Context, req *Config) (*Config, error) {
 	if req == nil {
 		return nil, fmt.Errorf("config request is nil")
 	}
@@ -129,7 +132,7 @@ func (s *Service) UpdateConfig(ctx context.Context, req *system.Config) (*system
 }
 
 // GetInfo returns runtime system information derived from build metadata.
-func (s *Service) GetInfo(_ context.Context) (*system.Info, error) {
+func (s *SystemService) GetInfo(_ context.Context) (*Info, error) {
 	version := "dev"
 	buildTags := ""
 
@@ -149,7 +152,7 @@ func (s *Service) GetInfo(_ context.Context) (*system.Info, error) {
 		}
 	}
 
-	return &system.Info{
+	return &Info{
 		Version:   version,
 		BuildTags: buildTags,
 		StartTime: s.startAt,
@@ -160,8 +163,8 @@ func (s *Service) GetInfo(_ context.Context) (*system.Info, error) {
 // GetGlobalStats returns system-wide aggregate statistics from the
 // runtime's task, asset, and execution stores. Data sources that are
 // not available (nil stores) contribute 0 to their respective fields.
-func (s *Service) GetGlobalStats(ctx context.Context) (*system.GlobalStats, error) {
-	stats := &system.GlobalStats{}
+func (s *SystemService) GetGlobalStats(ctx context.Context) (*GlobalStats, error) {
+	stats := &GlobalStats{}
 
 	// Total tasks from the scheduler task store.
 	if s.taskStore != nil {

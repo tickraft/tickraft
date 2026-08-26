@@ -7,20 +7,21 @@ package handler
 import (
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/api/handler/certificates"
-	"github.com/tickraft/tickraft/pkg/api/handler/channel"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
-	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
-	"github.com/tickraft/tickraft/pkg/api/handler/system"
-	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/api/handler/ws"
 	executorpkg "github.com/tickraft/tickraft/pkg/executor"
+	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
+	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/system"
+	taskservice "github.com/tickraft/tickraft/pkg/task/service"
+	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
 
 // RouteOption configures route registration with middleware and services.
@@ -32,21 +33,21 @@ type RouteOption interface {
 
 // routeConfig holds the middleware and services injected via options.
 // Service interface types are defined in their respective sub-packages
-// (e.g. auth.Service, task.Service) so each domain is self-contained.
+// (e.g. auth.Service, taskservice.Service) so each domain is self-contained.
 type routeConfig struct {
 	jwtMiddleware          app.HandlerFunc
 	assetKeyMiddleware     app.HandlerFunc
 	authService            auth.Service
-	taskSvc                task.Service
-	alertSvc               alert.Service
-	channelSvc             channel.Service
-	remediationRuleSvc     remediation.Service
+	taskSvc                taskservice.Service
+	alertSvc               alertservice.Service
+	channelSvc             channelservice.Service
+	remediationRuleSvc     remediationservice.Service
 	systemSvc              system.Service
-	telemetrySvc           telemetry.Service
+	telemetrySvc           telemetryservice.Service
 	telemetryReportHandler app.HandlerFunc
-	telemetryMetricStore   telemetry.MetricStore
-	telemetryLogStore      telemetry.LogStore
-	telemetryProbeRecords  telemetry.ProbeRecordStore
+	telemetryMetricStore   telemetryservice.MetricStore
+	telemetryLogStore      telemetryservice.LogStore
+	telemetryProbeRecords  telemetryservice.ProbeRecordStore
 	assetHandler           *asset.Handler
 	healthzHandler         *healthz.Handler
 	readyzHandler          *readyz.Handler
@@ -92,28 +93,28 @@ func WithAuthService(svc auth.Service) RouteOption { return authServiceOption{sv
 
 // taskServiceOption provides the Service implementation for scheduler handlers.
 type taskServiceOption struct {
-	svc task.Service
+	svc taskservice.Service
 }
 
 func (o taskServiceOption) apply(c *routeConfig) { c.taskSvc = o.svc }
 
 // WithTaskService provides the Service implementation for scheduler handlers.
-func WithTaskService(svc task.Service) RouteOption { return taskServiceOption{svc: svc} }
+func WithTaskService(svc taskservice.Service) RouteOption { return taskServiceOption{svc: svc} }
 
 // alertServiceOption provides the Service implementation for alert handlers.
 type alertServiceOption struct {
-	svc alert.Service
+	svc alertservice.Service
 }
 
 func (o alertServiceOption) apply(c *routeConfig) { c.alertSvc = o.svc }
 
 // WithAlertService provides the Service implementation for alert handlers.
-func WithAlertService(svc alert.Service) RouteOption { return alertServiceOption{svc: svc} }
+func WithAlertService(svc alertservice.Service) RouteOption { return alertServiceOption{svc: svc} }
 
 // channelServiceOption provides the Service implementation for
 // notification channel handlers.
 type channelServiceOption struct {
-	svc channel.Service
+	svc channelservice.Service
 }
 
 func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
@@ -121,14 +122,14 @@ func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
 // WithChannelService provides the Service implementation for
 // notification channel handlers. When omitted, the handler package falls
 // back to an in-memory implementation.
-func WithChannelService(svc channel.Service) RouteOption {
+func WithChannelService(svc channelservice.Service) RouteOption {
 	return channelServiceOption{svc: svc}
 }
 
 // remediationRuleServiceOption provides the Service implementation for
 // self-healing rule handlers.
 type remediationRuleServiceOption struct {
-	svc remediation.Service
+	svc remediationservice.Service
 }
 
 func (o remediationRuleServiceOption) apply(c *routeConfig) { c.remediationRuleSvc = o.svc }
@@ -136,7 +137,7 @@ func (o remediationRuleServiceOption) apply(c *routeConfig) { c.remediationRuleS
 // WithRemediationRuleService provides the Service
 // implementation for self-healing rule handlers. When omitted, the handler
 // package falls back to an in-memory implementation.
-func WithRemediationRuleService(svc remediation.Service) RouteOption {
+func WithRemediationRuleService(svc remediationservice.Service) RouteOption {
 	return remediationRuleServiceOption{svc: svc}
 }
 
@@ -165,7 +166,7 @@ func WithAssetHandler(h *asset.Handler) RouteOption { return assetHandlerOption{
 // telemetryServiceOption provides the Service implementation for the
 // telemetry collection task CRUD API.
 type telemetryServiceOption struct {
-	svc telemetry.Service
+	svc telemetryservice.Service
 }
 
 func (o telemetryServiceOption) apply(c *routeConfig) { c.telemetrySvc = o.svc }
@@ -173,7 +174,7 @@ func (o telemetryServiceOption) apply(c *routeConfig) { c.telemetrySvc = o.svc }
 // WithTelemetryService provides the Service implementation for the
 // telemetry collection task CRUD API at /api/v1/telemetry. When omitted, the
 // telemetry CRUD route group is not registered.
-func WithTelemetryService(svc telemetry.Service) RouteOption {
+func WithTelemetryService(svc telemetryservice.Service) RouteOption {
 	return telemetryServiceOption{svc: svc}
 }
 
@@ -195,8 +196,8 @@ func WithTelemetryReportHandler(h app.HandlerFunc) RouteOption {
 // telemetryDataStoresOption provides the MetricStore and LogStore used by
 // the telemetry handler's history/logs endpoints.
 type telemetryDataStoresOption struct {
-	metricStore telemetry.MetricStore
-	logStore    telemetry.LogStore
+	metricStore telemetryservice.MetricStore
+	logStore    telemetryservice.LogStore
 }
 
 func (o telemetryDataStoresOption) apply(c *routeConfig) {
@@ -208,8 +209,8 @@ func (o telemetryDataStoresOption) apply(c *routeConfig) {
 // telemetry handler's history/logs endpoints. Both stores may be nil to
 // disable the corresponding query path.
 func WithTelemetryDataStores(
-	metricStore telemetry.MetricStore,
-	logStore telemetry.LogStore,
+	metricStore telemetryservice.MetricStore,
+	logStore telemetryservice.LogStore,
 ) RouteOption {
 	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
 }
@@ -217,7 +218,7 @@ func WithTelemetryDataStores(
 // telemetryProbeRecordsOption provides the ProbeRecordStore used by the
 // telemetry handler's status/history/logs endpoints for active points.
 type telemetryProbeRecordsOption struct {
-	store telemetry.ProbeRecordStore
+	store telemetryservice.ProbeRecordStore
 }
 
 func (o telemetryProbeRecordsOption) apply(c *routeConfig) {
@@ -227,7 +228,7 @@ func (o telemetryProbeRecordsOption) apply(c *routeConfig) {
 // WithTelemetryProbeRecords provides the probe record store used by the
 // telemetry handler's status/history/logs endpoints for active monitor
 // points. A nil store disables the probe-backed query paths.
-func WithTelemetryProbeRecords(store telemetry.ProbeRecordStore) RouteOption {
+func WithTelemetryProbeRecords(store telemetryservice.ProbeRecordStore) RouteOption {
 	return telemetryProbeRecordsOption{store: store}
 }
 

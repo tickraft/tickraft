@@ -16,17 +16,18 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
 )
 
 // Handler exposes remediation rule CRUD endpoints.
 // It is injected via the WithRemediationRuleService RouteOption and
 // registered on the /api/v1/prism/remediation/rules route group.
 type Handler struct {
-	svc Service
+	svc remediationservice.Service
 }
 
 // NewHandler creates a new remediation Handler backed by the given service.
-func NewHandler(svc Service) *Handler {
+func NewHandler(svc remediationservice.Service) *Handler {
 	return &Handler{svc: svc}
 }
 

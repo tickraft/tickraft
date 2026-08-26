@@ -11,19 +11,19 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
 
-	alerthandler "github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
-	channelhandler "github.com/tickraft/tickraft/pkg/api/handler/channel"
-	remediationhandler "github.com/tickraft/tickraft/pkg/api/handler/remediation"
-	"github.com/tickraft/tickraft/pkg/api/handler/task"
-	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
+	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
 	prismchannel "github.com/tickraft/tickraft/pkg/prism/channel"
+	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
 	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
+	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	telemetrymodel "github.com/tickraft/tickraft/pkg/telemetry"
+	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -33,10 +33,10 @@ import (
 // so that router tests can exercise RegisterRoutes in standalone mode
 // without a real database or engine.
 
-// stubTaskService implements task.Service.
+// stubTaskService implements taskservice.Service.
 type stubTaskService struct{}
 
-func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ task.Filter) ([]*schedtask.Task, int64, error) {
+func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ taskservice.Filter) ([]*schedtask.Task, int64, error) {
 	return nil, 0, nil
 }
 func (stubTaskService) GetTask(_ context.Context, _ int64) (*schedtask.Task, error) {
@@ -53,7 +53,7 @@ func (stubTaskService) TriggerTask(_ context.Context, _ int64) error { return ni
 func (stubTaskService) PauseTask(_ context.Context, _ int64) error   { return nil }
 func (stubTaskService) ResumeTask(_ context.Context, _ int64) error  { return nil }
 func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int,
-	_ task.ExecutionFilter) ([]*schedtask.Execution, int64, error) {
+	_ taskservice.ExecutionFilter) ([]*schedtask.Execution, int64, error) {
 	return nil, 0, nil
 }
 func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*schedtask.Execution, error) {
@@ -64,11 +64,11 @@ func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*schedtas
 }
 func (stubTaskService) GetExecutionStats(
 	_ context.Context, _, _ time.Time, _ int64, _ int,
-) (task.ExecutionStats, error) {
-	return task.ExecutionStats{}, nil
+) (taskservice.ExecutionStats, error) {
+	return taskservice.ExecutionStats{}, nil
 }
 
-var _ task.Service = (*stubTaskService)(nil)
+var _ taskservice.Service = (*stubTaskService)(nil)
 
 // stubAlertService implements alert.Service (model: prismalert).
 type stubAlertService struct{}
@@ -100,7 +100,7 @@ func (stubAlertService) ResolveRecord(_ context.Context, _ int64) (*prismalert.R
 	return nil, nil
 }
 
-var _ alerthandler.Service = (*stubAlertService)(nil)
+var _ alertservice.Service = (*stubAlertService)(nil)
 
 // stubChannelService implements channel.Service (model: prismchannel.Channel).
 type stubChannelService struct{}
@@ -121,7 +121,7 @@ func (stubChannelService) UpdateChannel(_ context.Context, _ int64,
 func (stubChannelService) DeleteChannel(_ context.Context, _ int64) error { return nil }
 func (stubChannelService) TestChannel(_ context.Context, _ int64) error   { return nil }
 
-var _ channelhandler.Service = (*stubChannelService)(nil)
+var _ channelservice.Service = (*stubChannelService)(nil)
 
 // stubRemediationService implements remediation.Service (model: prismremediation).
 type stubRemediationService struct{}
@@ -145,13 +145,13 @@ func (stubRemediationService) ListRecords(_ context.Context, _, _ int,
 	return nil, 0, nil
 }
 
-var _ remediationhandler.Service = (*stubRemediationService)(nil)
+var _ remediationservice.Service = (*stubRemediationService)(nil)
 
-// stubTelemetryService implements telemetry.Service.
+// stubTelemetryService implements telemetryservice.Service.
 type stubTelemetryService struct{}
 
 func (stubTelemetryService) ListTasks(_ context.Context, _, _ int,
-	_ telemetry.Filter) ([]telemetrymodel.MonitorPoint, int64, error) {
+	_ telemetryservice.Filter) ([]telemetrymodel.MonitorPoint, int64, error) {
 	return nil, 0, nil
 }
 func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetrymodel.MonitorPoint, error) {
@@ -173,7 +173,7 @@ func (stubTelemetryService) Summary(_ context.Context) (telemetrymodel.PointSumm
 	return telemetrymodel.PointSummary{}, nil
 }
 
-var _ telemetry.Service = (*stubTelemetryService)(nil)
+var _ telemetryservice.Service = (*stubTelemetryService)(nil)
 
 // stubAssetStore implements assetstore.Store for route-registration tests.
 type stubAssetStore struct{}

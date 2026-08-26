@@ -15,19 +15,20 @@ import (
 	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	systemsvc "github.com/tickraft/tickraft/pkg/system"
 )
 
 // Handler exposes system configuration, info, and user-profile endpoints.
 // Profile endpoints (GetProfile/UpdateProfile) delegate to the injected
 // auth.Service, making system a thin orchestration layer over auth.
 type Handler struct {
-	svc  Service
+	svc  systemsvc.Service
 	auth auth.Service
 }
 
 // NewHandler creates a new system Handler backed by the given services.
 // authSvc is required for the profile endpoints (GetProfile/UpdateProfile).
-func NewHandler(svc Service, authSvc auth.Service) *Handler {
+func NewHandler(svc systemsvc.Service, authSvc auth.Service) *Handler {
 	return &Handler{svc: svc, auth: authSvc}
 }
 
@@ -43,7 +44,7 @@ func (h *Handler) GetSystemConfig(ctx context.Context, arc *app.RequestContext) 
 
 // UpdateSystemConfig handles PUT /api/v1/system/config.
 func (h *Handler) UpdateSystemConfig(ctx context.Context, arc *app.RequestContext) {
-	var req Config
+	var req systemsvc.Config
 	if !api.BindAndValidate(arc, &req) {
 		return
 	}

@@ -17,7 +17,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
-	"github.com/tickraft/tickraft/pkg/api/handler/system"
+	systemhandler "github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
@@ -55,7 +55,7 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	alertH := alert.NewHandler(cfg.alertSvc)
 	channelH := channel.NewHandler(cfg.channelSvc)
 	remediationH := remediation.NewHandler(cfg.remediationRuleSvc)
-	systemH := system.NewHandler(cfg.systemSvc, cfg.authService)
+	systemH := systemhandler.NewHandler(cfg.systemSvc, cfg.authService)
 	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
 	telemetryH.SetDataStores(cfg.telemetryMetricStore, cfg.telemetryLogStore)
 	telemetryH.SetProbeRecordStore(cfg.telemetryProbeRecords)
@@ -280,7 +280,7 @@ func registerExprRoutes(server *api.Server, cfg *routeConfig) {
 
 // registerSystemRoutes registers the system module routes (JWT required) and
 // the certificate reload endpoint when a certificate handler is injected.
-func registerSystemRoutes(server *api.Server, cfg *routeConfig, systemH *system.Handler) {
+func registerSystemRoutes(server *api.Server, cfg *routeConfig, systemH *systemhandler.Handler) {
 	// --- System module (JWT required) ---
 	systemGroup := server.Group("/api/v1/system")
 	systemGroup.Use(cfg.jwtMiddleware)

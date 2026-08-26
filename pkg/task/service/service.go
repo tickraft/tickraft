@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package scheduler provides the scheduler-backed TaskService implementation
-// that bridges the handler layer with the scheduler engine and persistent
-// stores. It implements the task.Service interface defined in
-// pkg/api/handler/task.
-package scheduler
+// Package service provides the scheduled-task management contract (Service)
+// plus the TaskService implementation that persists tasks and delegates
+// lifecycle operations to the scheduler engine.
+package service
 
 import (
 	"context"
@@ -21,8 +20,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
-	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -31,15 +28,15 @@ import (
 	schedtask "github.com/tickraft/tickraft/pkg/task"
 )
 
-// Compile-time assertion that TaskService implements task.Service.
-var _ task.Service = (*TaskService)(nil)
+// Compile-time assertion that TaskService implements Service.
+var _ Service = (*TaskService)(nil)
 
 // defaultTaskTimeoutSeconds is applied on create when the request does not
 // specify a timeout. The column default cannot cover this case because the
 // service always inserts an explicit value.
 const defaultTaskTimeoutSeconds = 30
 
-// TaskService implements task.Service by delegating task lifecycle
+// TaskService implements Service by delegating task lifecycle
 // operations to the scheduler engine (schedtask.Manager) and reading
 // persisted state from the task and execution stores.
 //
@@ -91,7 +88,7 @@ func (s *TaskService) validateExecutorType(executorType string) error {
 		return nil
 	}
 	if _, err := s.registry.LookupWithOp(executorType, executor.OpExecute); err != nil {
-		return handler.NewServiceError(
+		return errdefs.NewServiceError(
 			http.StatusBadRequest, errdefs.CodeBadRequest,
 			fmt.Sprintf("executor_type %q cannot run as a task: %v", executorType, err),
 		)
@@ -102,7 +99,7 @@ func (s *TaskService) validateExecutorType(executorType string) error {
 // ListTasks returns a page of tasks matching the given filter and the total
 // count. A zero-value Filter returns all tasks.
 func (s *TaskService) ListTasks(ctx context.Context, page, size int,
-	filter task.Filter) ([]*schedtask.Task, int64, error) {
+	filter Filter) ([]*schedtask.Task, int64, error) {
 	opts := schedtask.ListOptions{Group: filter.Group, Tags: filter.Tags}
 	all, err := s.tasks.List(ctx, opts)
 	if err != nil {
@@ -132,10 +129,10 @@ func (s *TaskService) GetTask(ctx context.Context, id int64) (*schedtask.Task, e
 // CreateTask creates a new task from the given request.
 func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*schedtask.Task, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if req.ExecutorType == "" {
-		return nil, handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
+		return nil, errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
 	}
 	if err := s.validateExecutorType(req.ExecutorType); err != nil {
 		return nil, err
@@ -152,7 +149,7 @@ func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*sch
 			return nil, mapError(err)
 		}
 		if len(existing) >= maxTasks {
-			return nil, handler.NewServiceError(
+			return nil, errdefs.NewServiceError(
 				http.StatusConflict, errdefs.CodeConflict,
 				fmt.Sprintf("scheduled task quota exceeded: maximum %d tasks", maxTasks),
 			)
@@ -187,10 +184,10 @@ func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*sch
 // the PUT.
 func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *schedtask.Task) (*schedtask.Task, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if req.ExecutorType == "" {
-		return nil, handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
+		return nil, errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
 	}
 	if err := s.validateExecutorType(req.ExecutorType); err != nil {
 		return nil, err
@@ -279,7 +276,7 @@ func (s *TaskService) ListExecutions(
 	ctx context.Context,
 	taskID int64,
 	page, size int,
-	filter task.ExecutionFilter,
+	filter ExecutionFilter,
 ) ([]*schedtask.Execution, int64, error) {
 	var taskIDs []int64
 	nameOf := func(id int64) string { return "" }
@@ -328,12 +325,12 @@ func (s *TaskService) GetExecution(ctx context.Context, taskID, id int64) (*sche
 	e, err := s.execs.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, schedtask.ErrExecutionNotFound) {
-			return nil, handler.ErrExecutionNotFound
+			return nil, errdefs.ErrExecutionNotFound
 		}
 		return nil, mapError(err)
 	}
 	if taskID > 0 && e.TaskID != taskID {
-		return nil, handler.ErrExecutionNotFound
+		return nil, errdefs.ErrExecutionNotFound
 	}
 	if t, err := s.tasks.Get(ctx, e.TaskID); err == nil {
 		e.TaskName = t.Name
@@ -393,7 +390,7 @@ func (s *TaskService) CopyTask(ctx context.Context, id int64, newName string) (*
 // zero-filled per-day series so trend charts render contiguous dates.
 func (s *TaskService) GetExecutionStats(
 	ctx context.Context, from, to time.Time, taskID int64, days int,
-) (task.ExecutionStats, error) {
+) (ExecutionStats, error) {
 	if days > 0 {
 		now := time.Now()
 		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).
@@ -402,9 +399,9 @@ func (s *TaskService) GetExecutionStats(
 	}
 	raw, err := s.execs.Stats(ctx, from, to, taskID)
 	if err != nil {
-		return task.ExecutionStats{}, mapError(err)
+		return ExecutionStats{}, mapError(err)
 	}
-	stats := task.ExecutionStats{
+	stats := ExecutionStats{
 		TotalExecutions:   raw.TotalExecutions,
 		SuccessCount:      raw.SuccessCount,
 		FailureCount:      raw.FailureCount,
@@ -414,7 +411,7 @@ func (s *TaskService) GetExecutionStats(
 	if days > 0 {
 		sparse, err := s.execs.StatsByDay(ctx, from, to, taskID)
 		if err != nil {
-			return task.ExecutionStats{}, mapError(err)
+			return ExecutionStats{}, mapError(err)
 		}
 		stats.Daily = fillDailySeries(sparse, from, to)
 	}
@@ -474,7 +471,7 @@ func (s *TaskService) assignID(ctx context.Context) (int64, error) {
 func validateSchedule(schedule string) error {
 	scheduleType, interval, err := schedtask.ClassifySchedule(schedule)
 	if err != nil {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 	}
 	if scheduleType != schedtask.ScheduleTypeInterval {
 		return nil
@@ -485,7 +482,7 @@ func validateSchedule(schedule string) error {
 	}
 	minInterval := time.Duration(minSecs) * time.Second
 	if interval < minInterval {
-		return handler.NewServiceError(
+		return errdefs.NewServiceError(
 			http.StatusBadRequest,
 			errdefs.CodeBadRequest,
 			fmt.Sprintf("schedule interval %s is smaller than the minimum allowed %s", interval, minInterval),
@@ -501,16 +498,16 @@ func mapError(err error) error {
 		return nil
 	}
 	if errors.Is(err, errdefs.ErrNotFound) || errors.Is(err, schedtask.ErrTaskNotFound) {
-		return handler.ErrTaskNotFound
+		return errdefs.ErrTaskNotFound
 	}
 	if errors.Is(err, schedtask.ErrIntervalTooSmall) {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 	}
 	if errors.Is(err, scheduler.ErrSchedulerStopped) {
-		return handler.NewServiceError(http.StatusServiceUnavailable, errdefs.CodeInternal, "scheduler unavailable")
+		return errdefs.NewServiceError(http.StatusServiceUnavailable, errdefs.CodeInternal, "scheduler unavailable")
 	}
 	if errors.Is(err, schedtask.ErrTaskAlreadyPaused) || errors.Is(err, schedtask.ErrTaskNotPaused) {
-		return handler.NewServiceError(http.StatusConflict, errdefs.CodeConflict, err.Error())
+		return errdefs.NewServiceError(http.StatusConflict, errdefs.CodeConflict, err.Error())
 	}
-	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
+	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package prism
+package service
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -327,7 +326,7 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 
 	t.Run("Create nil request returns ErrInvalidRequest", func(t *testing.T) {
 		_, err := svc.CreateRule(ctx, nil)
-		assertErrorCoder(t, err, handler.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
+		assertErrorCoder(t, err, errdefs.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
 	t.Run("Create with empty name returns 400", func(t *testing.T) {
@@ -408,7 +407,7 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 
 	t.Run("Get non-existent returns ErrRuleNotFound", func(t *testing.T) {
 		_, err := svc.GetRule(ctx, 99999)
-		assertErrorCoder(t, err, handler.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("List returns at least one rule", func(t *testing.T) {
@@ -426,12 +425,12 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 
 	t.Run("Update nil request returns ErrInvalidRequest", func(t *testing.T) {
 		_, err := svc.UpdateRule(ctx, ruleID, nil)
-		assertErrorCoder(t, err, handler.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
+		assertErrorCoder(t, err, errdefs.ErrInvalidRequest, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
 	t.Run("Update non-existent returns ErrRuleNotFound", func(t *testing.T) {
 		_, err := svc.UpdateRule(ctx, 99999, &alert.Rule{Name: "x", Expression: "true"})
-		assertErrorCoder(t, err, handler.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Update with invalid expression returns 400", func(t *testing.T) {
@@ -476,11 +475,11 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 			t.Fatalf("DeleteRule: %v", err)
 		}
 		_, err := svc.GetRule(ctx, ruleID)
-		assertErrorCoder(t, err, handler.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Delete non-existent returns ErrRuleNotFound", func(t *testing.T) {
 		err := svc.DeleteRule(ctx, 99999)
-		assertErrorCoder(t, err, handler.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
+		assertErrorCoder(t, err, errdefs.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 }

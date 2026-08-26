@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package telemetry
+package service
 
 import (
 	"context"
@@ -10,15 +10,14 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
-	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/db"
+	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
 // newProbeTestService opens an in-memory store seeded with one active
 // enabled point, one passive enabled point, and one disabled active point.
-func newProbeTestService(t *testing.T) (svc *Service, probed *[]int64) {
+func newProbeTestService(t *testing.T) (svc *TelemetryService, probed *[]int64) {
 	t.Helper()
 	dbc, err := db.Open(context.Background(), db.Config{Driver: "sqlite3", Addr: ":memory:"})
 	if err != nil {
@@ -44,7 +43,7 @@ func newProbeTestService(t *testing.T) (svc *Service, probed *[]int64) {
 		}
 	}
 	probed = &[]int64{}
-	svc = NewService(store, nil, WithProbeTrigger(func(_ context.Context, pointID int64) error {
+	svc = NewTelemetryService(store, nil, WithProbeTrigger(func(_ context.Context, pointID int64) error {
 		*probed = append(*probed, pointID)
 		return nil
 	}))
@@ -101,9 +100,9 @@ func TestProbeNowWithoutTriggerIsUnavailable(t *testing.T) {
 	if err := store.Create(context.Background(), &point); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	svc := NewService(store, nil)
+	svc := NewTelemetryService(store, nil)
 	_, err = svc.ProbeNow(context.Background(), 1)
-	var svcErr *handler.ServiceError
+	var svcErr *errdefs.ServiceError
 	if !errors.As(err, &svcErr) || svcErr.HTTPStatus() != http.StatusServiceUnavailable {
 		t.Fatalf("ProbeNow without trigger: got %v, want 503 service error", err)
 	}
@@ -112,7 +111,7 @@ func TestProbeNowWithoutTriggerIsUnavailable(t *testing.T) {
 func TestProbeNowUnknownPoint(t *testing.T) {
 	svc, _ := newProbeTestService(t)
 	_, err := svc.ProbeNow(context.Background(), 999)
-	if !errors.Is(err, telemetryhandler.ErrTelemetryTaskNotFound) {
+	if !errors.Is(err, ErrTelemetryTaskNotFound) {
 		t.Fatalf("ProbeNow unknown: got %v, want ErrTelemetryTaskNotFound", err)
 	}
 }
@@ -120,7 +119,7 @@ func TestProbeNowUnknownPoint(t *testing.T) {
 // assertBadRequest verifies the error is a 400 service error.
 func assertBadRequest(t *testing.T, err error) {
 	t.Helper()
-	var svcErr *handler.ServiceError
+	var svcErr *errdefs.ServiceError
 	if !errors.As(err, &svcErr) || svcErr.HTTPStatus() != http.StatusBadRequest {
 		t.Fatalf("got %v, want 400 service error", err)
 	}

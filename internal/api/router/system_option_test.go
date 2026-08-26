@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/api"
-	"github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	"github.com/tickraft/tickraft/pkg/system"
 )
 
 // fakeSystemService is a stub system.Service used to verify that

@@ -25,16 +25,12 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/internal/api/router"
-	prismsvc "github.com/tickraft/tickraft/pkg/api/service/prism"
-	"github.com/tickraft/tickraft/pkg/api/service/scheduler"
-	systemsvc "github.com/tickraft/tickraft/pkg/api/service/system"
 	cequota "github.com/tickraft/tickraft/internal/quota"
 	"github.com/tickraft/tickraft/pkg/api"
 	assethandler "github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/api/service/telemetry"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
@@ -49,9 +45,15 @@ import (
 	"github.com/tickraft/tickraft/pkg/executor/tcp"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
 	"github.com/tickraft/tickraft/pkg/prism"
+	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
+	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
+	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	systemsvc "github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
+	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
+	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -239,7 +241,7 @@ func newHarness(t *testing.T) *harness {
 	// internal/service (ProberService over the shared task.Manager).
 	proberSvc := telemetry.NewProberService(
 		schedEngine, logger, telemetry.WithProberMonitorStore(monitorStore))
-	telemetrySrv := telemetrysvc.NewService(monitorStore, logger,
+	telemetrySrv := telemetrysvc.NewTelemetryService(monitorStore, logger,
 		telemetrysvc.WithProbeTrigger(proberSvc.ProbeNow),
 		telemetrysvc.WithExecutorValidator(
 			func(executorType string) error {
@@ -260,7 +262,7 @@ func newHarness(t *testing.T) *harness {
 		adaptor.HertzHandler(webhookListener.ReportHandler()), logger)
 
 	// System service.
-	systemSrv := systemsvc.New(dbc, logger, taskStore, execStore, assetStore)
+	systemSrv := systemsvc.NewSystemService(dbc, logger, taskStore, execStore, assetStore)
 	if err := systemSrv.Migrate(ctx); err != nil {
 		t.Fatalf("migrate system service: %v", err)
 	}
@@ -281,11 +283,11 @@ func newHarness(t *testing.T) *harness {
 	srv := api.NewServer(cfg)
 
 	routeOpts := []router.RegisterOption{
-		router.WithTaskService(scheduler.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
-		router.WithAlertService(prismsvc.NewAlertService(
+		router.WithTaskService(taskservice.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
+		router.WithAlertService(alertservice.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
-		router.WithChannelService(prismsvc.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
-		router.WithRemediationRuleService(prismsvc.NewRemediationService(prismEngine.RemediationStore())),
+		router.WithChannelService(channelservice.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
+		router.WithRemediationRuleService(remediationservice.NewRemediationService(prismEngine.RemediationStore())),
 		router.WithSystemService(systemSrv),
 		router.WithTelemetryService(telemetrySrv),
 		router.WithTelemetryReportHandler(reportHandler),

@@ -19,19 +19,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
-)
-
-// Sentinel service errors used by Service implementations. Each wraps
-// the transport-agnostic errdefs sentinel so the response layer can map it to
-// the correct HTTP status and business code automatically (see
-// pkg/api/httputil/errors.go).
-var (
-	// ErrTelemetryTaskNotFound is returned when a telemetry task ID does not
-	// exist. Maps to 404 NotFound.
-	ErrTelemetryTaskNotFound = fmt.Errorf("telemetry task not found: %w", errdefs.ErrNotFound)
-	// ErrInvalidRequest is returned when a service request is nil or otherwise
-	// malformed. Maps to 400 BadRequest.
-	ErrInvalidRequest = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
+	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
 
 // Handler implements the telemetry monitoring point CRUD endpoints
@@ -42,22 +30,22 @@ var (
 // (POST /api/v1/telemetry) is registered separately via
 // WithTelemetryReportHandler.
 type Handler struct {
-	svc          Service
-	metricStore  MetricStore
-	logStore     LogStore
-	probeRecords ProbeRecordStore
+	svc          telemetrysvc.Service
+	metricStore  telemetrysvc.MetricStore
+	logStore     telemetrysvc.LogStore
+	probeRecords telemetrysvc.ProbeRecordStore
 }
 
 // NewHandler creates a Handler backed by the given service. The service must
 // be non-nil; callers must inject a concrete database-backed implementation.
-func NewHandler(svc Service) *Handler {
+func NewHandler(svc telemetrysvc.Service) *Handler {
 	return &Handler{svc: svc}
 }
 
 // SetDataStores injects the metric and log stores used by the history and
 // logs endpoints of passive monitor points. Either store may be nil to
 // disable the corresponding query path.
-func (h *Handler) SetDataStores(metricStore MetricStore, logStore LogStore) {
+func (h *Handler) SetDataStores(metricStore telemetrysvc.MetricStore, logStore telemetrysvc.LogStore) {
 	h.metricStore = metricStore
 	h.logStore = logStore
 }
@@ -66,7 +54,7 @@ func (h *Handler) SetDataStores(metricStore MetricStore, logStore LogStore) {
 // history, and logs endpoints of active monitor points. A nil store
 // disables the probe-backed query paths and the endpoints fall back to the
 // enabled-derived defaults.
-func (h *Handler) SetProbeRecordStore(store ProbeRecordStore) {
+func (h *Handler) SetProbeRecordStore(store telemetrysvc.ProbeRecordStore) {
 	h.probeRecords = store
 }
 
@@ -80,7 +68,7 @@ func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	filter := Filter{Mode: arc.Query("mode")}
+	filter := telemetrysvc.Filter{Mode: arc.Query("mode")}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
 		api.Fail(arc, err)

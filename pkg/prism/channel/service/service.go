@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package prism
+// Package service provides the notification channel management contract
+// (Service) plus its store-backed implementation, which keeps the prism
+// engine's in-memory channel list hot-reloaded on every mutation.
+package service
 
 import (
 	"context"
@@ -11,7 +14,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tickraft/tickraft/pkg/api/handler"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/prism"
@@ -19,12 +21,15 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 )
 
-// ChannelService implements channel.Service using the prism channel
+// ChannelService implements Service using the prism channel
 // store. Mutating operations (Create/Update/Delete) trigger a hot-reload
 // of the engine's in-memory channel list via ReloadChannels. The wire
 // shape and the storage shape are the same prismchannel.Channel model, so
 // this service only orchestrates the store and the engine reload — there
 // is no DTO conversion.
+var _ Service = (*ChannelService)(nil)
+
+// ChannelService implements Service on top of the prism channel store.
 type ChannelService struct {
 	channels *channel.Store
 	engine   *prism.Engine
@@ -61,10 +66,10 @@ func (s *ChannelService) GetChannel(ctx context.Context, id int64) (*channel.Cha
 // After a successful insert the engine's channel list is hot-reloaded.
 func (s *ChannelService) CreateChannel(ctx context.Context, req *channel.Channel) (*channel.Channel, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	if req.Name == "" || req.Type == "" || req.Config == "" {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	// Server-assigned fields are dropped from the request so a client
 	// cannot pick its own row ID, timestamps, or usage bookkeeping;
@@ -88,7 +93,7 @@ func (s *ChannelService) UpdateChannel(
 	req *channel.Channel,
 ) (*channel.Channel, error) {
 	if req == nil {
-		return nil, handler.ErrInvalidRequest
+		return nil, errdefs.ErrInvalidRequest
 	}
 	existing, err := s.channels.GetByID(ctx, id)
 	if err != nil {
@@ -127,7 +132,7 @@ func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
 	}
 	ch, err := prism.BuildChannel(m)
 	if err != nil {
-		return handler.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			fmt.Sprintf("build channel: %v", err))
 	}
 	evt := alert.Event{
@@ -164,10 +169,10 @@ func mapChannelStoreError(err error) error {
 		return nil
 	}
 	if errors.Is(err, channel.ErrChannelNotFound) {
-		return handler.ErrChannelNotFound
+		return errdefs.ErrChannelNotFound
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
-		return handler.ErrChannelNotFound
+		return errdefs.ErrChannelNotFound
 	}
-	return handler.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
+	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())
 }
