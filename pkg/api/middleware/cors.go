@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cloudwego/hertz/pkg/app"
-
 	"github.com/tickraft/tickraft/pkg/api/httputil"
+
+	"github.com/cloudwego/hertz/pkg/app"
 )
 
 // CORS returns a middleware that handles cross-origin requests.

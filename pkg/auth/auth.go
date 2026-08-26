@@ -15,7 +15,6 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
-	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/user"
 )
@@ -147,7 +146,7 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 		return nil, ErrUnauthorized
 	}
 
-	if err = password.Verify(u.PasswordHash, pwd); err != nil {
+	if err = Verify(u.PasswordHash, pwd); err != nil {
 		zap.L().Warn("auth login: password verify", zap.String("username", username),
 			zap.Int64("user_id", u.ID), zap.Error(err))
 		s.recordLoginFailure(username)
@@ -292,11 +291,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 		return ErrUnauthorized
 	}
 
-	if err = password.Verify(u.PasswordHash, oldPwd); err != nil {
+	if err = Verify(u.PasswordHash, oldPwd); err != nil {
 		return ErrUnauthorized
 	}
 
-	hash, err := password.Hash(newPwd)
+	hash, err := Hash(newPwd)
 	if err != nil {
 		return fmt.Errorf("hash new password: %w", err)
 	}

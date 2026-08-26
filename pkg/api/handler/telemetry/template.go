@@ -17,7 +17,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -99,19 +98,19 @@ func (h *TemplateHandler) ListTemplates(ctx context.Context, arc *app.RequestCon
 	category := arc.Query("category")
 	templates, err := h.store.List(ctx, category)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp := make([]templateResponse, 0, len(templates))
 	for i := range templates {
 		r, convErr := toTemplateResponse(&templates[i])
 		if convErr != nil {
-			api.Fail(arc, convErr)
+			httputil.Fail(arc, convErr)
 			return
 		}
 		resp = append(resp, r)
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // GetTemplate handles GET /api/v1/telemetry/templates/:id.
@@ -123,18 +122,18 @@ func (h *TemplateHandler) GetTemplate(ctx context.Context, arc *app.RequestConte
 	t, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp, err := toTemplateResponse(t)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // CreateTemplate handles POST /api/v1/telemetry/templates. Built-in
@@ -142,11 +141,11 @@ func (h *TemplateHandler) GetTemplate(ctx context.Context, arc *app.RequestConte
 // are created with IsBuiltin=false.
 func (h *TemplateHandler) CreateTemplate(ctx context.Context, arc *app.RequestContext) {
 	var req templateRequest
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if err := validateTemplateRequest(&req); err != nil {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -160,18 +159,18 @@ func (h *TemplateHandler) CreateTemplate(ctx context.Context, arc *app.RequestCo
 	}
 	if err := h.store.Create(ctx, model); err != nil {
 		if errors.Is(err, errdefs.ErrConflict) {
-			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "template name already exists")
+			httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "template name already exists")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp, err := toTemplateResponse(model)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // UpdateTemplate handles PUT /api/v1/telemetry/templates/:id. Built-in
@@ -182,26 +181,26 @@ func (h *TemplateHandler) UpdateTemplate(ctx context.Context, arc *app.RequestCo
 		return
 	}
 	var req templateRequest
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	existing, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	// The read-only guard runs before request validation so a malformed
 	// body cannot mask the 403 contract for built-in templates.
 	if existing.IsBuiltin {
-		api.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates are read-only")
+		httputil.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates are read-only")
 		return
 	}
 	if err := validateTemplateRequest(&req); err != nil {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 		return
 	}
 
@@ -213,22 +212,22 @@ func (h *TemplateHandler) UpdateTemplate(ctx context.Context, arc *app.RequestCo
 
 	if err = h.store.Update(ctx, existing); err != nil {
 		if errors.Is(err, errdefs.ErrConflict) {
-			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "template name already exists")
+			httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "template name already exists")
 			return
 		}
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp, err := toTemplateResponse(existing)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // DeleteTemplate handles DELETE /api/v1/telemetry/templates/:id. Built-in
@@ -242,25 +241,25 @@ func (h *TemplateHandler) DeleteTemplate(ctx context.Context, arc *app.RequestCo
 	existing, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	if existing.IsBuiltin {
-		api.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates cannot be deleted")
+		httputil.FailWithCode(arc, http.StatusForbidden, errdefs.CodeForbidden, "built-in templates cannot be deleted")
 		return
 	}
 	if err = h.store.Delete(ctx, id); err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, nil)
+	httputil.Success(arc, nil)
 }
 
 // ListBuiltinTemplates handles GET /api/v1/telemetry/templates/builtin.
@@ -268,19 +267,19 @@ func (h *TemplateHandler) DeleteTemplate(ctx context.Context, arc *app.RequestCo
 func (h *TemplateHandler) ListBuiltinTemplates(ctx context.Context, arc *app.RequestContext) {
 	templates, err := h.store.ListBuiltin(ctx)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp := make([]templateResponse, 0, len(templates))
 	for i := range templates {
 		r, convErr := toTemplateResponse(&templates[i])
 		if convErr != nil {
-			api.Fail(arc, convErr)
+			httputil.Fail(arc, convErr)
 			return
 		}
 		resp = append(resp, r)
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // ApplyTemplate handles POST /api/v1/telemetry/templates/:id/apply. It
@@ -295,10 +294,10 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	t, err := h.store.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errdefs.ErrNotFound) {
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "template not found")
 			return
 		}
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 
@@ -307,7 +306,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	// template as-is. Distinguish EOF (empty body, acceptable) from actual JSON
 	// parsing errors (which should return 400).
 	if err = arc.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request body")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid request body")
 		return
 	}
 
@@ -315,7 +314,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	cfg := make(map[string]any)
 	if t.Config != "" {
 		if err = sonic.Unmarshal([]byte(t.Config), &cfg); err != nil {
-			api.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal,
+			httputil.FailWithCode(arc, http.StatusInternalServerError, errdefs.CodeInternal,
 				fmt.Sprintf("invalid template config: %v", err))
 			return
 		}
@@ -350,10 +349,10 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 
 	created, err := h.svc.CreateTask(ctx, task)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, created)
+	httputil.Success(arc, created)
 }
 
 // validateTemplateRequest validates the required fields and length

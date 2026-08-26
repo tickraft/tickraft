@@ -18,7 +18,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/quota"
@@ -97,20 +97,20 @@ func doRequest(engine *route.Engine, method, path string, body []byte) *ut.Respo
 	return ut.PerformRequest(engine, method, path, utBody, jsonHeader)
 }
 
-// decodeAPIResponse decodes a ut response body into an api.Response.
-func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) api.Response {
+// decodeAPIResponse decodes a ut response body into an httputil.Response.
+func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) httputil.Response {
 	t.Helper()
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v (body=%q)", err, w.Body.String())
 	}
 	return resp
 }
 
-// decodeAssetData re-marshals the api.Response Data field and decodes it
+// decodeAssetData re-marshals the httputil.Response Data field and decodes it
 // into a asset.Asset, enabling field assertions on create/get/update
 // responses.
-func decodeAssetData(t *testing.T, resp api.Response) assetstore.Asset {
+func decodeAssetData(t *testing.T, resp httputil.Response) assetstore.Asset {
 	t.Helper()
 	raw, err := json.Marshal(resp.Data)
 	if err != nil {

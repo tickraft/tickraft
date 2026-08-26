@@ -13,7 +13,6 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -40,10 +39,10 @@ func (h *Handler) ListAlertRules(ctx context.Context, arc *app.RequestContext) {
 	}
 	items, total, err := h.svc.ListRules(ctx, page, size)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.SuccessPage(arc, items, total, page, size)
+	httputil.SuccessPage(arc, items, total, page, size)
 }
 
 // GetAlertRule handles GET /api/v1/prism/alert/rules/:id.
@@ -54,38 +53,38 @@ func (h *Handler) GetAlertRule(ctx context.Context, arc *app.RequestContext) {
 	}
 	rule, err := h.svc.GetRule(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, rule)
+	httputil.Success(arc, rule)
 }
 
 // CreateAlertRule handles POST /api/v1/prism/alert/rules.
 func (h *Handler) CreateAlertRule(ctx context.Context, arc *app.RequestContext) {
 	var req alert.Rule
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if req.Name == "" {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	created, err := h.svc.CreateRule(ctx, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, created)
+	httputil.Success(arc, created)
 }
 
 // UpdateAlertRule handles PUT /api/v1/prism/alert/rules/:id.
@@ -95,26 +94,26 @@ func (h *Handler) UpdateAlertRule(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	var req alert.Rule
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	req.ID = id
 	updated, err := h.svc.UpdateRule(ctx, id, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, updated)
+	httputil.Success(arc, updated)
 }
 
 // DeleteAlertRule handles DELETE /api/v1/prism/alert/rules/:id.
@@ -124,10 +123,10 @@ func (h *Handler) DeleteAlertRule(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if err := h.svc.DeleteRule(ctx, id); err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, nil)
+	httputil.Success(arc, nil)
 }
 
 // ListAlertRecords handles GET /api/v1/prism/alert/records. Supported query
@@ -144,7 +143,7 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	if v := arc.Query("from"); v != "" {
 		parsed, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 				"invalid 'from' timestamp, expected RFC3339 format")
 			return
 		}
@@ -153,7 +152,7 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	if v := arc.Query("to"); v != "" {
 		parsed, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+			httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 				"invalid 'to' timestamp, expected RFC3339 format")
 			return
 		}
@@ -161,10 +160,10 @@ func (h *Handler) ListAlertRecords(ctx context.Context, arc *app.RequestContext)
 	}
 	items, total, err := h.svc.ListRecords(ctx, page, size, filter)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.SuccessPage(arc, items, total, page, size)
+	httputil.SuccessPage(arc, items, total, page, size)
 }
 
 // GetAlertRecord handles GET /api/v1/prism/alert/records/:id.
@@ -175,10 +174,10 @@ func (h *Handler) GetAlertRecord(ctx context.Context, arc *app.RequestContext) {
 	}
 	record, err := h.svc.GetRecord(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, record)
+	httputil.Success(arc, record)
 }
 
 // AcknowledgeAlertRecord handles PUT /api/v1/prism/alert/records/:id/acknowledge.
@@ -189,10 +188,10 @@ func (h *Handler) AcknowledgeAlertRecord(ctx context.Context, arc *app.RequestCo
 	}
 	record, err := h.svc.AcknowledgeRecord(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, record)
+	httputil.Success(arc, record)
 }
 
 // ResolveAlertRecord handles PUT /api/v1/prism/alert/records/:id/resolve.
@@ -203,8 +202,8 @@ func (h *Handler) ResolveAlertRecord(ctx context.Context, arc *app.RequestContex
 	}
 	record, err := h.svc.ResolveRecord(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, record)
+	httputil.Success(arc, record)
 }

@@ -7,10 +7,10 @@ package telemetry
 import (
 	"context"
 
+	"github.com/tickraft/tickraft/pkg/api/httputil"
+
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
-
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
 // WithReportAudit wraps the unified telemetry report handler

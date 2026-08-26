@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/auth"
-	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -177,7 +176,7 @@ func TestEnsureAdminUser_FirstCreateRandomPassword(t *testing.T) {
 	if u.PasswordHash == "" {
 		t.Fatal("admin password hash is empty")
 	}
-	if err := password.Verify(u.PasswordHash, generated); err != nil {
+	if err := auth.Verify(u.PasswordHash, generated); err != nil {
 		t.Errorf("password verify failed: %v", err)
 	}
 }
@@ -203,7 +202,7 @@ func TestEnsureAdminUser_FirstCreateExplicitPassword(t *testing.T) {
 	if err := dbc.Where("username = ?", "admin").First(&u).Error; err != nil {
 		t.Fatalf("query admin user: %v", err)
 	}
-	if err := password.Verify(u.PasswordHash, "S3cret!pass"); err != nil {
+	if err := auth.Verify(u.PasswordHash, "S3cret!pass"); err != nil {
 		t.Errorf("password verify failed: %v", err)
 	}
 }
@@ -240,7 +239,7 @@ func TestEnsureAdminUser_RestartDoesNotOverwritePassword(t *testing.T) {
 	if afterSecond.PasswordHash != original.PasswordHash {
 		t.Error("second EnsureAdminUser call overwrote the password hash")
 	}
-	if err := password.Verify(afterSecond.PasswordHash, "first-password"); err != nil {
+	if err := auth.Verify(afterSecond.PasswordHash, "first-password"); err != nil {
 		t.Errorf("original password no longer verifies after restart: %v", err)
 	}
 

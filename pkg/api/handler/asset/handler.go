@@ -13,7 +13,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -53,19 +52,19 @@ func NewHandler(store asset.Store, logger *zap.Logger) *Handler {
 // CreateAsset handles POST /api/v1/assets.
 func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 	var a asset.Asset
-	if !api.BindAndValidate(arc, &a) {
+	if !httputil.BindAndValidate(arc, &a) {
 		return
 	}
 	if a.Name == "" {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
 		return
 	}
 	if a.AssetKey == "" {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "asset_key is required")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "asset_key is required")
 		return
 	}
 	if a.AssetType == "" {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "asset_type is required")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "asset_type is required")
 		return
 	}
 	if a.Status == "" {
@@ -99,7 +98,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("asset_type", string(a.AssetType)),
 				zap.Error(err),
 			)
-			api.Fail(arc, err)
+			httputil.Fail(arc, err)
 			return
 		}
 		if count >= int64(ceiling) {
@@ -111,7 +110,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.Int64("current_count", count),
 				zap.Int("quota", ceiling),
 			)
-			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota exceeded")
+			httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota exceeded")
 			return
 		}
 	}
@@ -124,7 +123,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("asset_key", a.AssetKey),
 				zap.String("asset_type", string(a.AssetType)),
 			)
-			api.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "asset key already exists")
+			httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "asset key already exists")
 			return
 		}
 		h.logger.Error("asset create failed",
@@ -134,7 +133,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.String("asset_type", string(a.AssetType)),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Info("asset created",
@@ -145,7 +144,7 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.String("asset_type", string(a.AssetType)),
 		zap.String("name", a.Name),
 	)
-	api.Success(arc, a)
+	httputil.Success(arc, a)
 }
 
 // ListAssets handles GET /api/v1/assets. Supported query parameters: page,
@@ -163,10 +162,10 @@ func (h *Handler) ListAssets(ctx context.Context, arc *app.RequestContext) {
 	}
 	items, total, err := h.assets.List(ctx, page, size, filter)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.SuccessPage(arc, items, total, page, size)
+	httputil.SuccessPage(arc, items, total, page, size)
 }
 
 // GetAsset handles GET /api/v1/assets/:id.
@@ -183,7 +182,7 @@ func (h *Handler) GetAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset get failed",
@@ -192,7 +191,7 @@ func (h *Handler) GetAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Debug("asset retrieved",
@@ -201,7 +200,7 @@ func (h *Handler) GetAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.Int64("id", id),
 		zap.String("asset_key", a.AssetKey),
 	)
-	api.Success(arc, a)
+	httputil.Success(arc, a)
 }
 
 // UpdateAsset handles PUT /api/v1/assets/:id. It loads the
@@ -221,7 +220,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset update: load existing failed",
@@ -230,7 +229,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 
@@ -240,7 +239,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 
 	// Bind the request body onto the existing asset so that unspecified
 	// fields retain their current values.
-	if !api.BindAndValidate(arc, existing) {
+	if !httputil.BindAndValidate(arc, existing) {
 		return
 	}
 	existing.ID = id
@@ -252,7 +251,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Info("asset updated",
@@ -265,7 +264,7 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.String("status", string(existing.Status)),
 		zap.String("prev_status", string(prevStatus)),
 	)
-	api.Success(arc, existing)
+	httputil.Success(arc, existing)
 }
 
 // DeleteAsset handles DELETE /api/v1/assets/:id.
@@ -281,7 +280,7 @@ func (h *Handler) DeleteAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset delete failed",
@@ -290,7 +289,7 @@ func (h *Handler) DeleteAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Info("asset deleted",
@@ -298,7 +297,7 @@ func (h *Handler) DeleteAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.String("outcome", "success"),
 		zap.Int64("id", id),
 	)
-	api.Success(arc, nil)
+	httputil.Success(arc, nil)
 }
 
 // assetStatusRequest is the request body for updating an asset's status.
@@ -324,7 +323,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 		return
 	}
 	var req assetStatusRequest
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if !validAssetStatuses[req.Status] {
@@ -334,7 +333,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 			zap.Int64("id", id),
 			zap.String("requested_status", string(req.Status)),
 		)
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"invalid status: must be one of normal, abnormal, offline, unknown")
 		return
 	}
@@ -348,7 +347,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset status update: load failed",
@@ -357,7 +356,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 
@@ -370,7 +369,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset status update failed",
@@ -379,7 +378,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Info("asset status updated",
@@ -390,7 +389,7 @@ func (h *Handler) UpdateAssetStatus(ctx context.Context, arc *app.RequestContext
 		zap.String("status", string(req.Status)),
 		zap.String("prev_status", string(prevStatus)),
 	)
-	api.Success(arc, nil)
+	httputil.Success(arc, nil)
 }
 
 // probeResult is the response returned by ProbeAsset. It echoes the asset ID
@@ -418,7 +417,7 @@ func (h *Handler) ProbeAsset(ctx context.Context, arc *app.RequestContext) {
 				zap.String("outcome", "not_found"),
 				zap.Int64("id", id),
 			)
-			api.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
+			httputil.FailWithCode(arc, http.StatusNotFound, errdefs.CodeNotFound, "asset not found")
 			return
 		}
 		h.logger.Error("asset probe failed",
@@ -427,7 +426,7 @@ func (h *Handler) ProbeAsset(ctx context.Context, arc *app.RequestContext) {
 			zap.Int64("id", id),
 			zap.Error(err),
 		)
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	h.logger.Info("asset probed",
@@ -437,7 +436,7 @@ func (h *Handler) ProbeAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.String("asset_key", a.AssetKey),
 		zap.String("status", string(a.Status)),
 	)
-	api.Success(arc, probeResult{
+	httputil.Success(arc, probeResult{
 		AssetID: a.ID,
 		Status:  a.Status,
 	})

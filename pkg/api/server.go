@@ -15,7 +15,6 @@ import (
 	"github.com/hertz-contrib/http2/factory"
 	"go.uber.org/zap"
 
-	"github.com/tickraft/tickraft/pkg/api/hlogzap"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 )
 
@@ -28,7 +27,7 @@ import (
 // the zap logger, satisfying the workspace rule that all logs must go
 // through zap.
 func SetLogger(logger *zap.Logger) {
-	hlog.SetLogger(hlogzap.NewLogger(logger))
+	hlog.SetLogger(newHLogBridge(logger))
 }
 
 // Server wraps a Hertz engine and manages plugins, middleware, and lifecycle.

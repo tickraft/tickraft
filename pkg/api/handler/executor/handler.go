@@ -15,7 +15,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/executor"
 )
 
@@ -84,14 +84,14 @@ func (h *Handler) listBy(keep func(executor.Capability) bool) []Type {
 // webhooks, ...) — the same predicate the task CRUD prevalidation applies
 // to Task.ExecutorType.
 func (h *Handler) List(_ context.Context, arc *app.RequestContext) {
-	api.Success(arc, h.listBy(executor.HasWrite))
+	httputil.Success(arc, h.listBy(executor.HasWrite))
 }
 
 // ListProbers handles GET /api/v1/telemetry/probers. It returns the
 // executor types with probing capability (CapProbe) — the types valid for
 // the Type field of an active monitoring point.
 func (h *Handler) ListProbers(_ context.Context, arc *app.RequestContext) {
-	api.Success(arc, h.listBy(func(c executor.Capability) bool {
+	httputil.Success(arc, h.listBy(func(c executor.Capability) bool {
 		return executor.HasCap(c, executor.CapProbe)
 	}))
 }

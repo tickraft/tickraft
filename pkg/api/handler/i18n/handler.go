@@ -12,7 +12,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/i18n"
 )
 
@@ -43,9 +43,9 @@ func NewHandler(r i18n.Registry) *Handler {
 // appear in the response without any handler modification.
 func (h *Handler) ListLocales(ctx context.Context, arc *app.RequestContext) {
 	if h.registry == nil {
-		api.Success(arc, []i18n.LocaleInfo{})
+		httputil.Success(arc, []i18n.LocaleInfo{})
 		return
 	}
 	locales := h.registry.List()
-	api.Success(arc, locales)
+	httputil.Success(arc, locales)
 }

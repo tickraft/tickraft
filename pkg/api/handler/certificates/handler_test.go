@@ -14,7 +14,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
 // stubReloader is a test stub for the Reloader interface. It returns the
@@ -44,19 +44,19 @@ func newCertificateTestEngine(h *Handler) *route.Engine {
 }
 
 // decodeAPIResponse unmarshals the recorded response body into an
-// api.Response so tests can assert on the envelope code/message/data fields.
-func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) api.Response {
+// httputil.Response so tests can assert on the envelope code/message/data fields.
+func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) httputil.Response {
 	t.Helper()
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v (body=%q)", err, w.Body.String())
 	}
 	return resp
 }
 
-// decodeReloadData re-marshals the api.Response Data field and decodes it into
+// decodeReloadData re-marshals the httputil.Response Data field and decodes it into
 // a reloadResponse so tests can assert on the returned fingerprint.
-func decodeReloadData(t *testing.T, resp api.Response) string {
+func decodeReloadData(t *testing.T, resp httputil.Response) string {
 	t.Helper()
 	raw, err := json.Marshal(resp.Data)
 	if err != nil {
@@ -111,7 +111,7 @@ func TestCertificateReloadSuccess(t *testing.T) {
 }
 
 // TestCertificateReloadFailure verifies that a reload failure is surfaced
-// via api.Fail (non-zero code, non-empty message) and that the reloader was
+// via httputil.Fail (non-zero code, non-empty message) and that the reloader was
 // still invoked exactly once. The handler must not panic and must not
 // silently swallow the error.
 func TestCertificateReloadFailure(t *testing.T) {
@@ -124,7 +124,7 @@ func TestCertificateReloadFailure(t *testing.T) {
 	engine := newCertificateTestEngine(h)
 
 	w := ut.PerformRequest(engine, "POST", "/api/v1/system/certificates/reload", nil)
-	// The handler delegates to api.Fail which maps the error to an HTTP
+	// The handler delegates to httputil.Fail which maps the error to an HTTP
 	// status. A generic error maps to 500 (internal error) per the
 	// mapError fallback. The exact status is not load-bearing here; what
 	// matters is that the response is an error envelope.

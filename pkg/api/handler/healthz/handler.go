@@ -14,7 +14,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
@@ -70,14 +70,14 @@ func (h *Handler) Healthz(ctx context.Context, arc *app.RequestContext) {
 	}
 
 	if healthy {
-		api.Success(arc, map[string]any{
+		httputil.Success(arc, map[string]any{
 			"status": "ok",
 			"checks": checks,
 		})
 		return
 	}
 
-	api.FailWithData(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "unhealthy", map[string]any{
+	httputil.FailWithData(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "unhealthy", map[string]any{
 		"status": "unhealthy",
 		"checks": checks,
 	})
@@ -101,5 +101,5 @@ func probeCache(ctx context.Context, c *cache.LRUCache) (ok bool) {
 // without performing any dependency checks, preserving the
 // default behavior for deployments that do not wire a concrete handler.
 func DefaultHealthz(ctx context.Context, arc *app.RequestContext) {
-	api.Success(arc, map[string]string{"status": "ok"})
+	httputil.Success(arc, map[string]string{"status": "ok"})
 }

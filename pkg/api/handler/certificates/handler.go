@@ -17,7 +17,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
@@ -71,14 +71,14 @@ type reloadResponse struct {
 // trigger a reload. Authorization (which role may reload) is delegated to the
 // permission middleware configured at route-registration time.
 //
-// Failures are surfaced as the standard api.Response envelope with the
+// Failures are surfaced as the standard httputil.Response envelope with the
 // underlying error wrapped by ReloadTLSConfig (see ErrTLS* and ErrACME* in
 // pkg/api/types.go and pkg/api/tls.go).
 func (h *Handler) Reload(ctx context.Context, arc *app.RequestContext) {
 	fingerprint, err := h.reloader.ReloadTLSConfig()
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, reloadResponse{Fingerprint: fingerprint})
+	httputil.Success(arc, reloadResponse{Fingerprint: fingerprint})
 }

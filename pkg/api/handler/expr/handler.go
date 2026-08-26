@@ -14,7 +14,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -65,7 +65,7 @@ type ValidateResponse struct {
 // the CRUD entry points.
 func (h *Handler) Validate(_ context.Context, arc *app.RequestContext) {
 	var req ValidateRequest
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 
@@ -82,15 +82,15 @@ func (h *Handler) Validate(_ context.Context, arc *app.RequestContext) {
 			err = executor.ValidateExpression(req.Expression)
 		}
 	default:
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"env must be one of: alert, remediation, execution")
 		return
 	}
 	if err != nil {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, diagnosticMessage(err))
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, diagnosticMessage(err))
 		return
 	}
-	api.Success(arc, ValidateResponse{Valid: true})
+	httputil.Success(arc, ValidateResponse{Valid: true})
 }
 
 // diagnosticMessage picks the message to display from a wrapped error

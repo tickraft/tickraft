@@ -16,7 +16,6 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
-	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -68,7 +67,7 @@ func newTestService(t *testing.T) (*auth.Service, user.Store, user.APIKeyStore, 
 // seedUser creates a user directly in the database for testing.
 func seedUser(t *testing.T, users user.Store, username, pwd string) *user.User {
 	t.Helper()
-	hash, err := password.Hash(pwd)
+	hash, err := auth.Hash(pwd)
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}

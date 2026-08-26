@@ -15,7 +15,6 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -71,10 +70,10 @@ func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
 	filter := telemetrysvc.Filter{Mode: arc.Query("mode")}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.SuccessPage(arc, items, total, page, size)
+	httputil.SuccessPage(arc, items, total, page, size)
 }
 
 // GetTelemetry handles GET /api/v1/telemetry/:id.
@@ -85,38 +84,38 @@ func (h *Handler) GetTelemetry(ctx context.Context, arc *app.RequestContext) {
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, task)
+	httputil.Success(arc, task)
 }
 
 // CreateTelemetry handles POST /api/v1/telemetry.
 func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) {
 	var req telemetry.MonitorPoint
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if req.Name == "" {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "name is required")
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	created, err := h.svc.CreateTask(ctx, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, created)
+	httputil.Success(arc, created)
 }
 
 // UpdateTelemetry handles PUT /api/v1/telemetry/:id.
@@ -126,26 +125,26 @@ func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	var req telemetry.MonitorPoint
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	if len(req.Name) > httputil.MaxNameLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"name exceeds maximum length of 255 characters")
 		return
 	}
 	if len(req.Description) > httputil.MaxDescriptionLength {
-		api.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
+		httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest,
 			"description exceeds maximum length of 1024 characters")
 		return
 	}
 	req.ID = id
 	updated, err := h.svc.UpdateTask(ctx, id, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, updated)
+	httputil.Success(arc, updated)
 }
 
 // DeleteTelemetry handles DELETE /api/v1/telemetry/:id.
@@ -155,10 +154,10 @@ func (h *Handler) DeleteTelemetry(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	if err := h.svc.DeleteTask(ctx, id); err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, nil)
+	httputil.Success(arc, nil)
 }
 
 // monitorStatus is the response for the monitoring point status endpoint. It
@@ -219,15 +218,15 @@ func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext)
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp, err := h.monitorStatusResponse(ctx, task)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, resp)
+	httputil.Success(arc, resp)
 }
 
 // monitorHistoryEntry represents a single historical data point for a
@@ -255,7 +254,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	page, size, ok := httputil.ParsePaging(arc)
@@ -278,7 +277,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 			Size:    size,
 		})
 		if qErr != nil {
-			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
+			httputil.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
 			return
 		}
 		total = count
@@ -299,7 +298,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 			Size:    size,
 		})
 		if qErr != nil {
-			api.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
+			httputil.Fail(arc, fmt.Errorf("query monitor history: %w", qErr))
 			return
 		}
 		total = count
@@ -312,7 +311,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 		}
 	}
 
-	api.SuccessPage(arc, history, total, page, size)
+	httputil.SuccessPage(arc, history, total, page, size)
 }
 
 // ProbeMonitor handles POST /api/v1/telemetry/monitors/:id/probe. It
@@ -327,15 +326,15 @@ func (h *Handler) ProbeMonitor(ctx context.Context, arc *app.RequestContext) {
 	}
 	point, err := h.svc.ProbeNow(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	resp, err := h.monitorStatusResponse(ctx, point)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.SuccessAccepted(arc, resp)
+	httputil.SuccessAccepted(arc, resp)
 }
 
 // monitorLogEntry represents a single log line for a monitoring task.
@@ -357,7 +356,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	page, size, ok := httputil.ParsePaging(arc)
@@ -380,7 +379,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 			Size:    size,
 		})
 		if qErr != nil {
-			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
+			httputil.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
 			return
 		}
 		total = count
@@ -404,7 +403,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 			Size:    size,
 		})
 		if qErr != nil {
-			api.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
+			httputil.Fail(arc, fmt.Errorf("query monitor logs: %w", qErr))
 			return
 		}
 		total = count
@@ -417,7 +416,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 		}
 	}
 
-	api.SuccessPage(arc, logs, total, page, size)
+	httputil.SuccessPage(arc, logs, total, page, size)
 }
 
 // EnableMonitor handles PUT /api/v1/telemetry/monitors/:id/enable. It
@@ -429,16 +428,16 @@ func (h *Handler) EnableMonitor(ctx context.Context, arc *app.RequestContext) {
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	task.Enabled = true
 	updated, err := h.svc.UpdateTask(ctx, id, task)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, updated)
+	httputil.Success(arc, updated)
 }
 
 // DisableMonitor handles PUT /api/v1/telemetry/monitors/:id/disable. It
@@ -450,16 +449,16 @@ func (h *Handler) DisableMonitor(ctx context.Context, arc *app.RequestContext) {
 	}
 	task, err := h.svc.GetTask(ctx, id)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
 	task.Enabled = false
 	updated, err := h.svc.UpdateTask(ctx, id, task)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, updated)
+	httputil.Success(arc, updated)
 }
 
 // --- Monitor point type metadata ---
@@ -495,7 +494,7 @@ var ceListenerTypes = []ListenerType{
 // callers may add Syslog, SNMP, and MQTT via the Plugin SPI.
 func (h *Handler) ListListeners(ctx context.Context, arc *app.RequestContext) {
 	_ = ctx
-	api.Success(arc, ceListenerTypes)
+	httputil.Success(arc, ceListenerTypes)
 }
 
 // GetMonitorSummary handles GET /api/v1/telemetry/monitors/summary. It
@@ -505,8 +504,8 @@ func (h *Handler) ListListeners(ctx context.Context, arc *app.RequestContext) {
 func (h *Handler) GetMonitorSummary(ctx context.Context, arc *app.RequestContext) {
 	summary, err := h.svc.Summary(ctx)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, summary)
+	httputil.Success(arc, summary)
 }

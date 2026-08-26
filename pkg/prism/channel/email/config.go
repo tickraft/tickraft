@@ -160,11 +160,11 @@ type Config struct {
 	// transitioning to half-open. Defaults to 30s when zero or negative.
 	CircuitCooldown time.Duration
 	// Formatter renders alert events into localized messages. When nil,
-	// buildMessage falls back to the default Formatter from
-	// pkg/prism/channel/format, which uses the built-in i18n asset bundle.
+	// buildMessage falls back to the default i18n
+	// Formatter, which uses the built-in i18n asset bundle.
 	// Inject a custom Formatter when the deployment needs locale-aware
-	// rendering backed by a merged Registry (built-in + extended
-	// asset files).
+	// rendering backed by a merged Registry (built-in + extended asset
+	// files).
 	Formatter i18n.Formatter
 	// Library is the alert template library used for template-based
 	// rendering. When non-nil and alert.TemplateID is non-empty,
@@ -402,8 +402,8 @@ type formatterOption struct {
 func (o formatterOption) apply(options *emailOptions) { options.formatter = o.f }
 
 // WithFormatter injects a locale-aware Formatter used to render alert
-// messages. When not set, buildMessage uses the default Formatter from
-// pkg/prism/channel/format backed by the built-in i18n asset bundle.
+// messages. When not set, buildMessage builds the default i18n Formatter
+// backed by the built-in i18n asset bundle.
 func WithFormatter(f i18n.Formatter) Option {
 	return formatterOption{f: f}
 }

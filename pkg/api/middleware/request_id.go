@@ -9,9 +9,9 @@ import (
 	"encoding/hex"
 	"math/rand/v2"
 
-	"github.com/cloudwego/hertz/pkg/app"
-
 	"github.com/tickraft/tickraft/pkg/api/httputil"
+
+	"github.com/cloudwego/hertz/pkg/app"
 )
 
 // RequestID returns a middleware that generates a unique request ID

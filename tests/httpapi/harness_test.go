@@ -34,7 +34,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
-	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/event"
@@ -344,7 +343,7 @@ type seedUserParams struct {
 
 func seedUser(ctx context.Context, t *testing.T, store user.Store, params seedUserParams) {
 	t.Helper()
-	hash, err := password.Hash(params.pwd)
+	hash, err := auth.Hash(params.pwd)
 	if err != nil {
 		t.Fatalf("hash password for %s: %v", params.username, err)
 	}

@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/auth"
-	"github.com/tickraft/tickraft/pkg/auth/password"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -89,7 +88,7 @@ func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (s
 		plainPassword = generated
 	}
 
-	hash, err := password.Hash(plainPassword)
+	hash, err := auth.Hash(plainPassword)
 	if err != nil {
 		return "", fmt.Errorf("db: hash admin password: %w", err)
 	}

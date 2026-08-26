@@ -13,10 +13,10 @@ import (
 	"net"
 	"strings"
 
+	"github.com/tickraft/tickraft/pkg/api/httputil"
+
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
-
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
 // xForwardedFor is the canonical header carrying the original client IP

@@ -12,8 +12,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	systemsvc "github.com/tickraft/tickraft/pkg/system"
 )
@@ -36,76 +36,76 @@ func NewHandler(svc systemsvc.Service, authSvc auth.Service) *Handler {
 func (h *Handler) GetSystemConfig(ctx context.Context, arc *app.RequestContext) {
 	config, err := h.svc.GetConfig(ctx)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, config)
+	httputil.Success(arc, config)
 }
 
 // UpdateSystemConfig handles PUT /api/v1/system/config.
 func (h *Handler) UpdateSystemConfig(ctx context.Context, arc *app.RequestContext) {
 	var req systemsvc.Config
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	updated, err := h.svc.UpdateConfig(ctx, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, updated)
+	httputil.Success(arc, updated)
 }
 
 // GetSystemInfo handles GET /api/v1/system/info.
 func (h *Handler) GetSystemInfo(ctx context.Context, arc *app.RequestContext) {
 	info, err := h.svc.GetInfo(ctx)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, info)
+	httputil.Success(arc, info)
 }
 
 // GetGlobalStats handles GET /api/v1/system/stats.
 func (h *Handler) GetGlobalStats(ctx context.Context, arc *app.RequestContext) {
 	stats, err := h.svc.GetGlobalStats(ctx)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, stats)
+	httputil.Success(arc, stats)
 }
 
 // GetProfile handles GET /api/v1/system/profile.
 func (h *Handler) GetProfile(ctx context.Context, arc *app.RequestContext) {
-	claims, ok := api.GetUserClaims(arc)
+	claims, ok := httputil.GetUserClaims(arc)
 	if !ok || claims == nil {
-		api.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "unauthorized")
+		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
 	profile, err := h.auth.GetProfile(ctx, claims.UID)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, profile)
+	httputil.Success(arc, profile)
 }
 
 // UpdateProfile handles PUT /api/v1/system/profile.
 func (h *Handler) UpdateProfile(ctx context.Context, arc *app.RequestContext) {
-	claims, ok := api.GetUserClaims(arc)
+	claims, ok := httputil.GetUserClaims(arc)
 	if !ok || claims == nil {
-		api.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "unauthorized")
+		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
 	var req auth.UpdateProfileRequest
-	if !api.BindAndValidate(arc, &req) {
+	if !httputil.BindAndValidate(arc, &req) {
 		return
 	}
 	profile, err := h.auth.UpdateProfile(ctx, claims.UID, &req)
 	if err != nil {
-		api.Fail(arc, err)
+		httputil.Fail(arc, err)
 		return
 	}
-	api.Success(arc, profile)
+	httputil.Success(arc, profile)
 }

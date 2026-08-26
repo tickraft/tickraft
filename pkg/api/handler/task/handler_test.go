@@ -19,7 +19,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -43,19 +42,19 @@ func doTaskRequest(engine *route.Engine, method, path string, body []byte) *ut.R
 	return ut.PerformRequest(engine, method, path, utBody, jsonHeader)
 }
 
-// decodeAPIResponse decodes a ut response body into an api.Response.
-func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) api.Response {
+// decodeAPIResponse decodes a ut response body into an httputil.Response.
+func decodeAPIResponse(t *testing.T, w *ut.ResponseRecorder) httputil.Response {
 	t.Helper()
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v (body=%q)", err, w.Body.String())
 	}
 	return resp
 }
 
-// decodeTaskData re-marshals the api.Response Data field and decodes it
+// decodeTaskData re-marshals the httputil.Response Data field and decodes it
 // into a task.Task, enabling field assertions on create/get/update responses.
-func decodeTaskData(t *testing.T, resp api.Response) task.Task {
+func decodeTaskData(t *testing.T, resp httputil.Response) task.Task {
 	t.Helper()
 	raw, err := json.Marshal(resp.Data)
 	if err != nil {
@@ -304,12 +303,12 @@ func (s *memoryTaskService) GetExecutionStats(
 	return taskservice.ExecutionStats{}, nil
 }
 
-// errNotFound wraps the handler-layer sentinel so api.Fail maps it to 404.
+// errNotFound wraps the handler-layer sentinel so httputil.Fail maps it to 404.
 func errNotFound() error {
 	return handlerError{status: http.StatusNotFound, code: errdefs.CodeNotFound, msg: "task not found"}
 }
 
-// errBadRequest wraps the handler-layer sentinel so api.Fail maps it to 400.
+// errBadRequest wraps the handler-layer sentinel so httputil.Fail maps it to 400.
 func errBadRequest() error {
 	return handlerError{status: http.StatusBadRequest, code: errdefs.CodeBadRequest, msg: "invalid request"}
 }

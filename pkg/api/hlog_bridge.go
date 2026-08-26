@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package hlogzap bridges the Hertz hlog logging interface to zap so that
-// all framework-level logs (middleware recovery, access log, TLS reload,
-// ACME, etc.) flow through the same structured logging pipeline as the
-// rest of the application.
-//
-// The bridge implements hlog.FullLogger (Logger + FormatLogger + CtxLogger
-// + Control) by delegating each call to the wrapped *zap.Logger. A dynamic
-// zap.AtomicLevel tracks the level set via SetLevel so hlog.SetLevel calls
-// from the API server (e.g., LevelWarn in release mode) are honored without
-// recreating the logger.
-package hlogzap
+package api
+
+// This file bridges the Hertz hlog logging interface to zap so that all
+// framework-level logs (middleware recovery, access log, TLS reload, ACME,
+// etc.) flow through the same structured logging pipeline as the rest of
+// the application. The bridge implements hlog.FullLogger by delegating each
+// call to the wrapped *zap.Logger; a dynamic zap.AtomicLevel tracks the
+// level set via SetLevel so hlog.SetLevel calls from the API server (e.g.,
+// LevelWarn in release mode) are honored without recreating the logger.
 
 import (
 	"context"
@@ -46,7 +44,7 @@ var _ hlog.FullLogger = (*zapFullLogger)(nil)
 // base logger's level are filtered by zap's core even if the bridge's
 // dynamic level would allow them. In practice both levels are derived from
 // the same config.Logger.Mode so they stay in sync.
-func NewLogger(base *zap.Logger) hlog.FullLogger {
+func newHLogBridge(base *zap.Logger) hlog.FullLogger {
 	return &zapFullLogger{
 		logger: base,
 		level:  zap.NewAtomicLevelAt(zapcore.InfoLevel),

@@ -46,12 +46,15 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 )
+
+// headerSignature is the report authentication header carrying the HMAC
+// signature, mirroring the transport-side constant in pkg/api.
+const headerSignature = "X-Tickraft-Signature"
 
 const (
 	// webhookSourceType is the SourceType identifier stamped on telemetry
@@ -294,7 +297,7 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 // rejected.
 func (h *Listener) authenticate(w nethttp.ResponseWriter, r *nethttp.Request, body []byte) (*SecretOwner, bool) {
 	var sigOwner *SecretOwner
-	sig := r.Header.Get(httputil.HeaderSignature)
+	sig := r.Header.Get(headerSignature)
 	if sig != "" {
 		if h.registry != nil {
 			if owner, ok := h.registry.Match(body, sig); ok {

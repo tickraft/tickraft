@@ -18,7 +18,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
@@ -151,14 +151,14 @@ func (h *Handler) Ready(ctx context.Context, arc *app.RequestContext) {
 	}
 
 	if ready {
-		api.Success(arc, map[string]any{
+		httputil.Success(arc, map[string]any{
 			statusKey: statusReady,
 			"checks":  checks,
 		})
 		return
 	}
 
-	api.FailWithData(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "not ready", map[string]any{
+	httputil.FailWithData(arc, http.StatusServiceUnavailable, errdefs.CodeInternal, "not ready", map[string]any{
 		statusKey: "not_ready",
 		"checks":  checks,
 	})
@@ -169,7 +169,7 @@ func (h *Handler) Ready(ctx context.Context, arc *app.RequestContext) {
 // without performing any dependency checks, preserving a trivially-ready
 // behavior for deployments that do not wire concrete checkers.
 func DefaultReady(ctx context.Context, arc *app.RequestContext) {
-	api.Success(arc, map[string]string{statusKey: statusReady})
+	httputil.Success(arc, map[string]string{statusKey: statusReady})
 }
 
 // DatabaseChecker probes a SQL database via SELECT 1.

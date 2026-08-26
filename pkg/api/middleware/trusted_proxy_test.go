@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tickraft/tickraft/pkg/api/httputil"
+
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/config"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/hertz/pkg/route"
-
-	"github.com/tickraft/tickraft/pkg/api/httputil"
 )
 
 // TestParseCIDRsValid verifies that valid CIDR strings are parsed into

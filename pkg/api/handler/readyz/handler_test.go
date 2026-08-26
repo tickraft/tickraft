@@ -18,7 +18,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/cache"
 )
 
@@ -61,13 +61,13 @@ func closeUnderlyingDB(t *testing.T, dbc *gorm.DB) {
 	}
 }
 
-// decodeReadyResponse decodes the ut response body into an api.Response
+// decodeReadyResponse decodes the ut response body into an httputil.Response
 // plus the embedded status/checks payload. The checks map is decoded into
 // a map of name -> {status, latency_ms} so assertions can inspect both the
 // status and the latency field.
 func decodeReadyResponse(t *testing.T, w *ut.ResponseRecorder) (status string, checks map[string]map[string]any) {
 	t.Helper()
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v (body=%q)", err, w.Body.String())
 	}
@@ -235,7 +235,7 @@ func TestDefaultReady(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}

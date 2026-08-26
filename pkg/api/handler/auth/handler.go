@@ -12,7 +12,6 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"github.com/tickraft/tickraft/pkg/api"
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/errdefs"
@@ -73,29 +72,29 @@ type apiKeyData struct {
 // Login handles POST /api/v1/auth/login.
 func (h *Handler) Login(ctx context.Context, c *app.RequestContext) {
 	var req loginRequest
-	if !api.BindAndValidate(c, &req) {
+	if !httputil.BindAndValidate(c, &req) {
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "username and password are required")
+		httputil.FailWithCode(c, 400, errdefs.CodeBadRequest, "username and password are required")
 		return
 	}
 
 	tokenPair, err := h.svc.Login(ctx, req.Username, req.Password)
 	if err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.Success(c, tokenPair)
+	httputil.Success(c, tokenPair)
 }
 
 // Logout handles POST /api/v1/auth/logout.
 func (h *Handler) Logout(ctx context.Context, c *app.RequestContext) {
-	claims, ok := api.GetUserClaims(c)
+	claims, ok := httputil.GetUserClaims(c)
 	if !ok || claims == nil {
-		api.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
+		httputil.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
 
@@ -105,97 +104,97 @@ func (h *Handler) Logout(ctx context.Context, c *app.RequestContext) {
 	_ = c.Bind(&req)
 
 	if err := h.svc.Logout(ctx, claims.JTI, claims.ExpiresAt, req.RefreshToken); err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.Success(c, nil)
+	httputil.Success(c, nil)
 }
 
 // Refresh handles POST /api/v1/auth/refresh.
 func (h *Handler) Refresh(ctx context.Context, c *app.RequestContext) {
 	var req refreshRequest
-	if !api.BindAndValidate(c, &req) {
+	if !httputil.BindAndValidate(c, &req) {
 		return
 	}
 
 	if req.RefreshToken == "" {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "refresh_token is required")
+		httputil.FailWithCode(c, 400, errdefs.CodeBadRequest, "refresh_token is required")
 		return
 	}
 
 	tokenPair, err := h.svc.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
 	// Refresh responses carry only the token pair; the remaining TokenPair
 	// fields are omitempty and zero, so the wire shape is unchanged.
-	api.Success(c, tokenPair)
+	httputil.Success(c, tokenPair)
 }
 
 // ChangePassword handles POST /api/v1/auth/password.
 func (h *Handler) ChangePassword(ctx context.Context, c *app.RequestContext) {
-	claims, ok := api.GetUserClaims(c)
+	claims, ok := httputil.GetUserClaims(c)
 	if !ok || claims == nil {
-		api.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
+		httputil.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
 
 	var req changePasswordRequest
-	if !api.BindAndValidate(c, &req) {
+	if !httputil.BindAndValidate(c, &req) {
 		return
 	}
 
 	if req.OldPassword == "" || req.NewPassword == "" {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "old_password and new_password are required")
+		httputil.FailWithCode(c, 400, errdefs.CodeBadRequest, "old_password and new_password are required")
 		return
 	}
 
 	if err := h.svc.ChangePassword(ctx, claims.UID, req.OldPassword, req.NewPassword, claims.JTI); err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.Success(c, nil)
+	httputil.Success(c, nil)
 }
 
 // CreateAPIKey handles POST /api/v1/auth/apikeys. Only administrators may
 // create API keys; the route also carries an admin-level RequirePermission
 // middleware, this check defends in depth for other mount points.
 func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
-	claims, ok := api.GetUserClaims(c)
+	claims, ok := httputil.GetUserClaims(c)
 	if !ok || claims == nil {
-		api.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
+		httputil.FailWithCode(c, 401, errdefs.CodeUnauthorized, "unauthorized")
 		return
 	}
 	if claims.Role < auth.RoleAdmin {
-		api.FailWithCode(c, 403, errdefs.CodeForbidden, "admin role required")
+		httputil.FailWithCode(c, 403, errdefs.CodeForbidden, "admin role required")
 		return
 	}
 
 	var req createAPIKeyRequest
-	if !api.BindAndValidate(c, &req) {
+	if !httputil.BindAndValidate(c, &req) {
 		return
 	}
 
 	if req.Name == "" {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "name is required")
+		httputil.FailWithCode(c, 400, errdefs.CodeBadRequest, "name is required")
 		return
 	}
 	if len(req.Name) > 100 {
-		api.FailWithCode(c, 400, errdefs.CodeBadRequest, "name must be 100 characters or less")
+		httputil.FailWithCode(c, 400, errdefs.CodeBadRequest, "name must be 100 characters or less")
 		return
 	}
 
 	rawKey, info, err := h.svc.CreateAPIKey(ctx, req.Name, req.ExpiredAt)
 	if err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.Success(c, apiKeyData{
+	httputil.Success(c, apiKeyData{
 		RawKey:   rawKey,
 		ID:       info.ID,
 		Name:     info.Name,
@@ -214,11 +213,11 @@ func (h *Handler) ListAPIKeys(ctx context.Context, c *app.RequestContext) {
 	}
 	keys, total, err := h.svc.ListAPIKeys(ctx, page, size)
 	if err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.SuccessPage(c, keys, total, page, size)
+	httputil.SuccessPage(c, keys, total, page, size)
 }
 
 // RevokeAPIKey handles DELETE /api/v1/auth/apikeys/:id.
@@ -229,9 +228,9 @@ func (h *Handler) RevokeAPIKey(ctx context.Context, c *app.RequestContext) {
 	}
 
 	if err := h.svc.RevokeAPIKey(ctx, id); err != nil {
-		api.Fail(c, err)
+		httputil.Fail(c, err)
 		return
 	}
 
-	api.Success(c, nil)
+	httputil.Success(c, nil)
 }

@@ -17,7 +17,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/api"
+	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/cache"
 )
 
@@ -60,13 +60,13 @@ func closeUnderlyingDB(t *testing.T, dbc *gorm.DB) {
 	}
 }
 
-// decodeHealthzResponse decodes the ut response body into an api.Response
+// decodeHealthzResponse decodes the ut response body into an httputil.Response
 // plus the embedded status/checks payload. The data field is re-marshaled
 // and decoded into a map to allow assertions on the checks map without a
 // dedicated response struct.
 func decodeHealthzResponse(t *testing.T, w *ut.ResponseRecorder) (status string, checks map[string]string) {
 	t.Helper()
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v (body=%q)", err, w.Body.String())
 	}
@@ -211,7 +211,7 @@ func TestDefaultHealthz(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	var resp api.Response
+	var resp httputil.Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
