@@ -77,8 +77,58 @@ The collector never subscribes to scheduler events, which guarantees the collect
 - **config** (`pkg/config`) — loads YAML, interpolates environment variables (`${VAR}` / `${VAR:-default}`), and validates the file before startup.
 - **pool** (`pkg/pool`) — a unified goroutine pool manager. Every concurrent task in the system (executors, notifications, maintenance loops, listeners) submits through it; bare `go` statements are forbidden.
 - **db** (`pkg/db`) — the storage abstraction over SQLite. Business modules read and write through this layer rather than issuing raw SQL.
-- **alert / prism** (`pkg/alert`, `pkg/prism`) — the alerting engine subscribes to alert events, matches them against rules, and dispatches notifications through pluggable channels (the open-source edition ships a webhook channel).
-- **auth** (`pkg/auth`) — JWT issuance, token blacklist, and the built-in admin user.
+- **prism / alerting** (`pkg/prism`) — the alerting engine subscribes to alert events, matches them against rules, and dispatches notifications through pluggable channels (the open-source edition ships a webhook channel). Alert rules live in `pkg/prism/alert`, channels in `pkg/prism/channel`, remediation in `pkg/prism/remediation`.
+- **auth** (`pkg/auth`) — JWT issuance, token blacklist, bcrypt password hashing, and the built-in admin user.
+
+## Repository layering: `pkg/` vs `internal/`
+
+The open-source repository is the kernel; downstream editions import it and must never modify it. The layering rules below keep the kernel complete on its own while letting editions differ without forking.
+
+| Rule | Statement |
+|------|-----------|
+| L-01 | Code used by both this repository and a downstream edition lives in `pkg/`. |
+| L-02 | Code used by only one edition lives in that edition's `internal/`. |
+| L-03 | Edition differences are injected through options, interfaces, or decorators — implementations are never copied between repositories. |
+| L-04 | Dependencies run one way: `internal/` → `pkg/`. A `pkg/` package importing `internal/` is a build error and fails CI. |
+| L-05 | Domain packages are self-contained: model, store, engine, service contract, and default implementation live together (`pkg/task`, `pkg/telemetry`, `pkg/system`, `pkg/prism/*`). Services do not get a separate top-level package per layer. |
+| L-06 | `pkg/api` is pure transport — server, TLS, middleware, HTTP handlers, and the route composition root (`pkg/api/router`). Domain packages must not import `pkg/api`. |
+
+In this repository `internal/` holds edition assembly only — `cli` (entry wiring), `service` (startup composition), `quota` (quota defaults), and `web` (SPA embed). All business logic lives in `pkg/`. When a package's only consumer is a downstream edition, it does not belong in this repository at all (see the relocation precedent in [Dead-code disposition](#dead-code-disposition)).
+
+## Composition root and injection seams
+
+Route registration lives in the shared composition root, `pkg/api/router`. `RegisterRoutes(server, jwtMgr, authService, assetKeyGetter, opts...)` builds the middleware chain and binds every handler:
+
+- **Required services** — auth, task, alert, system, and telemetry services plus the JWT middleware are validated in one place (`validateRouteConfig` in `pkg/api/handler`); a missing piece fails startup with a single descriptive error instead of per-route nil panics.
+- **Optional surfaces** — every other component (channel, remediation, certificates, websocket, i18n, telemetry report handler, …) is a `RegisterOption`; the root nil-guards each one and degrades gracefully.
+- **Edition seams** — `WithAPIKeyAuth()` opts a deployment into API-key authentication alongside JWT (omitted, the chain is JWT-only); `WithUserRevoker(...)` hooks token revocation into the password-change flow; an edition passes method values or adapters as plain functions.
+
+Downstream editions never copy the router. Their `internal/api` only carries edition-specific routes (plugins, licensing, rate limiting) and feeds kernel services — wrapped in decorators — into `RegisterRoutes` as options.
+
+Domain packages follow the same seam discipline:
+
+- `pkg/task/service` accepts a nil engine — a node without the scheduling role runs as pure task CRUD.
+- `pkg/prism/alert/service` reloads rules through a minimal `reloader` interface instead of depending on a concrete engine type.
+- Cross-cutting edition behaviors attach as decorators around the shared service (for example, syncing data changes), never as forked copies.
+
+## Adding a package — decision tree
+
+1. Will both this repository and a downstream edition use it? → `pkg/`.
+2. Only this edition? → `internal/`.
+3. Shared behavior with an edition-specific variant? → base implementation in `pkg/` plus an option or interface seam; the variant injects through it (L-03).
+4. Never create a mirror copy of a `pkg/` implementation inside a downstream repository — extend it or decorate it.
+5. Before creating a new package, check whether an existing one should absorb it. Single-file micro-packages are merged away, not accumulated (precedents: `pkg/api/hlogzap` merged into `pkg/api`, `pkg/auth/password` merged into `pkg/auth`, `pkg/prism/channel/format` inlined at its single consumer).
+
+## Dead-code disposition
+
+When code turns up with no references, apply the steps in order:
+
+1. **Feature comparison** — is the same capability already implemented elsewhere, more completely? If an equivalent, stronger implementation exists and is wired in, delete the weaker one. (Precedent: the old `internal/auth` login flow versus `pkg/auth.Service.Login`, which adds rate limiting, disable checks, and failure tracking.)
+2. **Product surface** — does any edition actually expose the feature? No surface in either edition plus equivalent coverage elsewhere means delete. (Precedent: self-registration had no entry point in any edition.)
+3. **Incomplete but needed** — if the feature is unfinished yet the product needs it, complete the implementation instead of deleting it. Reference the existing implementations in both repositories as the specification.
+4. **Uncertain** — record the item in the audit document's pending-decision list and leave the code in place.
+
+Relocation — not deletion — applies to live code that merely sits on the wrong side of the layering line: `pkg/console` moved to its only consumer's `internal/` tree rather than being removed.
 
 ## Persistence model
 

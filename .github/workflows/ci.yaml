@@ -67,6 +67,17 @@ jobs:
           # For now, just report
       - name: Build
         run: go build ./...
+      # Layering guard: pkg/ is the cross-repo kernel surface and must never
+      # depend on this repository's internal/ assembly code. Such an import
+      # compiles within the module but breaks downstream editions, which
+      # cannot import internal/ at all (rule L-04 in docs/architecture.md).
+      - name: Layering guard (pkg must not import internal)
+        run: |
+          if git grep -n -E '"github\.com/tickraft/tickraft/internal/' -- ':(glob)pkg/**/*.go'; then
+            echo "::error::pkg/ packages must not import internal/ (docs/architecture.md rule L-04)"
+            exit 1
+          fi
+          echo "PASS: no pkg -> internal imports"
 
   # Open-source red line scan: ensure professional edition keywords do NOT
   # leak into the open-source codebase.

@@ -52,15 +52,17 @@ A downstream repository imports public types from `pkg/` and registers its imple
 
 ### pkg/ 公共库层 → 集中式
 
-- 所有 HTTP handler 统一在 `pkg/api/handler/`；中间件统一在 `pkg/api/middleware/`。
+- 所有 HTTP handler 统一在 `pkg/api/handler/`；中间件统一在 `pkg/api/middleware/`；路由组合根统一在 `pkg/api/router`（`RegisterRoutes` + `RegisterOption` 选项集）。
 - 业务包（`pkg/auth`、`pkg/task`、`pkg/prism/*`、`pkg/asset`、`pkg/executor` 等）禁止 import `cloudwego/hertz`、`net/http`。
 - 理由：`pkg/` 被跨仓导入（atlas / tickraft-x 均 import tickraft/pkg/*），必须传输层无关、可独立单测。
 
 ### internal/ 应用层 → 分布式 package-by-feature
 
 - 每个业务包内 `handler.go` + `routes.go` 高内聚，handler 直接调用同包 Service。
-- 各仓 `internal/api/`（或 `internal/router/`）作为统一路由装配点 + 跨域共享中间件位置。
+- 版次特有的路由（插件、许可等）留在各仓 `internal/`，通过 `RegisterOption` 注入共享组合根；本仓 `internal/` 只做装配（cli / service / quota / web），不设独立 router。
 - 理由：`internal/` 外部不可导入，高内聚 > 传输层解耦；这是 atlas / atrium / arcadia / axiom / tickraft-x 的既成惯例。
+
+分层判定（两仓都用→pkg、仅单仓→internal、版次差异→注入缝）与新增包决策树、死代码处置流程见 [Architecture](./architecture.md)。
 
 ## Related documents
 

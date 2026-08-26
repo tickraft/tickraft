@@ -80,8 +80,58 @@ collector 从不订阅 scheduler 事件，这保证了采集引擎可以独立�
 - **config**（`pkg/config`）—— 加载 YAML，插值环境变量（`${VAR}` / `${VAR:-default}`），并在启动前校验配置文件。
 - **pool**（`pkg/pool`）—— 统一的 goroutine 池管理器。系统中每个并发任务（executor、通知、维护循环、listener）都通过它提交；禁止裸 `go` 语句。
 - **db**（`pkg/db`）—— 位于 SQLite 之上的存储抽象。业务模块通过该层读写，而不是直接发起原始 SQL。
-- **alert / prism**（`pkg/alert`、`pkg/prism`）—— 告警引擎订阅告警事件，将其与规则匹配，并通过可插拔 channel 分发通知（开源版内置 webhook channel）。
-- **auth**（`pkg/auth`）—— JWT 签发、token 黑名单与内置管理员用户。
+- **prism / 告警**（`pkg/prism`）—— 告警引擎订阅告警事件，将其与规则匹配，并通过可插拔 channel 分发通知（开源版内置 webhook channel）。告警规则位于 `pkg/prism/alert`，channel 位于 `pkg/prism/channel`，修复位于 `pkg/prism/remediation`。
+- **auth**（`pkg/auth`）—— JWT 签发、token 黑名单、bcrypt 密码散列与内置管理员用户。
+
+## 仓库分层：`pkg/` 与 `internal/`
+
+开源仓库是内核；下游版次导入它且绝不修改它。以下分层规则保证内核自身完整可运行，同时让各版次无需分叉即可产生差异。
+
+| 规则 | 约束 |
+|------|------|
+| L-01 | 本仓库与下游版次共同使用的代码放 `pkg/`。 |
+| L-02 | 仅单个版次使用的代码放该版次自己的 `internal/`。 |
+| L-03 | 版次差异通过 Option、接口或装饰器注入——实现绝不在仓库之间复制。 |
+| L-04 | 依赖单向：`internal/` → `pkg/`。`pkg/` 包 import `internal/` 属于构建错误，CI 会拦截。 |
+| L-05 | 领域包自包含：模型、存储、引擎、服务契约与默认实现放在一起（`pkg/task`、`pkg/telemetry`、`pkg/system`、`pkg/prism/*`）。不为每层单设顶层包。 |
+| L-06 | `pkg/api` 是纯传输层——server、TLS、中间件、HTTP handler 与路由组合根（`pkg/api/router`）。领域包禁止 import `pkg/api`。 |
+
+在本仓库中，`internal/` 只承载版次装配——`cli`（入口接线）、`service`（启动装配）、`quota`（配额默认值）与 `web`（SPA 嵌入）。全部业务逻辑都在 `pkg/`。当某个包的唯一使用者是下游版次时，它根本不该留在本仓库（见[死代码处置](#死代码处置)中的迁移先例）。
+
+## 组合根与注入缝
+
+路由注册位于共享组合根 `pkg/api/router`。`RegisterRoutes(server, jwtMgr, authService, assetKeyGetter, opts...)` 构建中间件链并绑定全部 handler：
+
+- **必填服务** —— auth、task、alert、system、telemetry 五个服务加 JWT 中间件在一处校验（`pkg/api/handler` 的 `validateRouteConfig`）；缺失任何一项启动即失败并给出一条描述性错误，而不是各路由各自 nil panic。
+- **可选面** —— 其余组件（channel、remediation、证书、websocket、i18n、遥测上报 handler 等）均为 `RegisterOption`；组合根对每一项做 nil 保护并优雅降级。
+- **版次缝** —— `WithAPIKeyAuth()` 让部署选择在 JWT 之外启用 API-key 认证（缺省时链路为纯 JWT）；`WithUserRevoker(...)` 把 token 吊销挂入修改密码流程；版次以方法值或适配器形式的普通函数传入。
+
+下游版次绝不复制 router。其 `internal/api` 只承载版次特有路由（插件、许可、限流），并把内核服务——经装饰器包装——以 Option 形式传入 `RegisterRoutes`。
+
+领域包遵循同样的缝纪律：
+
+- `pkg/task/service` 接受 nil 引擎——不承担调度角色的节点以纯任务 CRUD 运行。
+- `pkg/prism/alert/service` 通过最小 `reloader` 接口重载规则，而不依赖具体引擎类型。
+- 跨切面的版次行为以装饰器挂在共享服务外（例如同步数据变更），绝不以分叉副本存在。
+
+## 新增包决策树
+
+1. 本仓库与下游版次都会用？→ `pkg/`。
+2. 仅本版次用？→ `internal/`。
+3. 共享行为但存在版次变体？→ 基础实现放 `pkg/` 并留 Option 或接口缝；变体经缝注入（L-03）。
+4. 绝不在下游仓库内创建 `pkg/` 实现的镜像副本——扩展它或装饰它。
+5. 新建包之前先检查是否应并入既有包。单文件微包应被合并而非累积（先例：`pkg/api/hlogzap` 并入 `pkg/api`、`pkg/auth/password` 并入 `pkg/auth`、`pkg/prism/channel/format` 在唯一使用者处内联）。
+
+## 死代码处置
+
+发现无引用代码时，按以下顺序处置：
+
+1. **功能对照** —— 同一能力是否已在别处更完整地实现？若存在已接线的更强等价实现，删除较弱者。（先例：旧 `internal/auth` 登录流程之于 `pkg/auth.Service.Login`，后者额外具备限流、禁用检查与失败记录。）
+2. **产品形态** —— 是否有版次真正暴露该功能？两个版次都无入口且别处已有等价覆盖 → 删除。（先例：自注册在任何版次都没有入口。）
+3. **未完成但需要** —— 功能未完成而产品需要时，补全实现而不是删除。以两仓现有实现为规格参照。
+4. **拿不准** —— 记入审计文档待决策清单，代码原样保留。
+
+迁移——而非删除——适用于只是站错分层位置的活代码：`pkg/console` 迁往其唯一使用者的 `internal/` 树，而不是被删除。
 
 ## 持久化模型
 
