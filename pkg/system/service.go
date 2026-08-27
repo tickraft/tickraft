@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package system provides the system configuration, runtime info, and
-// global stats contract (Service) plus its database-backed implementation. It persists system configuration in a
-// dedicated DB table and derives runtime info and global statistics
-// from build-time variables and the runtime's task / asset stores.
 package system
 
 import (
@@ -22,22 +18,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/types"
 )
-
-// systemConfig is the GORM row model for the sys_config table. It stores
-// a single row (id=1) holding the global system configuration. The table
-// is created by Migrate and seeded with default values on first access.
-// The configuration fields themselves are defined once by the embedded
-// Config, whose gorm tags supply the column names and types.
-type systemConfig struct {
-	ID        int64 `gorm:"primaryKey;autoIncrement:false"`
-	Config    `gorm:"embedded"`
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
-}
-
-// TableName overrides the default GORM table name.
-func (systemConfig) TableName() string { return "sys_config" }
-
-const configRowID = int64(1)
 
 // Compile-time interface compliance check.
 var _ Service = (*SystemService)(nil)
