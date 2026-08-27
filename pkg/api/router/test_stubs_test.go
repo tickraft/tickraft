@@ -19,8 +19,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
-	telemetrymodel "github.com/tickraft/tickraft/pkg/telemetry"
-	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
+	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -144,33 +143,33 @@ func (stubRemediationService) ListRecords(_ context.Context, _, _ int,
 
 var _ remediation.Service = (*stubRemediationService)(nil)
 
-// stubTelemetryService implements telemetryservice.Service.
+// stubTelemetryService implements telemetry.Service.
 type stubTelemetryService struct{}
 
 func (stubTelemetryService) ListTasks(_ context.Context, _, _ int,
-	_ telemetryservice.Filter) ([]telemetrymodel.MonitorPoint, int64, error) {
+	_ telemetry.Filter) ([]telemetry.MonitorPoint, int64, error) {
 	return nil, 0, nil
 }
-func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetrymodel.MonitorPoint, error) {
+func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetry.MonitorPoint, error) {
 	return nil, nil
 }
 func (stubTelemetryService) CreateTask(
-	_ context.Context, _ *telemetrymodel.MonitorPoint) (*telemetrymodel.MonitorPoint, error) {
-	return &telemetrymodel.MonitorPoint{}, nil
+	_ context.Context, _ *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error) {
+	return &telemetry.MonitorPoint{}, nil
 }
 func (stubTelemetryService) UpdateTask(_ context.Context, _ int64,
-	_ *telemetrymodel.MonitorPoint) (*telemetrymodel.MonitorPoint, error) {
-	return &telemetrymodel.MonitorPoint{}, nil
+	_ *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error) {
+	return &telemetry.MonitorPoint{}, nil
 }
 func (stubTelemetryService) DeleteTask(_ context.Context, _ int64) error { return nil }
-func (stubTelemetryService) ProbeNow(_ context.Context, _ int64) (*telemetrymodel.MonitorPoint, error) {
-	return &telemetrymodel.MonitorPoint{}, nil
+func (stubTelemetryService) ProbeNow(_ context.Context, _ int64) (*telemetry.MonitorPoint, error) {
+	return &telemetry.MonitorPoint{}, nil
 }
-func (stubTelemetryService) Summary(_ context.Context) (telemetrymodel.PointSummary, error) {
-	return telemetrymodel.PointSummary{}, nil
+func (stubTelemetryService) Summary(_ context.Context) (telemetry.PointSummary, error) {
+	return telemetry.PointSummary{}, nil
 }
 
-var _ telemetryservice.Service = (*stubTelemetryService)(nil)
+var _ telemetry.Service = (*stubTelemetryService)(nil)
 
 // stubAssetStore implements assetstore.Store for route-registration tests.
 type stubAssetStore struct{}

@@ -18,33 +18,58 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
+
+// MetricStore is the interface a metric store must satisfy for injection
+// via WithTelemetryDataStores. It narrows telemetry.MetricStore to the
+// query method the monitor endpoints consume.
+type MetricStore interface {
+	QueryMetrics(ctx context.Context, q telemetry.MetricQuery) ([]telemetry.CollectMetric, int64, error)
+}
+
+// LogStore is the interface a log store must satisfy for injection
+// via WithTelemetryDataStores. It narrows telemetry.LogStore to the
+// query method the monitor endpoints consume.
+type LogStore interface {
+	QueryLogs(ctx context.Context, q telemetry.LogQuery) ([]telemetry.CollectLog, int64, error)
+}
+
+// ProbeRecordStore is the interface a probe record store must satisfy for
+// injection via WithTelemetryProbeRecords. It narrows the query methods of
+// telemetry.ProbeRecordStore used by the monitor endpoints. Active monitor
+// points read their status, history, and log views from probe records;
+// passive points fall back to the asset-level metric/log stores.
+type ProbeRecordStore interface {
+	// QueryByPoint returns a page of probe records for a monitor point.
+	QueryByPoint(ctx context.Context, q telemetry.ProbeQuery) ([]telemetry.ProbeRecord, int64, error)
+	// LatestByPoint returns the most recent probe record for a point.
+	LatestByPoint(ctx context.Context, pointID int64) (*telemetry.ProbeRecord, error)
+}
 
 // Handler implements the telemetry monitoring point CRUD endpoints
 // (registered under /api/v1/telemetry/monitors) for the runtime. The CRUD
-// methods delegate to an injected Service. The monitoring points are
-// unified via the Mode field (active/passive), aligning with the
+// methods delegate to an injected telemetry.Service. The monitoring points
+// are unified via the Mode field (active/passive), aligning with the
 // telemetry.MonitorPoint model. The unified report endpoint
 // (POST /api/v1/telemetry) is registered separately via
 // WithTelemetryReportHandler.
 type Handler struct {
-	svc          telemetrysvc.Service
-	metricStore  telemetrysvc.MetricStore
-	logStore     telemetrysvc.LogStore
-	probeRecords telemetrysvc.ProbeRecordStore
+	svc          telemetry.Service
+	metricStore  MetricStore
+	logStore     LogStore
+	probeRecords ProbeRecordStore
 }
 
 // NewHandler creates a Handler backed by the given service. The service must
 // be non-nil; callers must inject a concrete database-backed implementation.
-func NewHandler(svc telemetrysvc.Service) *Handler {
+func NewHandler(svc telemetry.Service) *Handler {
 	return &Handler{svc: svc}
 }
 
 // SetDataStores injects the metric and log stores used by the history and
 // logs endpoints of passive monitor points. Either store may be nil to
 // disable the corresponding query path.
-func (h *Handler) SetDataStores(metricStore telemetrysvc.MetricStore, logStore telemetrysvc.LogStore) {
+func (h *Handler) SetDataStores(metricStore MetricStore, logStore LogStore) {
 	h.metricStore = metricStore
 	h.logStore = logStore
 }
@@ -53,7 +78,7 @@ func (h *Handler) SetDataStores(metricStore telemetrysvc.MetricStore, logStore t
 // history, and logs endpoints of active monitor points. A nil store
 // disables the probe-backed query paths and the endpoints fall back to the
 // enabled-derived defaults.
-func (h *Handler) SetProbeRecordStore(store telemetrysvc.ProbeRecordStore) {
+func (h *Handler) SetProbeRecordStore(store ProbeRecordStore) {
 	h.probeRecords = store
 }
 
@@ -67,7 +92,7 @@ func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	filter := telemetrysvc.Filter{Mode: arc.Query("mode")}
+	filter := telemetry.Filter{Mode: arc.Query("mode")}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
 		httputil.Fail(arc, err)

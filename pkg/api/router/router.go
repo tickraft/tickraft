@@ -26,7 +26,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
-	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	telemetryapi "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 	"github.com/tickraft/tickraft/pkg/auth"
@@ -37,7 +37,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
-	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
+	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
 // denyAllAssetKeys is a fail-closed asset key getter used when no concrete
@@ -61,13 +61,13 @@ type registerConfig struct {
 	channelService         channel.Service
 	remediationRuleService remediation.Service
 	systemService          system.Service
-	telemetryService       telemetryservice.Service
+	telemetryService       telemetry.Service
 	telemetryReportHandler app.HandlerFunc
-	telemetryMetricStore   telemetryservice.MetricStore
-	telemetryLogStore      telemetryservice.LogStore
-	telemetryProbeRecords  telemetryservice.ProbeRecordStore
+	telemetryMetricStore   telemetryapi.MetricStore
+	telemetryLogStore      telemetryapi.LogStore
+	telemetryProbeRecords  telemetryapi.ProbeRecordStore
 	assetHandler           *asset.Handler
-	templateHandler        *telemetry.TemplateHandler
+	templateHandler        *telemetryapi.TemplateHandler
 	healthzHandler         *healthz.Handler
 	readyzHandler          *readyz.Handler
 	certificateHandler     *certificates.Handler
@@ -183,18 +183,18 @@ func WithExecutorRegistry(reg *executor.Registry) RegisterOption {
 	return executorRegistryOption{reg: reg}
 }
 
-// telemetryServiceOption provides the telemetryservice.Service implementation
+// telemetryServiceOption provides the telemetry.Service implementation
 // for the telemetry collection task CRUD API.
 type telemetryServiceOption struct {
-	svc telemetryservice.Service
+	svc telemetry.Service
 }
 
 func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetryService = o.svc }
 
-// WithTelemetryService provides the telemetryservice.Service implementation
+// WithTelemetryService provides the telemetry.Service implementation
 // for the telemetry collection task CRUD API at /api/v1/telemetry. Required
 // by the handler route validator.
-func WithTelemetryService(svc telemetryservice.Service) RegisterOption {
+func WithTelemetryService(svc telemetry.Service) RegisterOption {
 	return telemetryServiceOption{svc: svc}
 }
 
@@ -218,8 +218,8 @@ func WithTelemetryReportHandler(h app.HandlerFunc) RegisterOption {
 // telemetryDataStoresOption provides the MetricStore and LogStore used by
 // the telemetry handler's history/logs endpoints.
 type telemetryDataStoresOption struct {
-	metricStore telemetryservice.MetricStore
-	logStore    telemetryservice.LogStore
+	metricStore telemetryapi.MetricStore
+	logStore    telemetryapi.LogStore
 }
 
 func (o telemetryDataStoresOption) apply(c *registerConfig) {
@@ -229,15 +229,15 @@ func (o telemetryDataStoresOption) apply(c *registerConfig) {
 
 // WithTelemetryDataStores provides the MetricStore and LogStore used by the
 // telemetry handler's history/logs endpoints. Both stores may be nil.
-func WithTelemetryDataStores(metricStore telemetryservice.MetricStore,
-	logStore telemetryservice.LogStore) RegisterOption {
+func WithTelemetryDataStores(metricStore telemetryapi.MetricStore,
+	logStore telemetryapi.LogStore) RegisterOption {
 	return telemetryDataStoresOption{metricStore: metricStore, logStore: logStore}
 }
 
 // telemetryProbeRecordsOption provides the probe record store used by the
 // telemetry handler's status/history/logs endpoints for active points.
 type telemetryProbeRecordsOption struct {
-	store telemetryservice.ProbeRecordStore
+	store telemetryapi.ProbeRecordStore
 }
 
 func (o telemetryProbeRecordsOption) apply(c *registerConfig) {
@@ -247,14 +247,14 @@ func (o telemetryProbeRecordsOption) apply(c *registerConfig) {
 // WithTelemetryProbeRecords provides the probe record store used by the
 // telemetry handler's status/history/logs endpoints for active monitor
 // points. A nil store disables the probe-backed query paths.
-func WithTelemetryProbeRecords(store telemetryservice.ProbeRecordStore) RegisterOption {
+func WithTelemetryProbeRecords(store telemetryapi.ProbeRecordStore) RegisterOption {
 	return telemetryProbeRecordsOption{store: store}
 }
 
 // templateHandlerOption provides the TemplateHandler for the telemetry
 // template management API.
 type templateHandlerOption struct {
-	h *telemetry.TemplateHandler
+	h *telemetryapi.TemplateHandler
 }
 
 func (o templateHandlerOption) apply(c *registerConfig) { c.templateHandler = o.h }
@@ -262,7 +262,7 @@ func (o templateHandlerOption) apply(c *registerConfig) { c.templateHandler = o.
 // WithTemplateHandler provides the TemplateHandler for the telemetry
 // template management API at /api/v1/telemetry/templates. When omitted, the
 // template route group is not registered.
-func WithTemplateHandler(h *telemetry.TemplateHandler) RegisterOption {
+func WithTemplateHandler(h *telemetryapi.TemplateHandler) RegisterOption {
 	return templateHandlerOption{h: h}
 }
 

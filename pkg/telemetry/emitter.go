@@ -162,3 +162,23 @@ func alertToMetrics(alert AlertContext) map[string]float64 {
 	}
 	return metrics
 }
+
+// AlertContext describes an alert triggered during processing.
+type AlertContext struct {
+	// Level is the alert severity (info/warning/critical).
+	Level string
+	// Title is the alert title.
+	Title string
+	// Message is the alert detail.
+	Message string
+	// SourceIP is the origin address of the telemetry that triggered the alert,
+	// used to populate LogMatchedPayload.SourceIP. Empty when unavailable.
+	SourceIP string
+	// Metadata holds additional alert information.
+	// For metric alerts, conventionally populated keys are:
+	//   - "metric":    the metric name (e.g. "rtt_ms")
+	//   - "value":     the observed metric value (stringified float64)
+	//   - "threshold": the threshold value (stringified float64)
+	//   - "operator":  the comparison operator (e.g. ">"); defaults to ">" when absent
+	Metadata map[string]string
+}

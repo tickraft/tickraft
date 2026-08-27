@@ -35,7 +35,6 @@ import (
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/telemetry/http"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
 
 // startAPIServer initializes auth, builds the HTTP API server, registers
@@ -328,7 +327,7 @@ func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 // handler — and returns the constructed service for the template handler.
 func newTelemetryRouteOptions(
 	ctx context.Context, rt *runtime,
-) ([]router.RegisterOption, *telemetrysvc.TelemetryService, error) {
+) ([]router.RegisterOption, *telemetry.TelemetryService, error) {
 	// Telemetry service: backed by the persistent MonitorStore (monitor_points
 	// table) created by the worker engines. All CRUD operations survive
 	// process restarts. Point hooks are wired with mode branching: active
@@ -350,8 +349,8 @@ func newTelemetryRouteOptions(
 	syncObservation := func(ctx context.Context, assetID int64) error {
 		return telemetry.SyncAssetObservation(ctx, monitorStore, rt.telemetryCollector, rt.logger, assetID)
 	}
-	var telemetryOpts []telemetrysvc.Option
-	telemetryOpts = append(telemetryOpts, telemetrysvc.WithPointHandlers(
+	var telemetryOpts []telemetry.ServiceOption
+	telemetryOpts = append(telemetryOpts, telemetry.WithPointHandlers(
 		func(ctx context.Context, point telemetry.MonitorPoint) error {
 			if point.Mode == telemetry.ModePassive {
 				secretRegistry.SetPoint(point)
@@ -374,7 +373,7 @@ func newTelemetryRouteOptions(
 		},
 	))
 	if rt.executorRegistry != nil {
-		telemetryOpts = append(telemetryOpts, telemetrysvc.WithExecutorValidator(
+		telemetryOpts = append(telemetryOpts, telemetry.WithExecutorValidator(
 			func(executorType string) error {
 				_, err := rt.executorRegistry.LookupWithOp(executorType, executor.OpProbe)
 				return err
@@ -382,9 +381,9 @@ func newTelemetryRouteOptions(
 		))
 	}
 	if rt.proberSvc != nil {
-		telemetryOpts = append(telemetryOpts, telemetrysvc.WithProbeTrigger(rt.proberSvc.ProbeNow))
+		telemetryOpts = append(telemetryOpts, telemetry.WithProbeTrigger(rt.proberSvc.ProbeNow))
 	}
-	telemetrySvc := telemetrysvc.NewTelemetryService(monitorStore, rt.logger, telemetryOpts...)
+	telemetrySvc := telemetry.NewTelemetryService(monitorStore, rt.logger, telemetryOpts...)
 
 	// Telemetry report handler: wires the webhook listener to the telemetry
 	// collector so POST /api/v1/telemetry forwards received payloads into
@@ -443,7 +442,7 @@ func newCertificateRouteOptions(srv *api.Server, tlsEnabled bool) ([]router.Regi
 
 // newTemplateRouteOptions builds the telemetry template handler route option.
 func newTemplateRouteOptions(
-	rt *runtime, telemetrySvc *telemetrysvc.TelemetryService,
+	rt *runtime, telemetrySvc *telemetry.TelemetryService,
 ) ([]router.RegisterOption, error) {
 	// Telemetry template handler: backed by the GORM template store,
 	// seeded on every startup with the CE built-in template set

@@ -14,6 +14,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pool"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // Collector is the collection engine interface.
@@ -36,6 +37,33 @@ type Config struct {
 	AssetID int64
 	// Timeout is the offline detection threshold in seconds.
 	Timeout int
+}
+
+// Telemetry is the standardized data structure that flows from
+// external collectors to Processor. All collection channels produce this.
+type Telemetry struct {
+	// AssetID is the ID of the asset the telemetry was collected from.
+	AssetID int64
+	// TenantID is the tenant that owns the asset.
+	TenantID int64
+	// AssetType categorizes the asset.
+	AssetType types.AssetType
+	// SourceType identifies the data source (e.g., "webhook").
+	SourceType string
+	// RemoteAddr is the source address of the telemetry.
+	RemoteAddr string
+	// CollectedAt is when the data was collected.
+	CollectedAt time.Time
+	// RawData contains the original unprocessed data.
+	RawData []byte
+	// Metrics holds extracted numerical metrics (optional).
+	Metrics map[string]float64
+	// LogContent holds log content (optional).
+	LogContent string
+	// LogLevel holds the severity level of the log content (optional, defaults to "INFO").
+	LogLevel string
+	// Status is the pre-judged status (optional, set by collectors).
+	Status types.AssetStatus
 }
 
 // Option configures a telemetry.

@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package service provides the telemetry monitoring point contract
-// (Service) plus the TelemetryService implementation backed by the
-// persistent MonitorStore. The wire shape and the storage shape are the
-// same telemetry.MonitorPoint model, so this service only validates,
-// enforces quotas, and orchestrates the store — there is no DTO
-// conversion.
-package service
+package telemetry
 
 import (
 	"context"
@@ -23,28 +17,28 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/quota"
-	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
-// Compile-time assertion that Service implements Service.
+// Compile-time assertion that TelemetryService implements Service.
 var _ Service = (*TelemetryService)(nil)
 
 // PointUpsertHandler is called after a monitoring point is created or
 // updated. It allows the caller to register/re-register the point with
 // the prober scheduling engine or the passive offline-detection wheel.
-type PointUpsertHandler func(ctx context.Context, point telemetry.MonitorPoint) error
+type PointUpsertHandler func(ctx context.Context, point MonitorPoint) error
 
 // PointDeleteHandler is called after a monitoring point is deleted, and
 // before the row is rewritten on update (to unregister the old shape).
 // It receives the full pre-delete point so the handler can branch on the
 // point's mode and asset.
-type PointDeleteHandler func(ctx context.Context, point telemetry.MonitorPoint) error
+type PointDeleteHandler func(ctx context.Context, point MonitorPoint) error
 
-// TelemetryService implements Service backed by the persistent
-// MonitorStore. All CRUD operations are persisted to the monitor_points table
-// via GORM, surviving process restarts.
+// The <Domain>Service name mirrors the convention of the other domain
+// service implementations (see pkg/system).
+//
+//nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type TelemetryService struct {
-	store            *telemetry.MonitorStore
+	store            *MonitorStore
 	logger           *zap.Logger
 	onPointUpsert    PointUpsertHandler
 	onPointDelete    PointDeleteHandler
@@ -52,8 +46,9 @@ type TelemetryService struct {
 	probeNow         func(ctx context.Context, pointID int64) error
 }
 
-// Option configures a Service at construction time.
-type Option interface {
+// ServiceOption configures a TelemetryService at construction time.
+// The distinct name avoids colliding with the Engine's Option.
+type ServiceOption interface {
 	apply(*TelemetryService)
 }
 
@@ -71,7 +66,7 @@ func (o pointHandlersOption) apply(s *TelemetryService) {
 // WithPointHandlers injects callbacks that are invoked after a monitoring
 // point is created/updated or deleted. These are used to wire the
 // ProberService so active points are scheduled in real time.
-func WithPointHandlers(upsert PointUpsertHandler, del PointDeleteHandler) Option {
+func WithPointHandlers(upsert PointUpsertHandler, del PointDeleteHandler) ServiceOption {
 	return pointHandlersOption{upsert, del}
 }
 
@@ -87,7 +82,7 @@ func (o executorValidatorOption) apply(s *TelemetryService) { s.validateExecutor
 // type and returns an error when the type cannot probe (lacks CapProbe),
 // turning "point registered but every probe fails capability lookup" into
 // an immediate 400.
-func WithExecutorValidator(v func(executorType string) error) Option {
+func WithExecutorValidator(v func(executorType string) error) ServiceOption {
 	return executorValidatorOption{v}
 }
 
@@ -101,13 +96,13 @@ func (o probeTriggerOption) apply(s *TelemetryService) { s.probeNow = o.fn }
 // WithProbeTrigger injects the callback invoked by ProbeNow to dispatch a
 // real probe through the prober scheduling engine. The natural wiring is
 // ProberService.ProbeNow.
-func WithProbeTrigger(fn func(ctx context.Context, pointID int64) error) Option {
+func WithProbeTrigger(fn func(ctx context.Context, pointID int64) error) ServiceOption {
 	return probeTriggerOption{fn}
 }
 
 // NewTelemetryService creates a database-backed telemetry Service from the given
 // MonitorStore. If logger is nil, a no-op logger is used.
-func NewTelemetryService(store *telemetry.MonitorStore, logger *zap.Logger, options ...Option) *TelemetryService {
+func NewTelemetryService(store *MonitorStore, logger *zap.Logger, options ...ServiceOption) *TelemetryService {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -118,6 +113,13 @@ func NewTelemetryService(store *telemetry.MonitorStore, logger *zap.Logger, opti
 	return s
 }
 
+// Sentinel service errors returned by the TelemetryService implementation.
+// They wrap the errdefs sentinels so errors.Is keeps working across layers.
+var (
+	ErrTelemetryTaskNotFound = fmt.Errorf("telemetry task not found: %w", errdefs.ErrNotFound)
+	ErrInvalidRequest        = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
+)
+
 // ListTasks returns a page of telemetry tasks ordered by ascending ID, plus
 // the total count. When filter.Mode is non-empty, only tasks whose Mode matches
 // are returned.
@@ -125,10 +127,10 @@ func (s *TelemetryService) ListTasks(
 	ctx context.Context,
 	page, size int,
 	filter Filter,
-) ([]telemetry.MonitorPoint, int64, error) {
+) ([]MonitorPoint, int64, error) {
 	page, size = pagination.Clamp(page, size)
 
-	mode := telemetry.Mode(filter.Mode)
+	mode := Mode(filter.Mode)
 	points, total, err := s.store.ListPaged(ctx, mode, page, size)
 	if err != nil {
 		return nil, 0, mapError(err)
@@ -138,7 +140,7 @@ func (s *TelemetryService) ListTasks(
 }
 
 // GetTask returns a single telemetry task by ID.
-func (s *TelemetryService) GetTask(ctx context.Context, id int64) (*telemetry.MonitorPoint, error) {
+func (s *TelemetryService) GetTask(ctx context.Context, id int64) (*MonitorPoint, error) {
 	p, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapError(err)
@@ -149,8 +151,8 @@ func (s *TelemetryService) GetTask(ctx context.Context, id int64) (*telemetry.Mo
 // CreateTask creates a new telemetry task from the given request, applies quota
 // checks, and persists it.
 func (s *TelemetryService) CreateTask(
-	ctx context.Context, req *telemetry.MonitorPoint,
-) (*telemetry.MonitorPoint, error) {
+	ctx context.Context, req *MonitorPoint,
+) (*MonitorPoint, error) {
 	if req == nil {
 		return nil, ErrInvalidRequest
 	}
@@ -171,7 +173,7 @@ func (s *TelemetryService) CreateTask(
 	req.ID = 0
 	req.CreatedAt = time.Time{}
 	req.UpdatedAt = time.Time{}
-	req.Status = telemetry.MonitorStatusInactive
+	req.Status = MonitorStatusInactive
 	if err := s.store.Create(ctx, req); err != nil {
 		return nil, mapError(err)
 	}
@@ -196,8 +198,8 @@ func (s *TelemetryService) CreateTask(
 func (s *TelemetryService) UpdateTask(
 	ctx context.Context,
 	id int64,
-	req *telemetry.MonitorPoint,
-) (*telemetry.MonitorPoint, error) {
+	req *MonitorPoint,
+) (*MonitorPoint, error) {
 	if req == nil {
 		return nil, ErrInvalidRequest
 	}
@@ -289,7 +291,7 @@ func (s *TelemetryService) DeleteTask(ctx context.Context, id int64) error {
 // asynchronously: its result lands in the probe record store, and clients
 // poll the status/history endpoints for the refreshed outcome. Passive
 // points and disabled points are rejected with 400.
-func (s *TelemetryService) ProbeNow(ctx context.Context, id int64) (*telemetry.MonitorPoint, error) {
+func (s *TelemetryService) ProbeNow(ctx context.Context, id int64) (*MonitorPoint, error) {
 	point, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapError(err)
@@ -320,7 +322,7 @@ func (s *TelemetryService) ProbeNow(ctx context.Context, id int64) (*telemetry.M
 
 // Summary returns aggregate monitor point counts by mode and enabled state
 // over the full dataset. It backs the monitor list summary chips.
-func (s *TelemetryService) Summary(ctx context.Context) (telemetry.PointSummary, error) {
+func (s *TelemetryService) Summary(ctx context.Context) (PointSummary, error) {
 	return s.store.Summary(ctx)
 }
 
@@ -329,7 +331,7 @@ func (s *TelemetryService) Summary(ctx context.Context) (telemetry.PointSummary,
 // checkProberQuotaForCreate returns an error when creating a task whose Mode
 // is "active" would exceed the TypeProber ceiling.
 func (s *TelemetryService) checkProberQuotaForCreate(ctx context.Context, mode string) error {
-	if !strings.EqualFold(mode, string(telemetry.ModeActive)) {
+	if !strings.EqualFold(mode, string(ModeActive)) {
 		return nil
 	}
 	ceiling := quota.Ceiling(quota.TypeProber)
@@ -352,10 +354,10 @@ func (s *TelemetryService) checkProberQuotaForCreate(ctx context.Context, mode s
 // checkProberQuotaForUpdate returns an error when the mode transitions to
 // "active" and the new active count would exceed the TypeProber ceiling.
 func (s *TelemetryService) checkProberQuotaForUpdate(ctx context.Context, oldMode, newMode string) error {
-	if !strings.EqualFold(newMode, string(telemetry.ModeActive)) {
+	if !strings.EqualFold(newMode, string(ModeActive)) {
 		return nil
 	}
-	if strings.EqualFold(oldMode, string(telemetry.ModeActive)) {
+	if strings.EqualFold(oldMode, string(ModeActive)) {
 		return nil
 	}
 	ceiling := quota.Ceiling(quota.TypeProber)
@@ -379,7 +381,7 @@ func (s *TelemetryService) checkProberQuotaForUpdate(ctx context.Context, oldMod
 // probe. Passive points do not run through the executor pipeline (their Type
 // names a listener), so they are exempt.
 func (s *TelemetryService) checkActiveExecutor(mode, executorType string) error {
-	if !strings.EqualFold(mode, string(telemetry.ModeActive)) || s.validateExecutor == nil {
+	if !strings.EqualFold(mode, string(ModeActive)) || s.validateExecutor == nil {
 		return nil
 	}
 	if err := s.validateExecutor(executorType); err != nil {
@@ -394,7 +396,7 @@ func (s *TelemetryService) checkActiveExecutor(mode, executorType string) error 
 // checkHTTPIntervalQuota validates the schedule of an active HTTP prober
 // against the minimum HTTP probe interval quota (TypeHTTPInterval, in seconds).
 func checkHTTPIntervalQuota(mode, typ, schedule string) error {
-	if !strings.EqualFold(mode, string(telemetry.ModeActive)) || !strings.EqualFold(typ, "http") {
+	if !strings.EqualFold(mode, string(ModeActive)) || !strings.EqualFold(typ, "http") {
 		return nil
 	}
 	ceiling := quota.Ceiling(quota.TypeHTTPInterval)

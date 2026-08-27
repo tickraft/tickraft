@@ -20,7 +20,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/telemetry"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 )
 
 // maxTemplateNameLength is the maximum allowed length for a template name.
@@ -81,13 +80,13 @@ type applyTemplateRequest struct {
 // delegates monitoring point creation to the injected Service.
 type TemplateHandler struct {
 	store *telemetry.TemplateStore
-	svc   telemetrysvc.Service
+	svc   telemetry.Service
 }
 
 // NewTemplateHandler creates a new TemplateHandler backed by the given
 // store. The Service is used by ApplyTemplate to create monitoring points
 // and must be non-nil.
-func NewTemplateHandler(store *telemetry.TemplateStore, svc telemetrysvc.Service) *TemplateHandler {
+func NewTemplateHandler(store *telemetry.TemplateStore, svc telemetry.Service) *TemplateHandler {
 	return &TemplateHandler{store: store, svc: svc}
 }
 

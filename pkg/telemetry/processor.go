@@ -20,3 +20,15 @@ type Processor interface {
 	// OnTimeout handles the asset timeout scenario.
 	OnTimeout(ctx context.Context, assetID int64) error
 }
+
+// ProcessResult indicates the outcome of processing a telemetry.
+type ProcessResult struct {
+	// PrevStatus is the status before the transition.
+	PrevStatus types.AssetStatus
+	// CurrStatus is the status after the transition.
+	CurrStatus types.AssetStatus
+	// Reason describes why the status changed.
+	Reason string
+	// Alerts holds any alerts triggered during processing.
+	Alerts []AlertContext
+}

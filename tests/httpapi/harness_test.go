@@ -52,7 +52,6 @@ import (
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
-	telemetrysvc "github.com/tickraft/tickraft/pkg/telemetry/service"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -240,9 +239,9 @@ func newHarness(t *testing.T) *harness {
 	// internal/service (ProberService over the shared task.Manager).
 	proberSvc := telemetry.NewProberService(
 		schedEngine, logger, telemetry.WithProberMonitorStore(monitorStore))
-	telemetrySrv := telemetrysvc.NewTelemetryService(monitorStore, logger,
-		telemetrysvc.WithProbeTrigger(proberSvc.ProbeNow),
-		telemetrysvc.WithExecutorValidator(
+	telemetrySrv := telemetry.NewTelemetryService(monitorStore, logger,
+		telemetry.WithProbeTrigger(proberSvc.ProbeNow),
+		telemetry.WithExecutorValidator(
 			func(executorType string) error {
 				_, err := reg.LookupWithOp(executorType, executor.OpProbe)
 				return err

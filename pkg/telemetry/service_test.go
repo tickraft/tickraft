@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package service
+package telemetry
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
 // newProbeTestService opens an in-memory store seeded with one active
@@ -28,14 +27,14 @@ func newProbeTestService(t *testing.T) (svc *TelemetryService, probed *[]int64) 
 			_ = sqlDB.Close()
 		}
 	})
-	if err := telemetry.Migrate(context.Background(), dbc); err != nil {
+	if err := Migrate(context.Background(), dbc); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	store := telemetry.NewMonitorStore(dbc)
-	seed := []telemetry.MonitorPoint{
-		{ID: 1, Name: "active", Mode: telemetry.ModeActive, Type: "icmp", Enabled: true},
-		{ID: 2, Name: "passive", Mode: telemetry.ModePassive, Type: "webhook", Enabled: true},
-		{ID: 3, Name: "disabled", Mode: telemetry.ModeActive, Type: "tcp", Enabled: false},
+	store := NewMonitorStore(dbc)
+	seed := []MonitorPoint{
+		{ID: 1, Name: "active", Mode: ModeActive, Type: "icmp", Enabled: true},
+		{ID: 2, Name: "passive", Mode: ModePassive, Type: "webhook", Enabled: true},
+		{ID: 3, Name: "disabled", Mode: ModeActive, Type: "tcp", Enabled: false},
 	}
 	for i := range seed {
 		if err := store.Create(context.Background(), &seed[i]); err != nil {
@@ -92,11 +91,11 @@ func TestProbeNowWithoutTriggerIsUnavailable(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := telemetry.Migrate(context.Background(), dbc); err != nil {
+	if err := Migrate(context.Background(), dbc); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	store := telemetry.NewMonitorStore(dbc)
-	point := telemetry.MonitorPoint{ID: 1, Name: "active", Mode: telemetry.ModeActive, Type: "icmp", Enabled: true}
+	store := NewMonitorStore(dbc)
+	point := MonitorPoint{ID: 1, Name: "active", Mode: ModeActive, Type: "icmp", Enabled: true}
 	if err := store.Create(context.Background(), &point); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

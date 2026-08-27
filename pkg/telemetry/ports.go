@@ -90,3 +90,65 @@ type LogStore interface {
 	// of returned entries; a value <= 0 applies a default limit of 1000.
 	QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int64, error)
 }
+
+// ProbeQuery filters a probe-record query. PointID is required; the time
+// bounds and tenant filter are applied when non-zero.
+type ProbeQuery struct {
+	TenantID int64
+	PointID  int64
+	Start    time.Time
+	End      time.Time
+	Page     int
+	Size     int
+}
+
+// PointSummary aggregates monitor point counts by mode and enabled state.
+// The mode counts and the enabled counts are independent dimensions over
+// the same dataset (active+passive = enabled+disabled = total).
+type PointSummary struct {
+	// Active is the number of active probing points (Mode=ModeActive).
+	Active int64 `json:"active"`
+	// Passive is the number of passive receiving points (Mode=ModePassive).
+	Passive int64 `json:"passive"`
+	// Enabled is the number of enabled points across both modes.
+	Enabled int64 `json:"enabled"`
+	// Disabled is the number of disabled points across both modes.
+	Disabled int64 `json:"disabled"`
+}
+
+// Filter holds optional filtering criteria for listing telemetry
+// tasks. A zero-value Filter matches all tasks. The Mode field
+// filters by monitoring point mode ("active", "passive", or "" for all).
+type Filter struct {
+	// Mode filters tasks by monitoring point mode. An empty string matches
+	// all modes. Valid values are "active" and "passive".
+	Mode string
+}
+
+// Service defines the operations for managing telemetry collection
+// tasks. The concrete implementation (TelemetryService) is injected via
+// the WithTelemetryService RouteOption; when omitted, the handler package
+// falls back to an in-memory implementation suitable for the runtime.
+type Service interface {
+	// ListTasks returns a page of telemetry tasks ordered by ascending
+	// ID, plus the total count. The filter narrows results by mode when
+	// filter.Mode is non-empty.
+	ListTasks(ctx context.Context, page, size int, filter Filter) ([]MonitorPoint, int64, error)
+	// GetTask returns a single telemetry task by ID.
+	GetTask(ctx context.Context, id int64) (*MonitorPoint, error)
+	// CreateTask creates a new telemetry task from the given request.
+	CreateTask(ctx context.Context, req *MonitorPoint) (*MonitorPoint, error)
+	// UpdateTask updates an existing telemetry task identified by ID.
+	UpdateTask(ctx context.Context, id int64, req *MonitorPoint) (*MonitorPoint, error)
+	// DeleteTask deletes a telemetry task by ID.
+	DeleteTask(ctx context.Context, id int64) error
+	// ProbeNow dispatches an on-demand probe for an active monitoring
+	// point. It returns the point (for status rendering) after the probe
+	// has been queued; the outcome lands in the probe record store
+	// asynchronously. Passive or disabled points are rejected.
+	ProbeNow(ctx context.Context, id int64) (*MonitorPoint, error)
+	// Summary returns aggregate monitor point counts by mode and enabled
+	// state over the full dataset. It backs the monitor list summary chips
+	// so the counts do not depend on the current page.
+	Summary(ctx context.Context) (PointSummary, error)
+}
