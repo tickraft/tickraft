@@ -93,8 +93,24 @@ collector 从不订阅 scheduler 事件，这保证了采集引擎可以独立�
 | L-02 | 仅单个版次使用的代码放该版次自己的 `internal/`。 |
 | L-03 | 版次差异通过 Option、接口或装饰器注入——实现绝不在仓库之间复制。 |
 | L-04 | 依赖单向：`internal/` → `pkg/`。`pkg/` 包 import `internal/` 属于构建错误，CI 会拦截。 |
-| L-05 | 领域包自包含：模型、存储、引擎、服务契约与默认实现放在一起（`pkg/task`、`pkg/telemetry`、`pkg/system`、`pkg/prism/*`）。不为每层单设顶层包。 |
+| L-05 | 领域包自包含：模型、存储、引擎、服务契约与默认实现放在一起（`pkg/task`、`pkg/telemetry`、`pkg/system`、`pkg/prism/*`）。不为每层单设顶层包；详见[领域包文件布局](#领域包文件布局)。 |
 | L-06 | `pkg/api` 是纯传输层——server、TLS、中间件、HTTP handler 与路由组合根（`pkg/api/router`）。领域包禁止 import `pkg/api`。 |
+
+### 领域包文件布局
+
+每个领域包根统一采用四件套加行为文件：
+
+| 文件 | 内容 |
+|------|------|
+| `model.go` | 全部持久化模型（gorm/json 双 tag）与模型词汇：枚举、状态常量、`TableName`、模型方法。新表一律落这里，绝不另起新文件。 |
+| `ports.go` | 全部消费侧接口——Store SPI、Service SPI、引擎缝——及其参数/结果类型（query、filter、summary、wire 结果结构）。 |
+| `store.go` | 全部 GORM store 实现与 `Migrate`。新 store 一律落这里。 |
+| `service.go` | `<Domain>Service` 实现及其构造函数。 |
+| （其余） | 仅行为内聚文件：`engine.go`、`events.go`、`env.go`、`validator.go`、`aggregation.go`…… |
+
+命名规则：Service SPI 为 `<域>.Service`，实现为 `<Domain>Service`，调度/加工引擎类型为 `Engine`。不使用 `types.go` 文件名——纯模型内容归 `model.go`，非模型值类型溶入其消费文件（`pkg/auth` 的 `types.go` 是唯一历史例外）。
+
+Store 消费默认使用具体 store 类型（`*Store`、`*ExecutionStore`……）；窄接口仅存在于真实消费者恰好只需要该切面之处——引擎的 `task.Store`/`alert.Lister` 缝，以及 `pkg/api/handler/telemetry` 中仅查询的 metric/log/probe 接口。CRUD handler 直接持具体 store；不为对称性而给 store 造接口。
 
 在本仓库中，`internal/` 只承载版次装配——`cli`（入口接线）、`service`（启动装配）、`quota`（配额默认值）与 `web`（SPA 嵌入）。全部业务逻辑都在 `pkg/`。当某个包的唯一使用者是下游版次时，它根本不该留在本仓库（见[死代码处置](#死代码处置)中的迁移先例）。
 
@@ -110,8 +126,8 @@ collector 从不订阅 scheduler 事件，这保证了采集引擎可以独立�
 
 领域包遵循同样的缝纪律：
 
-- `pkg/task/service` 接受 nil 引擎——不承担调度角色的节点以纯任务 CRUD 运行。
-- `pkg/prism/alert/service` 通过最小 `reloader` 接口重载规则，而不依赖具体引擎类型。
+- `pkg/task` —— `TaskService` 接受 nil 引擎（Manager）；不承担调度角色的节点以纯任务 CRUD 运行。
+- `pkg/prism/alert` —— `AlertService` 通过最小 `ReloadFunc` 重载规则，而不依赖具体引擎类型；`pkg/prism/channel` 以 `Runtime` 缝打断对 prism 的 import 环。
 - 跨切面的版次行为以装饰器挂在共享服务外（例如同步数据变更），绝不以分叉副本存在。
 
 ## 新增包决策树

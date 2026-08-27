@@ -4,7 +4,7 @@
 > 适用范围：`pkg/prism/{alert,channel,remediation}`、`pkg/telemetry`、`pkg/task`、`pkg/asset`、`pkg/api/handler/*`、`internal/api/service/*`，以及 **tickraft-x 的同步更新**（第 7 章）。
 
 > **实施状态（2026-08-26 更新）**：本设计已实施。文中"当前 API 层/转换器盘点"等路径为**设计时快照**，保留作决策依据，不再与现状一一对应。服务层后续已再下沉域包，最终路径映射：
-> `internal/api/service/{scheduler,prism,telemetry,system}` → `pkg/task/service`、`pkg/prism/{alert,channel,remediation}/service`、`pkg/telemetry/service`、`pkg/system`；
+> `internal/api/service/{scheduler,prism,telemetry,system}` → `pkg/task`、`pkg/prism/{alert,channel,remediation}`、`pkg/telemetry`、`pkg/system`（2026-08-27 服务子包已扁平化入各域根，下文旧路径按此对照读取）；
 > SPI+DTO 自 `pkg/api/handler/<域>/types.go` 随迁上述各包。现状架构见 `docs/architecture.md`。
 > 前提：两仓均未发布。Tier 1/2/4 已实施交付（2026-08）；**5.4 Tier 3（task 域完整设计）为 2026-08-24 新增，待评审确认后另批实施**，拟议 wire 变更见 6.4。已实施批次的唯一 wire 破坏性变更为 `fired_at` → `triggered_at`（6.1），其余实体响应字段保持不变。
 
@@ -87,8 +87,8 @@
 
 ### 2.4 分档 C/D —— 真分层与反例
 
-- **task（分档 C，2026-08-24 复核推翻初判）**：初判认为领域层语义真实（`Timeout time.Duration`、状态机翻译——存储 `normal/abnormal/triggered` ↔ API `success/failed/running`，`pkg/task/types.go:92-123`），分层应保留。深化勘察（5.4.1）表明领域 struct 无行为方法、引擎实际消费 metadata 字符串袋的键而非富字段，"分层应保留"不成立——定案为三层收敛为单一双 tag 模型（5.4）；初判指出的病灶（handler 专属字段被塞进 metadata map 往返，见 1.1）随合并消除。
-- **asset（分档 D，反例）**：`pkg/asset/asset.go:16` 的 `TenantID` 带 `json:"tenant_id"`（:27）直接暴露在 API；handler 直接 `BindAndValidate` 到该模型，客户端可提交内部字段。证明合并必须有护栏（`json:"-"` + 列白名单），不能裸奔。
+- **task（分档 C，2026-08-24 复核推翻初判）**：初判认为领域层语义真实（`Timeout time.Duration`、状态机翻译——存储 `normal/abnormal/triggered` ↔ API `success/failed/running`，`pkg/task/model.go:92-123`），分层应保留。深化勘察（5.4.1）表明领域 struct 无行为方法、引擎实际消费 metadata 字符串袋的键而非富字段，"分层应保留"不成立——定案为三层收敛为单一双 tag 模型（5.4）；初判指出的病灶（handler 专属字段被塞进 metadata map 往返，见 1.1）随合并消除。
+- **asset（分档 D，反例）**：`pkg/asset/model.go:16` 的 `TenantID` 带 `json:"tenant_id"`（:27）直接暴露在 API；handler 直接 `BindAndValidate` 到该模型，客户端可提交内部字段。证明合并必须有护栏（`json:"-"` + 列白名单），不能裸奔。
 - **附带发现**：auth 域的 `apiKeyData`（handler.go:72）是**合理 DTO** 的样板——create 响应需要 `raw_key`，而 `user.APIKey` 模型绝不能携带明文密钥。这是"真实分歧才保留 DTO"约定的正面例证。
 
 ### 2.5 既有的不一致先例
@@ -286,7 +286,7 @@ task 是全仓唯一真正的三层模型，两段手写转换：
 ```
 handler wire   pkg/api/handler/task/types.go   Task(:13-32) / Execution(:44-61)
     ↕  converter.go 274 行：DomainTaskToHandler(:70) / HandlerToDomainTask(:104) / DomainExecutionToHandler(:171) + 5 个 helper
-领域 struct    pkg/task/types.go               Task(:126-164) / Execution(:169-210) —— 纯数据，无 gorm tag、无行为方法
+领域 struct    pkg/task/model.go               Task(:126-164) / Execution(:169-210) —— 纯数据，无 gorm tag、无行为方法
     ↕  ToTask(model.go:60) / taskToModel(store.go:177) / ToExecution(:132) / ExecutionToModel(:158)
 GORM 模型      pkg/task/model.go               ScheduleTask(sys_schedule_task,:21-54) / ScheduleLog(sys_schedule_log,:100-129)
 ```
@@ -406,7 +406,7 @@ CE 先行（模型 → 引擎 → store → service → handler → web → Open
 
 设计已按上述定案实施完毕，两仓验收门全部通过（CE 全量测试 + lint + 红线；x 三套构建标签构建/测试 + lint 零告警）。与设计稿的偏差与落地细节：
 
-- **词表桥位置**：资产词表→存储词表的唯一桥接为 `task.ExecutionStatusFromAsset`（pkg/task/types.go:67，normal→success、abnormal→failed、其余→unknown）。executor Result 与完成事件仍用资产词表（AssetStatus），不落库；`sys_schedule_log.status` 只存 API 词表。x 仓 remediation 的 skip 记录保留 x 专属 `skipped` 标记（不在任一词表内，列表查询以 `status IN (success, failed)` 过滤不展示，语义由 skip_reason 列承载）；x grpc 外部通道的 `trigger_type=external` 同为 x 专属值，保留。
+- **词表桥位置**：资产词表→存储词表的唯一桥接为 `task.ExecutionStatusFromAsset`（pkg/task/model.go:66，normal→success、abnormal→failed、其余→unknown）。executor Result 与完成事件仍用资产词表（AssetStatus），不落库；`sys_schedule_log.status` 只存 API 词表。x 仓 remediation 的 skip 记录保留 x 专属 `skipped` 标记（不在任一词表内，列表查询以 `status IN (success, failed)` 过滤不展示，语义由 skip_reason 列承载）；x grpc 外部通道的 `trigger_type=external` 同为 x 专属值，保留。
 - **schedule 解析落地形态**：设计稿的 "ParseSchedule 归并" 落地为 `task.ClassifySchedule`（导出，校验/分类用，pkg/task/schedule.go:20）+ 包内私有 `parseSchedule`（引擎装填用）。语义与设计一致：`""` 为事件驱动、Go duration 为定间隔、其余按 cron 解析；`once` 类型删除（x 仓 once 单测随删）。
 - **事件 payload 字段更名**（pkg/event.ExecutionPayload）：`Timeout`（裸纳秒 int）→ `TimeoutSeconds`，新增 `MaxRetries`/`RetryIntervalSeconds`，`Config` 由 map 改为 sonic 序列化字符串，`Action` 携带 `Operation.String()`（x 仓原硬编码 "triggered" 一并对齐）。runner 重试自此有真实数据来源，retry 链路复活。
 - **enabled 门控修正**：x 仓 bridge 的 `isTaskEnabled` 由 "metadata 缺省视为启用" 改为直读 `Enabled` 列——metadata 缺省默认开启的隐式语义随字段化一并消除，未显式启用的任务不再被调度。

@@ -1,6 +1,6 @@
 # 规则引擎统一设计（Rule Engine Design）
 
-> **路径注记（2026-08-26）**：文中 `internal/api/service/...` 为设计时路径快照；这些实现现位于 `pkg/prism/{alert,channel,remediation}/service`、`pkg/telemetry/service`、`pkg/task/service`、`pkg/system`（服务层下沉域包，SPI 随迁）。历史发现编号与行号保留原貌。
+> **路径注记（2026-08-26，2026-08-27 更新）**：文中 `internal/api/service/...` 为设计时路径快照；这些实现现位于 `pkg/prism/{alert,channel,remediation}`、`pkg/telemetry`、`pkg/task`、`pkg/system`（服务层下沉域包后，service 子包已于 2026-08-27 扁平化入各域根，SPI 在各域 `ports.go`、实现在 `service.go`）。历史发现编号与行号保留原貌。
 
 > 状态：**设计评审稿**。本文档是规则机制重构的权威设计，经完全确认后才进入代码实施。
 > 适用范围：`pkg/expr`（新）、`pkg/prism/alert`（由 `pkg/prism/rule` 迁移并合并为单包）、`pkg/prism/remediation`、`pkg/executor`、相关 API 与前端，以及 **tickraft-x 的同步更新**（第 12 章）。

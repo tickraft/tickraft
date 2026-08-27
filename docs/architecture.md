@@ -90,8 +90,24 @@ The open-source repository is the kernel; downstream editions import it and must
 | L-02 | Code used by only one edition lives in that edition's `internal/`. |
 | L-03 | Edition differences are injected through options, interfaces, or decorators — implementations are never copied between repositories. |
 | L-04 | Dependencies run one way: `internal/` → `pkg/`. A `pkg/` package importing `internal/` is a build error and fails CI. |
-| L-05 | Domain packages are self-contained: model, store, engine, service contract, and default implementation live together (`pkg/task`, `pkg/telemetry`, `pkg/system`, `pkg/prism/*`). Services do not get a separate top-level package per layer. |
+| L-05 | Domain packages are self-contained: model, store, engine, service contract, and default implementation live together (`pkg/task`, `pkg/telemetry`, `pkg/system`, `pkg/prism/*`). Services do not get a separate top-level package per layer; see [Domain package file layout](#domain-package-file-layout). |
 | L-06 | `pkg/api` is pure transport — server, TLS, middleware, HTTP handlers, and the route composition root (`pkg/api/router`). Domain packages must not import `pkg/api`. |
+
+### Domain package file layout
+
+Every domain package root follows the same four-file shape plus behavior files:
+
+| File | Contents |
+|------|----------|
+| `model.go` | All persisted models (dual gorm/json tags) and the model vocabulary: enums, status constants, `TableName`, model methods. New tables land here, never in a fresh file. |
+| `ports.go` | All consumer-side interfaces — Store SPI, Service SPI, engine seams — plus their parameter/result types (query, filter, summary, wire-result structs). |
+| `store.go` | All GORM store implementations and `Migrate`. New stores land here. |
+| `service.go` | The `<Domain>Service` implementation and its constructor. |
+| (others) | Behavior-cohesive files only: `engine.go`, `events.go`, `env.go`, `validator.go`, `aggregation.go`, … |
+
+Naming rules: the Service SPI is `<domain>.Service`, its implementation is `<Domain>Service`, and a scheduling/processing engine type is `Engine`. A `types.go` file name is not used — pure model content belongs in `model.go`, and non-model value types dissolve into the file that consumes them (`pkg/auth`'s `types.go` is the only legacy exception).
+
+Store consumption defaults to the concrete store type (`*Store`, `*ExecutionStore`, …); narrow interfaces exist only where a real consumer needs exactly that slice — the engine's `task.Store`/`alert.Lister` seams and the query-only metric/log/probe interfaces in `pkg/api/handler/telemetry`. CRUD handlers take the concrete store; do not interface stores for symmetry's sake.
 
 In this repository `internal/` holds edition assembly only — `cli` (entry wiring), `service` (startup composition), `quota` (quota defaults), and `web` (SPA embed). All business logic lives in `pkg/`. When a package's only consumer is a downstream edition, it does not belong in this repository at all (see the relocation precedent in [Dead-code disposition](#dead-code-disposition)).
 
@@ -107,8 +123,8 @@ Downstream editions never copy the router. Their `internal/api` only carries edi
 
 Domain packages follow the same seam discipline:
 
-- `pkg/task/service` accepts a nil engine — a node without the scheduling role runs as pure task CRUD.
-- `pkg/prism/alert/service` reloads rules through a minimal `reloader` interface instead of depending on a concrete engine type.
+- `pkg/task` — `TaskService` accepts a nil engine (Manager); a node without the scheduling role runs as pure task CRUD.
+- `pkg/prism/alert` — `AlertService` reloads rules through a minimal `ReloadFunc` instead of depending on a concrete engine type; `pkg/prism/channel` breaks the prism import cycle through the `Runtime` seam.
 - Cross-cutting edition behaviors attach as decorators around the shared service (for example, syncing data changes), never as forked copies.
 
 ## Adding a package — decision tree
