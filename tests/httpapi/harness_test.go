@@ -113,10 +113,13 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(ctx, dbc); err != nil {
-		t.Fatalf("auto migrate: %v", err)
+	if err := user.Migrate(ctx, dbc); err != nil {
+		t.Fatalf("migrate user tables: %v", err)
 	}
-	if _, err := db.EnsureAdminUser(ctx, dbc, adminUsername, adminPassword); err != nil {
+	if err := auth.Migrate(ctx, dbc); err != nil {
+		t.Fatalf("migrate auth tables: %v", err)
+	}
+	if _, err := auth.EnsureAdminUser(ctx, dbc, adminUsername, adminPassword); err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
 

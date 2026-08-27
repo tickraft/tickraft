@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package db
+package auth
 
 import (
 	"context"
@@ -13,15 +13,22 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
-func newTestDB(t *testing.T) *gorm.DB {
+func newAdminTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dbc, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
+	}
+	// Mirror the composition-layer startup order: user tables first, then
+	// the auth-owned tables.
+	if err := user.Migrate(context.Background(), dbc); err != nil {
+		t.Fatalf("user.Migrate() error = %v", err)
+	}
+	if err := Migrate(context.Background(), dbc); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
 	t.Cleanup(func() {
 		sqlDB, _ := dbc.DB()
@@ -32,128 +39,12 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return dbc
 }
 
-func TestAutoMigrate(t *testing.T) {
-	dbc := newTestDB(t)
-
-	err := AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
-
-	// Verify tables exist by attempting to insert and query each model.
-	if !dbc.Migrator().HasTable(&user.User{}) {
-		t.Error("User table was not created")
-	}
-	if !dbc.Migrator().HasTable(&user.APIKey{}) {
-		t.Error("APIKey table was not created")
-	}
-	if !dbc.Migrator().HasTable(&auth.TokenBlacklist{}) {
-		t.Error("TokenBlacklist table was not created")
-	}
-}
-
-func TestAutoMigrate_Idempotent(t *testing.T) {
-	dbc := newTestDB(t)
-
-	// Running AutoMigrate twice should not error.
-	err := AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("first AutoMigrate() error = %v", err)
-	}
-
-	err = AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("second AutoMigrate() error = %v", err)
-	}
-}
-
-func TestAutoMigrate_CanInsertData(t *testing.T) {
-	dbc := newTestDB(t)
-
-	err := AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
-
-	// Insert a user and verify it can be queried.
-	u := user.User{
-		Username:     "testuser",
-		PasswordHash: "$2a$10$hash",
-		Role:         1,
-	}
-	if err := dbc.Create(&u).Error; err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
-	var fetched user.User
-	if err := dbc.Where("username = ?", "testuser").First(&fetched).Error; err != nil {
-		t.Fatalf("query user: %v", err)
-	}
-	if fetched.Username != "testuser" {
-		t.Errorf("fetched username = %q, want %q", fetched.Username, "testuser")
-	}
-}
-
-func TestAutoMigrate_Incremental(t *testing.T) {
-	dbc := newTestDB(t)
-
-	// First migration creates tables.
-	err := AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("first AutoMigrate() error = %v", err)
-	}
-
-	// Insert data after the first migration. Email is set to a distinct
-	// non-empty value because the User model enforces a unique index on
-	// email; two empty strings would conflict on SQLite (empty string is a
-	// value, not NULL).
-	u := user.User{
-		Username:     "persist_user",
-		PasswordHash: "$2a$10$hash",
-		Email:        "persist@example.com",
-		Role:         1,
-	}
-	if err := dbc.Create(&u).Error; err != nil {
-		t.Fatalf("insert user after first migration: %v", err)
-	}
-
-	// Second migration (simulating model changes / schema evolution)
-	// should not break existing data.
-	err = AutoMigrate(context.Background(), dbc)
-	if err != nil {
-		t.Fatalf("second AutoMigrate() error = %v", err)
-	}
-
-	// Verify previously inserted data is still intact.
-	var fetchedUser user.User
-	if err := dbc.Where("username = ?", "persist_user").First(&fetchedUser).Error; err != nil {
-		t.Fatalf("query user after second migration: %v", err)
-	}
-	if fetchedUser.Username != "persist_user" {
-		t.Errorf("username after incremental migration = %q, want %q", fetchedUser.Username, "persist_user")
-	}
-
-	// Verify new data can still be inserted after the incremental migration.
-	newUser := user.User{
-		Username:     "post_migration_user",
-		PasswordHash: "$2a$10$hash",
-		Email:        "post@example.com",
-		Role:         2,
-	}
-	if err := dbc.Create(&newUser).Error; err != nil {
-		t.Fatalf("insert user after second migration: %v", err)
-	}
-}
-
 // TestEnsureAdminUser_FirstCreateRandomPassword verifies that when no password
 // is supplied, EnsureAdminUser creates the admin user with role=2/status=1 and
 // returns a non-empty random plaintext password that can be verified against
 // the stored hash.
 func TestEnsureAdminUser_FirstCreateRandomPassword(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	generated, err := EnsureAdminUser(context.Background(), dbc, "admin", "")
 	if err != nil {
@@ -176,7 +67,7 @@ func TestEnsureAdminUser_FirstCreateRandomPassword(t *testing.T) {
 	if u.PasswordHash == "" {
 		t.Fatal("admin password hash is empty")
 	}
-	if err := auth.Verify(u.PasswordHash, generated); err != nil {
+	if err := Verify(u.PasswordHash, generated); err != nil {
 		t.Errorf("password verify failed: %v", err)
 	}
 }
@@ -185,10 +76,7 @@ func TestEnsureAdminUser_FirstCreateRandomPassword(t *testing.T) {
 // password is supplied, EnsureAdminUser uses it and returns an empty string
 // (so the caller does not log it again).
 func TestEnsureAdminUser_FirstCreateExplicitPassword(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	returned, err := EnsureAdminUser(context.Background(), dbc, "admin", "S3cret!pass")
 	if err != nil {
@@ -202,7 +90,7 @@ func TestEnsureAdminUser_FirstCreateExplicitPassword(t *testing.T) {
 	if err := dbc.Where("username = ?", "admin").First(&u).Error; err != nil {
 		t.Fatalf("query admin user: %v", err)
 	}
-	if err := auth.Verify(u.PasswordHash, "S3cret!pass"); err != nil {
+	if err := Verify(u.PasswordHash, "S3cret!pass"); err != nil {
 		t.Errorf("password verify failed: %v", err)
 	}
 }
@@ -212,10 +100,7 @@ func TestEnsureAdminUser_FirstCreateExplicitPassword(t *testing.T) {
 // the existing password, regardless of whether the second call supplies a
 // different password or an empty one.
 func TestEnsureAdminUser_RestartDoesNotOverwritePassword(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	if _, err := EnsureAdminUser(context.Background(), dbc, "admin", "first-password"); err != nil {
 		t.Fatalf("first EnsureAdminUser() error = %v", err)
@@ -239,7 +124,7 @@ func TestEnsureAdminUser_RestartDoesNotOverwritePassword(t *testing.T) {
 	if afterSecond.PasswordHash != original.PasswordHash {
 		t.Error("second EnsureAdminUser call overwrote the password hash")
 	}
-	if err := auth.Verify(afterSecond.PasswordHash, "first-password"); err != nil {
+	if err := Verify(afterSecond.PasswordHash, "first-password"); err != nil {
 		t.Errorf("original password no longer verifies after restart: %v", err)
 	}
 
@@ -264,10 +149,7 @@ func TestEnsureAdminUser_RestartDoesNotOverwritePassword(t *testing.T) {
 // TestEnsureAdminUser_CustomUsername verifies that EnsureAdminUser can create
 // an admin with a non-default username.
 func TestEnsureAdminUser_CustomUsername(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	generated, err := EnsureAdminUser(context.Background(), dbc, "root_admin", "")
 	if err != nil {
@@ -301,10 +183,7 @@ func TestEnsureAdminUser_CustomUsername(t *testing.T) {
 // TestEnsureAdminUser_EmptyUsernameReturnsError verifies that an empty username
 // is rejected.
 func TestEnsureAdminUser_EmptyUsernameReturnsError(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	returned, err := EnsureAdminUser(context.Background(), dbc, "", "whatever")
 	if err == nil {
@@ -324,20 +203,14 @@ func TestEnsureAdminUser_EmptyUsernameReturnsError(t *testing.T) {
 // cannot log in" bug where a custom admin_username passes EnsureAdminUser but
 // is later rejected by Service.Login's validateUsername.
 func TestEnsureAdminUser_UsernameValidation(t *testing.T) {
-	dbc := newTestDB(t)
-	if err := AutoMigrate(context.Background(), dbc); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	dbc := newAdminTestDB(t)
 
 	// Valid usernames must be created successfully.
 	validNames := []string{"admin", "admin_user", "user123"}
 	for _, name := range validNames {
 		// Each case uses a fresh database so the unique-index does not trip
 		// across iterations.
-		freshDB := newTestDB(t)
-		if err := AutoMigrate(context.Background(), freshDB); err != nil {
-			t.Fatalf("AutoMigrate() error = %v", err)
-		}
+		freshDB := newAdminTestDB(t)
 		returned, err := EnsureAdminUser(context.Background(), freshDB, name, "S3cret!pass")
 		if err != nil {
 			t.Errorf("EnsureAdminUser(%q) unexpected error: %v", name, err)
@@ -388,10 +261,7 @@ func TestEnsureAdminUser_UsernameValidation(t *testing.T) {
 	}
 
 	// The default value "admin" must pass.
-	defaultDB := newTestDB(t)
-	if err := AutoMigrate(context.Background(), defaultDB); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	defaultDB := newAdminTestDB(t)
 	if _, err := EnsureAdminUser(context.Background(), defaultDB, "admin", ""); err != nil {
 		t.Errorf("EnsureAdminUser(%q) default value unexpected error: %v", "admin", err)
 	}

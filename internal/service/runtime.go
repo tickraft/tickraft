@@ -235,13 +235,18 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 
 	cacheInst := cache.NewLRU(1024, 5*time.Minute)
 
-	if err = db.AutoMigrate(ctx, dbc); err != nil {
+	if err = user.Migrate(ctx, dbc); err != nil {
 		closeRuntimeDB(dbc, cacheInst)
-		return nil, fmt.Errorf("auto migrate: %w", err)
+		return nil, fmt.Errorf("migrate user tables: %w", err)
+	}
+
+	if err = auth.Migrate(ctx, dbc); err != nil {
+		closeRuntimeDB(dbc, cacheInst)
+		return nil, fmt.Errorf("migrate auth tables: %w", err)
 	}
 
 	// Ensure the built-in admin user exists.
-	adminPassword, err := db.EnsureAdminUser(ctx, dbc, cfg.Auth.AdminUsername, cfg.Auth.AdminPassword)
+	adminPassword, err := auth.EnsureAdminUser(ctx, dbc, cfg.Auth.AdminUsername, cfg.Auth.AdminPassword)
 	if err != nil {
 		closeRuntimeDB(dbc, cacheInst)
 		return nil, fmt.Errorf("ensure admin user: %w", err)

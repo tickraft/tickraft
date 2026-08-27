@@ -76,15 +76,15 @@ func (s *store) GetByKey(ctx context.Context, tenantID int64, key string) (*Asse
 
 // UpdateStatus updates the asset status and last active time.
 func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetStatus, activeAt time.Time) error {
-	result := s.dbc.WithContext(ctx).
+	err := s.dbc.WithContext(ctx).
 		Model(&Asset{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"status":         string(status),
 			"last_active_at": activeAt,
-		})
-	if result.Error != nil {
-		return fmt.Errorf("asset: update status: %w", errmap.MapError(result.Error))
+		}).Error
+	if err != nil {
+		return fmt.Errorf("asset: update status: %w", errmap.MapError(err))
 	}
 	return nil
 }
@@ -144,13 +144,13 @@ func (s *store) ListKeyset(ctx context.Context, req pagination.PageRequest) (pag
 		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", errmap.MapError(err))
 	}
 
-	q, err := pagination.Apply(s.dbc.WithContext(ctx).Model(&Asset{}), req, assetKeysetCursor)
+	query, err := pagination.Apply(s.dbc.WithContext(ctx).Model(&Asset{}), req, assetKeysetCursor)
 	if err != nil {
 		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", err)
 	}
 
 	var assets []*Asset
-	if err = q.Find(&assets).Error; err != nil {
+	if err = query.Find(&assets).Error; err != nil {
 		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", errmap.MapError(err))
 	}
 

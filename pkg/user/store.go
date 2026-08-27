@@ -6,6 +6,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -217,6 +218,20 @@ func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 			"status":     apikey.StatusRevoked,
 		}).Error; err != nil {
 		return errmap.MapError(err)
+	}
+	return nil
+}
+
+// Migrate creates or updates the users and sys_api_key table schemas. It is
+// intended to be called once during application startup by the composition
+// layer and is safe to re-run: GORM AutoMigrate is idempotent (additive
+// only).
+func Migrate(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).AutoMigrate(
+		&User{},
+		&APIKey{},
+	); err != nil {
+		return fmt.Errorf("user: migrate tables: %w", err)
 	}
 	return nil
 }

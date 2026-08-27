@@ -14,7 +14,7 @@ import (
 
 // TestValidateUsername verifies the canonical username rule: 3-64 chars,
 // only letters, digits, and underscores. This is the single source of truth
-// shared by pkg/db.EnsureAdminUser, pkg/config AuthConfig.validate, and
+// shared by pkg/auth.EnsureAdminUser, pkg/config AuthConfig.validate, and
 // Service.Login's validateUsername — a divergence between any of them causes
 // the "initialized but cannot log in" bug.
 func TestValidateUsername(t *testing.T) {

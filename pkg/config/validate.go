@@ -97,7 +97,7 @@ func (c *AuthConfig) validate() error {
 		return fmt.Errorf("config: auth.refresh_ttl must be greater than zero")
 	}
 	// Validate the admin username with the canonical rule shared with
-	// pkg/user.ValidateUsername and pkg/db.EnsureAdminUser. Failing fast at
+	// pkg/user.ValidateUsername and pkg/auth.EnsureAdminUser. Failing fast at
 	// config load avoids the "initialized but cannot log in" bug where a
 	// custom admin_username passes EnsureAdminUser but is rejected by the
 	// login validator (e.g. hyphens, dots, or length < 3).

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package db
+package auth
 
 import (
 	"context"
@@ -13,32 +13,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/user"
 )
-
-// AutoMigrate automatically creates or updates database tables for the
-// auth models managed by pkg/auth (TokenBlacklist) and pkg/user
-// (User, APIKey).
-//
-// Extended models are migrated by the downstream repository's own
-// initialization path so that pkg/db remains free of extended
-// dependencies and importable by downstream repositories.
-//
-// Scheduler-specific tables (sys_schedule_task, sys_schedule_log) are owned
-// by pkg/scheduler and must be migrated by the scheduler's own
-// initialization path. Remediation tables (sys_prism_remediation_rule,
-// sys_prism_remediation_record) are owned by pkg/prism/remediation and
-// migrated by its own Migrate function (which also drops the pre-rename
-// legacy tables). This keeps pkg/db free of prism dependencies so it
-// remains importable by downstream repositories.
-func AutoMigrate(ctx context.Context, dbc *gorm.DB) error {
-	return dbc.WithContext(ctx).AutoMigrate(
-		&user.User{},
-		&user.APIKey{},
-		&auth.TokenBlacklist{},
-	)
-}
 
 // EnsureAdminUser ensures that a built-in admin user with the given username
 // exists in the database. If the user already exists no action is taken and
@@ -52,9 +28,12 @@ func AutoMigrate(ctx context.Context, dbc *gorm.DB) error {
 // The created user has role=2 (admin), status=1 (active).
 // Returns the generated plaintext password (empty when the user already
 // existed or when an explicit password was supplied).
+//
+// It lives in pkg/auth (not pkg/user) because it needs both the user model
+// and Hash from this package; pkg/user must not import pkg/auth.
 func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (string, error) {
 	if username == "" {
-		return "", errors.New("db: admin username is required")
+		return "", errors.New("auth: admin username is required")
 	}
 
 	// Validate the admin username with the same canonical rule enforced by
@@ -63,7 +42,7 @@ func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (s
 	// custom admin_username passes EnsureAdminUser but is rejected by the
 	// login validator (e.g. hyphens, dots, or length < 3).
 	if err := user.ValidateUsername(username); err != nil {
-		return "", fmt.Errorf("db: invalid admin username %q: %w", username, err)
+		return "", fmt.Errorf("auth: invalid admin username %q: %w", username, err)
 	}
 
 	dbc = dbc.WithContext(ctx)
@@ -76,21 +55,21 @@ func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (s
 	}
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", fmt.Errorf("db: query admin user: %w", err)
+		return "", fmt.Errorf("auth: query admin user: %w", err)
 	}
 
 	plainPassword := pwd
 	if plainPassword == "" {
 		generated, genErr := generateRandomPassword(16)
 		if genErr != nil {
-			return "", fmt.Errorf("db: generate admin password: %w", genErr)
+			return "", fmt.Errorf("auth: generate admin password: %w", genErr)
 		}
 		plainPassword = generated
 	}
 
-	hash, err := auth.Hash(plainPassword)
+	hash, err := Hash(plainPassword)
 	if err != nil {
-		return "", fmt.Errorf("db: hash admin password: %w", err)
+		return "", fmt.Errorf("auth: hash admin password: %w", err)
 	}
 
 	u := user.User{
@@ -101,7 +80,7 @@ func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (s
 	}
 
 	if err = dbc.Create(&u).Error; err != nil {
-		return "", fmt.Errorf("db: create admin user: %w", err)
+		return "", fmt.Errorf("auth: create admin user: %w", err)
 	}
 
 	// Only return the plaintext password when it was randomly generated.

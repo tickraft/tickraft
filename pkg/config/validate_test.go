@@ -527,7 +527,7 @@ func TestValidate_AdminUsernameDefault(t *testing.T) {
 
 // TestValidate_AdminUsernameValid verifies that valid custom admin usernames
 // pass validation. These are the same names that pkg/user.ValidateUsername
-// and pkg/db.EnsureAdminUser accept, ensuring config load, DB init, and login
+// and pkg/auth.EnsureAdminUser accept, ensuring config load, DB init, and login
 // all agree on the canonical rule.
 func TestValidate_AdminUsernameValid(t *testing.T) {
 	validNames := []string{"admin", "admin_user", "user123", "root_admin", strings.Repeat("a", 64)}

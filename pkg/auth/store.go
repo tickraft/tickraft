@@ -99,3 +99,14 @@ func (s *blacklistStore) CleanExpired(ctx context.Context) error {
 func blacklistCacheKey(jti string) string {
 	return fmt.Sprintf("blacklist:jti:%s", jti)
 }
+
+// Migrate creates or updates the sys_token_blacklist table schema. It is
+// intended to be called once during application startup by the composition
+// layer and is safe to re-run: GORM AutoMigrate is idempotent (additive
+// only).
+func Migrate(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).AutoMigrate(&TokenBlacklist{}); err != nil {
+		return fmt.Errorf("auth: migrate tables: %w", err)
+	}
+	return nil
+}
