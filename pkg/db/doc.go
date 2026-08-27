@@ -35,7 +35,7 @@
 // The Config fields divide responsibilities as follows: Address carries the
 // database location (a file path for SQLite, or "host:port" for network
 // databases); Credential holds the username/password (left zero-valued for
-// SQLite, populated by Parse for network databases); Params carries
+// SQLite, populated by the caller for network databases); Params carries
 // driver-specific parameters, and for network databases the database name via
 // Params["database"].
 //
@@ -43,7 +43,7 @@
 //
 // Open a SQLite3 database by constructing a Config directly. The Credential
 // field is left zero-valued for SQLite; for network databases it is populated
-// by Parse from the DSN userinfo.
+// by the caller from the DSN userinfo.
 //
 //	dbc, err := db.Open(ctx, db.Config{
 //	    Driver: "sqlite3",
