@@ -17,8 +17,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // Recognized SQLite PRAGMA keys, kept as constants so the settings list and
@@ -37,7 +35,7 @@ func openSQLite(ctx context.Context, cfg Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("db: open sqlite3 cancelled: %w", err)
 	}
 	if cfg.Addr == "" {
-		return nil, errmap.ErrDSNRequired
+		return nil, ErrDSNRequired
 	}
 
 	// In-memory databases (":memory:") are rejected by Parse for production

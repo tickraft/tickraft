@@ -12,7 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/types"
@@ -41,7 +41,7 @@ func (s *store) Migrate(ctx context.Context) error {
 // Create inserts a new asset.
 func (s *store) Create(ctx context.Context, a *Asset) error {
 	if err := s.dbc.WithContext(ctx).Create(a).Error; err != nil {
-		return fmt.Errorf("asset: create: %w", errmap.MapError(err))
+		return fmt.Errorf("asset: create: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -49,7 +49,7 @@ func (s *store) Create(ctx context.Context, a *Asset) error {
 // Update updates an existing asset.
 func (s *store) Update(ctx context.Context, a *Asset) error {
 	if err := s.dbc.WithContext(ctx).Save(a).Error; err != nil {
-		return fmt.Errorf("asset: update: %w", errmap.MapError(err))
+		return fmt.Errorf("asset: update: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -58,7 +58,7 @@ func (s *store) Update(ctx context.Context, a *Asset) error {
 func (s *store) GetByID(ctx context.Context, id int64) (*Asset, error) {
 	var a Asset
 	if err := s.dbc.WithContext(ctx).First(&a, id).Error; err != nil {
-		return nil, fmt.Errorf("asset: get by id: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("asset: get by id: %w", db.MapError(err))
 	}
 	return &a, nil
 }
@@ -69,7 +69,7 @@ func (s *store) GetByKey(ctx context.Context, tenantID int64, key string) (*Asse
 	if err := s.dbc.WithContext(ctx).
 		Where("tenant_id = ? AND asset_key = ?", tenantID, key).
 		First(&a).Error; err != nil {
-		return nil, fmt.Errorf("asset: get by key: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("asset: get by key: %w", db.MapError(err))
 	}
 	return &a, nil
 }
@@ -84,7 +84,7 @@ func (s *store) UpdateStatus(ctx context.Context, id int64, status types.AssetSt
 			"last_active_at": activeAt,
 		}).Error
 	if err != nil {
-		return fmt.Errorf("asset: update status: %w", errmap.MapError(err))
+		return fmt.Errorf("asset: update status: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -109,7 +109,7 @@ func (s *store) List(ctx context.Context, page, size int, filter ListFilter) ([]
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("asset: list: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("asset: list: %w", db.MapError(err))
 	}
 
 	var assets []*Asset
@@ -119,7 +119,7 @@ func (s *store) List(ctx context.Context, page, size int, filter ListFilter) ([]
 		Offset(offset).
 		Limit(size).
 		Find(&assets).Error; err != nil {
-		return nil, 0, fmt.Errorf("asset: list: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("asset: list: %w", db.MapError(err))
 	}
 	return assets, total, nil
 }
@@ -141,7 +141,7 @@ func (s *store) ListKeyset(ctx context.Context, req pagination.PageRequest) (pag
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Asset{}).Count(&total).Error; err != nil {
-		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", errmap.MapError(err))
+		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", db.MapError(err))
 	}
 
 	query, err := pagination.Apply(s.dbc.WithContext(ctx).Model(&Asset{}), req, assetKeysetCursor)
@@ -151,7 +151,7 @@ func (s *store) ListKeyset(ctx context.Context, req pagination.PageRequest) (pag
 
 	var assets []*Asset
 	if err = query.Find(&assets).Error; err != nil {
-		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", errmap.MapError(err))
+		return pagination.PageResult[*Asset]{}, fmt.Errorf("asset: list keyset: %w", db.MapError(err))
 	}
 
 	next, err := pagination.NextCursorForSize(assetKeysetCursor, assets, size, func(a *Asset) string {
@@ -173,7 +173,7 @@ func (s *store) ListKeyset(ctx context.Context, req pagination.PageRequest) (pag
 func (s *store) Delete(ctx context.Context, id int64) error {
 	result := s.dbc.WithContext(ctx).Delete(&Asset{}, id)
 	if result.Error != nil {
-		return fmt.Errorf("asset: delete: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("asset: delete: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("asset: delete: %w", errdefs.ErrNotFound)
@@ -190,7 +190,7 @@ func (s *store) CountByType(ctx context.Context, tenantID int64, assetType types
 		Model(&Asset{}).
 		Where("tenant_id = ? AND asset_type = ?", tenantID, string(assetType)).
 		Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("asset: count by type: %w", errmap.MapError(err))
+		return 0, fmt.Errorf("asset: count by type: %w", db.MapError(err))
 	}
 	return count, nil
 }
@@ -207,7 +207,7 @@ func (s *store) CountByStatus(ctx context.Context) (map[string]int64, error) {
 		Select("status, COUNT(*) AS count").
 		Group("status").
 		Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("asset: count by status: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("asset: count by status: %w", db.MapError(err))
 	}
 	result := make(map[string]int64, len(rows))
 	for _, r := range rows {
@@ -228,7 +228,7 @@ func (s *store) ExistsByKey(ctx context.Context, key string) (bool, error) {
 		Model(&Asset{}).
 		Where("asset_key = ?", key).
 		Count(&count).Error; err != nil {
-		return false, fmt.Errorf("asset: exists by key: %w", errmap.MapError(err))
+		return false, fmt.Errorf("asset: exists by key: %w", db.MapError(err))
 	}
 	return count > 0, nil
 }

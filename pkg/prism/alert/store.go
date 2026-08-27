@@ -12,7 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
@@ -197,7 +197,7 @@ func (s *recordStore) Create(ctx context.Context, m *Record) error {
 		return fmt.Errorf("alert: create record: nil model")
 	}
 	if err := s.dbc.WithContext(ctx).Create(m).Error; err != nil {
-		return fmt.Errorf("alert: create record: %w", errmap.MapError(err))
+		return fmt.Errorf("alert: create record: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -210,7 +210,7 @@ func (s *recordStore) CreateBatch(ctx context.Context, models []*Record) error {
 		return nil
 	}
 	if err := s.dbc.WithContext(ctx).CreateInBatches(models, 100).Error; err != nil {
-		return fmt.Errorf("alert: create records batch: %w", errmap.MapError(err))
+		return fmt.Errorf("alert: create records batch: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -220,7 +220,7 @@ func (s *recordStore) CreateBatch(ctx context.Context, models []*Record) error {
 func (s *recordStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 	var m Record
 	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
-		return nil, fmt.Errorf("alert: get record: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("alert: get record: %w", db.MapError(err))
 	}
 	return &m, nil
 }
@@ -247,7 +247,7 @@ func (s *recordStore) List(ctx context.Context, page, size int, filter RecordFil
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("alert: list records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("alert: list records: %w", db.MapError(err))
 	}
 
 	var models []*Record
@@ -257,7 +257,7 @@ func (s *recordStore) List(ctx context.Context, page, size int, filter RecordFil
 		Offset(offset).
 		Limit(size).
 		Find(&models).Error; err != nil {
-		return nil, 0, fmt.Errorf("alert: list records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("alert: list records: %w", db.MapError(err))
 	}
 	return models, total, nil
 }
@@ -276,7 +276,7 @@ func (s *recordStore) Acknowledge(ctx context.Context, id int64) (*Record, error
 			"acknowledged_at": now,
 		})
 	if result.Error != nil {
-		return nil, fmt.Errorf("alert: acknowledge record: %w", errmap.MapError(result.Error))
+		return nil, fmt.Errorf("alert: acknowledge record: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return nil, fmt.Errorf("alert: acknowledge record: %w", errdefs.ErrNotFound)
@@ -284,7 +284,7 @@ func (s *recordStore) Acknowledge(ctx context.Context, id int64) (*Record, error
 
 	var m Record
 	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
-		return nil, fmt.Errorf("alert: acknowledge record: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("alert: acknowledge record: %w", db.MapError(err))
 	}
 	return &m, nil
 }
@@ -303,7 +303,7 @@ func (s *recordStore) Resolve(ctx context.Context, id int64) (*Record, error) {
 			"resolved_at": now,
 		})
 	if result.Error != nil {
-		return nil, fmt.Errorf("alert: resolve record: %w", errmap.MapError(result.Error))
+		return nil, fmt.Errorf("alert: resolve record: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return nil, fmt.Errorf("alert: resolve record: %w", errdefs.ErrNotFound)
@@ -311,7 +311,7 @@ func (s *recordStore) Resolve(ctx context.Context, id int64) (*Record, error) {
 
 	var m Record
 	if err := s.dbc.WithContext(ctx).First(&m, id).Error; err != nil {
-		return nil, fmt.Errorf("alert: resolve record: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("alert: resolve record: %w", db.MapError(err))
 	}
 	return &m, nil
 }

@@ -16,8 +16,8 @@
 //   - Driver-specific optimizations: SQLite3 PRAGMA tuning
 //   - DSN parsing and serialization: Parse and Config.DSN
 //
-// Error normalization is provided by the sibling package pkg/db/errmap
-// (MapError). Cross-domain shared sentinels live in pkg/errdefs.
+// Error normalization is provided by MapError (errmap.go in this
+// package). Cross-domain shared sentinels live in pkg/errdefs.
 //
 // Data operations (CRUD, queries, transactions) are performed directly with
 // GORM via the *gorm.DB instance returned by Open. Caching is decoupled from
@@ -91,14 +91,14 @@
 //	user := model.User{Username: "alice", Role: 1}
 //	err := dbc.WithContext(ctx).Create(&user).Error
 //	if err != nil {
-//	    return errmap.MapError(err)
+//	    return db.MapError(err)
 //	}
 //
 //	// Read
 //	var user model.User
 //	err = dbc.WithContext(ctx).First(&user, id).Error
 //	if err != nil {
-//	    return errmap.MapError(err)
+//	    return db.MapError(err)
 //	}
 //
 //	// List with filters and pagination
@@ -114,13 +114,13 @@
 //	result := dbc.WithContext(ctx).Model(&model.User{}).
 //		Where("id = ?", id).Updates(map[string]interface{}{"name": "bob"})
 //	if result.Error != nil {
-//	    return errmap.MapError(result.Error)
+//	    return db.MapError(result.Error)
 //	}
 //
 //	// Delete
 //	result = dbc.WithContext(ctx).Where("id = ?", id).Delete(&model.User{})
 //	if result.Error != nil {
-//	    return errmap.MapError(result.Error)
+//	    return db.MapError(result.Error)
 //	}
 //
 // # Transactions
@@ -139,12 +139,12 @@
 //
 // # Error Handling
 //
-// Use errmap.MapError to normalize driver-specific errors. Cross-domain
+// Use db.MapError to normalize driver-specific errors. Cross-domain
 // outcomes are mapped to the shared sentinels in pkg/errdefs:
 //
 //	err := dbc.WithContext(ctx).First(&user, id).Error
 //	if err != nil {
-//	    mapped := errmap.MapError(err)
+//	    mapped := db.MapError(err)
 //	    if errors.Is(mapped, errdefs.ErrNotFound) {
 //	        // handle not found
 //	    } else if errors.Is(mapped, errdefs.ErrConflict) {

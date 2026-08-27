@@ -2,20 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package errmap contains the database-specific error sentinel variables
-// and the MapError helper that translates GORM and driver-specific errors
-// into these sentinels.
-//
-// Cross-domain shared sentinels (ErrNotFound, ErrConflict) live in
-// pkg/errdefs and are returned by MapError directly; this package only
-// defines sentinels that are specific to database operations (driver
-// errors, constraint violations, schema errors).
-//
-// It is a leaf package (no imports from tickraft/tickraft other than
-// pkg/errdefs) so that domain packages whose models are referenced by
-// pkg/db/migrate.go (e.g. pkg/user, pkg/auth) can use MapError without
-// creating an import cycle with pkg/db.
-package errmap
+package db
 
 import (
 	"errors"
@@ -26,6 +13,15 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
+
+// This file holds the database-specific error sentinels and the MapError
+// helper that translates GORM and driver-specific errors into these
+// sentinels.
+//
+// Cross-domain shared sentinels (ErrNotFound, ErrConflict) live in
+// pkg/errdefs and are returned by MapError directly; this file only
+// defines sentinels that are specific to database operations (driver
+// errors, constraint violations, schema errors).
 
 // Sentinel errors specific to database operations. Cross-domain shared
 // sentinels (ErrNotFound, ErrConflict) are intentionally NOT redefined
@@ -59,7 +55,7 @@ var (
 //   - duplicate-key          -> errdefs.ErrConflict
 //
 // Database-specific outcomes (foreign key, not-null, check, schema errors)
-// are mapped to the corresponding errmap.Err* sentinels.
+// are mapped to the corresponding db.Err* sentinels.
 //
 // The runtime ships only the SQLite3 driver; for SQLite it falls
 // back to substring matching on the error message because the go-sqlite3
@@ -118,12 +114,12 @@ func isSQLiteForeignKeyViolation(msg string) bool {
 	return strings.Contains(msg, "FOREIGN KEY constraint failed")
 }
 
-// isSQLiteNotNullViolation checks if the error message indicates a SQLite NOT NULL constraint violation.
+// isSQLiteNotNullViolation checks if the error message indicates a SQLite NOT NULL violation.
 func isSQLiteNotNullViolation(msg string) bool {
 	return strings.Contains(msg, "NOT NULL constraint failed")
 }
 
-// isSQLiteCheckViolation checks if the error message indicates a SQLite CHECK constraint violation.
+// isSQLiteCheckViolation checks if the error message indicates a SQLite CHECK violation.
 func isSQLiteCheckViolation(msg string) bool {
 	return strings.Contains(msg, "CHECK constraint failed")
 }

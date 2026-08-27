@@ -11,7 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -70,7 +70,7 @@ func NewMetricStore(dbc *gorm.DB) MetricStore {
 // SaveMetric persists a single metric data point.
 func (s *metricStore) SaveMetric(ctx context.Context, metric *CollectMetric) error {
 	if err := s.dbc.WithContext(ctx).Create(metric).Error; err != nil {
-		return fmt.Errorf("telemetry: save metric: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: save metric: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 		return nil
 	}
 	if err := s.dbc.WithContext(ctx).Create(&metrics).Error; err != nil {
-		return fmt.Errorf("telemetry: save metrics batch: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: save metrics batch: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -105,12 +105,12 @@ func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]Collec
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: count metrics: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: count metrics: %w", db.MapError(err))
 	}
 	limit, offset := queryWindow(q.Page, q.Size)
 	var metrics []CollectMetric
 	if err := query.Order("timestamp ASC").Offset(offset).Limit(limit).Find(&metrics).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: query metrics: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: query metrics: %w", db.MapError(err))
 	}
 	return metrics, total, nil
 }
@@ -143,7 +143,7 @@ func NewLogStore(dbc *gorm.DB) LogStore {
 // SaveLog persists a single log entry.
 func (s *logStore) SaveLog(ctx context.Context, log *CollectLog) error {
 	if err := s.dbc.WithContext(ctx).Create(log).Error; err != nil {
-		return fmt.Errorf("telemetry: save log: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: save log: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -155,7 +155,7 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 		return nil
 	}
 	if err := s.dbc.WithContext(ctx).Create(&logs).Error; err != nil {
-		return fmt.Errorf("telemetry: save logs batch: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: save logs batch: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -178,14 +178,14 @@ func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: count logs: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: count logs: %w", db.MapError(err))
 	}
 
 	limit, offset := queryWindow(q.Page, q.Size)
 
 	var logs []CollectLog
 	if err := query.Order("timestamp DESC").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: query logs: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: query logs: %w", db.MapError(err))
 	}
 	return logs, total, nil
 }
@@ -195,7 +195,7 @@ var _ LogStore = (*logStore)(nil)
 
 // MonitorStore provides CRUD operations for unified monitoring points backed
 // by a GORM database. All methods map low-level driver errors to the shared
-// sentinel errors (errdefs.ErrNotFound, errdefs.ErrConflict) via errmap.MapError
+// sentinel errors (errdefs.ErrNotFound, errdefs.ErrConflict) via db.MapError
 // so callers can use errors.Is for consistent handling.
 //
 // The store is the persistence layer for the MonitorPoint model. The
@@ -220,7 +220,7 @@ func (s *MonitorStore) List(ctx context.Context, mode Mode) ([]MonitorPoint, err
 	}
 	var points []MonitorPoint
 	if err := query.Order("id ASC").Find(&points).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: list monitor points: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: list monitor points: %w", db.MapError(err))
 	}
 	return points, nil
 }
@@ -235,13 +235,13 @@ func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: count monitor points: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: count monitor points: %w", db.MapError(err))
 	}
 	page, size = pagination.Clamp(page, size)
 	offset := (page - 1) * size
 	var points []MonitorPoint
 	if err := query.Order("id ASC").Offset(offset).Limit(size).Find(&points).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: list monitor points paged: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: list monitor points paged: %w", db.MapError(err))
 	}
 	return points, total, nil
 }
@@ -251,7 +251,7 @@ func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int)
 func (s *MonitorStore) GetByID(ctx context.Context, id int64) (*MonitorPoint, error) {
 	var p MonitorPoint
 	if err := s.dbc.WithContext(ctx).First(&p, id).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: get monitor point %d: %w", id, errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: get monitor point %d: %w", id, db.MapError(err))
 	}
 	return &p, nil
 }
@@ -264,7 +264,7 @@ func (s *MonitorStore) Create(ctx context.Context, p *MonitorPoint) error {
 		return fmt.Errorf("telemetry: create monitor point: %w", errdefs.ErrInvalidArgument)
 	}
 	if err := s.dbc.WithContext(ctx).Create(p).Error; err != nil {
-		return fmt.Errorf("telemetry: create monitor point: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: create monitor point: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -293,7 +293,7 @@ func (s *MonitorStore) Update(ctx context.Context, p *MonitorPoint) error {
 		Select(pointUpdateColumns).
 		Updates(p)
 	if result.Error != nil {
-		return fmt.Errorf("telemetry: update monitor point %d: %w", p.ID, errmap.MapError(result.Error))
+		return fmt.Errorf("telemetry: update monitor point %d: %w", p.ID, db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("telemetry: update monitor point %d: %w", p.ID, errdefs.ErrNotFound)
@@ -306,7 +306,7 @@ func (s *MonitorStore) Update(ctx context.Context, p *MonitorPoint) error {
 func (s *MonitorStore) Delete(ctx context.Context, id int64) error {
 	result := s.dbc.WithContext(ctx).Delete(&MonitorPoint{}, id)
 	if result.Error != nil {
-		return fmt.Errorf("telemetry: delete monitor point %d: %w", id, errmap.MapError(result.Error))
+		return fmt.Errorf("telemetry: delete monitor point %d: %w", id, db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("telemetry: delete monitor point %d: %w", id, errdefs.ErrNotFound)
@@ -342,7 +342,7 @@ func (s *MonitorStore) Summary(ctx context.Context) (PointSummary, error) {
 		Select("mode, enabled, COUNT(*) AS count").
 		Group("mode, enabled").
 		Find(&rows).Error; err != nil {
-		return PointSummary{}, fmt.Errorf("telemetry: summarize monitor points: %w", errmap.MapError(err))
+		return PointSummary{}, fmt.Errorf("telemetry: summarize monitor points: %w", db.MapError(err))
 	}
 	var summary PointSummary
 	for _, row := range rows {
@@ -384,7 +384,7 @@ func (s *TemplateStore) List(ctx context.Context, category string) ([]Template, 
 	}
 	var templates []Template
 	if err := query.Order("id ASC").Find(&templates).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: list templates: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: list templates: %w", db.MapError(err))
 	}
 	return templates, nil
 }
@@ -394,7 +394,7 @@ func (s *TemplateStore) List(ctx context.Context, category string) ([]Template, 
 func (s *TemplateStore) GetByID(ctx context.Context, id int64) (*Template, error) {
 	var t Template
 	if err := s.dbc.WithContext(ctx).First(&t, id).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: get template %d: %w", id, errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: get template %d: %w", id, db.MapError(err))
 	}
 	return &t, nil
 }
@@ -403,7 +403,7 @@ func (s *TemplateStore) GetByID(ctx context.Context, id int64) (*Template, error
 // all required fields. A duplicate name surfaces as errdefs.ErrConflict.
 func (s *TemplateStore) Create(ctx context.Context, t *Template) error {
 	if err := s.dbc.WithContext(ctx).Create(t).Error; err != nil {
-		return fmt.Errorf("telemetry: create template: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: create template: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -414,7 +414,7 @@ func (s *TemplateStore) Create(ctx context.Context, t *Template) error {
 func (s *TemplateStore) Update(ctx context.Context, t *Template) error {
 	result := s.dbc.WithContext(ctx).Save(t)
 	if result.Error != nil {
-		return fmt.Errorf("telemetry: update template %d: %w", t.ID, errmap.MapError(result.Error))
+		return fmt.Errorf("telemetry: update template %d: %w", t.ID, db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("telemetry: update template %d: %w", t.ID, errdefs.ErrNotFound)
@@ -427,7 +427,7 @@ func (s *TemplateStore) Update(ctx context.Context, t *Template) error {
 func (s *TemplateStore) Delete(ctx context.Context, id int64) error {
 	result := s.dbc.WithContext(ctx).Delete(&Template{}, id)
 	if result.Error != nil {
-		return fmt.Errorf("telemetry: delete template %d: %w", id, errmap.MapError(result.Error))
+		return fmt.Errorf("telemetry: delete template %d: %w", id, db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("telemetry: delete template %d: %w", id, errdefs.ErrNotFound)
@@ -442,7 +442,7 @@ func (s *TemplateStore) ListBuiltin(ctx context.Context) ([]Template, error) {
 		Where("is_builtin = ?", true).
 		Order("id ASC").
 		Find(&templates).Error; err != nil {
-		return nil, fmt.Errorf("telemetry: list builtin templates: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: list builtin templates: %w", db.MapError(err))
 	}
 	return templates, nil
 }
@@ -516,7 +516,7 @@ func (s *ProbeRecordStore) Save(ctx context.Context, record executor.ExecutionRe
 			Update("status", newStatus).Error
 	})
 	if err != nil {
-		return fmt.Errorf("telemetry: save probe record: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: save probe record: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -553,7 +553,7 @@ func (s *ProbeRecordStore) QueryByPoint(ctx context.Context, q ProbeQuery) ([]Pr
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: count probe records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: count probe records: %w", db.MapError(err))
 	}
 	limit, offset := queryWindow(q.Page, q.Size)
 	var records []ProbeRecord
@@ -561,7 +561,7 @@ func (s *ProbeRecordStore) QueryByPoint(ctx context.Context, q ProbeQuery) ([]Pr
 		Order("started_at DESC, id DESC").
 		Offset(offset).Limit(limit).
 		Find(&records).Error; err != nil {
-		return nil, 0, fmt.Errorf("telemetry: query probe records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("telemetry: query probe records: %w", db.MapError(err))
 	}
 	return records, total, nil
 }
@@ -578,7 +578,7 @@ func (s *ProbeRecordStore) LatestByPoint(ctx context.Context, pointID int64) (*P
 		Order("started_at DESC, id DESC").
 		First(&rec).Error
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: latest probe for point %d: %w", pointID, errmap.MapError(err))
+		return nil, fmt.Errorf("telemetry: latest probe for point %d: %w", pointID, db.MapError(err))
 	}
 	return &rec, nil
 }
@@ -594,7 +594,7 @@ func (s *ProbeRecordStore) DeleteOlderThan(ctx context.Context, before time.Time
 		Where("started_at < ?", before).
 		Delete(&ProbeRecord{}).Error
 	if err != nil {
-		return fmt.Errorf("telemetry: delete old probe records: %w", errmap.MapError(err))
+		return fmt.Errorf("telemetry: delete old probe records: %w", db.MapError(err))
 	}
 	return nil
 }

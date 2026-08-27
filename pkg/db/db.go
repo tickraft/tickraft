@@ -13,8 +13,6 @@ import (
 	"sync"
 
 	"gorm.io/gorm"
-
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // Shared driver and address literals used across the package.
@@ -70,9 +68,9 @@ type Config struct {
 // as a SQLite3 DSN.
 func Parse(dsn string) (Config, error) {
 	if dsn == "" {
-		return Config{}, errmap.ErrDSNRequired
+		return Config{}, ErrDSNRequired
 	} else if strings.Contains(dsn, memoryAddr) {
-		return Config{}, errmap.ErrMemoryNotSupported
+		return Config{}, ErrMemoryNotSupported
 	}
 
 	if !strings.Contains(dsn, "://") {
@@ -85,11 +83,11 @@ func Parse(dsn string) (Config, error) {
 	case "sqlite", driverSQLite3:
 		address, params := SplitURLQuery(rest)
 		if address == "" {
-			return Config{}, errmap.ErrDSNRequired
+			return Config{}, ErrDSNRequired
 		}
 		return Config{Driver: driverSQLite3, Addr: address, Params: params}, nil
 	default:
-		return Config{}, fmt.Errorf("%w: scheme %q", errmap.ErrUnsupportedDriver, scheme)
+		return Config{}, fmt.Errorf("%w: scheme %q", ErrUnsupportedDriver, scheme)
 	}
 }
 
@@ -215,13 +213,13 @@ func Register(name string, opener Opener) error {
 // may be registered via the Register SPI.
 func Open(ctx context.Context, cfg Config) (*gorm.DB, error) {
 	if cfg.Driver == "" {
-		return nil, errmap.ErrDriverRequired
+		return nil, ErrDriverRequired
 	}
 	driversMu.RLock()
 	opener, ok := drivers[cfg.Driver]
 	driversMu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", errmap.ErrUnsupportedDriver, cfg.Driver)
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedDriver, cfg.Driver)
 	}
 	return opener(ctx, cfg)
 }

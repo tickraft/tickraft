@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/cache"
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -42,7 +42,7 @@ func (s *blacklistStore) Add(ctx context.Context, jti string, expiredAt time.Tim
 		ExpiredAt: expiredAt,
 	}
 	if err := s.dbc.WithContext(ctx).Create(&entry).Error; err != nil {
-		return errmap.MapError(err)
+		return db.MapError(err)
 	}
 
 	if s.cache != nil {
@@ -72,7 +72,7 @@ func (s *blacklistStore) Exists(ctx context.Context, jti string) (bool, error) {
 		Where("token_jti = ?", jti).
 		Count(&count).Error
 	if err != nil {
-		return false, errmap.MapError(err)
+		return false, db.MapError(err)
 	}
 
 	if count > 0 {
@@ -90,7 +90,7 @@ func (s *blacklistStore) CleanExpired(ctx context.Context) error {
 		Where("expired_at < ?", time.Now()).
 		Delete(&TokenBlacklist{}).Error
 	if err != nil {
-		return errmap.MapError(err)
+		return db.MapError(err)
 	}
 	return nil
 }

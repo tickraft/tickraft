@@ -12,7 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
@@ -68,11 +68,11 @@ func (s *Store) UpsertRecord(ctx context.Context, record *Record) error {
 		Where("run_id = ?", record.RunID).
 		Updates(updates)
 	if result.Error != nil {
-		return fmt.Errorf("remediation: upsert record: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("remediation: upsert record: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		if err := s.dbc.WithContext(ctx).Create(record).Error; err != nil {
-			return fmt.Errorf("remediation: create record: %w", errmap.MapError(err))
+			return fmt.Errorf("remediation: create record: %w", db.MapError(err))
 		}
 	}
 	return nil
@@ -89,7 +89,7 @@ func (s *Store) ListRecords(ctx context.Context, page, size int, status string) 
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("remediation: count records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("remediation: count records: %w", db.MapError(err))
 	}
 	if total == 0 {
 		return nil, 0, nil
@@ -100,7 +100,7 @@ func (s *Store) ListRecords(ctx context.Context, page, size int, status string) 
 		Offset((page - 1) * size).
 		Limit(size).
 		Find(&records).Error; err != nil {
-		return nil, 0, fmt.Errorf("remediation: list records: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("remediation: list records: %w", db.MapError(err))
 	}
 	return records, total, nil
 }
@@ -112,7 +112,7 @@ func (s *Store) Create(ctx context.Context, m *Rule) error {
 		return fmt.Errorf("remediation: create rule: nil model")
 	}
 	if err := s.dbc.WithContext(ctx).Create(m).Error; err != nil {
-		return fmt.Errorf("remediation: create rule: %w", errmap.MapError(err))
+		return fmt.Errorf("remediation: create rule: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func (s *Store) Update(ctx context.Context, m *Rule) error {
 		Select(updateColumns).
 		Updates(m)
 	if result.Error != nil {
-		return fmt.Errorf("remediation: update rule: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("remediation: update rule: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrRuleNotFound
@@ -160,7 +160,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Rule, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRuleNotFound
 		}
-		return nil, fmt.Errorf("remediation: get rule: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("remediation: get rule: %w", db.MapError(err))
 	}
 	return &m, nil
 }
@@ -173,7 +173,7 @@ func (s *Store) List(ctx context.Context, page, size int) ([]*Rule, int64, error
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("remediation: list rules: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("remediation: list rules: %w", db.MapError(err))
 	}
 
 	var models []*Rule
@@ -183,7 +183,7 @@ func (s *Store) List(ctx context.Context, page, size int) ([]*Rule, int64, error
 		Offset(offset).
 		Limit(size).
 		Find(&models).Error; err != nil {
-		return nil, 0, fmt.Errorf("remediation: list rules: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("remediation: list rules: %w", db.MapError(err))
 	}
 	return models, total, nil
 }
@@ -196,7 +196,7 @@ func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 		Where("id = ?", id).
 		Delete(&Rule{})
 	if result.Error != nil {
-		return fmt.Errorf("remediation: delete rule: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("remediation: delete rule: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrRuleNotFound
@@ -216,7 +216,7 @@ func (s *Store) GetRules(ctx context.Context, tenantID, assetID int64, triggerTy
 		Where("asset_id = 0 OR asset_id = ?", assetID).
 		Order("id DESC")
 	if err := q.Find(&rules).Error; err != nil {
-		return nil, fmt.Errorf("remediation: get rules: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("remediation: get rules: %w", db.MapError(err))
 	}
 	return rules, nil
 }
@@ -228,7 +228,7 @@ func (s *Store) UpdateRuleStatus(ctx context.Context, ruleID int64, status strin
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).
 		Where("id = ?", ruleID).
 		Update("status", status).Error; err != nil {
-		return fmt.Errorf("remediation: update rule status: %w", errmap.MapError(err))
+		return fmt.Errorf("remediation: update rule status: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -256,7 +256,7 @@ func (s *Store) RecordExecutionOutcome(ctx context.Context, ruleID int64, succes
 			}).Error
 	}
 	if err != nil {
-		return fmt.Errorf("remediation: record execution outcome: %w", errmap.MapError(err))
+		return fmt.Errorf("remediation: record execution outcome: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -266,7 +266,7 @@ func (s *Store) UpdateLastRun(ctx context.Context, ruleID int64, lastRunAt time.
 	if err := s.dbc.WithContext(ctx).Model(&Rule{}).
 		Where("id = ?", ruleID).
 		Update("last_run_at", lastRunAt).Error; err != nil {
-		return fmt.Errorf("remediation: update last run: %w", errmap.MapError(err))
+		return fmt.Errorf("remediation: update last run: %w", db.MapError(err))
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
@@ -39,7 +39,7 @@ var _ Store = (*store)(nil)
 func (s *store) GetByUsername(ctx context.Context, username string) (*User, error) {
 	var u User
 	if err := s.dbc.WithContext(ctx).Where("username = ?", username).First(&u).Error; err != nil {
-		return nil, errmap.MapError(err)
+		return nil, db.MapError(err)
 	}
 	return &u, nil
 }
@@ -48,7 +48,7 @@ func (s *store) GetByUsername(ctx context.Context, username string) (*User, erro
 func (s *store) GetByID(ctx context.Context, id int64) (*User, error) {
 	var u User
 	if err := s.dbc.WithContext(ctx).Where("id = ?", id).First(&u).Error; err != nil {
-		return nil, errmap.MapError(err)
+		return nil, db.MapError(err)
 	}
 	return &u, nil
 }
@@ -73,7 +73,7 @@ func (s *store) Create(ctx context.Context, username, passwordHash, email string
 	}
 
 	if err := s.dbc.WithContext(ctx).Create(&u).Error; err != nil {
-		return 0, errmap.MapError(err)
+		return 0, db.MapError(err)
 	}
 
 	return u.ID, nil
@@ -87,7 +87,7 @@ func (s *store) Update(ctx context.Context, id int64, data map[string]any) error
 
 	result := s.dbc.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(data)
 	if result.Error != nil {
-		return errmap.MapError(result.Error)
+		return db.MapError(result.Error)
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func (s *store) UpdatePassword(ctx context.Context, id int64, passwordHash strin
 
 	result := s.dbc.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("password_hash", passwordHash)
 	if result.Error != nil {
-		return errmap.MapError(result.Error)
+		return db.MapError(result.Error)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func (s *store) Delete(ctx context.Context, id int64) error {
 	}
 
 	if err := s.dbc.WithContext(ctx).Delete(&User{}, id).Error; err != nil {
-		return errmap.MapError(err)
+		return db.MapError(err)
 	}
 	return nil
 }
@@ -124,7 +124,7 @@ func (s *store) Delete(ctx context.Context, id int64) error {
 func (s *store) List(ctx context.Context) ([]User, error) {
 	var users []User
 	if err := s.dbc.WithContext(ctx).Find(&users).Error; err != nil {
-		return nil, errmap.MapError(err)
+		return nil, db.MapError(err)
 	}
 	return users, nil
 }
@@ -164,7 +164,7 @@ func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash strin
 		ExpiredAt: expiredAt,
 	}
 	if err := s.dbc.WithContext(ctx).Create(&ak).Error; err != nil {
-		return 0, errmap.MapError(err)
+		return 0, db.MapError(err)
 	}
 	return ak.ID, nil
 }
@@ -178,7 +178,7 @@ func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&APIKey{}).Count(&total).Error; err != nil {
-		return nil, 0, errmap.MapError(err)
+		return nil, 0, db.MapError(err)
 	}
 
 	var keys []APIKey
@@ -187,7 +187,7 @@ func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64
 		Limit(size).
 		Offset(offset).
 		Find(&keys).Error; err != nil {
-		return nil, 0, errmap.MapError(err)
+		return nil, 0, db.MapError(err)
 	}
 	return keys, total, nil
 }
@@ -196,7 +196,7 @@ func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64
 func (s *apiKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	var ak APIKey
 	if err := s.dbc.WithContext(ctx).Where("key_hash = ?", keyHash).First(&ak).Error; err != nil {
-		return nil, errmap.MapError(err)
+		return nil, db.MapError(err)
 	}
 	return &ak, nil
 }
@@ -208,7 +208,7 @@ func (s *apiKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 	var ak APIKey
 	if err := s.dbc.WithContext(ctx).First(&ak, id).Error; err != nil {
-		return errmap.MapError(err)
+		return db.MapError(err)
 	}
 
 	now := time.Now()
@@ -217,7 +217,7 @@ func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 			"revoked_at": now,
 			"status":     apikey.StatusRevoked,
 		}).Error; err != nil {
-		return errmap.MapError(err)
+		return db.MapError(err)
 	}
 	return nil
 }

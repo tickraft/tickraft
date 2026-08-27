@@ -13,7 +13,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 )
 
 // FailedEvent is the persistence model for the event_failed_events table. It
@@ -86,7 +86,7 @@ func (s *failedEventStore) Save(ctx context.Context, env Envelope, err error) er
 	}
 
 	if createErr := s.dbc.WithContext(ctx).Create(record).Error; createErr != nil {
-		return fmt.Errorf("event: save failed event: %w", errmap.MapError(createErr))
+		return fmt.Errorf("event: save failed event: %w", db.MapError(createErr))
 	}
 	return nil
 }

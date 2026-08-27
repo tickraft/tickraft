@@ -12,7 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
@@ -48,7 +48,7 @@ func (s *Store) Create(ctx context.Context, m *Channel) error {
 		return fmt.Errorf("channel: create channel: nil model")
 	}
 	if err := s.dbc.WithContext(ctx).Create(m).Error; err != nil {
-		return fmt.Errorf("channel: create channel: %w", errmap.MapError(err))
+		return fmt.Errorf("channel: create channel: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func (s *Store) Update(ctx context.Context, ch *Channel) error {
 		Select(recordUpdateColumns).
 		Updates(ch)
 	if result.Error != nil {
-		return fmt.Errorf("channel: update channel: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("channel: update channel: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrChannelNotFound
@@ -92,7 +92,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*Channel, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChannelNotFound
 		}
-		return nil, fmt.Errorf("channel: get channel: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("channel: get channel: %w", db.MapError(err))
 	}
 	return &ch, nil
 }
@@ -105,7 +105,7 @@ func (s *Store) List(ctx context.Context, page, size int) ([]*Channel, int64, er
 
 	var total int64
 	if err := s.dbc.WithContext(ctx).Model(&Channel{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("channel: list channels: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("channel: list channels: %w", db.MapError(err))
 	}
 
 	var channels []*Channel
@@ -115,7 +115,7 @@ func (s *Store) List(ctx context.Context, page, size int) ([]*Channel, int64, er
 		Offset(offset).
 		Limit(size).
 		Find(&channels).Error; err != nil {
-		return nil, 0, fmt.Errorf("channel: list channels: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("channel: list channels: %w", db.MapError(err))
 	}
 	return channels, total, nil
 }
@@ -129,7 +129,7 @@ func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 		Where("id = ?", id).
 		Delete(&Channel{})
 	if result.Error != nil {
-		return fmt.Errorf("channel: delete channel: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("channel: delete channel: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return ErrChannelNotFound
@@ -148,7 +148,7 @@ func (s *Store) TouchLastUsedAt(ctx context.Context, id int64, at time.Time) err
 		Where("id = ?", id).
 		Update("last_used_at", at)
 	if result.Error != nil {
-		return fmt.Errorf("channel: touch last_used_at: %w", errmap.MapError(result.Error))
+		return fmt.Errorf("channel: touch last_used_at: %w", db.MapError(result.Error))
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("channel: touch last_used_at: %w", errdefs.ErrNotFound)
@@ -165,7 +165,7 @@ func (s *Store) ListEnabled(ctx context.Context) ([]*Channel, error) {
 		Where("enabled = ?", true).
 		Order("id ASC").
 		Find(&models).Error; err != nil {
-		return nil, fmt.Errorf("channel: list enabled: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("channel: list enabled: %w", db.MapError(err))
 	}
 	return models, nil
 }

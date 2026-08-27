@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/tickraft/tickraft/pkg/db/errmap"
+	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
@@ -65,7 +65,7 @@ func (s *store) Save(ctx context.Context, t *Task) error {
 			DoUpdates: clause.AssignmentColumns(taskWriteColumns),
 		}).
 		Create(t).Error; err != nil {
-		return fmt.Errorf("task: save: %w", errmap.MapError(err))
+		return fmt.Errorf("task: save: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -75,7 +75,7 @@ func (s *store) Save(ctx context.Context, t *Task) error {
 func (s *store) Get(ctx context.Context, id int64) (*Task, error) {
 	var t Task
 	if err := s.dbc.WithContext(ctx).First(&t, id).Error; err != nil {
-		return nil, fmt.Errorf("task: get: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("task: get: %w", db.MapError(err))
 	}
 	return &t, nil
 }
@@ -93,7 +93,7 @@ func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
 		query = query.Where("`group` = ?", opts.Group)
 	}
 	if err := query.Find(&tasks).Error; err != nil {
-		return nil, fmt.Errorf("task: list: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("task: list: %w", db.MapError(err))
 	}
 	filtered := make([]*Task, 0, len(tasks))
 	for _, t := range tasks {
@@ -128,7 +128,7 @@ func matchAnyTag(taskTags, requested []string) bool {
 // be re-registered later without colliding with a soft-deleted record.
 func (s *store) Delete(ctx context.Context, id int64) error {
 	if err := s.dbc.WithContext(ctx).Unscoped().Delete(&Task{}, id).Error; err != nil {
-		return fmt.Errorf("task: delete: %w", errmap.MapError(err))
+		return fmt.Errorf("task: delete: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -191,7 +191,7 @@ func (s *executionStore) Save(ctx context.Context, exec *Execution) error {
 		return fmt.Errorf("task: save execution: nil execution")
 	}
 	if err := s.dbc.WithContext(ctx).Create(exec).Error; err != nil {
-		return fmt.Errorf("task: save execution: %w", errmap.MapError(err))
+		return fmt.Errorf("task: save execution: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*
 		Order("id DESC").
 		Limit(limit)
 	if err := query.Find(&execs).Error; err != nil {
-		return nil, fmt.Errorf("task: list executions: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("task: list executions: %w", db.MapError(err))
 	}
 	return execs, nil
 }
@@ -244,7 +244,7 @@ func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("task: query executions: %w", db.MapError(err))
 	}
 
 	var execs []*Execution
@@ -253,7 +253,7 @@ func (s *executionStore) Query(ctx context.Context, q ExecutionQuery, page, size
 		Offset((page - 1) * size).
 		Limit(size).
 		Find(&execs).Error; err != nil {
-		return nil, 0, fmt.Errorf("task: query executions: %w", errmap.MapError(err))
+		return nil, 0, fmt.Errorf("task: query executions: %w", db.MapError(err))
 	}
 	return execs, total, nil
 }
@@ -266,7 +266,7 @@ func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrExecutionNotFound
 		}
-		return nil, fmt.Errorf("task: get execution: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("task: get execution: %w", db.MapError(err))
 	}
 	return &exec, nil
 }
@@ -278,7 +278,7 @@ func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) 
 // system-level maintenance routine.
 func (s *executionStore) DeleteExecutionsOlderThan(ctx context.Context, before time.Time) error {
 	if err := s.dbc.WithContext(ctx).Where("created_at < ?", before).Delete(&Execution{}).Error; err != nil {
-		return fmt.Errorf("task: delete old executions: %w", errmap.MapError(err))
+		return fmt.Errorf("task: delete old executions: %w", db.MapError(err))
 	}
 	return nil
 }
@@ -318,7 +318,7 @@ func (s *executionStore) Stats(ctx context.Context, from, to time.Time, taskID i
 	}
 	err := query.Scan(&row).Error
 	if err != nil {
-		return ExecutionStatsResult{}, fmt.Errorf("task: compute execution stats: %w", errmap.MapError(err))
+		return ExecutionStatsResult{}, fmt.Errorf("task: compute execution stats: %w", db.MapError(err))
 	}
 
 	result := ExecutionStatsResult{
@@ -363,7 +363,7 @@ func (s *executionStore) StatsByDay(ctx context.Context, from, to time.Time, tas
 		query = query.Where("task_id = ?", taskID)
 	}
 	if err := query.Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("task: compute daily execution stats: %w", errmap.MapError(err))
+		return nil, fmt.Errorf("task: compute daily execution stats: %w", db.MapError(err))
 	}
 	stats := make([]DailyStat, 0, len(rows))
 	for _, row := range rows {

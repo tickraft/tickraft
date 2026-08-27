@@ -7,8 +7,6 @@ package db
 import (
 	"errors"
 	"testing"
-
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 func TestParse_BarePath(t *testing.T) {
@@ -30,20 +28,20 @@ func TestParse_BarePath(t *testing.T) {
 func TestParse_MemoryPath(t *testing.T) {
 	_, err := Parse(":memory:")
 	if err == nil {
-		t.Fatal("Parse(\":memory:\") returned nil error, want errmap.ErrMemoryNotSupported")
+		t.Fatal("Parse(\":memory:\") returned nil error, want ErrMemoryNotSupported")
 	}
-	if !errors.Is(err, errmap.ErrMemoryNotSupported) {
-		t.Errorf("Parse(\":memory:\") error = %v, want errors.Is errmap.ErrMemoryNotSupported", err)
+	if !errors.Is(err, ErrMemoryNotSupported) {
+		t.Errorf("Parse(\":memory:\") error = %v, want errors.Is ErrMemoryNotSupported", err)
 	}
 }
 
 func TestParse_EmptyString(t *testing.T) {
 	_, err := Parse("")
 	if err == nil {
-		t.Fatal("Parse(\"\") returned nil error, want errmap.ErrDSNRequired")
+		t.Fatal("Parse(\"\") returned nil error, want ErrDSNRequired")
 	}
-	if !errors.Is(err, errmap.ErrDSNRequired) {
-		t.Errorf("Parse(\"\") error = %v, want errors.Is errmap.ErrDSNRequired", err)
+	if !errors.Is(err, ErrDSNRequired) {
+		t.Errorf("Parse(\"\") error = %v, want errors.Is ErrDSNRequired", err)
 	}
 }
 
@@ -107,20 +105,20 @@ func TestParse_WithQueryParams(t *testing.T) {
 func TestParse_UnsupportedScheme(t *testing.T) {
 	_, err := Parse("mysql://user:pass@host:port/db")
 	if err == nil {
-		t.Fatal("Parse with unsupported scheme returned nil error, want errmap.ErrUnsupportedDriver")
+		t.Fatal("Parse with unsupported scheme returned nil error, want ErrUnsupportedDriver")
 	}
-	if !errors.Is(err, errmap.ErrUnsupportedDriver) {
-		t.Errorf("Parse unsupported scheme error = %v, want errors.Is errmap.ErrUnsupportedDriver", err)
+	if !errors.Is(err, ErrUnsupportedDriver) {
+		t.Errorf("Parse unsupported scheme error = %v, want errors.Is ErrUnsupportedDriver", err)
 	}
 }
 
 func TestParse_SQLiteSchemeEmptyURL(t *testing.T) {
 	_, err := Parse("sqlite://")
 	if err == nil {
-		t.Fatal("Parse(\"sqlite://\") returned nil error, want errmap.ErrDSNRequired")
+		t.Fatal("Parse(\"sqlite://\") returned nil error, want ErrDSNRequired")
 	}
-	if !errors.Is(err, errmap.ErrDSNRequired) {
-		t.Errorf("Parse(\"sqlite://\") error = %v, want errors.Is errmap.ErrDSNRequired", err)
+	if !errors.Is(err, ErrDSNRequired) {
+		t.Errorf("Parse(\"sqlite://\") error = %v, want errors.Is ErrDSNRequired", err)
 	}
 }
 

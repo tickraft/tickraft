@@ -11,8 +11,6 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 func TestValidatePragmaValue(t *testing.T) {
@@ -86,8 +84,8 @@ func TestClose_ValidDB(t *testing.T) {
 func TestParse_MemoryRejected(t *testing.T) {
 	// Parse rejects :memory: for production DSNs to prevent accidental data loss.
 	_, err := Parse("sqlite3://:memory:")
-	if !errors.Is(err, errmap.ErrMemoryNotSupported) {
-		t.Errorf("Parse(:memory:) error = %v, want errors.Is errmap.ErrMemoryNotSupported", err)
+	if !errors.Is(err, ErrMemoryNotSupported) {
+		t.Errorf("Parse(:memory:) error = %v, want errors.Is ErrMemoryNotSupported", err)
 	}
 }
 

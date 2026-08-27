@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/tickraft/tickraft/pkg/db/errmap"
 )
 
 // ParseNetworkDSN builds a Config for a network database (MySQL or
@@ -32,7 +30,7 @@ import (
 func ParseNetworkDSN(scheme, driver, rest string) (Config, error) {
 	addressPart, params := SplitURLQuery(rest)
 	if addressPart == "" {
-		return Config{}, fmt.Errorf("db: parse %s url: %w", driver, errmap.ErrDSNRequired)
+		return Config{}, fmt.Errorf("db: parse %s url: %w", driver, ErrDSNRequired)
 	}
 	u, err := url.Parse(scheme + "://" + addressPart)
 	if err != nil {
