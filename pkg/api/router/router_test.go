@@ -50,7 +50,7 @@ func TestRegisterRoutesNilServer(t *testing.T) {
 }
 
 // TestRegisterRoutesNilJWT verifies that RegisterRoutes returns an error
-// containing "jwt manager is nil" when the jwtMgr argument is nil. The
+// containing "jwt is nil" when the jwt argument is nil. The
 // server must be non-nil to reach this validation branch.
 func TestRegisterRoutesNilJWT(t *testing.T) {
 	srv := api.NewServer(api.ServerConfig{Addr: ":0"})
@@ -60,8 +60,8 @@ func TestRegisterRoutesNilJWT(t *testing.T) {
 	if err == nil {
 		t.Fatal("RegisterRoutes(nil jwt) returned nil error, want non-nil")
 	}
-	if !strings.Contains(err.Error(), "jwt manager is nil") {
-		t.Errorf("err = %q, want to contain %q", err.Error(), "jwt manager is nil")
+	if !strings.Contains(err.Error(), "jwt is nil") {
+		t.Errorf("err = %q, want to contain %q", err.Error(), "jwt is nil")
 	}
 }
 

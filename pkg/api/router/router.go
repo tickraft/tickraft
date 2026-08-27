@@ -30,11 +30,11 @@ import (
 	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 	"github.com/tickraft/tickraft/pkg/auth"
-	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/executor"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
-	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
@@ -57,9 +57,9 @@ type RegisterOption interface {
 // registerConfig holds handlers and services injected via RegisterOption.
 type registerConfig struct {
 	taskService            taskservice.Service
-	alertService           alertservice.Service
-	channelService         channelservice.Service
-	remediationRuleService remediationservice.Service
+	alertService           alert.Service
+	channelService         channel.Service
+	remediationRuleService remediation.Service
 	systemService          system.Service
 	telemetryService       telemetryservice.Service
 	telemetryReportHandler app.HandlerFunc
@@ -96,49 +96,49 @@ func (o taskServiceOption) apply(c *registerConfig) { c.taskService = o.svc }
 // registration fails with a missing-service error.
 func WithTaskService(svc taskservice.Service) RegisterOption { return taskServiceOption{svc: svc} }
 
-// alertServiceOption provides the alertservice.Service implementation for
+// alertServiceOption provides the alert.Service implementation for
 // alert handlers.
 type alertServiceOption struct {
-	svc alertservice.Service
+	svc alert.Service
 }
 
 func (o alertServiceOption) apply(c *registerConfig) { c.alertService = o.svc }
 
-// WithAlertService provides the alertservice.Service implementation for alert
+// WithAlertService provides the alert.Service implementation for alert
 // handlers. Required by the handler route validator.
-func WithAlertService(svc alertservice.Service) RegisterOption {
+func WithAlertService(svc alert.Service) RegisterOption {
 	return alertServiceOption{svc: svc}
 }
 
-// channelServiceOption provides the channelservice.Service implementation for
+// channelServiceOption provides the channel.Service implementation for
 // notification channel handlers.
 type channelServiceOption struct {
-	svc channelservice.Service
+	svc channel.Service
 }
 
 func (o channelServiceOption) apply(c *registerConfig) { c.channelService = o.svc }
 
-// WithChannelService provides the channelservice.Service implementation for
+// WithChannelService provides the channel.Service implementation for
 // notification channel handlers. When omitted, the handler package falls
 // back to an in-memory implementation.
-func WithChannelService(svc channelservice.Service) RegisterOption {
+func WithChannelService(svc channel.Service) RegisterOption {
 	return channelServiceOption{svc: svc}
 }
 
-// remediationRuleServiceOption provides the remediationservice.Service
+// remediationRuleServiceOption provides the remediation.Service
 // implementation for self-healing rule handlers.
 type remediationRuleServiceOption struct {
-	svc remediationservice.Service
+	svc remediation.Service
 }
 
 func (o remediationRuleServiceOption) apply(c *registerConfig) {
 	c.remediationRuleService = o.svc
 }
 
-// WithRemediationRuleService provides the remediationservice.Service
+// WithRemediationRuleService provides the remediation.Service
 // implementation for self-healing rule handlers. When omitted, the handler
 // package falls back to an in-memory implementation.
-func WithRemediationRuleService(svc remediationservice.Service) RegisterOption {
+func WithRemediationRuleService(svc remediation.Service) RegisterOption {
 	return remediationRuleServiceOption{svc: svc}
 }
 
@@ -364,20 +364,20 @@ func WithUserRevoker(revoker RevokeFunc) RegisterOption {
 //
 // Parameters:
 //   - server: the API server to register routes on.
-//   - jwtMgr: the JWT manager for token validation.
-//   - service: the auth service for login, password, and API key operations.
+//   - jwt: the JWT manager for token validation.
+//   - authz: the auth service for login, password, and API key operations.
 //   - assetKeyGetter: validates the X-Tickraft-Asset-Key header for
 //     telemetry report endpoints. If nil, a fail-closed stub is used.
 //   - opts: optional RegisterOption values to inject the domain services,
 //     handlers, and edition-specific seams.
 func RegisterRoutes(
 	server *api.Server,
-	jwtMgr *jwt.JWT,
-	service *auth.Service,
+	jwt *jwtauth.JWT,
+	authz *auth.Service,
 	assetKeyGetter func(ctx context.Context, key string) (bool, error),
 	options ...RegisterOption,
 ) error {
-	if err := validateRegisterArgs(server, jwtMgr, service); err != nil {
+	if err := validateRegisterArgs(server, jwt, authz); err != nil {
 		return err
 	}
 
@@ -395,14 +395,14 @@ func RegisterRoutes(
 	// bearer auth is opt-in; without it the JWT middleware runs alone.
 	var authMW app.HandlerFunc
 	if rc.apiKeyAuth {
-		authMW = middleware.NewAnyAuth(jwtMgr, newAPIKeyGetter(service))
+		authMW = middleware.NewAnyAuth(jwt, newAPIKeyGetter(authz))
 	} else {
-		authMW = middleware.NewJWTAuth(jwtMgr, "")
+		authMW = middleware.NewJWTAuth(jwt, "")
 	}
 	assetKeyMW := middleware.NewAssetKeyMiddleware(getter)
 
 	// Wrap *auth.Service in the adapter to satisfy the handler SPI.
-	adapter := &serviceAdapter{svc: service, revoker: rc.revoker}
+	adapter := &serviceAdapter{svc: authz, revoker: rc.revoker}
 
 	if err := handler.RegisterRoutes(server, rc.handlerOptions(authMW, assetKeyMW, adapter)...); err != nil {
 		return fmt.Errorf("router: %w", err)
@@ -414,14 +414,14 @@ func RegisterRoutes(
 // validateRegisterArgs returns an error when any mandatory RegisterRoutes
 // argument is nil. These arguments back routes and middleware that are always
 // registered, so a nil value would produce a runtime panic on first use.
-func validateRegisterArgs(server *api.Server, jwtMgr *jwt.JWT, service *auth.Service) error {
+func validateRegisterArgs(server *api.Server, jwt *jwtauth.JWT, authz *auth.Service) error {
 	if server == nil {
 		return fmt.Errorf("router: server is nil")
 	}
-	if jwtMgr == nil {
-		return fmt.Errorf("router: jwt manager is nil")
+	if jwt == nil {
+		return fmt.Errorf("router: jwt is nil")
 	}
-	if service == nil {
+	if authz == nil {
 		return fmt.Errorf("router: auth service is nil")
 	}
 	return nil

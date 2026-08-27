@@ -44,9 +44,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/executor/tcp"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
 	"github.com/tickraft/tickraft/pkg/prism"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
-	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	systemsvc "github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
@@ -283,10 +283,10 @@ func newHarness(t *testing.T) *harness {
 
 	routeOpts := []router.RegisterOption{
 		router.WithTaskService(taskservice.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
-		router.WithAlertService(alertservice.NewAlertService(
+		router.WithAlertService(alert.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
-		router.WithChannelService(channelservice.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
-		router.WithRemediationRuleService(remediationservice.NewRemediationService(prismEngine.RemediationStore())),
+		router.WithChannelService(channel.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
+		router.WithRemediationRuleService(remediation.NewRemediationService(prismEngine.RemediationStore())),
 		router.WithSystemService(systemSrv),
 		router.WithTelemetryService(telemetrySrv),
 		router.WithTelemetryReportHandler(reportHandler),

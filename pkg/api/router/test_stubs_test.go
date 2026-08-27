@@ -14,12 +14,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/asset"
 	assetstore "github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
-	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
-	prismchannel "github.com/tickraft/tickraft/pkg/prism/channel"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
-	prismremediation "github.com/tickraft/tickraft/pkg/prism/remediation"
-	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	schedtask "github.com/tickraft/tickraft/pkg/task"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	telemetrymodel "github.com/tickraft/tickraft/pkg/telemetry"
@@ -73,79 +70,79 @@ var _ taskservice.Service = (*stubTaskService)(nil)
 // stubAlertService implements alert.Service (model: prismalert).
 type stubAlertService struct{}
 
-func (stubAlertService) ListRules(_ context.Context, _, _ int) ([]*prismalert.Rule, int64, error) {
+func (stubAlertService) ListRules(_ context.Context, _, _ int) ([]*alert.Rule, int64, error) {
 	return nil, 0, nil
 }
-func (stubAlertService) GetRule(_ context.Context, _ int64) (*prismalert.Rule, error) {
+func (stubAlertService) GetRule(_ context.Context, _ int64) (*alert.Rule, error) {
 	return nil, nil
 }
-func (stubAlertService) CreateRule(_ context.Context, _ *prismalert.Rule) (*prismalert.Rule, error) {
-	return &prismalert.Rule{}, nil
+func (stubAlertService) CreateRule(_ context.Context, _ *alert.Rule) (*alert.Rule, error) {
+	return &alert.Rule{}, nil
 }
-func (stubAlertService) UpdateRule(_ context.Context, _ int64, _ *prismalert.Rule) (*prismalert.Rule, error) {
-	return &prismalert.Rule{}, nil
+func (stubAlertService) UpdateRule(_ context.Context, _ int64, _ *alert.Rule) (*alert.Rule, error) {
+	return &alert.Rule{}, nil
 }
 func (stubAlertService) DeleteRule(_ context.Context, _ int64) error { return nil }
 func (stubAlertService) ListRecords(_ context.Context, _, _ int,
-	_ prismalert.RecordFilter) ([]*prismalert.Record, int64, error) {
+	_ alert.RecordFilter) ([]*alert.Record, int64, error) {
 	return nil, 0, nil
 }
-func (stubAlertService) GetRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
+func (stubAlertService) GetRecord(_ context.Context, _ int64) (*alert.Record, error) {
 	return nil, nil
 }
-func (stubAlertService) AcknowledgeRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
+func (stubAlertService) AcknowledgeRecord(_ context.Context, _ int64) (*alert.Record, error) {
 	return nil, nil
 }
-func (stubAlertService) ResolveRecord(_ context.Context, _ int64) (*prismalert.Record, error) {
+func (stubAlertService) ResolveRecord(_ context.Context, _ int64) (*alert.Record, error) {
 	return nil, nil
 }
 
-var _ alertservice.Service = (*stubAlertService)(nil)
+var _ alert.Service = (*stubAlertService)(nil)
 
-// stubChannelService implements channel.Service (model: prismchannel.Channel).
+// stubChannelService implements channel.Service (model: channel.Channel).
 type stubChannelService struct{}
 
-func (stubChannelService) ListChannels(_ context.Context, _, _ int) ([]*prismchannel.Channel, int64, error) {
+func (stubChannelService) ListChannels(_ context.Context, _, _ int) ([]*channel.Channel, int64, error) {
 	return nil, 0, nil
 }
-func (stubChannelService) GetChannel(_ context.Context, _ int64) (*prismchannel.Channel, error) {
+func (stubChannelService) GetChannel(_ context.Context, _ int64) (*channel.Channel, error) {
 	return nil, nil
 }
-func (stubChannelService) CreateChannel(_ context.Context, _ *prismchannel.Channel) (*prismchannel.Channel, error) {
-	return &prismchannel.Channel{}, nil
+func (stubChannelService) CreateChannel(_ context.Context, _ *channel.Channel) (*channel.Channel, error) {
+	return &channel.Channel{}, nil
 }
 func (stubChannelService) UpdateChannel(_ context.Context, _ int64,
-	_ *prismchannel.Channel) (*prismchannel.Channel, error) {
-	return &prismchannel.Channel{}, nil
+	_ *channel.Channel) (*channel.Channel, error) {
+	return &channel.Channel{}, nil
 }
 func (stubChannelService) DeleteChannel(_ context.Context, _ int64) error { return nil }
 func (stubChannelService) TestChannel(_ context.Context, _ int64) error   { return nil }
 
-var _ channelservice.Service = (*stubChannelService)(nil)
+var _ channel.Service = (*stubChannelService)(nil)
 
 // stubRemediationService implements remediation.Service (model: prismremediation).
 type stubRemediationService struct{}
 
-func (stubRemediationService) ListRules(_ context.Context, _, _ int) ([]*prismremediation.Rule, int64, error) {
+func (stubRemediationService) ListRules(_ context.Context, _, _ int) ([]*remediation.Rule, int64, error) {
 	return nil, 0, nil
 }
-func (stubRemediationService) GetRule(_ context.Context, _ int64) (*prismremediation.Rule, error) {
+func (stubRemediationService) GetRule(_ context.Context, _ int64) (*remediation.Rule, error) {
 	return nil, nil
 }
-func (stubRemediationService) CreateRule(_ context.Context, _ *prismremediation.Rule) (*prismremediation.Rule, error) {
-	return &prismremediation.Rule{}, nil
+func (stubRemediationService) CreateRule(_ context.Context, _ *remediation.Rule) (*remediation.Rule, error) {
+	return &remediation.Rule{}, nil
 }
 func (stubRemediationService) UpdateRule(_ context.Context, _ int64,
-	_ *prismremediation.Rule) (*prismremediation.Rule, error) {
-	return &prismremediation.Rule{}, nil
+	_ *remediation.Rule) (*remediation.Rule, error) {
+	return &remediation.Rule{}, nil
 }
 func (stubRemediationService) DeleteRule(_ context.Context, _ int64) error { return nil }
 func (stubRemediationService) ListRecords(_ context.Context, _, _ int,
-	_ string) ([]*prismremediation.Record, int64, error) {
+	_ string) ([]*remediation.Record, int64, error) {
 	return nil, 0, nil
 }
 
-var _ remediationservice.Service = (*stubRemediationService)(nil)
+var _ remediation.Service = (*stubRemediationService)(nil)
 
 // stubTelemetryService implements telemetryservice.Service.
 type stubTelemetryService struct{}

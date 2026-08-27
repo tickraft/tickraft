@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package service provides the self-healing remediation rule contract
-// (Service) plus its store-backed implementation over the prism
-// remediation engine stores.
-package service
+package remediation
 
 import (
 	"context"
@@ -16,32 +13,32 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
-	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // RemediationService implements Service using the
 // prism remediation store. The wire shape and the storage shape are the
-// same prismremediation.Rule / prismremediation.Record models, so this
-// service only validates, enforces quotas, and orchestrates the store —
-// there is no DTO conversion.
-var _ Service = (*RemediationService)(nil)
-
-// RemediationService implements Service on top of the remediation rule
-// store.
+// same Rule / Record models, so this service only validates, enforces
+// quotas, and orchestrates the store — there is no DTO conversion.
+// The <Domain>Service name mirrors the convention of the other domain
+// service implementations (see pkg/system).
+//
+//nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type RemediationService struct {
-	rules *remediation.Store
+	rules *Store
 }
+
+var _ Service = (*RemediationService)(nil)
 
 // NewRemediationService creates a RemediationService backed by the given
 // store.
-func NewRemediationService(store *remediation.Store) *RemediationService {
+func NewRemediationService(store *Store) *RemediationService {
 	return &RemediationService{rules: store}
 }
 
 // ListRules returns a page of remediation rules and the total count.
-func (s *RemediationService) ListRules(ctx context.Context, page, size int) ([]*remediation.Rule, int64, error) {
+func (s *RemediationService) ListRules(ctx context.Context, page, size int) ([]*Rule, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	rules, total, err := s.rules.List(ctx, page, size)
 	if err != nil {
@@ -52,7 +49,7 @@ func (s *RemediationService) ListRules(ctx context.Context, page, size int) ([]*
 }
 
 // GetRule returns a single remediation rule by ID.
-func (s *RemediationService) GetRule(ctx context.Context, id int64) (*remediation.Rule, error) {
+func (s *RemediationService) GetRule(ctx context.Context, id int64) (*Rule, error) {
 	m, err := s.rules.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapRemediationStoreError(err)
@@ -64,8 +61,8 @@ func (s *RemediationService) GetRule(ctx context.Context, id int64) (*remediatio
 func (s *RemediationService) UpdateRule(
 	ctx context.Context,
 	id int64,
-	req *remediation.Rule,
-) (*remediation.Rule, error) {
+	req *Rule,
+) (*Rule, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -106,7 +103,7 @@ func (s *RemediationService) ListRecords(
 	ctx context.Context,
 	page, size int,
 	status string,
-) ([]*remediation.Record, int64, error) {
+) ([]*Record, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	records, total, err := s.rules.ListRecords(ctx, page, size, status)
 	if err != nil {
@@ -120,9 +117,9 @@ func (s *RemediationService) ListRecords(
 // by the remediation rule API. They map 1:1 to the event types the
 // remediation engine subscribes to.
 var validTriggerEventTypes = map[string]struct{}{
-	string(remediation.TriggerMetric):       {},
-	string(remediation.TriggerLog):          {},
-	string(remediation.TriggerStatusChange): {},
+	string(TriggerMetric):       {},
+	string(TriggerLog):          {},
+	string(TriggerStatusChange): {},
 }
 
 // validExecutorTypes is the closed set of executor types accepted by the
@@ -144,7 +141,7 @@ var validExecutorTypes = map[string]struct{}{
 //  2. the optional "expression" key inside `executor_config` JSON is
 //     compiled and sample-evaluated against the executor's ExecutionEnv
 //     contract.
-func validateRule(r *remediation.Rule) error {
+func validateRule(r *Rule) error {
 	if _, ok := validTriggerEventTypes[r.TriggerEventType]; !ok {
 		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			"triggerEventType must be one of: metric, log, status_change")
@@ -162,7 +159,7 @@ func validateRule(r *remediation.Rule) error {
 			"circuitBreakerThreshold must be non-negative")
 	}
 	if r.Expression != "" {
-		if err := remediation.ValidateExpression(r.Expression); err != nil {
+		if err := ValidateExpression(r.Expression); err != nil {
 			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 				"invalid expression: "+errdefs.InnermostMessage(err))
 		}
@@ -179,8 +176,8 @@ func validateRule(r *remediation.Rule) error {
 // CreateRule creates a new remediation rule from the given request.
 func (s *RemediationService) CreateRule(
 	ctx context.Context,
-	req *remediation.Rule,
-) (*remediation.Rule, error) {
+	req *Rule,
+) (*Rule, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -221,7 +218,7 @@ func mapRemediationStoreError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, remediation.ErrRuleNotFound) {
+	if errors.Is(err, ErrRuleNotFound) {
 		return errdefs.ErrRemediationRuleNotFound
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {

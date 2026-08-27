@@ -16,9 +16,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/api/handler/ws"
 	executorpkg "github.com/tickraft/tickraft/pkg/executor"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
-	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	telemetryservice "github.com/tickraft/tickraft/pkg/telemetry/service"
@@ -39,9 +39,9 @@ type routeConfig struct {
 	assetKeyMiddleware     app.HandlerFunc
 	authService            auth.Service
 	taskSvc                taskservice.Service
-	alertSvc               alertservice.Service
-	channelSvc             channelservice.Service
-	remediationRuleSvc     remediationservice.Service
+	alertSvc               alert.Service
+	channelSvc             channel.Service
+	remediationRuleSvc     remediation.Service
 	systemSvc              system.Service
 	telemetrySvc           telemetryservice.Service
 	telemetryReportHandler app.HandlerFunc
@@ -103,18 +103,18 @@ func WithTaskService(svc taskservice.Service) RouteOption { return taskServiceOp
 
 // alertServiceOption provides the Service implementation for alert handlers.
 type alertServiceOption struct {
-	svc alertservice.Service
+	svc alert.Service
 }
 
 func (o alertServiceOption) apply(c *routeConfig) { c.alertSvc = o.svc }
 
 // WithAlertService provides the Service implementation for alert handlers.
-func WithAlertService(svc alertservice.Service) RouteOption { return alertServiceOption{svc: svc} }
+func WithAlertService(svc alert.Service) RouteOption { return alertServiceOption{svc: svc} }
 
 // channelServiceOption provides the Service implementation for
 // notification channel handlers.
 type channelServiceOption struct {
-	svc channelservice.Service
+	svc channel.Service
 }
 
 func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
@@ -122,14 +122,14 @@ func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
 // WithChannelService provides the Service implementation for
 // notification channel handlers. When omitted, the handler package falls
 // back to an in-memory implementation.
-func WithChannelService(svc channelservice.Service) RouteOption {
+func WithChannelService(svc channel.Service) RouteOption {
 	return channelServiceOption{svc: svc}
 }
 
 // remediationRuleServiceOption provides the Service implementation for
 // self-healing rule handlers.
 type remediationRuleServiceOption struct {
-	svc remediationservice.Service
+	svc remediation.Service
 }
 
 func (o remediationRuleServiceOption) apply(c *routeConfig) { c.remediationRuleSvc = o.svc }
@@ -137,7 +137,7 @@ func (o remediationRuleServiceOption) apply(c *routeConfig) { c.remediationRuleS
 // WithRemediationRuleService provides the Service
 // implementation for self-healing rule handlers. When omitted, the handler
 // package falls back to an in-memory implementation.
-func WithRemediationRuleService(svc remediationservice.Service) RouteOption {
+func WithRemediationRuleService(svc remediation.Service) RouteOption {
 	return remediationRuleServiceOption{svc: svc}
 }
 

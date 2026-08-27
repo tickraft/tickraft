@@ -14,7 +14,7 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/auth"
-	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
@@ -34,7 +34,7 @@ type Authorizer interface {
 // the provided JWT manager. If permission is non-empty, the middleware also
 // checks that the authenticated user holds that permission via the default
 // RBAC policy.
-func NewJWTAuth(j *jwt.JWT, permission string) app.HandlerFunc {
+func NewJWTAuth(jwt *jwtauth.JWT, permission string) app.HandlerFunc {
 	return func(ctx context.Context, arc *app.RequestContext) {
 		authHeader := string(arc.GetHeader("Authorization"))
 		if authHeader == "" {
@@ -53,7 +53,7 @@ func NewJWTAuth(j *jwt.JWT, permission string) app.HandlerFunc {
 		}
 
 		token := parts[1]
-		claims, err := j.ValidateToken(token, auth.TokenTypeAccess)
+		claims, err := jwt.ValidateToken(token, auth.TokenTypeAccess)
 		if err != nil {
 			writeTokenError(arc, err)
 			arc.Abort()
@@ -98,7 +98,7 @@ func NewJWTAuth(j *jwt.JWT, permission string) app.HandlerFunc {
 // delegates permission checks to the provided Authorizer implementation,
 // enabling external repositories to plug in their own authorization logic.
 func NewScopedJWTAuth(
-	j *jwt.JWT,
+	jwt *jwtauth.JWT,
 	scope string,
 	permission string,
 	authorizer Authorizer,
@@ -121,7 +121,7 @@ func NewScopedJWTAuth(
 		}
 
 		token := parts[1]
-		claims, err := j.ValidateToken(token, auth.TokenTypeAccess)
+		claims, err := jwt.ValidateToken(token, auth.TokenTypeAccess)
 		if err != nil {
 			writeTokenError(arc, err)
 			arc.Abort()
@@ -157,7 +157,7 @@ func NewScopedJWTAuth(
 // business code so clients can attempt a refresh-token rotation; every other
 // failure (bad signature, wrong type, blacklisted) is a plain 40100.
 func writeTokenError(arc *app.RequestContext, err error) {
-	if errors.Is(err, jwt.ErrTokenExpired) {
+	if errors.Is(err, jwtauth.ErrTokenExpired) {
 		httputil.FailWithCode(arc, http.StatusUnauthorized, errdefs.CodeTokenExpired, "token expired")
 		return
 	}

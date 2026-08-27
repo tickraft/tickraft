@@ -16,18 +16,17 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
 )
 
 // Handler exposes alert rule and record CRUD endpoints.
 // It is injected via the WithAlertService RouteOption and registered on
 // the /api/v1/prism/alert route group.
 type Handler struct {
-	svc alertservice.Service
+	svc alert.Service
 }
 
 // NewHandler creates a new alert Handler backed by the given service.
-func NewHandler(svc alertservice.Service) *Handler {
+func NewHandler(svc alert.Service) *Handler {
 	return &Handler{svc: svc}
 }
 

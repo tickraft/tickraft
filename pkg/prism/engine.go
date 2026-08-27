@@ -322,6 +322,14 @@ func (e *Engine) ReloadChannels(ctx context.Context) error {
 	return nil
 }
 
+// BuildChannel constructs a runtime alert.Channel from a persisted channel
+// definition. It is a method wrapper over the package-level BuildChannel so
+// the engine satisfies the channel.Runtime seam interface; the operation is
+// stateless and never touches engine state.
+func (e *Engine) BuildChannel(ch *channel.Channel) (alert.Channel, error) {
+	return BuildChannel(ch)
+}
+
 // Channels returns the registered notification channels. The returned
 // slice is a copy and safe to read concurrently with AddChannel.
 func (e *Engine) Channels() []Channel {

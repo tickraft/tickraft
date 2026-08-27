@@ -15,18 +15,17 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
 )
 
 // Handler exposes notification channel CRUD endpoints.
 // It is injected via the WithChannelService RouteOption and registered on
 // the /api/v1/prism/channels route group.
 type Handler struct {
-	svc channelservice.Service
+	svc channel.Service
 }
 
 // NewHandler creates a new channel Handler backed by the given service.
-func NewHandler(svc channelservice.Service) *Handler {
+func NewHandler(svc channel.Service) *Handler {
 	return &Handler{svc: svc}
 }
 

@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	httpprober "github.com/tickraft/tickraft/pkg/executor/http"
+	"github.com/tickraft/tickraft/pkg/executor/http"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
-	prismengine "github.com/tickraft/tickraft/pkg/prism"
-	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/types"
 )
@@ -31,13 +31,13 @@ func startPrismEngine(
 	rt *runtime,
 	notificationPoolSize int,
 ) (stopFunc, error) {
-	engine, err := prismengine.NewFromConfig(ctx, prismengine.Config{
+	engine, err := prism.NewFromConfig(ctx, prism.Config{
 		DB:                   rt.dbc,
 		Bus:                  rt.eventBus(),
 		Logger:               rt.logger,
 		NotificationPoolSize: notificationPoolSize,
-		Guards:               prismengine.DefaultGuards(rt.logger),
-		RuleConfig: prismalert.Config{
+		Guards:               prism.DefaultGuards(rt.logger),
+		RuleConfig: alert.Config{
 			Logger:       rt.logger,
 			AssetStore:   rt.assetStore,
 			EvalInterval: rt.cfg.Prism.EvalInterval.Duration(),
@@ -52,7 +52,7 @@ func startPrismEngine(
 			remediation.NewExecutorOperator(string(types.ExecutorWebhook),
 				webhook.New(webhook.WithLogger(rt.logger)), rt.logger),
 			remediation.NewExecutorOperator(string(types.ExecutorHTTP),
-				httpprober.New(httpprober.WithLogger(rt.logger)), rt.logger),
+				http.New(http.WithLogger(rt.logger)), rt.logger),
 		},
 	})
 	if err != nil {

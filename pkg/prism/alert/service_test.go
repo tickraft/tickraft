@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package service
+package alert
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -83,26 +82,26 @@ func assertServiceErrorStatus(t *testing.T, err error, wantStatus, wantCode int)
 }
 
 // setupPrismService creates an AlertService backed by real GORM rule and
-// record stores using an in-memory SQLite database. A non-nil alert.Engine is
+// record stores using an in-memory SQLite database. A non-nil Engine is
 // passed so the Reload path after CRUD operations is exercised; rule-to-engine
-// matching is covered by the tests in pkg/prism/alert.
-func setupPrismService(t *testing.T) (*AlertService, *alert.Store, alert.RecordStore, func()) {
+// matching is covered by the tests in pkg/prism/
+func setupPrismService(t *testing.T) (*AlertService, *Store, RecordStore, func()) {
 	t.Helper()
 	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	ruleStore := alert.NewStore(gdb, alert.NewCompiler())
+	ruleStore := NewStore(gdb, NewCompiler())
 	if err := ruleStore.Migrate(ctx); err != nil {
 		closeUnderlyingDB(t, gdb)
 		t.Fatalf("migrate rule table: %v", err)
 	}
-	if err := alert.Migrate(ctx, gdb); err != nil {
+	if err := Migrate(ctx, gdb); err != nil {
 		closeUnderlyingDB(t, gdb)
 		t.Fatalf("auto migrate: %v", err)
 	}
-	recordStore := alert.NewRecordStore(gdb)
-	ruleEng := alert.NewEngine(zap.NewNop())
+	recordStore := NewRecordStore(gdb)
+	ruleEng := NewEngine(zap.NewNop())
 	svc := NewAlertService(ruleStore, recordStore, ruleEng)
 	cleanup := func() { closeUnderlyingDB(t, gdb) }
 	return svc, ruleStore, recordStore, cleanup
@@ -116,11 +115,11 @@ func setupPrismService(t *testing.T) (*AlertService, *alert.Store, alert.RecordS
 // violationToRecord.
 func TestViolationToRecord(t *testing.T) {
 	t.Run("metric violation derives rule name, value, and default severity", func(t *testing.T) {
-		v := alert.Violation{
-			Kind:   alert.ViolationKindMetric,
-			Metric: &alert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
+		v := Violation{
+			Kind:   ViolationKindMetric,
+			Metric: &MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
 		}
-		rec := alert.ViolationToRecord(v, time.Now())
+		rec := ViolationToRecord(v, time.Now())
 		if rec.RuleID != 0 {
 			t.Errorf("RuleID = %d, want 0", rec.RuleID)
 		}
@@ -139,7 +138,7 @@ func TestViolationToRecord(t *testing.T) {
 	})
 
 	t.Run("empty violation yields defaults", func(t *testing.T) {
-		rec := alert.ViolationToRecord(alert.Violation{}, time.Now())
+		rec := ViolationToRecord(Violation{}, time.Now())
 		if rec.RuleID != 0 || rec.RuleName != "" || rec.Severity != string(types.SeverityWarning) {
 			t.Errorf("empty violation should yield defaults, got id=%d name=%q severity=%q",
 				rec.RuleID, rec.RuleName, rec.Severity)
@@ -147,11 +146,11 @@ func TestViolationToRecord(t *testing.T) {
 	})
 
 	t.Run("preserves provided severity and source rule name", func(t *testing.T) {
-		v := alert.Violation{
+		v := Violation{
 			Severity: "critical",
 			Source:   "cpu_usage",
 		}
-		rec := alert.ViolationToRecord(v, time.Now())
+		rec := ViolationToRecord(v, time.Now())
 		if rec.Severity != "critical" {
 			t.Errorf("Severity = %q, want %q", rec.Severity, "critical")
 		}
@@ -161,26 +160,26 @@ func TestViolationToRecord(t *testing.T) {
 	})
 
 	t.Run("log violation derives rule name from keyword", func(t *testing.T) {
-		v := alert.Violation{
+		v := Violation{
 			Severity: "error",
-			Log:      &alert.LogContext{Keyword: "panic"},
+			Log:      &LogContext{Keyword: "panic"},
 		}
-		rec := alert.ViolationToRecord(v, time.Now())
+		rec := ViolationToRecord(v, time.Now())
 		if rec.RuleName != "panic" {
 			t.Errorf("RuleName = %q, want %q", rec.RuleName, "panic")
 		}
 	})
 
 	t.Run("default message contains rule name and kind", func(t *testing.T) {
-		v := alert.Violation{
-			Kind:   alert.ViolationKindMetric,
-			Metric: &alert.MetricContext{Name: "cpu_usage"},
+		v := Violation{
+			Kind:   ViolationKindMetric,
+			Metric: &MetricContext{Name: "cpu_usage"},
 		}
-		rec := alert.ViolationToRecord(v, time.Now())
+		rec := ViolationToRecord(v, time.Now())
 		if !strings.Contains(rec.Message, "cpu_usage") {
 			t.Errorf("expected message to contain rule name, got %q", rec.Message)
 		}
-		if !strings.Contains(rec.Message, alert.ViolationKindMetric) {
+		if !strings.Contains(rec.Message, ViolationKindMetric) {
 			t.Errorf("expected message to contain kind, got %q", rec.Message)
 		}
 	})
@@ -193,21 +192,21 @@ func TestRecordAlert(t *testing.T) {
 		_, _, recordStore, cleanup := setupPrismService(t)
 		defer cleanup()
 
-		evt := alert.Event{
-			Type:      alert.TypeMetric,
+		evt := Event{
+			Type:      TypeMetric,
 			AssetID:   7,
 			TenantID:  1,
 			Timestamp: time.Now(),
-			Violations: []alert.Violation{{
-				Kind:   alert.ViolationKindMetric,
-				Metric: &alert.MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
+			Violations: []Violation{{
+				Kind:   ViolationKindMetric,
+				Metric: &MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
 			}},
 		}
-		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
-		records, total, err := recordStore.List(ctx, 1, 10, alert.RecordFilter{})
+		records, total, err := recordStore.List(ctx, 1, 10, RecordFilter{})
 		if err != nil {
 			t.Fatalf("list records: %v", err)
 		}
@@ -245,21 +244,21 @@ func TestRecordAlert(t *testing.T) {
 		_, _, recordStore, cleanup := setupPrismService(t)
 		defer cleanup()
 
-		evt := alert.Event{
-			Type:      alert.TypeMetric,
+		evt := Event{
+			Type:      TypeMetric,
 			AssetID:   1,
 			TenantID:  1,
 			Timestamp: time.Now(),
-			Violations: []alert.Violation{{
-				Kind:   alert.ViolationKindMetric,
-				Metric: &alert.MetricContext{Name: "nonexistent"},
+			Violations: []Violation{{
+				Kind:   ViolationKindMetric,
+				Metric: &MetricContext{Name: "nonexistent"},
 			}},
 		}
-		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
-		records, _, err := recordStore.List(ctx, 1, 10, alert.RecordFilter{})
+		records, _, err := recordStore.List(ctx, 1, 10, RecordFilter{})
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
@@ -275,14 +274,14 @@ func TestRecordAlert(t *testing.T) {
 	})
 
 	t.Run("no-op when recordStore is nil", func(t *testing.T) {
-		evt := alert.Event{
-			Type: alert.TypeMetric,
-			Violations: []alert.Violation{{
-				Kind:   alert.ViolationKindMetric,
-				Metric: &alert.MetricContext{Name: "cpu_usage"},
+		evt := Event{
+			Type: TypeMetric,
+			Violations: []Violation{{
+				Kind:   ViolationKindMetric,
+				Metric: &MetricContext{Name: "cpu_usage"},
 			}},
 		}
-		if err := alert.RecordAlert(ctx, nil, evt); err != nil {
+		if err := RecordAlert(ctx, nil, evt); err != nil {
 			t.Errorf("RecordAlert with nil recordStore should return nil, got %v", err)
 		}
 	})
@@ -292,18 +291,18 @@ func TestRecordAlert(t *testing.T) {
 		defer cleanup()
 
 		before := time.Now()
-		evt := alert.Event{
-			Type: alert.TypeMetric,
-			Violations: []alert.Violation{{
-				Kind:   alert.ViolationKindMetric,
-				Metric: &alert.MetricContext{Name: "cpu_usage"},
+		evt := Event{
+			Type: TypeMetric,
+			Violations: []Violation{{
+				Kind:   ViolationKindMetric,
+				Metric: &MetricContext{Name: "cpu_usage"},
 			}},
 			// Timestamp left zero — RecordAlert should populate it with time.Now().
 		}
-		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+		if err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
-		records, _, err := recordStore.List(ctx, 1, 10, alert.RecordFilter{})
+		records, _, err := recordStore.List(ctx, 1, 10, RecordFilter{})
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
@@ -330,12 +329,12 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 	})
 
 	t.Run("Create with empty name returns 400", func(t *testing.T) {
-		_, err := svc.CreateRule(ctx, &alert.Rule{Expression: `metrics["cpu"] > 90`})
+		_, err := svc.CreateRule(ctx, &Rule{Expression: `metrics["cpu"] > 90`})
 		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
 	t.Run("Create with empty expression returns 400", func(t *testing.T) {
-		_, err := svc.CreateRule(ctx, &alert.Rule{Name: "rule"})
+		_, err := svc.CreateRule(ctx, &Rule{Name: "rule"})
 		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
@@ -345,7 +344,7 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 		// fails and the store wraps it in ErrRuleCompileFailed. The service
 		// maps it to a fresh 400 ServiceError carrying the expr-lang
 		// diagnostic, so assert status/code rather than a sentinel match.
-		_, err := svc.CreateRule(ctx, &alert.Rule{
+		_, err := svc.CreateRule(ctx, &Rule{
 			Name:       "typo-rule",
 			Expression: `asset.naem == "web-1"`,
 		})
@@ -357,7 +356,7 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 
 	t.Run("Create persists rule and assigns ID", func(t *testing.T) {
 		groupID := int64(3)
-		created, err := svc.CreateRule(ctx, &alert.Rule{
+		created, err := svc.CreateRule(ctx, &Rule{
 			Name:       "cpu-high",
 			Expression: `metrics["cpu"] > 90`,
 			Priority:   10,
@@ -429,12 +428,12 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 	})
 
 	t.Run("Update non-existent returns ErrRuleNotFound", func(t *testing.T) {
-		_, err := svc.UpdateRule(ctx, 99999, &alert.Rule{Name: "x", Expression: "true"})
+		_, err := svc.UpdateRule(ctx, 99999, &Rule{Name: "x", Expression: "true"})
 		assertErrorCoder(t, err, errdefs.ErrRuleNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
 	t.Run("Update with invalid expression returns 400", func(t *testing.T) {
-		_, err := svc.UpdateRule(ctx, ruleID, &alert.Rule{
+		_, err := svc.UpdateRule(ctx, ruleID, &Rule{
 			Name:       "cpu-high",
 			Expression: `metrics["cpu"] >`,
 		})
@@ -442,7 +441,7 @@ func TestPrismAlertServiceCRUD(t *testing.T) {
 	})
 
 	t.Run("Update persists new name and clears optional fields", func(t *testing.T) {
-		updated, err := svc.UpdateRule(ctx, ruleID, &alert.Rule{
+		updated, err := svc.UpdateRule(ctx, ruleID, &Rule{
 			Name:       "cpu-critical",
 			Expression: `metrics["cpu"] > 95`,
 			Priority:   20,

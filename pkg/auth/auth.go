@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/auth/apikey"
-	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/user"
 )
@@ -44,7 +44,7 @@ var (
 
 // Service implements the single-user auth business logic.
 type Service struct {
-	jwt       *jwt.JWT
+	jwt       *jwtauth.JWT
 	users     user.Store
 	apiKeys   user.APIKeyStore
 	blacklist BlacklistStore
@@ -69,13 +69,13 @@ type loginFailRecord struct {
 
 // NewService creates a new auth service.
 func NewService(
-	jwtMgr *jwt.JWT,
+	jwt *jwtauth.JWT,
 	users user.Store,
 	apiKeys user.APIKeyStore,
 	blacklist BlacklistStore,
 ) *Service {
 	s := &Service{
-		jwt:             jwtMgr,
+		jwt:             jwt,
 		users:           users,
 		apiKeys:         apiKeys,
 		blacklist:       blacklist,
@@ -101,16 +101,16 @@ func (s *Service) SetJTIRecorder(fn JTIRecorder) {
 
 // recordIssuedJTIs reports both tokens of a freshly issued pair to the
 // JTI recorder. It is best-effort: parse failures are logged and skipped.
-func (s *Service) recordIssuedJTIs(pair *jwt.TokenPair) {
+func (s *Service) recordIssuedJTIs(pair *jwtauth.TokenPair) {
 	if s.jtiRecorder == nil || pair == nil {
 		return
 	}
-	if claims, err := s.jwt.ValidateToken(pair.AccessToken, jwt.TokenTypeAccess); err == nil && claims.JTI != "" {
+	if claims, err := s.jwt.ValidateToken(pair.AccessToken, jwtauth.TokenTypeAccess); err == nil && claims.JTI != "" {
 		s.jtiRecorder(claims.UID, claims.JTI, claims.ExpiresAt)
 	} else if err != nil {
 		zap.L().Warn("auth: record issued access token", zap.Error(err))
 	}
-	if claims, err := s.jwt.ValidateToken(pair.RefreshToken, jwt.TokenTypeRefresh); err == nil && claims.JTI != "" {
+	if claims, err := s.jwt.ValidateToken(pair.RefreshToken, jwtauth.TokenTypeRefresh); err == nil && claims.JTI != "" {
 		s.jtiRecorder(claims.UID, claims.JTI, claims.ExpiresAt)
 	} else if err != nil {
 		zap.L().Warn("auth: record issued refresh token", zap.Error(err))
@@ -158,7 +158,7 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 	// The runtime is single-tenant; TenantID is left as the zero
 	// value. The runtime populates TenantID from the augmented user
 	// type before issuing tokens.
-	claims := jwt.UserClaims{
+	claims := jwtauth.UserClaims{
 		UID:      u.ID,
 		Username: u.Username,
 		Role:     u.Role,
@@ -173,7 +173,10 @@ func (s *Service) Login(ctx context.Context, username, pwd string) (*LoginResult
 	s.recordIssuedJTIs(tokenPair)
 
 	return &LoginResult{
-		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
+		TokenPair: &jwtauth.TokenPair{
+			AccessToken:  tokenPair.AccessToken,
+			RefreshToken: tokenPair.RefreshToken,
+		},
 		MustChangePassword: u.MustChangePassword,
 	}, nil
 }
@@ -192,7 +195,7 @@ func (s *Service) IssueTokens(ctx context.Context, u *user.User) (*LoginResult, 
 	// The runtime is single-tenant; TenantID is left as the zero
 	// value. The runtime populates TenantID from the augmented user
 	// type before issuing tokens.
-	claims := jwt.UserClaims{
+	claims := jwtauth.UserClaims{
 		UID:      u.ID,
 		Username: u.Username,
 		Role:     u.Role,
@@ -205,7 +208,10 @@ func (s *Service) IssueTokens(ctx context.Context, u *user.User) (*LoginResult, 
 	s.recordIssuedJTIs(tokenPair)
 
 	return &LoginResult{
-		TokenPair:          &jwt.TokenPair{AccessToken: tokenPair.AccessToken, RefreshToken: tokenPair.RefreshToken},
+		TokenPair: &jwtauth.TokenPair{
+			AccessToken:  tokenPair.AccessToken,
+			RefreshToken: tokenPair.RefreshToken,
+		},
 		MustChangePassword: u.MustChangePassword,
 	}, nil
 }
@@ -221,7 +227,7 @@ func (s *Service) Logout(ctx context.Context, accessJTI string, accessExpireAt t
 	if refreshToken != "" {
 		jti, expireAt, err := s.jwt.ParseForRevocation(refreshToken)
 		if err != nil {
-			if errors.Is(err, jwt.ErrTokenExpired) {
+			if errors.Is(err, jwtauth.ErrTokenExpired) {
 				// Token already expired; nothing to blacklist.
 				return nil
 			}
@@ -241,7 +247,7 @@ func (s *Service) Logout(ctx context.Context, accessJTI string, accessExpireAt t
 // blacklists the old refresh token's JTI so it cannot be replayed. This
 // implements refresh token rotation: each refresh token is redeemable
 // exactly once.
-func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwt.TokenPair, error) {
+func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwtauth.TokenPair, error) {
 	jti, expireAt, err := s.jwt.ParseForRevocation(refreshToken)
 	if err == nil && jti != "" {
 		revoked, rerr := s.blacklist.Exists(ctx, jti)
@@ -270,7 +276,7 @@ func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*jwt.T
 		}
 	}
 
-	return &jwt.TokenPair{
+	return &jwtauth.TokenPair{
 		AccessToken:  tokenPair.AccessToken,
 		RefreshToken: tokenPair.RefreshToken,
 	}, nil

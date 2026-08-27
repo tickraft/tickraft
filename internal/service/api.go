@@ -27,9 +27,9 @@ import (
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/executor"
-	alertservice "github.com/tickraft/tickraft/pkg/prism/alert/service"
-	channelservice "github.com/tickraft/tickraft/pkg/prism/channel/service"
-	remediationservice "github.com/tickraft/tickraft/pkg/prism/remediation/service"
+	"github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	taskservice "github.com/tickraft/tickraft/pkg/task/service"
@@ -262,21 +262,21 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if engine.RuleStore() == nil || engine.RecordStore() == nil {
 		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
 	}
-	alertSvc := alertservice.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
+	alertSvc := alert.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
 
 	// Channel service: backed by the persistent channel store accessed
 	// via the prism engine.
 	if engine.ChannelStore() == nil {
 		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
 	}
-	channelSvc := channelservice.NewChannelService(engine.ChannelStore(), engine)
+	channelSvc := channel.NewChannelService(engine.ChannelStore(), engine)
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.
 	if engine.RemediationStore() == nil {
 		return nil, fmt.Errorf("start api server: prism remediation store is nil; prism engine may not have started")
 	}
-	remediationRuleSvc := remediationservice.NewRemediationService(engine.RemediationStore())
+	remediationRuleSvc := remediation.NewRemediationService(engine.RemediationStore())
 
 	return []router.RegisterOption{
 		router.WithAlertService(alertSvc),

@@ -86,3 +86,44 @@ type Operator interface {
 	// timeout). The circuit breaker counts the latter.
 	Execute(ctx context.Context, req ExecutionRequest) (*ExecutionResult, error)
 }
+
+// RecordStore defines the persistence operations for remediation dispatch
+// records. The Engine upserts one row per run as the dispatch progresses;
+// the records API reads rows through ListRecords.
+type RecordStore interface {
+	// UpsertRecord inserts the record when no row with the same RunID
+	// exists, or updates the existing row's lifecycle fields (status,
+	// error, started_at, finished_at) otherwise.
+	UpsertRecord(ctx context.Context, record *Record) error
+	// ListRecords returns a page of dispatch records ordered by descending
+	// ID, plus the total count. A non-empty status filters by exact
+	// lifecycle status match. page is 1-based; size is normalized by
+	// pagination.Clamp.
+	ListRecords(ctx context.Context, page, size int, status string) ([]*Record, int64, error)
+}
+
+// Service defines the operations for managing remediation
+// rules. The concrete implementation is injected via the
+// WithRemediationRuleService RouteOption; when omitted, the handler package
+// falls back to an in-memory implementation.
+//
+// The wire and storage shapes are the same model: there are no Rule/Record
+// DTOs. Rule and Record hold both gorm and json tags, and internal columns
+// (TenantID, Metadata, DeletedAt, UpdatedAt) serialize to nothing, so
+// handlers bind and return the model types directly. See
+// docs/model-layering-design.md for the layering contract.
+type Service interface {
+	// ListRules returns a page of remediation rules and the total count.
+	ListRules(ctx context.Context, page, size int) ([]*Rule, int64, error)
+	// GetRule returns a single remediation rule by ID.
+	GetRule(ctx context.Context, id int64) (*Rule, error)
+	// CreateRule creates a new remediation rule from the given request.
+	CreateRule(ctx context.Context, req *Rule) (*Rule, error)
+	// UpdateRule updates an existing remediation rule identified by ID.
+	UpdateRule(ctx context.Context, id int64, req *Rule) (*Rule, error)
+	// DeleteRule deletes a remediation rule by ID.
+	DeleteRule(ctx context.Context, id int64) error
+	// ListRecords returns a page of remediation dispatch records and the
+	// total count, optionally filtered by lifecycle status.
+	ListRecords(ctx context.Context, page, size int, status string) ([]*Record, int64, error)
+}

@@ -27,7 +27,7 @@ import (
 	"github.com/tickraft/tickraft/internal/quota"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
-	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/config"
 	"github.com/tickraft/tickraft/pkg/db"
@@ -81,7 +81,7 @@ type runtime struct {
 	cache  *cache.LRUCache
 	bus    event.Bus
 	authz  *auth.Service
-	jwt    *jwt.JWT
+	jwt    *jwtauth.JWT
 
 	// assetStore is the asset persistence store, created once and
 	// shared between the telemetry manager, asset management API, and
@@ -341,7 +341,7 @@ func initAuth(_ context.Context, rt *runtime) error {
 	blacklistChecker := func(jti string) (bool, error) {
 		return blacklistStore.Exists(context.Background(), jti)
 	}
-	jwtMgr, err := jwt.New(jwt.Config{
+	jwt, err := jwtauth.New(jwtauth.Config{
 		Secret:        jwtSecret,
 		AccessExpire:  rt.cfg.Auth.AccessTTL.Duration(),
 		RefreshExpire: rt.cfg.Auth.RefreshTTL.Duration(),
@@ -353,9 +353,9 @@ func initAuth(_ context.Context, rt *runtime) error {
 
 	userStore := user.NewStore(rt.dbc)
 	apiKeyStore := user.NewAPIKeyStore(rt.dbc)
-	authz := auth.NewService(jwtMgr, userStore, apiKeyStore, blacklistStore)
+	authz := auth.NewService(jwt, userStore, apiKeyStore, blacklistStore)
 
-	rt.jwt = jwtMgr
+	rt.jwt = jwt
 	rt.authz = authz
 	return nil
 }

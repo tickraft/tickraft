@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package service provides the notification channel management contract
-// (Service) plus its store-backed implementation, which keeps the prism
-// engine's in-memory channel list hot-reloaded on every mutation.
-package service
+package channel
 
 import (
 	"context"
@@ -16,34 +13,36 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
-	"github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
-	"github.com/tickraft/tickraft/pkg/prism/channel"
 )
 
 // ChannelService implements Service using the prism channel
 // store. Mutating operations (Create/Update/Delete) trigger a hot-reload
-// of the engine's in-memory channel list via ReloadChannels. The wire
-// shape and the storage shape are the same prismchannel.Channel model, so
+// of the engine's in-memory channel list via the Runtime seam. The wire
+// shape and the storage shape are the same Channel model, so
 // this service only orchestrates the store and the engine reload — there
 // is no DTO conversion.
-var _ Service = (*ChannelService)(nil)
-
-// ChannelService implements Service on top of the prism channel store.
+// The <Domain>Service name mirrors the convention of the other domain
+// service implementations (see pkg/system).
+//
+//nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type ChannelService struct {
-	channels *channel.Store
-	engine   *prism.Engine
+	channels *Store
+	runtime  Runtime
 }
 
-// NewChannelService creates a ChannelService backed by the given store
-// and engine. The engine is used to hot-reload channels after mutations;
-// a nil engine disables hot-reload (useful for tests).
-func NewChannelService(store *channel.Store, engine *prism.Engine) *ChannelService {
-	return &ChannelService{channels: store, engine: engine}
+var _ Service = (*ChannelService)(nil)
+
+// NewChannelService creates a ChannelService backed by the given store and
+// prism runtime. The runtime is used to hot-reload channels after mutations
+// and to dispatch test notifications; a nil runtime disables both (useful
+// for tests).
+func NewChannelService(store *Store, runtime Runtime) *ChannelService {
+	return &ChannelService{channels: store, runtime: runtime}
 }
 
 // ListChannels returns a page of notification channels and the total count.
-func (s *ChannelService) ListChannels(ctx context.Context, page, size int) ([]*channel.Channel, int64, error) {
+func (s *ChannelService) ListChannels(ctx context.Context, page, size int) ([]*Channel, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	channels, total, err := s.channels.List(ctx, page, size)
 	if err != nil {
@@ -54,7 +53,7 @@ func (s *ChannelService) ListChannels(ctx context.Context, page, size int) ([]*c
 }
 
 // GetChannel returns a single notification channel by ID.
-func (s *ChannelService) GetChannel(ctx context.Context, id int64) (*channel.Channel, error) {
+func (s *ChannelService) GetChannel(ctx context.Context, id int64) (*Channel, error) {
 	ch, err := s.channels.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapChannelStoreError(err)
@@ -64,7 +63,7 @@ func (s *ChannelService) GetChannel(ctx context.Context, id int64) (*channel.Cha
 
 // CreateChannel creates a new notification channel from the given request.
 // After a successful insert the engine's channel list is hot-reloaded.
-func (s *ChannelService) CreateChannel(ctx context.Context, req *channel.Channel) (*channel.Channel, error) {
+func (s *ChannelService) CreateChannel(ctx context.Context, req *Channel) (*Channel, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -90,8 +89,8 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channel.Channel
 func (s *ChannelService) UpdateChannel(
 	ctx context.Context,
 	id int64,
-	req *channel.Channel,
-) (*channel.Channel, error) {
+	req *Channel,
+) (*Channel, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -126,11 +125,15 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, id int64) error {
 // TestChannel sends a synthetic alert event through the channel identified by
 // ID and returns an error describing any delivery failure.
 func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
+	if s.runtime == nil {
+		return errdefs.NewServiceError(http.StatusServiceUnavailable, errdefs.CodeInternal,
+			"channel runtime not available")
+	}
 	m, err := s.channels.GetByID(ctx, id)
 	if err != nil {
 		return mapChannelStoreError(err)
 	}
-	ch, err := prism.BuildChannel(m)
+	ch, err := s.runtime.BuildChannel(m)
 	if err != nil {
 		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
 			fmt.Sprintf("build channel: %v", err))
@@ -152,13 +155,13 @@ func (s *ChannelService) TestChannel(ctx context.Context, id int64) error {
 // Errors are logged but not returned to the caller, since a reload failure
 // does not invalidate the CRUD operation that triggered it.
 func (s *ChannelService) reloadChannels(ctx context.Context) {
-	if s.engine == nil {
+	if s.runtime == nil {
 		return
 	}
-	if err := s.engine.ReloadChannels(ctx); err != nil {
+	if err := s.runtime.ReloadChannels(ctx); err != nil {
 		// Best-effort: log and continue. The CRUD operation succeeded;
 		// the engine will pick up the change on next restart.
-		_ = err // engine.ReloadChannels already logged the error
+		_ = err // runtime.ReloadChannels already logged the error
 	}
 }
 
@@ -168,7 +171,7 @@ func mapChannelStoreError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, channel.ErrChannelNotFound) {
+	if errors.Is(err, ErrChannelNotFound) {
 		return errdefs.ErrChannelNotFound
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
