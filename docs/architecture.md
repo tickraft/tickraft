@@ -133,7 +133,7 @@ Domain packages follow the same seam discipline:
 2. Only this edition? → `internal/`.
 3. Shared behavior with an edition-specific variant? → base implementation in `pkg/` plus an option or interface seam; the variant injects through it (L-03).
 4. Never create a mirror copy of a `pkg/` implementation inside a downstream repository — extend it or decorate it.
-5. Before creating a new package, check whether an existing one should absorb it. Single-file micro-packages are merged away, not accumulated (precedents: `pkg/api/hlogzap` merged into `pkg/api`, `pkg/auth/password` merged into `pkg/auth`, `pkg/prism/channel/format` inlined at its single consumer).
+5. Before creating a new package, check whether an existing one should absorb it. Single-file micro-packages are merged away, not accumulated (precedents: `pkg/api/hlogzap` merged into `pkg/api`, `pkg/auth/password` merged into `pkg/auth`, `pkg/prism/channel/format` inlined at its single consumer, `pkg/db/errmap` merged into `pkg/db` once the import cycle that forced it out was removed).
 
 ## Dead-code disposition
 
@@ -148,7 +148,7 @@ Relocation — not deletion — applies to live code that merely sits on the wro
 
 ## Persistence model
 
-The open-source edition persists all state in a single SQLite file. Every business table carries a `tenant_id` column that enables row-level isolation; even though the open-source edition is single-tenant by default, the column is present so downstream extensions can enable multi-tenancy without a schema migration. Database schema is managed by GORM `AutoMigrate` at startup — there is no hand-written migration SQL to maintain.
+The open-source edition persists all state in a single SQLite file. Every business table carries a `tenant_id` column that enables row-level isolation; even though the open-source edition is single-tenant by default, the column is present so downstream extensions can enable multi-tenancy without a schema migration. Database schema is managed by GORM `AutoMigrate` at startup — there is no hand-written migration SQL to maintain. Every domain package owns the migration of its own tables (`user.Migrate`, `auth.Migrate`, `alert.Migrate`, …) and the composition layer calls them in order at startup; `pkg/db` is pure infrastructure (connections, DSN parsing, error mapping) and imports no domain package.
 
 Execution results live in two domain-owned tables: `sys_schedule_log` for task executions (`execute` operations) and `sys_probe_record` for monitor-point probes (`probe` operations). Passive collection data stays in `sys_collect_metric` and `sys_collect_log`.
 

@@ -136,7 +136,7 @@ Store 消费默认使用具体 store 类型（`*Store`、`*ExecutionStore`……
 2. 仅本版次用？→ `internal/`。
 3. 共享行为但存在版次变体？→ 基础实现放 `pkg/` 并留 Option 或接口缝；变体经缝注入（L-03）。
 4. 绝不在下游仓库内创建 `pkg/` 实现的镜像副本——扩展它或装饰它。
-5. 新建包之前先检查是否应并入既有包。单文件微包应被合并而非累积（先例：`pkg/api/hlogzap` 并入 `pkg/api`、`pkg/auth/password` 并入 `pkg/auth`、`pkg/prism/channel/format` 在唯一使用者处内联）。
+5. 新建包之前先检查是否应并入既有包。单文件微包应被合并而非累积（先例：`pkg/api/hlogzap` 并入 `pkg/api`、`pkg/auth/password` 并入 `pkg/auth`、`pkg/prism/channel/format` 在唯一使用者处内联、`pkg/db/errmap` 在迫使其独立成包的 import 环消失后并入 `pkg/db`）。
 
 ## 死代码处置
 
@@ -151,7 +151,7 @@ Store 消费默认使用具体 store 类型（`*Store`、`*ExecutionStore`……
 
 ## 持久化模型
 
-开源版将所有状态持久化到单个 SQLite 文件中。每张业务表都带有 `tenant_id` 列以实现行级隔离；尽管开源版默认是单租户的，但该列已存在，下游扩展可以在不做 schema 迁移的情况下启用多租户。数据库 schema 由 GORM `AutoMigrate` 在启动时管理——无需维护手写迁移 SQL。
+开源版将所有状态持久化到单个 SQLite 文件中。每张业务表都带有 `tenant_id` 列以实现行级隔离；尽管开源版默认是单租户的，但该列已存在，下游扩展可以在不做 schema 迁移的情况下启用多租户。数据库 schema 由 GORM `AutoMigrate` 在启动时管理——无需维护手写迁移 SQL。每个域包拥有自己表的迁移（`user.Migrate`、`auth.Migrate`、`alert.Migrate`……），由组合层在启动时按序调用；`pkg/db` 是纯基础设施（连接、DSN 解析、错误映射），不 import 任何域包。
 
 执行结果存放在两张领域自有的表中：`sys_schedule_log` 保存任务执行（`execute` 操作），`sys_probe_record` 保存监控点探测（`probe` 操作）。被动采集数据保存在 `sys_collect_metric` 与 `sys_collect_log` 中。
 
