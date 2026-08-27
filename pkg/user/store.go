@@ -222,7 +222,7 @@ func (s *apiKeyStore) Revoke(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Migrate creates or updates the users and sys_api_key table schemas. It is
+// Migrate creates or updates the users and api_keys table schemas. It is
 // intended to be called once during application startup by the composition
 // layer and is safe to re-run: GORM AutoMigrate is idempotent (additive
 // only).
