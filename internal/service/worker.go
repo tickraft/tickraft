@@ -183,7 +183,7 @@ func startWorkerEngines(
 	runner.SubscribeEvents(ctx)
 	rt.logger.Info("executor runner started")
 
-	sched, err = task.NewService(
+	sched, err = task.NewEngine(
 		task.WithEventBus(bus),
 		task.WithLogger(rt.logger),
 		task.WithStore(taskStore),

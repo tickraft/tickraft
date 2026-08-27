@@ -25,36 +25,36 @@ import (
 //     event-driven tasks matching the asset.
 //   - event.TypeExecutionCompleted: when a task execution finishes, updates the
 //     dependency checker so dependent tasks can proceed.
-func (m *Service) SubscribeEvents(_ context.Context) {
-	if m.bus == nil {
+func (e *Engine) SubscribeEvents(_ context.Context) {
+	if e.bus == nil {
 		return
 	}
 
-	if _, err := event.Subscribe(m.bus, event.TypeAssetStatusChanged,
+	if _, err := event.Subscribe(e.bus, event.TypeAssetStatusChanged,
 		func(_ context.Context, ev event.Event[event.StatusChangePayload]) error {
-			m.handleStatusChange(ev.Payload)
+			e.handleStatusChange(ev.Payload)
 			return nil
 		}); err != nil {
-		m.logger.Error("failed to subscribe to status change events",
+		e.logger.Error("failed to subscribe to status change events",
 			zap.Error(err),
 		)
 	}
 
-	if _, err := event.Subscribe(m.bus, event.TypeExecutionCompleted,
+	if _, err := event.Subscribe(e.bus, event.TypeExecutionCompleted,
 		func(_ context.Context, ev event.Event[event.ExecutionPayload]) error {
 			payload := ev.Payload
 			taskID, _ := strconv.ParseInt(payload.ExecutionID, 10, 64)
-			m.deps.UpdateStatus(taskID, types.AssetStatus(payload.Status))
+			e.deps.UpdateStatus(taskID, types.AssetStatus(payload.Status))
 
-			m.releaseRunning(taskID)
+			e.releaseRunning(taskID)
 
-			m.logger.Debug("task completed, updated dependency status",
+			e.logger.Debug("task completed, updated dependency status",
 				zap.Int64("task_id", taskID),
 				zap.String("status", payload.Status),
 			)
 			return nil
 		}); err != nil {
-		m.logger.Error("failed to subscribe to execution completed events",
+		e.logger.Error("failed to subscribe to execution completed events",
 			zap.Error(err),
 		)
 	}
@@ -62,26 +62,26 @@ func (m *Service) SubscribeEvents(_ context.Context) {
 
 // handleStatusChange triggers event-driven tasks matching the asset when
 // it becomes abnormal.
-func (m *Service) handleStatusChange(payload event.StatusChangePayload) {
+func (e *Engine) handleStatusChange(payload event.StatusChangePayload) {
 	if types.AssetStatus(payload.CurrStatus) != types.AssetStatusAbnormal {
 		return
 	}
 
 	assetID, _ := strconv.ParseInt(payload.AssetID, 10, 64)
-	m.logger.Info("received status change event, checking event-driven tasks",
+	e.logger.Info("received status change event, checking event-driven tasks",
 		zap.Int64("asset_id", assetID),
 		zap.String("curr_status", payload.CurrStatus),
 	)
 
-	m.mu.RLock()
-	eventTaskIDs := make([]int64, 0, len(m.eventDrivenTasks))
-	for taskID := range m.eventDrivenTasks {
+	e.mu.RLock()
+	eventTaskIDs := make([]int64, 0, len(e.eventDrivenTasks))
+	for taskID := range e.eventDrivenTasks {
 		eventTaskIDs = append(eventTaskIDs, taskID)
 	}
-	m.mu.RUnlock()
+	e.mu.RUnlock()
 
 	for _, taskID := range eventTaskIDs {
-		task, err := m.getTask(taskID)
+		task, err := e.getTask(taskID)
 		if err != nil {
 			continue
 		}
@@ -91,7 +91,7 @@ func (m *Service) handleStatusChange(payload event.StatusChangePayload) {
 		if task.AssetID != 0 && task.AssetID != assetID {
 			continue
 		}
-		if !m.shardManager.Owns(task.ID) {
+		if !e.shardManager.Owns(task.ID) {
 			continue
 		}
 		// Mirror onFire's Concurrency == 1 gate: claim the running slot
@@ -99,18 +99,18 @@ func (m *Service) handleStatusChange(payload event.StatusChangePayload) {
 		// stack overlapping runs of a no-concurrency task. trigger marks
 		// the task running but does not check-and-set, so the atomic
 		// claim must happen here.
-		if task.Concurrency == 1 && !m.tryClaimRunning(task.ID) {
-			m.logger.Warn("previous execution still running, skipping event-driven task",
+		if task.Concurrency == 1 && !e.tryClaimRunning(task.ID) {
+			e.logger.Warn("previous execution still running, skipping event-driven task",
 				zap.Int64("task_id", task.ID),
 				zap.String("skip_reason", ErrTaskRunning.Error()),
 			)
 			continue
 		}
-		m.logger.Info("triggering event-driven task",
+		e.logger.Info("triggering event-driven task",
 			zap.Int64("task_id", task.ID),
 			zap.Int64("asset_id", assetID),
 		)
-		m.trigger(task, TriggerTypeEvent)
+		e.trigger(task, TriggerTypeEvent)
 	}
 }
 
@@ -123,16 +123,16 @@ func (m *Service) handleStatusChange(payload event.StatusChangePayload) {
 // publish fails (or the bus is nil), the running marker is released so the
 // next fire is not permanently blocked; the ExecutionCompleted subscriber is
 // the normal release path for successful publishes.
-func (m *Service) trigger(task Task, triggerType TriggerType) {
-	m.runningMu.Lock()
-	m.running[task.ID] = struct{}{}
-	m.runningMu.Unlock()
+func (e *Engine) trigger(task Task, triggerType TriggerType) {
+	e.runningMu.Lock()
+	e.running[task.ID] = struct{}{}
+	e.runningMu.Unlock()
 
 	runID := newRunID()
-	if m.bus == nil {
+	if e.bus == nil {
 		// No bus: nothing to do, release the running marker so the next
 		// fire is not blocked.
-		m.releaseRunning(task.ID)
+		e.releaseRunning(task.ID)
 		return
 	}
 	payload := event.ExecutionPayload{
@@ -151,7 +151,7 @@ func (m *Service) trigger(task Task, triggerType TriggerType) {
 	if task.Config != nil {
 		raw, err := sonic.Marshal(task.Config)
 		if err != nil {
-			m.logger.Warn("failed to serialize task config for trigger event",
+			e.logger.Warn("failed to serialize task config for trigger event",
 				zap.Int64("task_id", task.ID),
 				zap.Error(err),
 			)
@@ -163,16 +163,16 @@ func (m *Service) trigger(task Task, triggerType TriggerType) {
 	if task.Metadata != nil {
 		pubOpts = append(pubOpts, event.WithMetadata(task.Metadata))
 	}
-	if err := event.Publish(context.Background(), m.bus, event.TypeExecutionTriggered, payload,
+	if err := event.Publish(context.Background(), e.bus, event.TypeExecutionTriggered, payload,
 		pubOpts...); err != nil {
-		m.logger.Warn("failed to publish execution triggered event",
+		e.logger.Warn("failed to publish execution triggered event",
 			zap.Int64("task_id", task.ID),
 			zap.Error(err),
 		)
 		// Publish failed: release the running marker so the next fire can
 		// proceed. Without this, a Concurrency == 1 task would be
 		// permanently blocked since no ExecutionCompleted event will arrive.
-		m.releaseRunning(task.ID)
+		e.releaseRunning(task.ID)
 	}
 }
 

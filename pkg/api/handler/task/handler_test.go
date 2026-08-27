@@ -23,7 +23,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/task"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 )
 
 // taskBasePath is the route prefix registered by routes.go for the task API.
@@ -155,12 +154,12 @@ type memoryTaskService struct {
 }
 
 // NewMemoryTaskService creates an in-memory Service suitable for tests.
-func NewMemoryTaskService() taskservice.Service {
+func NewMemoryTaskService() task.Service {
 	return &memoryTaskService{tasks: make(map[int64]*task.Task)}
 }
 
 func (s *memoryTaskService) ListTasks(
-	_ context.Context, page, size int, filter taskservice.Filter,
+	_ context.Context, page, size int, filter task.Filter,
 ) ([]*task.Task, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	s.mu.Lock()
@@ -267,7 +266,7 @@ func (s *memoryTaskService) ResumeTask(_ context.Context, id int64) error {
 }
 
 func (s *memoryTaskService) ListExecutions(_ context.Context, taskID int64, page, size int,
-	_ taskservice.ExecutionFilter) ([]*task.Execution, int64, error) {
+	_ task.ExecutionFilter) ([]*task.Execution, int64, error) {
 	return []*task.Execution{}, 0, nil
 }
 
@@ -299,8 +298,8 @@ func (s *memoryTaskService) CopyTask(_ context.Context, id int64, newName string
 
 func (s *memoryTaskService) GetExecutionStats(
 	_ context.Context, from, to time.Time, _ int64, _ int,
-) (taskservice.ExecutionStats, error) {
-	return taskservice.ExecutionStats{}, nil
+) (task.ExecutionStats, error) {
+	return task.ExecutionStats{}, nil
 }
 
 // errNotFound wraps the handler-layer sentinel so httputil.Fail maps it to 404.

@@ -22,7 +22,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/httputil"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/task"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 )
 
 // maxStatsDays bounds the days parameter of GET /tasks/stats; larger
@@ -33,11 +32,11 @@ const maxStatsDays = 90
 // It is injected via the WithTaskService RouteOption and registered on
 // the /api/v1/tasks route group.
 type Handler struct {
-	svc taskservice.Service
+	svc task.Service
 }
 
 // NewHandler creates a new task Handler backed by the given service.
-func NewHandler(svc taskservice.Service) *Handler {
+func NewHandler(svc task.Service) *Handler {
 	return &Handler{svc: svc}
 }
 
@@ -52,7 +51,7 @@ func (h *Handler) ListTasks(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	filter := taskservice.Filter{
+	filter := task.Filter{
 		Group: arc.Query("group"),
 	}
 	if tagsParam := arc.Query("tags"); tagsParam != "" {
@@ -270,7 +269,7 @@ func (h *Handler) ListExecutions(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	filter := taskservice.ExecutionFilter{
+	filter := task.ExecutionFilter{
 		Status:       arc.Query("status"),
 		ExecutorType: arc.Query("executor_type"),
 		TaskName:     arc.Query("task_name"),

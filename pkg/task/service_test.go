@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package service
+package task
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/scheduler"
-	schedtask "github.com/tickraft/tickraft/pkg/task"
 )
 
 // ctx is a reusable background context for service-layer tests.
@@ -92,7 +91,7 @@ func assertServiceErrorStatus(t *testing.T, err error, wantStatus, wantCode int)
 // bus that is closed automatically on Stop. SubscribeEvents is not called
 // because these tests do not exercise dependency tracking; the core
 // Register/Schedule/Update/Unschedule flow does not depend on it.
-func setupSchedulerTaskService(t *testing.T) (*TaskService, schedtask.Manager, func()) {
+func setupSchedulerTaskService(t *testing.T) (*TaskService, Manager, func()) {
 	t.Helper()
 
 	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})
@@ -100,17 +99,17 @@ func setupSchedulerTaskService(t *testing.T) (*TaskService, schedtask.Manager, f
 		t.Fatalf("open db: %v", err)
 	}
 
-	if err := schedtask.Migrate(ctx, gdb); err != nil {
+	if err := Migrate(ctx, gdb); err != nil {
 		closeUnderlyingDB(t, gdb)
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	taskStore := schedtask.NewStore(gdb)
-	execStore := schedtask.NewExecutionStore(gdb)
+	taskStore := NewStore(gdb)
+	execStore := NewExecutionStore(gdb)
 
-	eng, err := schedtask.NewService(
-		schedtask.WithStore(taskStore),
-		schedtask.WithLogger(zap.NewNop()),
+	eng, err := NewEngine(
+		WithStore(taskStore),
+		WithLogger(zap.NewNop()),
 	)
 	if err != nil {
 		closeUnderlyingDB(t, gdb)
@@ -139,7 +138,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("Create assigns ID and timestamps", func(t *testing.T) {
 		before := time.Now()
-		created, err := svc.CreateTask(ctx, &schedtask.Task{
+		created, err := svc.CreateTask(ctx, &Task{
 			Name:         "task-1",
 			ExecutorType: "http",
 			Schedule:     "", // event-driven: registered but never fires on timer
@@ -164,7 +163,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Create with cron schedule registers in engine", func(t *testing.T) {
-		created, err := svc.CreateTask(ctx, &schedtask.Task{
+		created, err := svc.CreateTask(ctx, &Task{
 			Name:         "cron-task",
 			ExecutorType: "tcp",
 			Schedule:     "*/30 * * * *",
@@ -187,7 +186,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Create with interval schedule registers in engine", func(t *testing.T) {
-		created, err := svc.CreateTask(ctx, &schedtask.Task{
+		created, err := svc.CreateTask(ctx, &Task{
 			Name:         "interval-task",
 			ExecutorType: "http",
 			Schedule:     "90s",
@@ -211,7 +210,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Create with empty executor returns 400", func(t *testing.T) {
-		_, err := svc.CreateTask(ctx, &schedtask.Task{Name: "no-executor", Schedule: ""})
+		_, err := svc.CreateTask(ctx, &Task{Name: "no-executor", Schedule: ""})
 		// The service returns a descriptive "executor_type is required" error
 		// (a fresh serviceError, not the ErrInvalidRequest sentinel), so
 		// we check status/code rather than errors.Is.
@@ -219,7 +218,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Create with invalid schedule returns 400", func(t *testing.T) {
-		_, err := svc.CreateTask(ctx, &schedtask.Task{
+		_, err := svc.CreateTask(ctx, &Task{
 			Name: "bad-schedule", ExecutorType: "http", Schedule: "not a cron",
 		})
 		// The schedule is classified by ClassifySchedule: "" is event-driven,
@@ -301,7 +300,7 @@ func TestSchedulerTaskService(t *testing.T) {
 
 	t.Run("Update mutates fields and refreshes UpdatedAt", func(t *testing.T) {
 		time.Sleep(time.Millisecond) // ensure UpdatedAt advances past CreatedAt
-		updated, err := svc.UpdateTask(ctx, taskID, &schedtask.Task{
+		updated, err := svc.UpdateTask(ctx, taskID, &Task{
 			Name:         "task-1-updated",
 			ExecutorType: "tcp",
 			Schedule:     "*/10 * * * *",
@@ -333,7 +332,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Update non-existent returns ErrTaskNotFound", func(t *testing.T) {
-		_, err := svc.UpdateTask(ctx, 999999, &schedtask.Task{Name: "x", ExecutorType: "http"})
+		_, err := svc.UpdateTask(ctx, 999999, &Task{Name: "x", ExecutorType: "http"})
 		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
@@ -343,7 +342,7 @@ func TestSchedulerTaskService(t *testing.T) {
 	})
 
 	t.Run("Update with empty executor returns 400", func(t *testing.T) {
-		_, err := svc.UpdateTask(ctx, taskID, &schedtask.Task{Name: "no-executor"})
+		_, err := svc.UpdateTask(ctx, taskID, &Task{Name: "no-executor"})
 		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
 	})
 
@@ -412,7 +411,7 @@ func TestSchedulerTaskService_IDMonotonicity(t *testing.T) {
 
 	var prevID int64
 	for i := range 5 {
-		created, err := svc.CreateTask(ctx, &schedtask.Task{
+		created, err := svc.CreateTask(ctx, &Task{
 			Name:         "mono-task",
 			ExecutorType: "http",
 			Schedule:     "",
@@ -437,23 +436,23 @@ func TestSchedulerTaskService_IDSeededFromStore(t *testing.T) {
 	}
 	defer func() { closeUnderlyingDB(t, gdb) }()
 
-	if err := schedtask.Migrate(ctx, gdb); err != nil {
+	if err := Migrate(ctx, gdb); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	taskStore := schedtask.NewStore(gdb)
-	execStore := schedtask.NewExecutionStore(gdb)
+	taskStore := NewStore(gdb)
+	execStore := NewExecutionStore(gdb)
 
 	// First engine: create a task to seed the store with ID 1.
-	eng1, err := schedtask.NewService(
-		schedtask.WithStore(taskStore),
-		schedtask.WithLogger(zap.NewNop()),
+	eng1, err := NewEngine(
+		WithStore(taskStore),
+		WithLogger(zap.NewNop()),
 	)
 	if err != nil {
 		t.Fatalf("create engine 1: %v", err)
 	}
 	svc1 := NewTaskService(eng1, taskStore, execStore, nil, zap.NewNop())
-	created, err := svc1.CreateTask(ctx, &schedtask.Task{
+	created, err := svc1.CreateTask(ctx, &Task{
 		Name: "seed-task", ExecutorType: "http", Schedule: "",
 	})
 	if err != nil {
@@ -468,9 +467,9 @@ func TestSchedulerTaskService_IDSeededFromStore(t *testing.T) {
 
 	// Second engine: the ID counter should be seeded from the store so the
 	// next created task gets ID 2, not ID 1 (which would collide).
-	eng2, err := schedtask.NewService(
-		schedtask.WithStore(taskStore),
-		schedtask.WithLogger(zap.NewNop()),
+	eng2, err := NewEngine(
+		WithStore(taskStore),
+		WithLogger(zap.NewNop()),
 	)
 	if err != nil {
 		t.Fatalf("create engine 2: %v", err)
@@ -483,7 +482,7 @@ func TestSchedulerTaskService_IDSeededFromStore(t *testing.T) {
 	}
 
 	svc2 := NewTaskService(eng2, taskStore, execStore, nil, zap.NewNop())
-	created2, err := svc2.CreateTask(ctx, &schedtask.Task{
+	created2, err := svc2.CreateTask(ctx, &Task{
 		Name: "post-restart-task", ExecutorType: "http", Schedule: "",
 	})
 	if err != nil {
@@ -512,7 +511,7 @@ func TestSchedulerTaskService_NilLogger(t *testing.T) {
 	// Replace the service with one that has a nil logger.
 	nilSvc := NewTaskService(eng, svc.tasks, svc.execs, nil, nil)
 
-	created, err := nilSvc.CreateTask(ctx, &schedtask.Task{
+	created, err := nilSvc.CreateTask(ctx, &Task{
 		Name: "nil-logger-task", ExecutorType: "http", Schedule: "",
 	})
 	if err != nil {
@@ -551,7 +550,7 @@ func TestSchedulerTaskService_MapError(t *testing.T) {
 	})
 
 	t.Run("task.ErrTaskNotFound maps to ErrTaskNotFound", func(t *testing.T) {
-		err := mapError(schedtask.ErrTaskNotFound)
+		err := mapError(ErrTaskNotFound)
 		assertErrorCoder(t, err, errdefs.ErrTaskNotFound, http.StatusNotFound, errdefs.CodeNotFound)
 	})
 
@@ -577,7 +576,7 @@ func TestSchedulerTaskService_CopyTask(t *testing.T) {
 	defer cleanup()
 
 	// Create a source task with non-trivial configuration.
-	source, err := svc.CreateTask(ctx, &schedtask.Task{
+	source, err := svc.CreateTask(ctx, &Task{
 		Name:         "source-task",
 		ExecutorType: "http",
 		Schedule:     "*/5 * * * *",
@@ -690,13 +689,13 @@ func TestSchedulerTaskService_GetExecutionStats(t *testing.T) {
 		// statuses use the stored vocabulary: success/failed (the
 		// ExecutionRecordStore adapter maps asset status to these values).
 		seedDay = time.Now()
-		records := []*schedtask.Execution{
-			{TaskID: 1, Status: schedtask.StatusSuccess, Duration: 1000, StartedAt: seedDay},
-			{TaskID: 1, Status: schedtask.StatusSuccess, Duration: 3000, StartedAt: seedDay},
-			{TaskID: 1, Status: schedtask.StatusFailed, Duration: 2000, StartedAt: seedDay},
+		records := []*Execution{
+			{TaskID: 1, Status: StatusSuccess, Duration: 1000, StartedAt: seedDay},
+			{TaskID: 1, Status: StatusSuccess, Duration: 3000, StartedAt: seedDay},
+			{TaskID: 1, Status: StatusFailed, Duration: 2000, StartedAt: seedDay},
 			// Task 2 rows exist so the task_id filter has something to
 			// exclude.
-			{TaskID: 2, Status: schedtask.StatusFailed, Duration: 5000, StartedAt: seedDay},
+			{TaskID: 2, Status: StatusFailed, Duration: 5000, StartedAt: seedDay},
 		}
 		for i, e := range records {
 			if err := svc.execs.Save(ctx, e); err != nil {
@@ -832,7 +831,7 @@ func TestSchedulerTaskService_ExecutorCapabilityGate(t *testing.T) {
 	}
 	svc.registry = reg
 
-	_, err := svc.CreateTask(ctx, &schedtask.Task{
+	_, err := svc.CreateTask(ctx, &Task{
 		Name: "gate-task", ExecutorType: "probe-only", Schedule: "",
 	})
 	if err == nil {
@@ -843,7 +842,7 @@ func TestSchedulerTaskService_ExecutorCapabilityGate(t *testing.T) {
 		t.Errorf("CreateTask probe-only error: got %v, want 400 ServiceError", err)
 	}
 
-	created, err := svc.CreateTask(ctx, &schedtask.Task{
+	created, err := svc.CreateTask(ctx, &Task{
 		Name: "gate-task", ExecutorType: "taskable", Schedule: "",
 	})
 	if err != nil {

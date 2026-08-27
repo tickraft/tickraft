@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-package service
+package task
 
 import (
 	"errors"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
-	schedtask "github.com/tickraft/tickraft/pkg/task"
 )
 
 // setupEnginelessTaskService creates a TaskService with a nil engine backed by
@@ -21,7 +20,7 @@ import (
 // distributed Server role, where CRUD persists directly to the TaskStore and
 // Worker nodes observe changes through their own sync path; with no engine,
 // pause/resume must flip the enabled column instead of touching a wheel.
-func setupEnginelessTaskService(t *testing.T) (*TaskService, schedtask.Store, func()) {
+func setupEnginelessTaskService(t *testing.T) (*TaskService, Store, func()) {
 	t.Helper()
 
 	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})
@@ -29,13 +28,13 @@ func setupEnginelessTaskService(t *testing.T) (*TaskService, schedtask.Store, fu
 		t.Fatalf("open db: %v", err)
 	}
 
-	if err := schedtask.Migrate(ctx, gdb); err != nil {
+	if err := Migrate(ctx, gdb); err != nil {
 		closeUnderlyingDB(t, gdb)
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	taskStore := schedtask.NewStore(gdb)
-	execStore := schedtask.NewExecutionStore(gdb)
+	taskStore := NewStore(gdb)
+	execStore := NewExecutionStore(gdb)
 
 	svc := NewTaskService(nil, taskStore, execStore, nil, zap.NewNop())
 
@@ -55,7 +54,7 @@ func TestEnginelessTaskService(t *testing.T) {
 	var taskID int64
 
 	t.Run("Create persists row without engine", func(t *testing.T) {
-		created, err := svc.CreateTask(ctx, &schedtask.Task{
+		created, err := svc.CreateTask(ctx, &Task{
 			Name:         "engineless-task",
 			ExecutorType: "tcp",
 			Schedule:     "*/30 * * * *",
@@ -93,7 +92,7 @@ func TestEnginelessTaskService(t *testing.T) {
 		}
 		origCreated := row.CreatedAt
 
-		updated, err := svc.UpdateTask(ctx, taskID, &schedtask.Task{
+		updated, err := svc.UpdateTask(ctx, taskID, &Task{
 			Name:         "engineless-task-v2",
 			ExecutorType: "tcp",
 			Schedule:     "*/15 * * * *",

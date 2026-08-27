@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package service provides the scheduled-task management contract (Service)
-// plus the TaskService implementation that persists tasks and delegates
-// lifecycle operations to the scheduler engine.
-package service
+package task
 
 import (
 	"context"
@@ -25,7 +22,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/scheduler"
-	schedtask "github.com/tickraft/tickraft/pkg/task"
 )
 
 // Compile-time assertion that TaskService implements Service.
@@ -37,16 +33,21 @@ var _ Service = (*TaskService)(nil)
 const defaultTaskTimeoutSeconds = 30
 
 // TaskService implements Service by delegating task lifecycle
-// operations to the scheduler engine (schedtask.Manager) and reading
+// operations to the scheduler engine (Manager) and reading
 // persisted state from the task and execution stores.
 //
 // ID assignment uses an atomic counter seeded from the maximum existing ID
 // in the store on the first CreateTask call, ensuring no collisions after a
 // restart.
+//
+// The <Domain>Service name mirrors the convention of the other domain
+// service implementations (see pkg/system).
+//
+//nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type TaskService struct {
-	engine     schedtask.Manager
-	tasks      schedtask.Store
-	execs      schedtask.ExecutionStore
+	engine     Manager
+	tasks      Store
+	execs      ExecutionStore
 	registry   *executor.Registry
 	logger     *zap.Logger
 	nextID     atomic.Int64
@@ -60,9 +61,9 @@ type TaskService struct {
 // registry skips the check, which keeps isolated tests unwired. If logger is
 // nil, a no-op logger is used.
 func NewTaskService(
-	engine schedtask.Manager,
-	tasks schedtask.Store,
-	execs schedtask.ExecutionStore,
+	engine Manager,
+	tasks Store,
+	execs ExecutionStore,
 	registry *executor.Registry,
 	logger *zap.Logger,
 ) *TaskService {
@@ -99,8 +100,8 @@ func (s *TaskService) validateExecutorType(executorType string) error {
 // ListTasks returns a page of tasks matching the given filter and the total
 // count. A zero-value Filter returns all tasks.
 func (s *TaskService) ListTasks(ctx context.Context, page, size int,
-	filter Filter) ([]*schedtask.Task, int64, error) {
-	opts := schedtask.ListOptions{Group: filter.Group, Tags: filter.Tags}
+	filter Filter) ([]*Task, int64, error) {
+	opts := ListOptions(filter)
 	all, err := s.tasks.List(ctx, opts)
 	if err != nil {
 		return nil, 0, mapError(err)
@@ -112,13 +113,13 @@ func (s *TaskService) ListTasks(ctx context.Context, page, size int,
 	page, size = pagination.Clamp(page, size)
 	start, end := pagination.Window(page, size, total)
 
-	result := make([]*schedtask.Task, end-start)
+	result := make([]*Task, end-start)
 	copy(result, all[start:end])
 	return result, int64(total), nil
 }
 
 // GetTask returns a single task by ID.
-func (s *TaskService) GetTask(ctx context.Context, id int64) (*schedtask.Task, error) {
+func (s *TaskService) GetTask(ctx context.Context, id int64) (*Task, error) {
 	t, err := s.tasks.Get(ctx, id)
 	if err != nil {
 		return nil, mapError(err)
@@ -127,7 +128,7 @@ func (s *TaskService) GetTask(ctx context.Context, id int64) (*schedtask.Task, e
 }
 
 // CreateTask creates a new task from the given request.
-func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*schedtask.Task, error) {
+func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -144,7 +145,7 @@ func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*sch
 	// Enforce scheduled-task count quota before assigning an ID.
 	maxTasks := quota.Ceiling(quota.TypeScheduledTask)
 	if maxTasks > 0 {
-		existing, err := s.tasks.List(ctx, schedtask.ListOptions{})
+		existing, err := s.tasks.List(ctx, ListOptions{})
 		if err != nil {
 			return nil, mapError(err)
 		}
@@ -188,7 +189,7 @@ func (s *TaskService) CreateTask(ctx context.Context, req *schedtask.Task) (*sch
 // cannot express (tenant/asset binding, priority, dependencies, metadata
 // extension keys) are preserved from the existing row rather than zeroed by
 // the PUT.
-func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *schedtask.Task) (*schedtask.Task, error) {
+func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *Task) (*Task, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
 	}
@@ -325,11 +326,11 @@ func (s *TaskService) ListExecutions(
 	taskID int64,
 	page, size int,
 	filter ExecutionFilter,
-) ([]*schedtask.Execution, int64, error) {
+) ([]*Execution, int64, error) {
 	var taskIDs []int64
 	nameOf := func(id int64) string { return "" }
 	if filter.TaskName != "" || taskID <= 0 {
-		all, err := s.tasks.List(ctx, schedtask.ListOptions{})
+		all, err := s.tasks.List(ctx, ListOptions{})
 		if err != nil {
 			return nil, 0, mapError(err)
 		}
@@ -344,13 +345,13 @@ func (s *TaskService) ListExecutions(
 			taskIDs = append(taskIDs, t.ID)
 		}
 		if needle != "" && len(taskIDs) == 0 {
-			return []*schedtask.Execution{}, 0, nil
+			return []*Execution{}, 0, nil
 		}
 		nameOf = func(id int64) string { return names[id] }
 	}
 
 	page, size = pagination.Clamp(page, size)
-	q := schedtask.ExecutionQuery{
+	q := ExecutionQuery{
 		TaskID:       taskID,
 		TaskIDs:      taskIDs,
 		Status:       filter.Status,
@@ -369,10 +370,10 @@ func (s *TaskService) ListExecutions(
 
 // GetExecution returns a single execution record by ID. A positive taskID
 // additionally requires the record to belong to that task.
-func (s *TaskService) GetExecution(ctx context.Context, taskID, id int64) (*schedtask.Execution, error) {
+func (s *TaskService) GetExecution(ctx context.Context, taskID, id int64) (*Execution, error) {
 	e, err := s.execs.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, schedtask.ErrExecutionNotFound) {
+		if errors.Is(err, ErrExecutionNotFound) {
 			return nil, errdefs.ErrExecutionNotFound
 		}
 		return nil, mapError(err)
@@ -389,7 +390,7 @@ func (s *TaskService) GetExecution(ctx context.Context, taskID, id int64) (*sche
 // CopyTask creates a new task by cloning the configuration of an existing
 // task. The new task is assigned a fresh ID and the given name; an empty name
 // defaults to "<source name> (copy)".
-func (s *TaskService) CopyTask(ctx context.Context, id int64, newName string) (*schedtask.Task, error) {
+func (s *TaskService) CopyTask(ctx context.Context, id int64, newName string) (*Task, error) {
 	source, err := s.tasks.Get(ctx, id)
 	if err != nil {
 		return nil, mapError(err)
@@ -400,7 +401,7 @@ func (s *TaskService) CopyTask(ctx context.Context, id int64, newName string) (*
 		name = source.Name + " (copy)"
 	}
 
-	clone := &schedtask.Task{
+	clone := &Task{
 		Name:                 name,
 		Description:          source.Description,
 		ExecutorType:         source.ExecutorType,
@@ -469,18 +470,18 @@ func (s *TaskService) GetExecutionStats(
 // fillDailySeries zero-fills the sparse per-day aggregates into a
 // contiguous date series covering [from, to]; from must be a local
 // midnight so day stepping stays on date boundaries.
-func fillDailySeries(sparse []schedtask.DailyStat, from, to time.Time) []schedtask.DailyStat {
-	byDate := make(map[string]schedtask.DailyStat, len(sparse))
+func fillDailySeries(sparse []DailyStat, from, to time.Time) []DailyStat {
+	byDate := make(map[string]DailyStat, len(sparse))
 	for _, day := range sparse {
 		byDate[day.Date] = day
 	}
-	series := make([]schedtask.DailyStat, 0, len(sparse))
+	series := make([]DailyStat, 0, len(sparse))
 	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 		key := day.Format("2006-01-02")
 		if entry, ok := byDate[key]; ok {
 			series = append(series, entry)
 		} else {
-			series = append(series, schedtask.DailyStat{Date: key})
+			series = append(series, DailyStat{Date: key})
 		}
 	}
 	return series
@@ -494,7 +495,7 @@ func fillDailySeries(sparse []schedtask.DailyStat, from, to time.Time) []schedta
 // the next monotonically increasing ID.
 func (s *TaskService) assignID(ctx context.Context) (int64, error) {
 	s.idInitOnce.Do(func() {
-		existing, err := s.tasks.List(ctx, schedtask.ListOptions{})
+		existing, err := s.tasks.List(ctx, ListOptions{})
 		if err != nil {
 			s.idInitErr = fmt.Errorf("seed task id from store: %w", err)
 			return
@@ -517,11 +518,11 @@ func (s *TaskService) assignID(ctx context.Context) (int64, error) {
 // expression parses. Returns a handler-level ServiceError (HTTP 400) when
 // the schedule is invalid.
 func validateSchedule(schedule string) error {
-	scheduleType, interval, err := schedtask.ClassifySchedule(schedule)
+	scheduleType, interval, err := ClassifySchedule(schedule)
 	if err != nil {
 		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 	}
-	if scheduleType != schedtask.ScheduleTypeInterval {
+	if scheduleType != ScheduleTypeInterval {
 		return nil
 	}
 	minSecs := quota.Ceiling(quota.TypeScheduledTaskInterval)
@@ -545,16 +546,16 @@ func mapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, errdefs.ErrNotFound) || errors.Is(err, schedtask.ErrTaskNotFound) {
+	if errors.Is(err, errdefs.ErrNotFound) || errors.Is(err, ErrTaskNotFound) {
 		return errdefs.ErrTaskNotFound
 	}
-	if errors.Is(err, schedtask.ErrIntervalTooSmall) {
+	if errors.Is(err, ErrIntervalTooSmall) {
 		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, err.Error())
 	}
 	if errors.Is(err, scheduler.ErrSchedulerStopped) {
 		return errdefs.NewServiceError(http.StatusServiceUnavailable, errdefs.CodeInternal, "scheduler unavailable")
 	}
-	if errors.Is(err, schedtask.ErrTaskAlreadyPaused) || errors.Is(err, schedtask.ErrTaskNotPaused) {
+	if errors.Is(err, ErrTaskAlreadyPaused) || errors.Is(err, ErrTaskNotPaused) {
 		return errdefs.NewServiceError(http.StatusConflict, errdefs.CodeConflict, err.Error())
 	}
 	return errdefs.NewServiceError(http.StatusInternalServerError, errdefs.CodeInternal, err.Error())

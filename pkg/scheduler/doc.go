@@ -27,7 +27,7 @@
 //   - Schedule: alias for cron.Schedule, determines the next fire time.
 //   - Callback: invoked by the Engine when a scheduled entry fires.
 //   - ShardManager: distributed entry ownership filtering across engine
-//     instances (used by the task.Service for sharded deployments).
+//     instances (used by the task.Engine for sharded deployments).
 //
 // Schedule constructors:
 //   - NewConstantIntervalSchedule: fixed-interval recurring schedule.

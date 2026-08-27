@@ -36,7 +36,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
+	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
@@ -56,7 +56,7 @@ type RegisterOption interface {
 
 // registerConfig holds handlers and services injected via RegisterOption.
 type registerConfig struct {
-	taskService            taskservice.Service
+	taskService            task.Service
 	alertService           alert.Service
 	channelService         channel.Service
 	remediationRuleService remediation.Service
@@ -83,18 +83,18 @@ type registerConfig struct {
 	revoker RevokeFunc
 }
 
-// taskServiceOption provides the taskservice.Service implementation for task
+// taskServiceOption provides the task.Service implementation for task
 // handlers.
 type taskServiceOption struct {
-	svc taskservice.Service
+	svc task.Service
 }
 
 func (o taskServiceOption) apply(c *registerConfig) { c.taskService = o.svc }
 
-// WithTaskService provides the taskservice.Service implementation for task
+// WithTaskService provides the task.Service implementation for task
 // handlers. Required by the handler route validator; when omitted,
 // registration fails with a missing-service error.
-func WithTaskService(svc taskservice.Service) RegisterOption { return taskServiceOption{svc: svc} }
+func WithTaskService(svc task.Service) RegisterOption { return taskServiceOption{svc: svc} }
 
 // alertServiceOption provides the alert.Service implementation for
 // alert handlers.

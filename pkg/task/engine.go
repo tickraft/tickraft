@@ -50,7 +50,7 @@ type Manager interface {
 }
 
 // Compile-time assertion that Service implements Manager.
-var _ Manager = (*Service)(nil)
+var _ Manager = (*Engine)(nil)
 
 // Option configures a Service.
 type Option interface {
@@ -136,7 +136,7 @@ func WithShardManager(sm *scheduler.ShardManager) Option {
 	return shardManagerOption{sm: sm}
 }
 
-// NewService creates a new Service with the given options.
+// NewEngine creates a new Engine with the given options.
 //
 // If no Engine is provided via WithEngine, a default scheduler.Engine is
 // created internally and started automatically. If an Engine is provided,
@@ -145,7 +145,7 @@ func WithShardManager(sm *scheduler.ShardManager) Option {
 //
 // All options are optional except that at most one Engine may be provided.
 // Returns an error if the internal engine cannot be initialized.
-func NewService(options ...Option) (*Service, error) {
+func NewEngine(options ...Option) (*Engine, error) {
 	opts := &Options{
 		Logger: zap.NewNop(),
 	}
@@ -174,7 +174,7 @@ func NewService(options ...Option) (*Service, error) {
 		ownBus = true
 	}
 
-	m := &Service{
+	e := &Engine{
 		engine:           opts.Engine,
 		ownEngine:        ownEngine,
 		store:            opts.Store,
@@ -189,13 +189,13 @@ func NewService(options ...Option) (*Service, error) {
 		eventDrivenTasks: make(map[int64]struct{}),
 		running:          make(map[int64]struct{}),
 	}
-	return m, nil
+	return e, nil
 }
 
-// Service implements Manager by delegating timing to scheduler.Engine
+// Engine implements Manager by delegating timing to scheduler.Engine
 // and owning all task business semantics: lifecycle, dependency tracking,
 // per-task concurrency control, and event-driven triggers.
-type Service struct {
+type Engine struct {
 	engine       scheduler.Engine
 	ownEngine    bool
 	store        Store
@@ -226,7 +226,7 @@ type Service struct {
 // timed callback with the engine. Disabled tasks are stored but not put on
 // the wheel; they start running when resumed (Resume or an update with
 // Enabled=true).
-func (m *Service) Register(ctx context.Context, task Task) error {
+func (e *Engine) Register(ctx context.Context, task Task) error {
 	scheduleType, interval, err := ClassifySchedule(task.Schedule)
 	if err != nil {
 		return fmt.Errorf("register task %d: %w", task.ID, err)
@@ -239,30 +239,30 @@ func (m *Service) Register(ctx context.Context, task Task) error {
 		return fmt.Errorf("register task %d: %w", task.ID, err)
 	}
 
-	m.setTask(task)
+	e.setTask(task)
 
-	m.mu.Lock()
+	e.mu.Lock()
 	if task.Enabled {
-		m.scheds[task.ID] = sched
-		m.scheduleTypes[task.ID] = scheduleType
+		e.scheds[task.ID] = sched
+		e.scheduleTypes[task.ID] = scheduleType
 		if scheduleType == ScheduleTypeEvent {
-			m.eventDrivenTasks[task.ID] = struct{}{}
+			e.eventDrivenTasks[task.ID] = struct{}{}
 		} else {
-			delete(m.eventDrivenTasks, task.ID)
+			delete(e.eventDrivenTasks, task.ID)
 		}
 	}
-	m.mu.Unlock()
+	e.mu.Unlock()
 
 	// Register the timed callback with the engine. Event-driven tasks
 	// use a neverSchedule so the engine never fires them; they are
 	// triggered by external events via SubscribeEvents.
 	if task.Enabled && scheduleType != ScheduleTypeEvent {
-		if err := m.engine.Add(task.ID, sched, m.onFire); err != nil {
+		if err := e.engine.Add(task.ID, sched, e.onFire); err != nil {
 			return fmt.Errorf("register task %d: %w", task.ID, err)
 		}
 	}
 
-	m.logger.Info("task registered",
+	e.logger.Info("task registered",
 		zap.Int64("task_id", task.ID),
 		zap.String("schedule_type", string(scheduleType)),
 		zap.Bool("enabled", task.Enabled),
@@ -272,33 +272,33 @@ func (m *Service) Register(ctx context.Context, task Task) error {
 
 // Schedule manually triggers a task for immediate execution by publishing
 // a TaskTriggered event on the event bus.
-func (m *Service) Schedule(_ context.Context, taskID int64) error {
-	task, err := m.getTask(taskID)
+func (e *Engine) Schedule(_ context.Context, taskID int64) error {
+	task, err := e.getTask(taskID)
 	if err != nil {
 		return fmt.Errorf("schedule task %d: %w", taskID, err)
 	}
-	m.trigger(task, TriggerTypeManual)
+	e.trigger(task, TriggerTypeManual)
 	return nil
 }
 
 // Update updates an existing task's schedule by unscheduling and re-registering.
-func (m *Service) Update(ctx context.Context, task Task) error {
-	m.unscheduleInternal(task.ID)
-	return m.Register(ctx, task)
+func (e *Engine) Update(ctx context.Context, task Task) error {
+	e.unscheduleInternal(task.ID)
+	return e.Register(ctx, task)
 }
 
 // Unschedule removes a task from scheduling.
-func (m *Service) Unschedule(_ context.Context, taskID int64) error {
-	m.unscheduleInternal(taskID)
-	m.deleteTask(taskID)
+func (e *Engine) Unschedule(_ context.Context, taskID int64) error {
+	e.unscheduleInternal(taskID)
+	e.deleteTask(taskID)
 
-	m.mu.Lock()
-	delete(m.scheds, taskID)
-	delete(m.scheduleTypes, taskID)
-	delete(m.eventDrivenTasks, taskID)
-	m.mu.Unlock()
+	e.mu.Lock()
+	delete(e.scheds, taskID)
+	delete(e.scheduleTypes, taskID)
+	delete(e.eventDrivenTasks, taskID)
+	e.mu.Unlock()
 
-	m.logger.Info("task unscheduled",
+	e.logger.Info("task unscheduled",
 		zap.Int64("task_id", taskID),
 	)
 	return nil
@@ -307,39 +307,39 @@ func (m *Service) Unschedule(_ context.Context, taskID int64) error {
 // Pause removes the task from the scheduling wheel but keeps it in the
 // in-memory task store and the persistent store. The task's Enabled flag is
 // set to false and persisted. A paused task can be resumed via Resume.
-func (m *Service) Pause(taskID int64) error {
-	task, err := m.getTask(taskID)
+func (e *Engine) Pause(taskID int64) error {
+	task, err := e.getTask(taskID)
 	if err != nil {
 		return fmt.Errorf("pause task %d: %w", taskID, err)
 	}
 
 	// Check if the task is currently on the wheel by checking if it has
 	// a schedule entry. Event-driven tasks are never on the wheel.
-	m.mu.RLock()
-	_, hasSched := m.scheds[taskID]
-	schedType := m.scheduleTypes[taskID]
-	m.mu.RUnlock()
+	e.mu.RLock()
+	_, hasSched := e.scheds[taskID]
+	schedType := e.scheduleTypes[taskID]
+	e.mu.RUnlock()
 
 	onWheel := hasSched && schedType != ScheduleTypeEvent
 	if !onWheel {
 		return ErrTaskAlreadyPaused
 	}
 
-	m.unscheduleInternal(taskID)
+	e.unscheduleInternal(taskID)
 
 	// Drop the in-memory schedule registration. unscheduleInternal only
 	// removes the task from the engine wheel; without this delete the
 	// scheds entry survives and Resume's onWheel guard rejects every
 	// resume with ErrTaskNotPaused.
-	m.mu.Lock()
-	delete(m.scheds, taskID)
-	delete(m.scheduleTypes, taskID)
-	m.mu.Unlock()
+	e.mu.Lock()
+	delete(e.scheds, taskID)
+	delete(e.scheduleTypes, taskID)
+	e.mu.Unlock()
 
 	task.Enabled = false
-	m.setTask(task)
+	e.setTask(task)
 
-	m.logger.Info("task paused",
+	e.logger.Info("task paused",
 		zap.Int64("task_id", taskID),
 	)
 	return nil
@@ -347,16 +347,16 @@ func (m *Service) Pause(taskID int64) error {
 
 // Resume re-adds a paused task to the scheduling wheel and sets Enabled=true.
 // The next fire time is recomputed from the task's schedule.
-func (m *Service) Resume(taskID int64) error {
-	task, err := m.getTask(taskID)
+func (e *Engine) Resume(taskID int64) error {
+	task, err := e.getTask(taskID)
 	if err != nil {
 		return fmt.Errorf("resume task %d: %w", taskID, err)
 	}
 
-	m.mu.RLock()
-	sched := m.scheds[taskID]
-	schedType := m.scheduleTypes[taskID]
-	m.mu.RUnlock()
+	e.mu.RLock()
+	sched := e.scheds[taskID]
+	schedType := e.scheduleTypes[taskID]
+	e.mu.RUnlock()
 
 	onWheel := sched != nil && schedType != ScheduleTypeEvent
 	if onWheel {
@@ -375,24 +375,24 @@ func (m *Service) Resume(taskID int64) error {
 				return fmt.Errorf("resume task %d: %w", taskID, perr)
 			}
 			sched = parsed
-			m.mu.Lock()
-			m.scheds[taskID] = sched
-			m.scheduleTypes[taskID] = scheduleType
-			m.mu.Unlock()
+			e.mu.Lock()
+			e.scheds[taskID] = sched
+			e.scheduleTypes[taskID] = scheduleType
+			e.mu.Unlock()
 		}
-		if err := m.engine.Add(taskID, sched, m.onFire); err != nil {
+		if err := e.engine.Add(taskID, sched, e.onFire); err != nil {
 			return fmt.Errorf("resume task %d: %w", taskID, err)
 		}
 	} else {
-		m.mu.Lock()
-		m.eventDrivenTasks[taskID] = struct{}{}
-		m.mu.Unlock()
+		e.mu.Lock()
+		e.eventDrivenTasks[taskID] = struct{}{}
+		e.mu.Unlock()
 	}
 
 	task.Enabled = true
-	m.setTask(task)
+	e.setTask(task)
 
-	m.logger.Info("task resumed",
+	e.logger.Info("task resumed",
 		zap.Int64("task_id", taskID),
 	)
 	return nil
@@ -401,18 +401,18 @@ func (m *Service) Resume(taskID int64) error {
 // Stop gracefully stops the manager and, if the engine was created
 // internally, the underlying engine. It also closes the event bus if it
 // was created internally.
-func (m *Service) Stop(ctx context.Context) error {
-	if m.ownEngine {
-		if err := m.engine.Stop(ctx); err != nil {
+func (e *Engine) Stop(ctx context.Context) error {
+	if e.ownEngine {
+		if err := e.engine.Stop(ctx); err != nil {
 			return fmt.Errorf("stop engine: %w", err)
 		}
 	}
-	if m.ownBus && m.bus != nil {
-		if err := m.bus.Close(); err != nil {
-			m.logger.Warn("failed to close event bus", zap.Error(err))
+	if e.ownBus && e.bus != nil {
+		if err := e.bus.Close(); err != nil {
+			e.logger.Warn("failed to close event bus", zap.Error(err))
 		}
 	}
-	m.logger.Info("task manager stopped")
+	e.logger.Info("task manager stopped")
 	return nil
 }
 
@@ -427,10 +427,10 @@ func (m *Service) Stop(ctx context.Context) error {
 // SubscribeEvents, handleStatusChange, trigger, and newRunID live in
 // events.go. Restore, getTask, setTask, deleteTask, and listTasks live in
 // persistence.go. ClassifySchedule and parseSchedule live in schedule.go.
-func (m *Service) onFire(taskID int64) {
+func (e *Engine) onFire(taskID int64) {
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("panic in task onFire callback",
+			e.logger.Error("panic in task onFire callback",
 				zap.Int64("task_id", taskID),
 				zap.Any("panic", r),
 				zap.Stack("stack"),
@@ -438,22 +438,22 @@ func (m *Service) onFire(taskID int64) {
 		}
 	}()
 
-	task, err := m.getTask(taskID)
+	task, err := e.getTask(taskID)
 	if err != nil {
-		m.logger.Warn("task not found on fire", zap.Int64("task_id", taskID))
+		e.logger.Warn("task not found on fire", zap.Int64("task_id", taskID))
 		return
 	}
 
-	if !m.shardManager.Owns(taskID) {
-		m.logger.Debug("task not owned by this shard, skipping",
+	if !e.shardManager.Owns(taskID) {
+		e.logger.Debug("task not owned by this shard, skipping",
 			zap.Int64("task_id", taskID),
 		)
 		return
 	}
 
 	if task.DependsOn != 0 {
-		if !m.deps.CanExecute(task.DependsOn) {
-			m.logger.Warn("dependency not met, skipping task",
+		if !e.deps.CanExecute(task.DependsOn) {
+			e.logger.Warn("dependency not met, skipping task",
 				zap.Int64("task_id", taskID),
 				zap.Int64("depends_on", task.DependsOn),
 				zap.String("skip_reason", ErrDependencyNotMet.Error()),
@@ -467,8 +467,8 @@ func (m *Service) onFire(taskID int64) {
 	// TOCTOU race where two concurrent fires both observe "not running"
 	// and both proceed to trigger.
 	if task.Concurrency == 1 {
-		if !m.tryClaimRunning(taskID) {
-			m.logger.Warn("previous execution still running, skipping task",
+		if !e.tryClaimRunning(taskID) {
+			e.logger.Warn("previous execution still running, skipping task",
 				zap.Int64("task_id", taskID),
 				zap.String("skip_reason", ErrTaskRunning.Error()),
 			)
@@ -476,7 +476,7 @@ func (m *Service) onFire(taskID int64) {
 		}
 	}
 
-	m.trigger(task, TriggerTypeSchedule)
+	e.trigger(task, TriggerTypeSchedule)
 }
 
 // tryClaimRunning atomically checks whether the task is already running and,
@@ -488,13 +488,13 @@ func (m *Service) onFire(taskID int64) {
 // This helper exists to make the check-and-set atomic under a single lock
 // acquisition, preventing the race where two concurrent onFire callbacks
 // both observe "not running" between separate lock/unlock pairs.
-func (m *Service) tryClaimRunning(taskID int64) bool {
-	m.runningMu.Lock()
-	defer m.runningMu.Unlock()
-	if _, running := m.running[taskID]; running {
+func (e *Engine) tryClaimRunning(taskID int64) bool {
+	e.runningMu.Lock()
+	defer e.runningMu.Unlock()
+	if _, running := e.running[taskID]; running {
 		return false
 	}
-	m.running[taskID] = struct{}{}
+	e.running[taskID] = struct{}{}
 	return true
 }
 
@@ -502,10 +502,10 @@ func (m *Service) tryClaimRunning(taskID int64) bool {
 // ExecutionCompleted subscriber when an execution finishes and by trigger
 // when publishing the ExecutionTriggered event fails, so the next fire is
 // not permanently blocked for Concurrency == 1 tasks.
-func (m *Service) releaseRunning(taskID int64) {
-	m.runningMu.Lock()
-	delete(m.running, taskID)
-	m.runningMu.Unlock()
+func (e *Engine) releaseRunning(taskID int64) {
+	e.runningMu.Lock()
+	delete(e.running, taskID)
+	e.runningMu.Unlock()
 }
 
 // checkMinInterval validates that interval-based schedules respect the
@@ -533,12 +533,12 @@ func checkMinInterval(scheduleType ScheduleType, interval time.Duration) error {
 // continue with their own bookkeeping regardless, and surfacing the error
 // would force every caller to handle a partial-failure state that is
 // already self-correcting on the next Add.
-func (m *Service) unscheduleInternal(taskID int64) {
-	if err := m.engine.Remove(taskID); err != nil {
-		m.logger.Warn("failed to remove task from engine",
+func (e *Engine) unscheduleInternal(taskID int64) {
+	if err := e.engine.Remove(taskID); err != nil {
+		e.logger.Warn("failed to remove task from engine",
 			zap.Int64("task_id", taskID),
 			zap.Error(err),
 		)
 	}
-	m.deps.Reset(taskID)
+	e.deps.Reset(taskID)
 }

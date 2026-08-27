@@ -338,7 +338,7 @@ func TestFaultRemediationLoop(t *testing.T) {
 	})
 
 	// --- Set up Scheduler ---
-	sched, err := task.NewService(
+	sched, err := task.NewEngine(
 		task.WithEventBus(bus),
 		task.WithLogger(zap.NewNop()),
 	)
@@ -738,7 +738,7 @@ func TestShardDistribution(t *testing.T) {
 	defer bus1.Close()
 
 	// --- Shard 0: owns even task IDs (taskID % 2 == 0) ---
-	sched0, err := task.NewService(
+	sched0, err := task.NewEngine(
 		task.WithShardManager(scheduler.NewShardManager(2, 0)),
 		task.WithEventBus(bus0),
 		task.WithLogger(zap.NewNop()),
@@ -753,7 +753,7 @@ func TestShardDistribution(t *testing.T) {
 	})
 
 	// --- Shard 1: owns odd task IDs (taskID % 2 == 1) ---
-	sched1, err := task.NewService(
+	sched1, err := task.NewEngine(
 		task.WithShardManager(scheduler.NewShardManager(2, 1)),
 		task.WithEventBus(bus1),
 		task.WithLogger(zap.NewNop()),

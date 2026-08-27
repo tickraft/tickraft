@@ -6,20 +6,20 @@
 //
 // It owns the task lifecycle (Register/Update/Unschedule/Pause/Resume),
 // dependency tracking, per-task concurrency control, event-driven triggers,
-// and execution history. The Service holds a scheduler.Engine instance
+// and execution history. The Engine holds a scheduler.Engine instance
 // and registers timed callbacks via Engine.Add/Remove; when a callback fires,
-// the Manager performs dependency checks, concurrency control, and publishes
+// the Engine performs dependency checks, concurrency control, and publishes
 // ExecutionTriggered events on the event bus for the executor to consume.
 //
 // The actual execution is handled by the sibling pkg/executor package's
 // Runner, which subscribes to ExecutionTriggered events and publishes
-// event.TypeExecutionCompleted events when execution finishes. The Service
+// event.TypeExecutionCompleted events when execution finishes. The Engine
 // subscribes to ExecutionCompleted to update its internal dependency tracker and
 // to StatusChange events to trigger event-driven tasks.
 //
 // Key abstractions:
 //   - Manager: the task lifecycle management interface.
-//   - Service: the core implementation, holding a scheduler.Engine.
+//   - Engine: the core implementation, holding a scheduler.Engine.
 //   - Task / Execution: the single dual-tag models (GORM + wire) for the
 //     sys_schedule_task and sys_schedule_log tables.
 //   - Store / ExecutionStore: persistence SPIs for tasks and history.

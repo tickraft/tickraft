@@ -17,8 +17,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
-	schedtask "github.com/tickraft/tickraft/pkg/task"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
+	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 )
@@ -29,42 +28,42 @@ import (
 // so that router tests can exercise RegisterRoutes in standalone mode
 // without a real database or engine.
 
-// stubTaskService implements taskservice.Service.
+// stubTaskService implements task.Service.
 type stubTaskService struct{}
 
-func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ taskservice.Filter) ([]*schedtask.Task, int64, error) {
+func (stubTaskService) ListTasks(_ context.Context, _, _ int, _ task.Filter) ([]*task.Task, int64, error) {
 	return nil, 0, nil
 }
-func (stubTaskService) GetTask(_ context.Context, _ int64) (*schedtask.Task, error) {
+func (stubTaskService) GetTask(_ context.Context, _ int64) (*task.Task, error) {
 	return nil, nil
 }
-func (stubTaskService) CreateTask(_ context.Context, _ *schedtask.Task) (*schedtask.Task, error) {
-	return &schedtask.Task{}, nil
+func (stubTaskService) CreateTask(_ context.Context, _ *task.Task) (*task.Task, error) {
+	return &task.Task{}, nil
 }
-func (stubTaskService) UpdateTask(_ context.Context, _ int64, _ *schedtask.Task) (*schedtask.Task, error) {
-	return &schedtask.Task{}, nil
+func (stubTaskService) UpdateTask(_ context.Context, _ int64, _ *task.Task) (*task.Task, error) {
+	return &task.Task{}, nil
 }
 func (stubTaskService) DeleteTask(_ context.Context, _ int64) error  { return nil }
 func (stubTaskService) TriggerTask(_ context.Context, _ int64) error { return nil }
 func (stubTaskService) PauseTask(_ context.Context, _ int64) error   { return nil }
 func (stubTaskService) ResumeTask(_ context.Context, _ int64) error  { return nil }
 func (stubTaskService) ListExecutions(_ context.Context, _ int64, _, _ int,
-	_ taskservice.ExecutionFilter) ([]*schedtask.Execution, int64, error) {
+	_ task.ExecutionFilter) ([]*task.Execution, int64, error) {
 	return nil, 0, nil
 }
-func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*schedtask.Execution, error) {
+func (stubTaskService) GetExecution(_ context.Context, _, _ int64) (*task.Execution, error) {
 	return nil, nil
 }
-func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*schedtask.Task, error) {
-	return &schedtask.Task{}, nil
+func (stubTaskService) CopyTask(_ context.Context, _ int64, _ string) (*task.Task, error) {
+	return &task.Task{}, nil
 }
 func (stubTaskService) GetExecutionStats(
 	_ context.Context, _, _ time.Time, _ int64, _ int,
-) (taskservice.ExecutionStats, error) {
-	return taskservice.ExecutionStats{}, nil
+) (task.ExecutionStats, error) {
+	return task.ExecutionStats{}, nil
 }
 
-var _ taskservice.Service = (*stubTaskService)(nil)
+var _ task.Service = (*stubTaskService)(nil)
 
 // stubAlertService implements alert.Service (model: prismalert).
 type stubAlertService struct{}

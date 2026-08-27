@@ -32,7 +32,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/telemetry/http"
 )
@@ -294,7 +293,7 @@ func newTaskRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if rt.schedulerEngine == nil || rt.schedulerTaskStore == nil || rt.schedulerExecStore == nil {
 		return nil, fmt.Errorf("start api server: scheduler engine/stores are nil; worker engines may not have started")
 	}
-	taskSvc := taskservice.NewTaskService(
+	taskSvc := task.NewTaskService(
 		rt.schedulerEngine,
 		rt.schedulerTaskStore,
 		rt.schedulerExecStore,

@@ -20,7 +20,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	"github.com/tickraft/tickraft/pkg/system"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
+	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 )
 
@@ -33,12 +33,12 @@ type RouteOption interface {
 
 // routeConfig holds the middleware and services injected via options.
 // Service interface types are defined in their respective sub-packages
-// (e.g. auth.Service, taskservice.Service) so each domain is self-contained.
+// (e.g. auth.Service, task.Service) so each domain is self-contained.
 type routeConfig struct {
 	jwtMiddleware          app.HandlerFunc
 	assetKeyMiddleware     app.HandlerFunc
 	authService            auth.Service
-	taskSvc                taskservice.Service
+	taskSvc                task.Service
 	alertSvc               alert.Service
 	channelSvc             channel.Service
 	remediationRuleSvc     remediation.Service
@@ -93,13 +93,13 @@ func WithAuthService(svc auth.Service) RouteOption { return authServiceOption{sv
 
 // taskServiceOption provides the Service implementation for scheduler handlers.
 type taskServiceOption struct {
-	svc taskservice.Service
+	svc task.Service
 }
 
 func (o taskServiceOption) apply(c *routeConfig) { c.taskSvc = o.svc }
 
 // WithTaskService provides the Service implementation for scheduler handlers.
-func WithTaskService(svc taskservice.Service) RouteOption { return taskServiceOption{svc: svc} }
+func WithTaskService(svc task.Service) RouteOption { return taskServiceOption{svc: svc} }
 
 // alertServiceOption provides the Service implementation for alert handlers.
 type alertServiceOption struct {

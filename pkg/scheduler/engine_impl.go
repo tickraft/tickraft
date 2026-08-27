@@ -27,7 +27,7 @@ const defaultWheelWorkerSize = 100
 // The engine holds no business state: it maps entry IDs to Schedules and
 // time-wheel EntryIDs, and reschedules automatically after each fire. All
 // business semantics (task lifecycle, dependency tracking, event-driven
-// triggers) are owned by the caller (e.g., task.Service).
+// triggers) are owned by the caller (e.g., task.Engine).
 type engine struct {
 	wheel  timewheel.Wheel
 	logger *zap.Logger

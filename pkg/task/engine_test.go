@@ -1221,8 +1221,8 @@ func TestTaskManagerRestorePublishesForShortIntervalTask(t *testing.T) {
 
 // mustNewManager creates a Service with default options, failing the test
 // on error. Used for in-memory tests that don't need a store or shard manager.
-func mustNewManager() *Service {
-	m, err := NewService(WithLogger(zap.NewNop()))
+func mustNewManager() *Engine {
+	m, err := NewEngine(WithLogger(zap.NewNop()))
 	if err != nil {
 		panic(fmt.Sprintf("NewService error: %v", err))
 	}
@@ -1231,13 +1231,13 @@ func mustNewManager() *Service {
 
 // newTestManager creates a Service for testing with an optional ShardManager.
 // If shardManager is nil, no sharding is applied (all tasks are owned).
-func newTestManager(tb testing.TB, shardManager *scheduler.ShardManager) *Service {
+func newTestManager(tb testing.TB, shardManager *scheduler.ShardManager) *Engine {
 	tb.Helper()
 	opts := []Option{WithLogger(zap.NewNop())}
 	if shardManager != nil {
 		opts = append(opts, WithShardManager(shardManager))
 	}
-	m, err := NewService(opts...)
+	m, err := NewEngine(opts...)
 	if err != nil {
 		tb.Fatalf("NewService error: %v", err)
 	}
@@ -1246,7 +1246,7 @@ func newTestManager(tb testing.TB, shardManager *scheduler.ShardManager) *Servic
 
 // newTestManagerWithStore creates a Service for testing with a Store
 // and an optional ShardManager. If shardManager is nil, no sharding is applied.
-func newTestManagerWithStore(tb testing.TB, store Store, shardManager *scheduler.ShardManager) *Service {
+func newTestManagerWithStore(tb testing.TB, store Store, shardManager *scheduler.ShardManager) *Engine {
 	tb.Helper()
 	opts := []Option{
 		WithLogger(zap.NewNop()),
@@ -1255,7 +1255,7 @@ func newTestManagerWithStore(tb testing.TB, store Store, shardManager *scheduler
 	if shardManager != nil {
 		opts = append(opts, WithShardManager(shardManager))
 	}
-	m, err := NewService(opts...)
+	m, err := NewEngine(opts...)
 	if err != nil {
 		tb.Fatalf("NewService error: %v", err)
 	}
@@ -1268,7 +1268,7 @@ func newTestManagerWithStore(tb testing.TB, store Store, shardManager *scheduler
 // with a large task set. The eventDrivenTasks index makes this O(event_tasks)
 // instead of a full scan with per-item lock acquisition.
 func BenchmarkTaskManagerStatusChangeHandler(b *testing.B) {
-	m, err := NewService(WithLogger(zap.NewNop()))
+	m, err := NewEngine(WithLogger(zap.NewNop()))
 	if err != nil {
 		b.Fatalf("NewService error: %v", err)
 	}

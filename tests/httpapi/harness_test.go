@@ -49,7 +49,6 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
 	systemsvc "github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
-	taskservice "github.com/tickraft/tickraft/pkg/task/service"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
 	"github.com/tickraft/tickraft/pkg/user"
@@ -76,7 +75,7 @@ type harness struct {
 	authz       *auth.Service
 	jwtMgr      *jwt.JWT
 	prismEngine *prism.Engine
-	schedEngine *task.Service
+	schedEngine *task.Engine
 	execRunner  executor.Runner
 	assetStore  asset.Store
 	workerBus   event.Bus
@@ -201,7 +200,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("start executor runner: %v", err)
 	}
 	execRunner.SubscribeEvents(ctx)
-	schedEngine, err := task.NewService(
+	schedEngine, err := task.NewEngine(
 		task.WithEventBus(workerBus), task.WithStore(taskStore), task.WithLogger(logger))
 	if err != nil {
 		t.Fatalf("create scheduler engine: %v", err)
@@ -281,7 +280,7 @@ func newHarness(t *testing.T) *harness {
 	srv := api.NewServer(cfg)
 
 	routeOpts := []router.RegisterOption{
-		router.WithTaskService(taskservice.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
+		router.WithTaskService(task.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
 		router.WithAlertService(alert.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
 		router.WithChannelService(channel.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
