@@ -573,5 +573,5 @@ onMounted(() => { void fetchData() })
   &__empty { padding: var(--tk-spacing-12); font-family: var(--tk-font-mono); font-size: var(--tk-font-size-sm); color: var(--tk-text-secondary); text-align: center; background: var(--tk-bg-surface); border: 1px solid var(--tk-border-color-base); border-radius: var(--tk-radius-md); }
 }
 
-@media (max-width: 960px) { .tk-metric-strip { grid-template-columns: repeat(2, 1fr); } .tk-descriptions { grid-template-columns: 1fr; } }
+@media (width <= 960px) { .tk-metric-strip { grid-template-columns: repeat(2, 1fr); } .tk-descriptions { grid-template-columns: 1fr; } }
 </style>

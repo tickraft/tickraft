@@ -9,7 +9,7 @@
  * Sidebar + header (collapse toggle + breadcrumb + theme switch + locale switch
  * + user dropdown) + content area.
  *
- * Architecture (aligned with docs/frontend/navigation-design.md §6):
+ * Architecture (aligned with):
  * - Base menus are injected via provide/inject (BASE_MENUS_KEY) to avoid
  *   circular dependency between core and features. App root provides baseMenus.
  * - extension injects extra menus via `extraMenus` prop.
@@ -87,7 +87,7 @@ interface BreadcrumbItem {
 
 const route = useRoute()
 const router = useRouter()
-const { t, te, locale } = useI18n()
+const { t } = useI18n()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
@@ -155,18 +155,6 @@ onBeforeUnmount(() => {
   }
 })
 
-/**
- * i18n translation with fallback.
- *
- * When the i18n key is not yet defined in the locale pack, returns the fallback text
- * for the current language, avoiding raw key strings in the UI. Once the features layer
- * fills in the key, the translation switches to the formal one automatically.
- */
-function tf(key: string, zhFallback: string, enFallback: string): string {
-  if (te(key)) return t(key)
-  return locale.value === 'en-US' ? enFallback : zhFallback
-}
-
 /** Theme preference → icon component map (light/dark/auto tri-state) */
 const themeIconMap: Record<ThemeMode, Component> = {
   light: ISunny,
@@ -187,21 +175,7 @@ const currentThemeIcon = computed<Component>(
 )
 
 /** Tooltip text for the current theme preference */
-const themeTooltip = computed(() =>
-  tf(
-    themeTooltipKeyMap[appStore.theme],
-    appStore.theme === 'light'
-      ? '明亮模式'
-      : appStore.theme === 'dark'
-        ? '暗黑模式'
-        : '跟随系统',
-    appStore.theme === 'light'
-      ? 'Light Mode'
-      : appStore.theme === 'dark'
-        ? 'Dark Mode'
-        : 'Follow System',
-  ),
-)
+const themeTooltip = computed(() => t(themeTooltipKeyMap[appStore.theme]))
 
 /** Display label of the current locale (looked up from availableLocales registry, falls back to code) */
 const currentLocaleLabel = computed(() => {
@@ -211,12 +185,12 @@ const currentLocaleLabel = computed(() => {
 
 /** Tooltip text for the locale switcher */
 const languageTooltip = computed(() =>
-  tf('common.language.switch', '切换语言', 'Switch Language'),
+  t('common.language.switch'),
 )
 
 /** Profile label text */
 const profileLabel = computed(() =>
-  tf('auth.user.profile', '个人资料', 'Profile'),
+  t('auth.user.profile'),
 )
 
 /** Injected base menus from app root (avoid circular core↔features dependency) */
@@ -231,7 +205,7 @@ const userFeatures = computed(() => {
 /**
  * All menus after merging base + extra, then filtering by feature flags.
  *
- * Aligned with docs/frontend/navigation-design.md §6:
+ * Aligned with:
  * - Base menus (from features via provide/inject) + extra menus (extension prop)
  * - filterMenusByFeature removes items without granted feature flags
  * - hidden items (detail/edit pages) are excluded from sidebar
@@ -357,7 +331,7 @@ async function handleLogout() {
       href="#main-content"
       class="tk-skip-link"
     >
-      {{ tf('common.skipToMainContent', '跳到主内容', 'Skip to main content') }}
+      {{ t('common.skipToMainContent') }}
     </a>
     <!-- Sidebar -->
     <el-aside
@@ -475,7 +449,7 @@ async function handleLogout() {
               type="button"
               aria-haspopup="dialog"
               :aria-expanded="mobileSidebarOpen"
-              :aria-label="tf('common.layout.sidebar.openMenu', '打开菜单', 'Open menu')"
+              :aria-label="t('common.layout.sidebar.openMenu')"
               @click="openMobileSidebar"
             >
               <el-icon>
@@ -487,7 +461,7 @@ async function handleLogout() {
               v-if="!isMobileViewport"
               class="tk-default-layout__collapse-btn"
               type="button"
-              :aria-label="sidebarCollapsed ? tf('common.layout.sidebar.expand', '展开侧边栏', 'Expand sidebar') : tf('common.layout.sidebar.collapse', '收起侧边栏', 'Collapse sidebar')"
+              :aria-label="sidebarCollapsed ? t('common.layout.sidebar.expand') : t('common.layout.sidebar.collapse')"
               @click="appStore.toggleSidebar"
             >
               <el-icon>
@@ -642,11 +616,11 @@ async function handleLogout() {
     >
       <div class="tk-default-layout__mobile-drawer-body">
         <div class="tk-default-layout__logo tk-default-layout__logo--mobile">
-      <LogoMark :size="32" />
-      <h1 class="tk-default-layout__title">
-        {{ t('common.app.title') }}
-      </h1>
-    </div>
+          <LogoMark :size="32" />
+          <h1 class="tk-default-layout__title">
+            {{ t('common.app.title') }}
+          </h1>
+        </div>
         <el-menu
           :default-active="activeMenu"
           :collapse="false"
@@ -1135,7 +1109,7 @@ async function handleLogout() {
   }
 }
 
-// Respect reduced-motion preference (docs §10.5)
+// Respect reduced-motion preference
 @media (prefers-reduced-motion: reduce) {
   .tk-sidebar-badge--animated {
     animation: none !important;
@@ -1152,7 +1126,7 @@ async function handleLogout() {
 // it only renders when isMobileViewport is true.
 
 // ===== Mobile responsive =====
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .tk-default-layout {
     &__header {
       padding: 0 var(--tk-spacing-md);

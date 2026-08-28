@@ -5,7 +5,7 @@ This guide takes you from a clean checkout to a running Tickraft instance with y
 ## Prerequisites
 
 - **Go** 1.26 or newer (to build the backend).
-- **Node.js** 18 or newer and **pnpm** 8 or newer (only if you want to run the frontend dev server).
+- **Node.js** 22 or newer and **pnpm** 9 or newer (to compile the embedded SPA; only needed for `make build`).
 - A SQLite-capable filesystem — SQLite is embedded, so no external database server is required.
 
 ## Step 1 — build the binary
@@ -13,10 +13,12 @@ This guide takes you from a clean checkout to a running Tickraft instance with y
 ```bash
 git clone https://github.com/tickraft/tickraft.git
 cd tickraft
-go build -o bin/tickraft ./cmd/tickraft
+make build
 ```
 
-The binary is written to `bin/tickraft`.
+The binary is written to `bin/tickraft`. `make build` first compiles the SPA with pnpm and embeds it into the binary, so the UI is served by the same process as the API.
+
+> Backend-only build: `go build -o bin/tickraft ./cmd/tickraft` skips the frontend toolchain, but the embedded SPA is then empty — the browser UI will not load, and the instance is API-only.
 
 ## Step 2 — prepare the configuration
 
@@ -66,7 +68,7 @@ Before a probe or a listener can report data, register the target as an asset.
 2. Click **Create**, fill in a name and an asset key (e.g. `web-1`), and save.
 3. Note the asset key — you will use it when reporting telemetry.
 
-![Asset list](./screenshots/collector-asset-list.png)
+![Asset list](./screenshots/telemetry-asset-list.png)
 
 ## Step 6 — create your first task
 
@@ -99,7 +101,7 @@ The dashboard rolls up asset status, task success rates, and recent alerts into 
 
 - **[User guide](./user-guide.md)** — a walkthrough of every screen in the web UI.
 - **[Configuration](./configuration.md)** — every configuration field explained.
-- **[Architecture](./architecture.md)** — how the scheduler, executor, and collector cooperate.
+- **[Architecture](./architecture.md)** — how the scheduler, executor, and telemetry cooperate.
 - **[Extension guide](./extension-guide.md)** — add custom executors, listeners, and channels.
 
 ## Troubleshooting

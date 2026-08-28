@@ -3,7 +3,7 @@
 // Dual-licensed — see details in LICENSE.
 
 /**
- * Expression → wizard reverse parsing (rule-engine-design §9.2).
+ * Expression → wizard reverse parsing.
  *
  * A restricted recursive-descent parser that accepts exactly the
  * subset the wizard can generate — flat condition rows joined by one

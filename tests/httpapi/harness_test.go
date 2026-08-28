@@ -68,17 +68,18 @@ const (
 // harness bundles the running server with the underlying stores so tests can
 // seed state directly when the API surface cannot (e.g. alert records).
 type harness struct {
-	t           *testing.T
-	baseURL     string
-	client      *http.Client
-	dbc         *gorm.DB
-	authz       *auth.Service
-	jwtMgr      *jwt.JWT
-	prismEngine *prism.Engine
-	schedEngine *task.Engine
-	execRunner  executor.Runner
-	assetStore  asset.Store
-	workerBus   event.Bus
+	t              *testing.T
+	baseURL        string
+	client         *http.Client
+	dbc            *gorm.DB
+	authz          *auth.Service
+	jwtMgr         *jwt.JWT
+	prismEngine    *prism.Engine
+	schedEngine    *task.Engine
+	execRunner     executor.Runner
+	reportConsumer *task.ReportConsumer
+	assetStore     asset.Store
+	workerBus      event.Bus
 }
 
 var h *harness
@@ -195,6 +196,8 @@ func newHarness(t *testing.T) *harness {
 			tasks:  task.NewExecutionRecordStore(execStore),
 			probes: probeStore,
 		}),
+		// Mode A dispatch rows, mirroring the production worker wiring.
+		executor.WithDispatchStore(task.NewDispatchStore(dbc)),
 	)
 	if err != nil {
 		t.Fatalf("create executor runner: %v", err)
@@ -204,11 +207,21 @@ func newHarness(t *testing.T) *harness {
 	}
 	execRunner.SubscribeEvents(ctx)
 	schedEngine, err := task.NewEngine(
-		task.WithEventBus(workerBus), task.WithStore(taskStore), task.WithLogger(logger))
+		task.WithEventBus(workerBus), task.WithStore(taskStore), task.WithLogger(logger),
+		// Sweeper: reaps stale Mode A running rows (miss-report fallback).
+		task.WithExecutionStore(execStore),
+	)
 	if err != nil {
 		t.Fatalf("create scheduler engine: %v", err)
 	}
 	schedEngine.SubscribeEvents(ctx)
+
+	// Mode A report consumer: binds remote task status reports bridged from
+	// the telemetry listener onto the bus to execution rows.
+	reportConsumer := task.NewReportConsumer(workerBus, dbc, logger)
+	if err := reportConsumer.Start(ctx); err != nil {
+		t.Fatalf("start report consumer: %v", err)
+	}
 
 	// Prism engine (creates and migrates its rule/record/channel/remediation
 	// stores itself). Start() is skipped: the CRUD surface under test does not
@@ -252,10 +265,17 @@ func newHarness(t *testing.T) *harness {
 	templateHandler := telemetryhandler.NewTemplateHandler(
 		telemetry.NewTemplateStore(dbc), telemetrySrv)
 
-	// Telemetry report handler with a no-op ingest.
+	// Telemetry report handler with a no-op ingest. Task status reports are
+	// bridged onto the worker bus for the report consumer, mirroring the
+	// production api.go wiring.
 	webhookListener := telemetryhttp.New(
 		telemetryhttp.WithStore(assetStore),
 		telemetryhttp.WithIngest(func(context.Context, *telemetry.Telemetry) {}),
+		telemetryhttp.WithTaskReport(func(ctx context.Context, r *telemetry.TaskReport) {
+			if err := telemetry.PublishTaskReport(ctx, workerBus, r); err != nil {
+				logger.Warn("publish task status report failed", zap.Error(err))
+			}
+		}),
 		telemetryhttp.WithLogger(logger),
 	)
 	reportHandler := telemetryhandler.WithReportAudit(
@@ -310,17 +330,18 @@ func newHarness(t *testing.T) *harness {
 	go func() { _ = srv.Start() }()
 
 	h = &harness{
-		t:           t,
-		baseURL:     "http://" + addr,
-		client:      &http.Client{Timeout: 10 * time.Second},
-		dbc:         dbc,
-		authz:       authz,
-		jwtMgr:      jwtMgr,
-		prismEngine: prismEngine,
-		schedEngine: schedEngine,
-		execRunner:  execRunner,
-		assetStore:  assetStore,
-		workerBus:   workerBus,
+		t:              t,
+		baseURL:        "http://" + addr,
+		client:         &http.Client{Timeout: 10 * time.Second},
+		dbc:            dbc,
+		authz:          authz,
+		jwtMgr:         jwtMgr,
+		prismEngine:    prismEngine,
+		schedEngine:    schedEngine,
+		execRunner:     execRunner,
+		reportConsumer: reportConsumer,
+		assetStore:     assetStore,
+		workerBus:      workerBus,
 	}
 	waitHealthy(t, h.baseURL)
 	return h
@@ -329,6 +350,7 @@ func newHarness(t *testing.T) *harness {
 func (hs *harness) shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), maintenanceAdmin)
 	defer cancel()
+	hs.reportConsumer.Stop()
 	_ = hs.schedEngine.Stop(ctx)
 	_ = hs.execRunner.Stop(ctx)
 	hs.authz.Close()

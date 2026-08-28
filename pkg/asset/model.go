@@ -7,6 +7,8 @@ package asset
 import (
 	"time"
 
+	"github.com/bytedance/sonic"
+
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -54,4 +56,22 @@ var BuiltInMetadataKeys = []string{
 	"owner",         // Person or team responsible for the asset
 	"priority",      // Priority level of the asset
 	"environment",   // Deployment environment (e.g., production, staging)
+}
+
+// TagsFromMetadata decodes an asset's JSON metadata blob into a string
+// map. Malformed or empty metadata yields an empty map so rule
+// expressions reading tags from such assets evaluate to "" rather than
+// failing.
+func TagsFromMetadata(raw string) map[string]string {
+	tags := map[string]string{}
+	if raw == "" {
+		return tags
+	}
+	// Best-effort decode: a non-object or malformed blob leaves the
+	// map empty, which rules read as "no tags".
+	_ = sonic.Unmarshal([]byte(raw), &tags)
+	if tags == nil {
+		return map[string]string{}
+	}
+	return tags
 }

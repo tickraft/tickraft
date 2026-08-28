@@ -43,7 +43,6 @@ interface FeatureGuardEmits {
 }
 
 const props = withDefaults(defineProps<FeatureGuardProps>(), {
-  feature: '',
   badge: null,
   locked: undefined,
 })
@@ -138,7 +137,7 @@ function handleUpgrade() {
   /* Use the themed mask token — a dark scrim in both light and dark themes,
      so the light overlay text below stays readable either way */
   // Fallback for browsers without custom-property support
-  background: rgba(10 14 26 / 55%);
+  background: rgb(10 14 26 / 55%);
   background: var(--tk-bg-mask);
   border-radius: inherit;
   transition: background var(--tk-transition-base);
@@ -151,6 +150,7 @@ function handleUpgrade() {
 
 .tk-feature-guard__lock-icon {
   font-size: 28px;
+
   // White in both themes — it sits on the dark mask scrim above
   color: var(--tk-text-on-primary);
 }
@@ -174,6 +174,7 @@ function handleUpgrade() {
   font-size: 10px;
   font-weight: var(--tk-font-weight-medium);
   line-height: 1.4;
+
   // White in both themes: tier badges sit on saturated accent/primary chips
   color: var(--tk-text-on-accent);
   text-transform: uppercase;

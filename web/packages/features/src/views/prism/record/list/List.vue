@@ -231,14 +231,14 @@ onMounted(() => {
         >
           <span class="tk-prism-record-list__summary-dot" />
 
-    <SearchForm
-      v-model="searchModel"
-      :fields="searchFields"
-      :loading="loading"
-      :show-collapse="false"
-      @search="handleSearch"
-      @reset="handleResetSearch"
-    />
+          <SearchForm
+            v-model="searchModel"
+            :fields="searchFields"
+            :loading="loading"
+            :show-collapse="false"
+            @search="handleSearch"
+            @reset="handleResetSearch"
+          />
           <span class="tk-prism-record-list__summary-label">
             {{ t('prism.record.list.summaryFiring') }}
           </span>
@@ -302,7 +302,10 @@ onMounted(() => {
           :resizable="false"
         >
           <template #default="{ row }">
-            <div class="tk-record-actions" @click.stop>
+            <div
+              class="tk-record-actions"
+              @click.stop
+            >
               <el-button
                 v-if="(row as AlertRecord).status === 'firing'"
                 link

@@ -203,7 +203,7 @@ func TestExecuteExpectStatus(t *testing.T) {
 }
 
 // TestExecuteMetrics verifies the observability metrics aligned with the
-// http executor: response_ms, status_code, and content_length on success.
+// http executor: rtt_ms, status_code, and content_length on success.
 func TestExecuteMetrics(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -226,7 +226,7 @@ func TestExecuteMetrics(t *testing.T) {
 	if got := result.Metrics["content_length"]; got != float64(len("hello")) {
 		t.Errorf("Metrics content_length: got %v, want %d", got, len("hello"))
 	}
-	if _, ok := result.Metrics["response_ms"]; !ok {
-		t.Error("Metrics response_ms missing")
+	if _, ok := result.Metrics["rtt_ms"]; !ok {
+		t.Error("Metrics rtt_ms missing")
 	}
 }

@@ -585,7 +585,7 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
 }
 
 // ---- Responsive ----
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .tk-settings__row {
     grid-template-columns: 1fr;
     gap: var(--tk-spacing-sm);

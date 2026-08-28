@@ -497,5 +497,5 @@ onMounted(() => { void fetchData() })
   background-image: linear-gradient(var(--tk-primary-color-bg), var(--tk-primary-color-bg)) !important;
 }
 
-@media (max-width: 960px) { .tk-log-summary { grid-template-columns: repeat(2, 1fr); } }
+@media (width <= 960px) { .tk-log-summary { grid-template-columns: repeat(2, 1fr); } }
 </style>

@@ -292,4 +292,10 @@ func (m *Engine) handleTimeout(ctx context.Context, assetID int64) {
 			zap.Error(err),
 		)
 	}
+
+	// The processor may have transitioned the stored status out-of-band
+	// (e.g. to offline). Refresh the cached status from the store so the
+	// next report computes its transition against the persisted value
+	// instead of a stale one.
+	m.state.SyncStatus(ctx, assetID)
 }

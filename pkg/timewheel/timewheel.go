@@ -47,11 +47,6 @@ type Wheel interface {
 	// Remove removes an entry by ID. No-op if not found.
 	Remove(id EntryID)
 
-	// Renew resets the expiration timer for an entry.
-	// It removes the old entry and re-adds it with the new duration.
-	// Returns the new entry ID.
-	Renew(id EntryID, duration time.Duration) EntryID
-
 	// Start begins the time wheel tick loop.
 	// Blocks until the context is cancelled or Stop is called.
 	Start(ctx context.Context)

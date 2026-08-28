@@ -170,3 +170,10 @@
 - `pkg/api/service` 目录删除;双仓 ~25 文件 import 更新(x 副本暂存活,批次 B 删)。
 
 **验证**:CE `go build/vet/test ./...` 全绿、golangci 0 告警、tests/httpapi 全量(-count=1,34.7s)通过;x build/vet/test 全绿、golangci default+saas 双标签 0 告警。已知遗留反向依赖一处(`pkg/telemetry/http` → `pkg/api/httputil`),随 httputil 收敛批次处理。
+
+### 7.8 勘误注记(2026-08-28,事后复核)
+
+审计记录保留原文,不回改历史;以下两处记载与后续代码状态不再一致,以本节为准:
+
+- **§7.4「已删除死导出」部分失真**:批次 3 删除的 8 个前端 API 导出中,`getBuiltinTemplates`、`getChannel`、`probeAsset`、`updateProfile`、`healthCheck` 5 个已在后续批次(模板应用、渠道测试、资产探测/状态、profile 页面接线)重新出现并拥有真实消费者,不再是死导出。`createTemplate/updateTemplate/getTemplate` 与 `ExecutorType` 死成员的删除仍然成立。
+- **§7.7「已知遗留反向依赖」已消除**:`pkg/telemetry/http` → `pkg/api/httputil` 的引用已随 httputil 收敛批次(服务下沉,`pkg/api/router` 组合根)移除,该遗留项不复存在。

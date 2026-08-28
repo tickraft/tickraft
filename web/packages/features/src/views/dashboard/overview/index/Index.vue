@@ -1163,7 +1163,7 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 }
 
 // Responsive
-@media (max-width: 1199px) {
+@media (width <= 1199px) {
   .tk-dash-card--stat { grid-column: span 6; }
   .tk-dash-card--trend { grid-column: span 12; }
   .tk-dash-card--donut { grid-column: span 12; }
@@ -1173,7 +1173,7 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 }
 
 // Mid-range: let the toolbar wrap onto its own row below the heading.
-@media (max-width: 879px) {
+@media (width <= 879px) {
   .tk-dash__header {
     align-items: flex-start;
   }
@@ -1184,7 +1184,7 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
   }
 }
 
-@media (max-width: 639px) {
+@media (width <= 639px) {
   .tk-dash-card--stat { grid-column: span 12; }
   .tk-dash-actions { grid-template-columns: 1fr; }
   .tk-dash-health { grid-template-columns: 1fr; }

@@ -37,7 +37,7 @@ Tickraft 采用"开源内核 + 下游扩展"的布局：
 |---|-----------------|------------------|-------------------------------------------------|------------------------------------------------|
 | 1 | Executor        | `pkg/executor`   | `Registry.Register`                             | 自定义任务 executor（例如 SSH、MySQL）。       |
 | 2 | Channel         | `pkg/prism/channel` | `channel.Register`                           | 自定义告警通知渠道。                            |
-| 3 | Collector       | `pkg/collector`  | `ListenerRegistry.Register` / `ProcessorRegistry.Register` | 被动 listener 与数据 processor。 |
+| 3 | Telemetry       | `pkg/telemetry`  | `ListenerRegistry.Register` / `ProcessorRegistry.Register` | 被动 listener 与数据 processor。 |
 | 4 | API plugin      | `pkg/api`        | `Server.RegisterPlugin`                         | 自定义路由、中间件、生命周期钩子。              |
 | 5 | CLI subcommand  | `pkg/cli`        | `cli.RegisterCmd`                               | 自定义 CLI 子命令。                             |
 | 6 | Storage driver  | `pkg/db`         | `db.Register`                                   | 自定义数据库驱动。                              |
@@ -95,18 +95,18 @@ channel.Register("slack", factory)
 
 ---
 
-## Collector 扩展
+## Telemetry 扩展
 
 注入被动 listener（例如 Syslog、SNMP trap、MQTT）与数据 processor。开源版内置 HTTP listener 与设备/任务 processor。
 
-**内核包**：`pkg/collector` · **注册方式**：`ListenerRegistry.Register` / `ProcessorRegistry.Register`
+**内核包**：`pkg/telemetry` · **注册方式**：`ListenerRegistry.Register` / `ProcessorRegistry.Register`
 
-`Listener`（`Type()`、`Start()`、`Stop()`）接收外部数据并转发给接收回调。`Processor`（`Type()`、`Process()`、`OnTimeout()`）处理特定的资产类型。`Type()` 重复注册会返回错误。registry 由 collector manager 构造并注入到下游仓库。
+`Listener`（`Type()`、`Start()`、`Stop()`）接收外部数据并转发给接收回调。`Processor`（`Type()`、`Process()`、`OnTimeout()`）处理特定的资产类型。`Type()` 重复注册会返回错误。registry 由 telemetry manager 构造并注入到下游仓库。
 
 ```go
 type SyslogListener struct{}
 func (l *SyslogListener) Type() string { return "syslog" }
-func (l *SyslogListener) Start(ctx context.Context, ingest func(context.Context, *collector.Report)) error {
+func (l *SyslogListener) Start(ctx context.Context, ingest func(context.Context, *telemetry.Telemetry)) error {
     // start syslog server, call ingest(ctx, &report) for each message
     return nil
 }
@@ -198,7 +198,7 @@ db.Register("oracle", Opener)
 2. **鉴权扩展** — 使鉴权服务与权限中间件在 API 启动时能感知到下游 provider。
 3. **Channel factory** — 使 `LoadChannels` 在配置加载阶段能找到它们。
 4. **Executor** — 使 runner 能够调度扩展的任务类型。
-5. **Collector listener / processor** — 使 collector manager 能够启动它们。
+5. **Telemetry listener / processor** — 使 telemetry manager 能够启动它们。
 6. **CLI 子命令** — 在根命令构造之前。
 7. **API plugin** — 在 `Server.Start()` 之前，以便路由与钩子就位。
 

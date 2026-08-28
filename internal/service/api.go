@@ -399,10 +399,22 @@ func newTelemetryRouteOptions(
 	ingest := func(_ context.Context, t *telemetry.Telemetry) {
 		rt.telemetryCollector.Submit(t)
 	}
+	// Task status reports bypass the ingest pipeline: the listener hands
+	// them to this callback, which publishes them on the event bus for the
+	// task domain's report consumer (Mode A remote status reporting).
+	taskReports := func(ctx context.Context, r *telemetry.TaskReport) {
+		if err := telemetry.PublishTaskReport(ctx, rt.eventBus(), r); err != nil {
+			rt.logger.Warn("publish task status report failed",
+				zap.String("task_ref", r.TaskRef),
+				zap.Error(err),
+			)
+		}
+	}
 	webhookListener := http.New(
 		http.WithStore(rt.assetStore),
 		http.WithSecretRegistry(secretRegistry),
 		http.WithIngest(ingest),
+		http.WithTaskReport(taskReports),
 		http.WithLogger(rt.logger),
 	)
 	reportHandler := telemetryhandler.WithReportAudit(

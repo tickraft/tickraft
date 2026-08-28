@@ -82,18 +82,18 @@ func (h *Handler) SetProbeRecordStore(store ProbeRecordStore) {
 	h.probeRecords = store
 }
 
-// ListTelemetry handles GET /api/v1/telemetry/monitors. It returns a page
+// ListMonitors handles GET /api/v1/telemetry/monitors. It returns a page
 // of telemetry monitoring points ordered by ascending ID. The optional mode
 // query parameter filters by monitoring mode: "active" (probed by
 // ProberService), "passive" (receives via listener), or omitted/empty for
 // all modes.
-func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
+func (h *Handler) ListMonitors(ctx context.Context, arc *app.RequestContext) {
 	page, size, ok := httputil.ParsePaging(arc)
 	if !ok {
 		return
 	}
 	filter := telemetry.Filter{Mode: arc.Query("mode")}
-	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
+	items, total, err := h.svc.ListMonitors(ctx, page, size, filter)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -101,22 +101,22 @@ func (h *Handler) ListTelemetry(ctx context.Context, arc *app.RequestContext) {
 	httputil.SuccessPage(arc, items, total, page, size)
 }
 
-// GetTelemetry handles GET /api/v1/telemetry/:id.
-func (h *Handler) GetTelemetry(ctx context.Context, arc *app.RequestContext) {
+// GetMonitor handles GET /api/v1/telemetry/monitors/:id.
+func (h *Handler) GetMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
 	}
-	httputil.Success(arc, task)
+	httputil.Success(arc, point)
 }
 
-// CreateTelemetry handles POST /api/v1/telemetry.
-func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) {
+// CreateMonitor handles POST /api/v1/telemetry/monitors.
+func (h *Handler) CreateMonitor(ctx context.Context, arc *app.RequestContext) {
 	var req telemetry.MonitorPoint
 	if !httputil.BindAndValidate(arc, &req) {
 		return
@@ -135,7 +135,7 @@ func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) 
 			"description exceeds maximum length of 1024 characters")
 		return
 	}
-	created, err := h.svc.CreateTask(ctx, &req)
+	created, err := h.svc.CreateMonitor(ctx, &req)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -143,8 +143,8 @@ func (h *Handler) CreateTelemetry(ctx context.Context, arc *app.RequestContext) 
 	httputil.Success(arc, created)
 }
 
-// UpdateTelemetry handles PUT /api/v1/telemetry/:id.
-func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) {
+// UpdateMonitor handles PUT /api/v1/telemetry/monitors/:id.
+func (h *Handler) UpdateMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
@@ -164,7 +164,7 @@ func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) 
 		return
 	}
 	req.ID = id
-	updated, err := h.svc.UpdateTask(ctx, id, &req)
+	updated, err := h.svc.UpdateMonitor(ctx, id, &req)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -172,13 +172,13 @@ func (h *Handler) UpdateTelemetry(ctx context.Context, arc *app.RequestContext) 
 	httputil.Success(arc, updated)
 }
 
-// DeleteTelemetry handles DELETE /api/v1/telemetry/:id.
-func (h *Handler) DeleteTelemetry(ctx context.Context, arc *app.RequestContext) {
+// DeleteMonitor handles DELETE /api/v1/telemetry/monitors/:id.
+func (h *Handler) DeleteMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteTask(ctx, id); err != nil {
+	if err := h.svc.DeleteMonitor(ctx, id); err != nil {
 		httputil.Fail(arc, err)
 		return
 	}
@@ -186,7 +186,7 @@ func (h *Handler) DeleteTelemetry(ctx context.Context, arc *app.RequestContext) 
 }
 
 // monitorStatus is the response for the monitoring point status endpoint. It
-// reports the task's enabled state, a derived health status, and — for
+// reports the point's enabled state, a derived health status, and — for
 // active points with probe history — the latest probe timing and latency.
 type monitorStatus struct {
 	ID          int64      `json:"id"`
@@ -233,7 +233,7 @@ func (h *Handler) monitorStatusResponse(ctx context.Context, point *telemetry.Mo
 }
 
 // GetMonitorStatus handles GET /api/v1/telemetry/monitors/:id/status. It
-// loads the telemetry task and returns its enabled state and status. Active
+// loads the telemetry point and returns its enabled state and status. Active
 // points report the probe-maintained runtime status plus the latest probe
 // timing and latency.
 func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext) {
@@ -241,12 +241,12 @@ func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext)
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
 	}
-	resp, err := h.monitorStatusResponse(ctx, task)
+	resp, err := h.monitorStatusResponse(ctx, point)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -255,7 +255,7 @@ func (h *Handler) GetMonitorStatus(ctx context.Context, arc *app.RequestContext)
 }
 
 // monitorHistoryEntry represents a single historical data point for a
-// monitoring task.
+// monitoring point.
 type monitorHistoryEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     any       `json:"value"`
@@ -277,7 +277,7 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -293,9 +293,9 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 	start := end.AddDate(0, 0, -7) // last 7 days
 
 	switch {
-	case task.IsActive() && h.probeRecords != nil:
+	case point.IsActive() && h.probeRecords != nil:
 		records, count, qErr := h.probeRecords.QueryByPoint(ctx, telemetry.ProbeQuery{
-			PointID: task.ID,
+			PointID: point.ID,
 			Start:   start,
 			End:     end,
 			Page:    page,
@@ -314,9 +314,9 @@ func (h *Handler) GetMonitorHistory(ctx context.Context, arc *app.RequestContext
 				Metric:    "latency_ms",
 			})
 		}
-	case h.metricStore != nil && task.AssetID > 0:
+	case h.metricStore != nil && point.AssetID > 0:
 		metrics, count, qErr := h.metricStore.QueryMetrics(ctx, telemetry.MetricQuery{
-			AssetID: task.AssetID,
+			AssetID: point.AssetID,
 			Start:   start,
 			End:     end,
 			Page:    page,
@@ -362,7 +362,7 @@ func (h *Handler) ProbeMonitor(ctx context.Context, arc *app.RequestContext) {
 	httputil.SuccessAccepted(arc, resp)
 }
 
-// monitorLogEntry represents a single log line for a monitoring task.
+// monitorLogEntry represents a single log line for a monitoring point.
 type monitorLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Level     string    `json:"level"`
@@ -379,7 +379,7 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -395,9 +395,9 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 	start := end.AddDate(0, 0, -7) // last 7 days
 
 	switch {
-	case task.IsActive() && h.probeRecords != nil:
+	case point.IsActive() && h.probeRecords != nil:
 		records, count, qErr := h.probeRecords.QueryByPoint(ctx, telemetry.ProbeQuery{
-			PointID: task.ID,
+			PointID: point.ID,
 			Start:   start,
 			End:     end,
 			Page:    page,
@@ -419,9 +419,9 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 				Message:   message,
 			})
 		}
-	case h.logStore != nil && task.AssetID > 0:
+	case h.logStore != nil && point.AssetID > 0:
 		entries, count, qErr := h.logStore.QueryLogs(ctx, telemetry.LogQuery{
-			AssetID: task.AssetID,
+			AssetID: point.AssetID,
 			Start:   start,
 			End:     end,
 			Page:    page,
@@ -445,19 +445,19 @@ func (h *Handler) GetMonitorLogs(ctx context.Context, arc *app.RequestContext) {
 }
 
 // EnableMonitor handles PUT /api/v1/telemetry/monitors/:id/enable. It
-// loads the telemetry task, sets Enabled=true, and persists the update.
+// loads the telemetry point, sets Enabled=true, and persists the update.
 func (h *Handler) EnableMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
 	}
-	task.Enabled = true
-	updated, err := h.svc.UpdateTask(ctx, id, task)
+	point.Enabled = true
+	updated, err := h.svc.UpdateMonitor(ctx, id, point)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
@@ -466,19 +466,19 @@ func (h *Handler) EnableMonitor(ctx context.Context, arc *app.RequestContext) {
 }
 
 // DisableMonitor handles PUT /api/v1/telemetry/monitors/:id/disable. It
-// loads the telemetry task, sets Enabled=false, and persists the update.
+// loads the telemetry point, sets Enabled=false, and persists the update.
 func (h *Handler) DisableMonitor(ctx context.Context, arc *app.RequestContext) {
 	id, ok := httputil.ParseID(arc)
 	if !ok {
 		return
 	}
-	task, err := h.svc.GetTask(ctx, id)
+	point, err := h.svc.GetMonitor(ctx, id)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return
 	}
-	task.Enabled = false
-	updated, err := h.svc.UpdateTask(ctx, id, task)
+	point.Enabled = false
+	updated, err := h.svc.UpdateMonitor(ctx, id, point)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return

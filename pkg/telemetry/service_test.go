@@ -110,8 +110,8 @@ func TestProbeNowWithoutTriggerIsUnavailable(t *testing.T) {
 func TestProbeNowUnknownPoint(t *testing.T) {
 	svc, _ := newProbeTestService(t)
 	_, err := svc.ProbeNow(context.Background(), 999)
-	if !errors.Is(err, ErrTelemetryTaskNotFound) {
-		t.Fatalf("ProbeNow unknown: got %v, want ErrTelemetryTaskNotFound", err)
+	if !errors.Is(err, ErrMonitorNotFound) {
+		t.Fatalf("ProbeNow unknown: got %v, want ErrMonitorNotFound", err)
 	}
 }
 

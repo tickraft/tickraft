@@ -1,8 +1,8 @@
-# Version: V2.1 | Updated: 2026-06-29 | Status: active
+# Version: 2.0.0 | Updated: 2026-08-28 | Status: active
 #
 # Tickraft open-source repository OpenAPI specification
 # - Includes only routes actually registered in the open-source repository
-#   (pkg/api/handler/routes.go + pkg/collector/http/listener.go)
+#   (pkg/api/handler/routes.go + pkg/telemetry/http/listener.go)
 # - Excludes extension-repository routes (/admin/*, /channels/*, etc.)
 # - Path prefix is uniformly /api/v1/ (healthz is a cluster-level probe and
 #   retains the root path)
@@ -15,24 +15,22 @@ info:
 
     ## Base Information
     - Base path: `/api/v1`
-    - Default ports: API server `6153`, Telemetry report endpoint `6253`
-    - Unified response format: `{ "code": int, "msg": string, "data": object }`
+    - Default port: API server `6153` (single-port mode; the telemetry report endpoint shares the same port under `/api/v1/telemetry`)
+    - Unified response format: `{ "code": int, "message": string, "data": object }`
     - Paginated response `data` structure: `{ "items": array, "total": int, "page": int, "size": int }`
 
     ## Authentication Schemes
     - **JWT Bearer**: default authentication for business endpoints, transmitted via `Authorization: Bearer {access_token}`
     - **HMAC Signature**: enabled for the Telemetry report endpoints when a secret is configured; the HMAC-SHA256 hex digest of the request body is sent via the `X-Tickraft-Signature` header
     - **Asset Key**: enabled for the Telemetry report endpoints when no secret is configured; the asset key is sent via the `X-Tickraft-Asset-Key` header
-    - **API Key**: transmitted via the `X-API-Key` header, used for server-to-server calls (reserved in the open-source edition)
+    - **API Key**: transmitted via the `X-Tickraft-API-Key` header, used for server-to-server calls (reserved in the open-source edition)
 
     ## Common Request Headers
     - `X-Tickraft-Request-Id`: request tracing identifier; clients are encouraged to generate and send it, and the server will pass it through or auto-generate one
 
 servers:
   - url: http://localhost:6153
-    description: Local development environment (API server)
-  - url: http://localhost:6253
-    description: Local development environment (Telemetry report endpoint)
+    description: Local development environment
 
 tags:
   - name: auth
@@ -47,6 +45,16 @@ tags:
     description: "Telemetry module: collection tasks and state reports"
   - name: alert
     description: "Alert center module: manage alert rules and alert records"
+  - name: channel
+    description: "Notification channel module: manage delivery channels (registered when a ChannelService is injected)"
+  - name: remediation
+    description: "Remediation module: manage remediation rules and dispatch records (registered when a RemediationRuleService is injected)"
+  - name: expr
+    description: "Expression validation endpoint for the rule editors"
+  - name: i18n
+    description: "Internationalization: locale listing"
+  - name: realtime
+    description: "Realtime push: WebSocket endpoint"
   - name: system
     description: "System settings module: manage global configuration and runtime information"
   - name: meta
@@ -84,6 +92,38 @@ paths:
                           status:
                             type: string
                             example: ok
+        '503':
+          $ref: '#/components/responses/InternalServerError'
+
+  /readyz:
+    get:
+      tags: [meta]
+      summary: Cluster readiness probe
+      description: |
+        Cluster-level readiness check, independent of the business
+        authentication system. Probes registered dependencies (DB, cache) in
+        parallel with a per-check timeout and returns 503 when any dependency
+        is down, so a load balancer can route traffic away from a not-yet-ready
+        instance. With no concrete checks injected, the default stub returns
+        200 without checks.
+      operationId: readyz
+      security: []
+      responses:
+        '200':
+          description: Instance ready
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            example: ready
         '503':
           $ref: '#/components/responses/InternalServerError'
 
@@ -674,6 +714,35 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/executors:
+    get:
+      tags: [task]
+      summary: List executable executor types
+      description: |
+        Returns the display metadata of every registered executor that
+        supports execute semantics (any write capability: local scripts,
+        webhooks, ...). The list reflects the runtime's executor registry,
+        so extension builds surface their plugin executors here.
+      operationId: listExecutors
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExecutorType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ---------------------------------------------------------------------------
   # Asset - Asset module (monitored assets)
   # ---------------------------------------------------------------------------
@@ -818,21 +887,511 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/assets/{id}/status:
+    put:
+      tags: [asset]
+      summary: Update asset status
+      description: |
+        Sets the manual status of an asset. Accepted values mirror the
+        asset status constants (normal, abnormal, offline, unknown);
+        off-vocabulary statuses are rejected with 400.
+      operationId: updateAssetStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetStatusRequest'
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Asset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/assets/{id}/probe:
+    post:
+      tags: [asset]
+      summary: Probe asset
+      description: |
+        Loads the asset and returns its current status as a probe result.
+        The default implementation performs a lightweight status read; the
+        assembly layer can override this to dispatch a real probe through
+        the executor/telemetry pipeline.
+      operationId: probeAsset
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Probe completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AssetProbeResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # ---------------------------------------------------------------------------
   # Telemetry - Telemetry module (collection tasks and state reports)
   # ---------------------------------------------------------------------------
   /api/v1/telemetry:
+    post:
+      tags: [telemetry]
+      summary: Unified telemetry report endpoint
+      description: |
+        Receives telemetry through a single endpoint; the `kind` field
+        discriminates the payload and selects the size limit (heartbeat 1 KiB /
+        metrics 64 KiB / logs 1 MiB / task_status 16 KiB).
+
+        The `task_status` kind carries a single execution outcome
+        (running/completed/failed/timeout) keyed by the required `task_ref`
+        credential: a 32-hex run handle (delivered to the remote via the
+        X-Tickraft-Task-Ref dispatch header or the {{task_ref}} template)
+        binds the exact dispatch row in any status; a pure decimal task
+        number falls back to the task's latest running execution and, on
+        miss, inserts a trigger_type=external row carrying the reporter's
+        original ref. Off-vocabulary statuses are rejected with 400 at the
+        edge. Reports authenticate with the listener's existing auth (HMAC
+        or asset key). Reports are validated and applied to sys_schedule_log
+        by the in-process report consumer; missing-report executions are
+        reaped as `timeout` by the scheduler sweep.
+
+        Authentication: per-point or global HMAC (X-Tickraft-Signature header,
+        hex HMAC-SHA256 of the raw body) or asset identity resolution
+        (asset_id, or asset_key + tenant_id).
+      operationId: reportTelemetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  description: Telemetry data category
+                  enum: [heartbeat, metrics, logs, task_status]
+                asset_id:
+                  type: integer
+                  format: int64
+                  description: Reporting asset id (takes precedence over asset_key)
+                asset_key:
+                  type: string
+                  description: Reporting asset key (resolved together with tenant_id)
+                tenant_id:
+                  type: integer
+                  format: int64
+                  description: Tenant id used with asset_key lookup
+                status:
+                  type: string
+                  description: |
+                    Pre-judged status string; for task_status this is the
+                    reported execution status (running/completed/failed/
+                    timeout; off-vocabulary values are rejected with 400)
+                task_ref:
+                  type: string
+                  description: Required for task_status; the report
+                    credential. A 32-hex run handle binds the exact dispatch
+                    row; a pure decimal task number falls back to the task's
+                    latest running execution (external row inserted on miss)
+                started_at:
+                  type: string
+                  format: date-time
+                  description: Task execution start time (task_status)
+                finished_at:
+                  type: string
+                  format: date-time
+                  description: Task execution finish time (task_status)
+                output:
+                  type: string
+                  description: Task execution output (task_status)
+                error:
+                  type: string
+                  description: Task execution error message (task_status)
+                reason:
+                  type: string
+                  description: Transition reason (task kinds)
+                metrics:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  description: Numeric metrics (metrics kind)
+                log_content:
+                  type: string
+                  description: Log content (logs kind)
+                log_level:
+                  type: string
+                  description: Log severity, defaults to INFO (logs kind)
+      responses:
+        '202':
+          description: Report accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Request body exceeds the per-kind size limit
+        '429':
+          description: Daily event quota exceeded
+
+  /api/v1/telemetry/monitors:
     get:
       tags: [telemetry]
-      summary: Paginated list of collection tasks
+      summary: Paginated list of monitoring points
       description: |
-        Returns a paginated list of telemetry collection tasks.
-        Each task defines a target asset and a collection schedule that
-        drives periodic probing or passive receiving.
-      operationId: listTelemetryTasks
+        Returns a paginated list of telemetry monitoring points ordered by
+        ascending ID. The optional `mode` query parameter filters by
+        monitoring mode (`active` for probed points, `passive` for points
+        that receive pushed data); omitted returns all modes.
+      operationId: listMonitors
       security:
         - BearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+        - name: mode
+          in: query
+          required: false
+          description: Filter by monitoring mode
+          schema:
+            type: string
+            enum: [active, passive]
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [telemetry]
+      summary: Create a monitoring point
+      description: |
+        Creates a telemetry monitoring point. Active points probe the target
+        on a schedule; passive points receive data pushed via the report
+        endpoint.
+      operationId: createMonitor
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorCreateRequest'
+      responses:
+        '200':
+          description: Created monitoring point
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Active prober quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/telemetry/monitors/summary:
+    get:
+      tags: [telemetry]
+      summary: Aggregate monitoring point counts
+      description: |
+        Returns aggregate monitor point counts (active/passive and
+        enabled/disabled) computed over the full dataset, so summary chips
+        stay correct regardless of pagination.
+      operationId: getMonitorSummary
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/telemetry/monitors/{id}:
+    get:
+      tags: [telemetry]
+      summary: Query a single monitoring point
+      operationId: getMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [telemetry]
+      summary: Update a monitoring point
+      operationId: updateMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorCreateRequest'
+      responses:
+        '200':
+          description: Updated monitoring point
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Active prober quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    delete:
+      tags: [telemetry]
+      summary: Delete a monitoring point
+      operationId: deleteMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Delete successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/enable:
+    put:
+      tags: [telemetry]
+      summary: Enable a monitoring point
+      description: Sets the point's enabled flag and returns the updated point.
+      operationId: enableMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Enabled monitoring point
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/disable:
+    put:
+      tags: [telemetry]
+      summary: Disable a monitoring point
+      description: Clears the point's enabled flag and returns the updated point.
+      operationId: disableMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Disabled monitoring point
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/probe:
+    post:
+      tags: [telemetry]
+      summary: Trigger an immediate probe
+      description: |
+        Runs an out-of-band probe of an active monitoring point now, without
+        waiting for the next schedule tick, and returns the point's status.
+      operationId: probeMonitor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '202':
+          description: Probe accepted; responds with the point status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/status:
+    get:
+      tags: [telemetry]
+      summary: Query a monitoring point's runtime status
+      description: |
+        Returns the point's enabled state, derived health status, and — for
+        active points with probe history — the latest probe timing and
+        latency.
+      operationId: getMonitorStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/history:
+    get:
+      tags: [telemetry]
+      summary: Paginated history of a monitoring point
+      description: |
+        Active points return their probe history (one entry per probe with
+        latency and result status). Passive points with an AssetID return
+        the asset's collected metrics. Without a matching store an empty
+        list is returned.
+      operationId: getMonitorHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/PageQuery'
         - $ref: '#/components/parameters/SizeQuery'
       responses:
@@ -848,24 +1407,38 @@ paths:
                       data:
                         allOf:
                           - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/MonitorHistoryEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-    post:
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/monitors/{id}/logs:
+    get:
       tags: [telemetry]
-      summary: Create collection task
-      description: Create a new telemetry collection task bound to a target asset.
-      operationId: createTelemetryTask
+      summary: Paginated logs of a monitoring point
+      description: |
+        Active points return their probe records rendered as log entries
+        (level = probe status, message = error or output, last 7 days).
+        Passive points with an AssetID return the asset's collected logs.
+        Without a matching store an empty list is returned.
+      operationId: getMonitorLogs
       security:
         - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TelemetryTaskCreateRequest'
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
       responses:
         '200':
-          description: Creation successful
+          description: Query successful
           content:
             application/json:
               schema:
@@ -874,17 +1447,174 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/TelemetryTask'
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/MonitorLogEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/telemetry/probers:
+    get:
+      tags: [telemetry]
+      summary: List supported prober types
+      description: |
+        Returns the executor types with probing capability (CapProbe) — the
+        types valid for the `type` field of an active monitoring point.
+        Derived from the runtime executor registry, so plugin executors are
+        included automatically.
+      operationId: listProbers
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExecutorType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/telemetry/listeners:
+    get:
+      tags: [telemetry]
+      summary: List supported listener types
+      description: |
+        Returns the passive monitoring point types supported by the current
+        runtime (the default runtime supports the HTTP webhook listener;
+        the callers may extend this list via the plugin SPI).
+      operationId: listListeners
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ListenerType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/telemetry/templates:
+    get:
+      tags: [telemetry]
+      summary: List monitoring point templates
+      description: |
+        Returns all monitoring point templates (both built-in and custom).
+        The optional `category` query parameter filters by template
+        category.
+      operationId: listTemplates
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: Filter by template category
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TelemetryTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [telemetry]
+      summary: Create a monitoring point template
+      description: Creates a custom template. Built-in templates cannot be created
+        through this endpoint.
+      operationId: createTemplate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryTemplateRequest'
+      responses:
+        '200':
+          description: Created template
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TelemetryTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/v1/telemetry/{id}:
+  /api/v1/telemetry/templates/builtin:
     get:
       tags: [telemetry]
-      summary: Query a single collection task detail
-      operationId: getTelemetryTask
+      summary: List built-in monitoring point templates
+      description: Returns the system-seeded templates. Built-in templates are
+        read-only and cannot be deleted.
+      operationId: listBuiltinTemplates
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TelemetryTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/telemetry/templates/{id}:
+    get:
+      tags: [telemetry]
+      summary: Query a single template
+      operationId: getTemplate
       security:
         - BearerAuth: []
       parameters:
@@ -900,15 +1630,18 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/TelemetryTask'
+                        $ref: '#/components/schemas/TelemetryTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
     put:
       tags: [telemetry]
-      summary: Update collection task
-      operationId: updateTelemetryTask
+      summary: Update a template
+      description: Built-in templates cannot be updated.
+      operationId: updateTemplate
       security:
         - BearerAuth: []
       parameters:
@@ -918,10 +1651,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TelemetryTaskCreateRequest'
+              $ref: '#/components/schemas/TelemetryTemplateRequest'
       responses:
         '200':
-          description: Update successful
+          description: Updated template
           content:
             application/json:
               schema:
@@ -930,7 +1663,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/TelemetryTask'
+                        $ref: '#/components/schemas/TelemetryTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -939,199 +1672,66 @@ paths:
           $ref: '#/components/responses/NotFound'
     delete:
       tags: [telemetry]
-      summary: Delete collection task
-      operationId: deleteTelemetryTask
+      summary: Delete a template
+      description: Built-in templates cannot be deleted.
+      operationId: deleteTemplate
       security:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
         '200':
-          description: Deletion successful
+          description: Delete successful
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
-  # ---------------------------------------------------------------------------
-  # Telemetry - Distributed report endpoints
-  # ---------------------------------------------------------------------------
-  /api/v1/telemetry/heartbeat:
+  /api/v1/telemetry/templates/{id}/apply:
     post:
       tags: [telemetry]
-      summary: Asset heartbeat report
+      summary: Apply a template to create a monitoring point
       description: |
-        Receiver endpoint for asset heartbeat and liveness reports.
-
-        Authentication is enforced via the `X-Tickraft-Asset-Key` header
-        (AssetKey scheme) when the server has no HMAC secret configured, or
-        via the `X-Tickraft-Signature` header (HMAC-SHA256 hex digest of the
-        raw request body) when a secret is configured.
-
-        Maximum request body size is 1 KiB; exceeding it returns 413.
-        Asset identity is resolved from the asset key supplied in the
-        header (or from `asset_id`/`asset_key` + `tenant_id` in the body
-        when present).
-      operationId: reportHeartbeat
+        Creates a monitoring point from the template: the template config
+        merged with the request overrides becomes the point's config.
+        Responds with the created monitoring point.
+      operationId: applyTemplate
       security:
-        - AssetKeyAuth: []
-        - HMACSignature: []
+        - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/RequestIdHeader'
-        - $ref: '#/components/parameters/SignatureHeader'
-        - $ref: '#/components/parameters/AssetKeyHeader'
+        - $ref: '#/components/parameters/IdPath'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HeartbeatReport'
+              $ref: '#/components/schemas/ApplyTemplateRequest'
       responses:
-        '202':
-          description: Report accepted
+        '200':
+          description: Created monitoring point
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorPoint'
         '400':
-          description: Malformed request body or missing asset identity
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Asset key missing/invalid or HMAC signature mismatch
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Asset ID or asset key not found in the store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '413':
-          description: Request body exceeds the 1 KiB limit
+          $ref: '#/components/responses/NotFound'
 
-  /api/v1/telemetry/metrics:
-    post:
-      tags: [telemetry]
-      summary: Asset metrics report
-      description: |
-        Receiver endpoint for numeric metric data reported by assets.
-
-        Authentication is enforced via the `X-Tickraft-Asset-Key` header
-        (AssetKey scheme) when the server has no HMAC secret configured, or
-        via the `X-Tickraft-Signature` header (HMAC-SHA256 hex digest of the
-        raw request body) when a secret is configured.
-
-        Maximum request body size is 64 KiB; exceeding it returns 413.
-        Asset identity is resolved from the asset key supplied in the
-        header (or from `asset_id`/`asset_key` + `tenant_id` in the body
-        when present).
-      operationId: reportMetrics
-      security:
-        - AssetKeyAuth: []
-        - HMACSignature: []
-      parameters:
-        - $ref: '#/components/parameters/RequestIdHeader'
-        - $ref: '#/components/parameters/SignatureHeader'
-        - $ref: '#/components/parameters/AssetKeyHeader'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MetricsReport'
-      responses:
-        '202':
-          description: Report accepted
-        '400':
-          description: Malformed request body or missing asset identity
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '401':
-          description: Asset key missing/invalid or HMAC signature mismatch
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Asset ID or asset key not found in the store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '413':
-          description: Request body exceeds the 64 KiB limit
-
-  /api/v1/telemetry/logs:
-    post:
-      tags: [telemetry]
-      summary: Asset logs report
-      description: |
-        Receiver endpoint for log data reported by assets.
-
-        Authentication is enforced via the `X-Tickraft-Asset-Key` header
-        (AssetKey scheme) when the server has no HMAC secret configured, or
-        via the `X-Tickraft-Signature` header (HMAC-SHA256 hex digest of the
-        raw request body) when a secret is configured.
-
-        Maximum request body size is 1 MiB; exceeding it returns 413.
-        Asset identity is resolved from the asset key supplied in the
-        header (or from `asset_id`/`asset_key` + `tenant_id` in the body
-        when present).
-      operationId: reportLogs
-      security:
-        - AssetKeyAuth: []
-        - HMACSignature: []
-      parameters:
-        - $ref: '#/components/parameters/RequestIdHeader'
-        - $ref: '#/components/parameters/SignatureHeader'
-        - $ref: '#/components/parameters/AssetKeyHeader'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LogsReport'
-      responses:
-        '202':
-          description: Report accepted
-        '400':
-          description: Malformed request body or missing asset identity
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '401':
-          description: Asset key missing/invalid or HMAC signature mismatch
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Asset ID or asset key not found in the store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '413':
-          description: Request body exceeds the 1 MiB limit
-
-  # ---------------------------------------------------------------------------
-  # Alert - Alert center
-  # ---------------------------------------------------------------------------
-  /api/v1/alert/rules:
+  /api/v1/prism/alert/rules:
     get:
       tags: [alert]
       summary: Paginated list of alert rules
@@ -1191,7 +1791,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/v1/alert/rules/{id}:
+  /api/v1/prism/alert/rules/{id}:
     get:
       tags: [alert]
       summary: Query a single alert rule
@@ -1268,7 +1868,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /api/v1/alert/records:
+  /api/v1/prism/alert/records:
     get:
       tags: [alert]
       summary: Paginated list of alert records
@@ -1300,7 +1900,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/v1/alert/records/{id}:
+  /api/v1/prism/alert/records/{id}:
     get:
       tags: [alert]
       summary: Query a single alert record
@@ -1325,6 +1925,442 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/alert/records/{id}/acknowledge:
+    put:
+      tags: [alert]
+      summary: Acknowledge an alert record
+      description: |
+        Transitions a firing record to the acknowledged state and stamps
+        acknowledged_at. Returns the updated record.
+      operationId: acknowledgeAlertRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Acknowledge successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AlertRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/alert/records/{id}/resolve:
+    put:
+      tags: [alert]
+      summary: Resolve an alert record
+      description: |
+        Transitions a firing or acknowledged record to the resolved state
+        and stamps resolved_at. Returns the updated record.
+      operationId: resolveAlertRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Resolve successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AlertRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Prism - Notification channels (registered when a ChannelService is injected)
+  # ---------------------------------------------------------------------------
+  /api/v1/prism/channels:
+    get:
+      tags: [channel]
+      summary: Paginated list of notification channels
+      operationId: listChannels
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Channel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [channel]
+      summary: Create a notification channel
+      operationId: createChannel
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelRequest'
+      responses:
+        '200':
+          description: Creation successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/prism/channels/{id}:
+    get:
+      tags: [channel]
+      summary: Query a single notification channel
+      operationId: getChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Channel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [channel]
+      summary: Update a notification channel
+      operationId: updateChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelRequest'
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [channel]
+      summary: Delete a notification channel
+      operationId: deleteChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/channels/{id}/test:
+    post:
+      tags: [channel]
+      summary: Send a test notification through a channel
+      description: |
+        Dispatches a synthetic notification through the channel and reports
+        the delivery outcome, so operators can verify channel configuration
+        without wiring an alert rule.
+      operationId: testChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Test dispatch completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Prism - Remediation (registered when a RemediationRuleService is injected)
+  # ---------------------------------------------------------------------------
+  /api/v1/prism/remediation/rules:
+    get:
+      tags: [remediation]
+      summary: Paginated list of remediation rules
+      operationId: listRemediationRules
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/RemediationRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [remediation]
+      summary: Create a remediation rule
+      operationId: createRemediationRule
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemediationRuleRequest'
+      responses:
+        '200':
+          description: Creation successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RemediationRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/prism/remediation/rules/{id}:
+    get:
+      tags: [remediation]
+      summary: Query a single remediation rule
+      operationId: getRemediationRule
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RemediationRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [remediation]
+      summary: Update a remediation rule
+      operationId: updateRemediationRule
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemediationRuleRequest'
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RemediationRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [remediation]
+      summary: Delete a remediation rule
+      operationId: deleteRemediationRule
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/remediation/records:
+    get:
+      tags: [remediation]
+      summary: Paginated list of remediation dispatch records
+      description: |
+        Dispatch records are appended by the remediation engine as runs
+        progress; this endpoint is read-only.
+      operationId: listRemediationRecords
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/RemediationRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/expr/validate:
+    post:
+      tags: [expr]
+      summary: Validate an expr-lang expression
+      description: |
+        Stateless validation endpoint used by the rule editors for
+        real-time feedback. Compiles the expression against the selected
+        environment's variable contract and runs it once against the
+        environment's example payload, catching syntax errors, unknown
+        variables, and domain-field violations. `env` must be one of
+        alert, remediation, execution; remediation and execution accept
+        an empty expression (no filter).
+      operationId: validateExpression
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExprValidateRequest'
+      responses:
+        '200':
+          description: Expression is valid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExprValidateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   # ---------------------------------------------------------------------------
   # System - System settings
@@ -1471,6 +2507,113 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/system/profile:
+    get:
+      tags: [system]
+      summary: Query the current user's profile
+      description: |
+        Returns the profile of the authenticated user (the JWT subject):
+        username, nickname, email, role, language, and alert format style.
+      operationId: getProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [system]
+      summary: Update the current user's profile
+      description: |
+        Partial update: only the fields present in the request body are
+        applied; nil fields are ignored. Returns the updated profile.
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/i18n/locales:
+    get:
+      tags: [i18n]
+      summary: List available locales
+      description: |
+        Public endpoint returning the registered locale bundles (BCP 47
+        tag, language, region, text direction, native name). The kernel
+        ships zh-Hans (default) and en-US; downstream locale packs extend
+        the list via the i18n registry.
+      operationId: listLocales
+      security: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LocaleInfo'
+
+  /ws:
+    get:
+      tags: [realtime]
+      summary: WebSocket realtime push
+      description: |
+        Upgrades to a WebSocket connection for realtime event push
+        (execution status, alert lifecycle). Browsers cannot set the
+        Authorization header on a WebSocket handshake, so authentication
+        uses the access token passed via the `token` query parameter and
+        is enforced before the upgrade.
+      operationId: websocketPush
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: JWT access token (browsers cannot set the Authorization header on a WebSocket handshake)
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching protocols (WebSocket upgrade accepted)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 # ---------------------------------------------------------------------------
 # Components
 # ---------------------------------------------------------------------------
@@ -1487,8 +2630,8 @@ components:
     APIKeyAuth:
       type: apiKey
       in: header
-      name: X-API-Key
-      description: API Key authentication. The raw key is sent in the `X-API-Key` header; the server compares its SHA-256 hash.
+      name: X-Tickraft-API-Key
+      description: API Key authentication. The raw key is sent in the `X-Tickraft-API-Key` header; the server compares its SHA-256 hash.
     AssetKeyAuth:
       type: apiKey
       in: header
@@ -1575,7 +2718,7 @@ components:
             $ref: '#/components/schemas/ApiResponse'
           example:
             code: 40000
-            msg: invalid request parameter
+            message: invalid request parameter
             data: null
     Unauthorized:
       description: Not authenticated or token invalid/expired
@@ -1585,7 +2728,7 @@ components:
             $ref: '#/components/schemas/ApiResponse'
           example:
             code: 40100
-            msg: missing authorization header
+            message: missing authorization header
             data: null
     Forbidden:
       description: Authenticated but lacks permission to access the asset
@@ -1595,7 +2738,7 @@ components:
             $ref: '#/components/schemas/ApiResponse'
           example:
             code: 40300
-            msg: permission denied
+            message: permission denied
             data: null
     NotFound:
       description: Asset not found
@@ -1605,7 +2748,7 @@ components:
             $ref: '#/components/schemas/ApiResponse'
           example:
             code: 40400
-            msg: asset not found
+            message: asset not found
             data: null
     InternalServerError:
       description: Internal server error
@@ -1615,7 +2758,7 @@ components:
             $ref: '#/components/schemas/ApiResponse'
           example:
             code: 50000
-            msg: internal error
+            message: internal error
             data: null
 
   # -------------------------------------------------------------------------
@@ -1630,7 +2773,7 @@ components:
           type: integer
           description: Business code; 0 indicates success, non-zero indicates an error (the first 3 digits usually align with the HTTP status code).
           example: 0
-        msg:
+        message:
           type: string
           description: Hint message; "ok" on success.
           example: ok
@@ -1824,7 +2967,8 @@ components:
           nullable: true
         run_id:
           type: string
-          description: Identifier of the last run when applicable
+          description: Run handle of the last dispatched run; doubles as the
+            task_ref report credential delivered to the remote in Mode A
           nullable: true
         retry_policy:
           type: string
@@ -1833,6 +2977,22 @@ components:
         concurrency:
           type: integer
           description: Per-task concurrent execution limit (0 means unlimited, 1 forbids concurrent executions)
+        report_status:
+          type: boolean
+          description: |
+            Enable remote task-status reporting. When true, the scheduler only
+            records the dispatch lifecycle: each fire inserts a `running`
+            execution row and the real execution outcome is reported back
+            through POST /api/v1/telemetry (kind=task_status) keyed by the
+            required task_ref credential (32-hex run handle or decimal task
+            number). The remote reporter authenticates with the listener's
+            existing auth (HMAC or asset key); webhook/http executors deliver
+            the run handle to the remote via the X-Tickraft-Task-Ref dispatch
+            header. The executor config may embed a {{task_ref}} placeholder
+            that is substituted at dispatch time so any executor type can
+            carry the report credential to the remote side. When false
+            (default), the execution status is derived directly from the
+            local executor result.
         created_at:
           type: string
           format: date-time
@@ -1899,6 +3059,10 @@ components:
         concurrency:
           type: integer
           description: Per-task concurrent execution limit (0 means unlimited, 1 forbids concurrent executions)
+        report_status:
+          type: boolean
+          description: Enable remote task-status reporting (see
+            Task.report_status). Supported for every executor type.
 
     TaskCopyRequest:
       type: object
@@ -1933,7 +3097,7 @@ components:
         status:
           type: string
           description: Execution status
-          enum: [success, failed, running, unknown]
+          enum: [success, failed, timeout, running, unknown]
         output:
           type: string
           description: Execution output
@@ -1964,7 +3128,7 @@ components:
     # --- Asset schemas ---
     Asset:
       type: object
-      description: Collector asset (monitored target)
+      description: Telemetry asset (monitored target)
       properties:
         id:
           type: integer
@@ -2026,8 +3190,8 @@ components:
           additionalProperties: true
           nullable: true
 
-    # --- Telemetry task schemas ---
-    TelemetryTask:
+    # --- Telemetry monitor schemas ---
+    MonitorPoint:
       type: object
       description: Telemetry monitoring point. The wire shape and the
         storage shape are the same model; runtime-managed columns
@@ -2092,16 +3256,16 @@ components:
           type: string
           format: date-time
 
-    TelemetryTaskCreateRequest:
+    MonitorCreateRequest:
       type: object
       required: [name, mode, type]
       properties:
         name:
           type: string
-          description: Task name
+          description: Monitoring point name
         description:
           type: string
-          description: Task description
+          description: Monitoring point description
           nullable: true
         asset_type:
           type: string
@@ -2130,104 +3294,202 @@ components:
           nullable: true
 
     # --- Telemetry report schemas ---
-    HeartbeatReport:
+
+    MonitorSummary:
       type: object
       description: |
-        Asset heartbeat report body.
-        Maximum payload size is 1 KiB; the server returns 413 when exceeded.
+        Aggregate monitoring point counts. The mode counts and the enabled
+        counts are independent dimensions over the same dataset
+        (active + passive = enabled + disabled = total).
       properties:
-        asset_id:
+        active:
           type: integer
           format: int64
-          description: Asset ID; takes precedence over asset_key for resolution when present.
-          nullable: true
-        asset_key:
+          description: Number of active probing points
+        passive:
+          type: integer
+          format: int64
+          description: Number of passive receiving points
+        enabled:
+          type: integer
+          format: int64
+          description: Number of enabled points across both modes
+        disabled:
+          type: integer
+          format: int64
+          description: Number of disabled points across both modes
+
+    MonitorStatus:
+      type: object
+      description: |
+        Runtime status of a monitoring point: the enabled state, a derived
+        health status, and — for active points with probe history — the
+        latest probe timing and latency.
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
           type: string
-          description: Asset key; must be used together with tenant_id.
+        enabled:
+          type: boolean
+        status:
+          type: string
+          description: Derived health status
+          enum: [active, inactive, error]
+        last_probe_at:
+          type: string
+          format: date-time
+          description: Latest probe start time; absent for passive points
           nullable: true
-        tenant_id:
+        latency_ms:
           type: integer
           format: int64
-          description: Tenant ID; used together with asset_key to look up the asset.
+          description: Latest probe latency in milliseconds
+          nullable: true
+
+    MonitorHistoryEntry:
+      type: object
+      description: |
+        A single historical data point of a monitoring point. Active points
+        carry probe latency rows; passive points carry collected metrics.
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          description: Latency in milliseconds (active) or the collected
+            metric value (passive)
           nullable: true
         status:
           type: string
-          description: Pre-judged liveness status (e.g. `ok`, `down`, `unknown`)
-          example: ok
+          description: Probe result status; empty for passive metric rows
+        metric:
+          type: string
+          description: Names the quantity carried by value — `latency_ms`
+            for probe rows, the collected metric name for passive rows
+
+    MonitorLogEntry:
+      type: object
+      description: A single log line of a monitoring point.
+      properties:
         timestamp:
           type: string
           format: date-time
-          description: Reporting time (RFC3339)
-        message:
-          type: string
-          description: Short message (optional)
-          nullable: true
-
-    MetricsReport:
-      type: object
-      description: |
-        Asset metrics report body.
-        Maximum payload size is 64 KiB; the server returns 413 when exceeded.
-      properties:
-        asset_id:
-          type: integer
-          format: int64
-          description: Asset ID; takes precedence over asset_key for resolution when present.
-          nullable: true
-        asset_key:
-          type: string
-          description: Asset key; must be used together with tenant_id.
-          nullable: true
-        tenant_id:
-          type: integer
-          format: int64
-          description: Tenant ID; used together with asset_key to look up the asset.
-          nullable: true
-        metrics:
-          type: object
-          description: Numeric metric key-value pairs
-          additionalProperties:
-            type: number
-            format: double
-        timestamp:
-          type: string
-          format: date-time
-          description: Reporting time (RFC3339)
-
-    LogsReport:
-      type: object
-      description: |
-        Asset logs report body.
-        Maximum payload size is 1 MiB; the server returns 413 when exceeded.
-      properties:
-        asset_id:
-          type: integer
-          format: int64
-          description: Asset ID; takes precedence over asset_key for resolution when present.
-          nullable: true
-        asset_key:
-          type: string
-          description: Asset key; must be used together with tenant_id.
-          nullable: true
-        tenant_id:
-          type: integer
-          format: int64
-          description: Tenant ID; used together with asset_key to look up the asset.
-          nullable: true
         level:
           type: string
-          description: Log level; defaults to INFO
-          enum: [DEBUG, INFO, WARN, ERROR]
-          nullable: true
-        content:
+          description: Log severity (passive) or probe status (active)
+        message:
           type: string
-          description: Log content
-        timestamp:
+          description: Log content (passive), or probe error/output (active)
+
+    ExecutorType:
+      type: object
+      description: Display metadata of a registered executor type.
+      properties:
+        type:
+          type: string
+          description: Executor identifier (icmp, tcp, http, ...)
+        name:
+          type: string
+          description: Human-readable display name
+        description:
+          type: string
+          description: Short summary of the capability
+
+    ListenerType:
+      type: object
+      description: A supported passive monitoring point type.
+      properties:
+        type:
+          type: string
+          description: Listener identifier (webhook); populates the type
+            field of a passive monitoring point
+        name:
+          type: string
+          description: Human-readable display name
+        description:
+          type: string
+          description: Short summary of the listener capability
+
+    TelemetryTemplate:
+      type: object
+      description: |
+        A monitoring point template. The config is a monitoring point
+        configuration payload; applying the template creates a point from
+        it. Built-in templates are read-only and cannot be deleted.
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Template name, unique across all templates
+        description:
+          type: string
+          description: Human-readable template description
+        category:
+          type: string
+          description: Template category (e.g. network, web, database)
+        executor_type:
+          type: string
+          description: Probe/executor type (icmp, tcp, http, ...)
+        config:
+          type: object
+          description: Monitoring point configuration payload
+          additionalProperties: true
+        is_builtin:
+          type: boolean
+          description: Whether the template is system-seeded and read-only
+        created_at:
           type: string
           format: date-time
-          description: Reporting time (RFC3339)
+        updated_at:
+          type: string
+          format: date-time
 
-    # --- Alert schemas ---
+    TelemetryTemplateRequest:
+      type: object
+      required: [name, executor_type]
+      properties:
+        name:
+          type: string
+          description: Template name
+        description:
+          type: string
+          description: Template description
+        category:
+          type: string
+          description: Template category
+        executor_type:
+          type: string
+          description: Probe/executor type
+          example: icmp
+        config:
+          type: object
+          description: Monitoring point configuration payload
+          additionalProperties: true
+
+    ApplyTemplateRequest:
+      type: object
+      description: Request body for applying a template to create a
+        monitoring point.
+      properties:
+        name:
+          type: string
+          description: Overrides the monitoring point name; empty defaults
+            to "<template name> (applied)"
+        asset_id:
+          type: integer
+          format: int64
+          description: Optionally links the created point to an asset
+          nullable: true
+        overrides:
+          type: object
+          description: Merged into the template config; top-level keys
+            replace the corresponding template config keys
+          additionalProperties: true
+
     AlertRule:
       type: object
       description: Alert rule. The wire shape and the storage shape are the
@@ -2425,13 +3687,267 @@ components:
           format: double
           description: Today's success rate as percentage (0-100)
 
+    AssetStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [normal, abnormal, offline, unknown]
+          description: The manual status to set.
+
+    AssetProbeResult:
+      type: object
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          description: ID of the probed asset.
+        status:
+          type: string
+          description: Status determined by the probe.
+
+    ExprValidateRequest:
+      type: object
+      required: [env]
+      properties:
+        env:
+          type: string
+          enum: [alert, remediation, execution]
+          description: Evaluation environment whose variable contract the expression is compiled against.
+        expression:
+          type: string
+          description: The expr-lang predicate. Required for env=alert; remediation and execution accept an empty expression (no filter).
+
+    ExprValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: True when the expression compiles and evaluates cleanly against the env's example payload.
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        nickname:
+          type: string
+        email:
+          type: string
+        role:
+          type: integer
+          description: Numeric role (1 = admin).
+        language:
+          type: string
+          description: Preferred UI locale (BCP 47 tag).
+        alert_format_style:
+          type: string
+          description: Preferred alert rendering style.
+
+    UpdateProfileRequest:
+      type: object
+      description: Partial update; only the fields present are applied.
+      properties:
+        nickname:
+          type: string
+        email:
+          type: string
+        language:
+          type: string
+        alert_format_style:
+          type: string
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Human-readable channel name.
+        type:
+          type: string
+          description: Channel type (email, webhook, ...).
+        config:
+          type: string
+          description: Channel-type-specific configuration (JSON string).
+        enabled:
+          type: boolean
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ChannelRequest:
+      type: object
+      required: [name, type, config]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        config:
+          type: string
+          description: Channel-type-specific configuration (JSON string).
+        enabled:
+          type: boolean
+
+    RemediationRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        asset_id:
+          type: integer
+          format: int64
+          description: Asset the rule is scoped to (0 = no asset scope).
+        trigger_event_type:
+          type: string
+          enum: [metric, log, status_change]
+          description: Event type that activates the rule.
+        expression:
+          type: string
+          description: Optional expr-lang predicate applied to the trigger event.
+        executor_type:
+          type: string
+          description: Executor dispatched when the rule fires.
+        executor_config:
+          type: string
+          description: Executor configuration (JSON string).
+        cooldown:
+          type: integer
+          description: Minimum seconds between two dispatches of this rule.
+        circuit_breaker_threshold:
+          type: integer
+          description: Consecutive failures before the circuit breaker pauses the rule.
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum: [active, paused]
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        consecutive_failures:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RemediationRuleRequest:
+      type: object
+      required: [name, trigger_event_type, executor_type]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        asset_id:
+          type: integer
+          format: int64
+        trigger_event_type:
+          type: string
+          enum: [metric, log, status_change]
+        expression:
+          type: string
+        executor_type:
+          type: string
+        executor_config:
+          type: string
+        cooldown:
+          type: integer
+        circuit_breaker_threshold:
+          type: integer
+        enabled:
+          type: boolean
+
+    RemediationRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        rule_id:
+          type: integer
+          format: int64
+        rule_name:
+          type: string
+          description: Denormalized snapshot of the rule name at trigger time.
+        asset_id:
+          type: integer
+          format: int64
+          description: Numeric asset identifier of the triggering event (0 = no asset scope).
+        asset_key:
+          type: string
+          description: Asset key of the triggering event, when the payload carried one.
+        run_id:
+          type: string
+          description: Unique identifier of this remediation run.
+        trigger:
+          type: string
+          description: Trigger type that activated the rule (metric, log, status_change).
+        status:
+          type: string
+          description: Dispatch lifecycle state (triggered, running, success, failed, skipped).
+        error:
+          type: string
+          description: Failure or skip message, when status is failed or skipped.
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    LocaleInfo:
+      type: object
+      properties:
+        tag:
+          type: string
+          description: Canonical BCP 47 tag with standard casing (e.g. "zh-Hans").
+        language:
+          type: string
+          description: Primary language subtag, lowercase (e.g. "zh").
+        region:
+          type: string
+          description: Region subtag without the leading dash, uppercase; empty when the locale has no region.
+        direction:
+          type: string
+          enum: [ltr, rtl]
+        native_name:
+          type: string
+          description: Locale name rendered in its own language.
+
 # -----------------------------------------------------------------------------
 # Related documentation
 # -----------------------------------------------------------------------------
 # - ../architecture.md: open-source repository architecture overview and module boundaries
-# - ../module-spec.md: module boundary specification and constructor definitions
-# - ../executor-interfaces.md: executor interface specification and detailed config parameter definitions
-# - ../database-schema.md: database table structure and AutoMigrate entry points
-# - ../deployment.md: CLI commands and dual-port deployment mode
+# - ../module-boundary.md: module boundary rules and layering constraints
+# - ../configuration.md: configuration reference (fields, defaults, routing)
+# - ../deployment.md: CLI commands and deployment modes
 # - ../extension-guide.md: pro repository SPI injection mechanism
-# - ../dependency-management.md: build dependency manifest and license compliance strategy

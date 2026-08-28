@@ -1007,7 +1007,7 @@ onMounted(() => {
 }
 
 /* Responsive */
-@media (max-width: 960px) {
+@media (width <= 960px) {
   .tk-stat-strip { grid-template-columns: repeat(2, 1fr); }
   .tk-descriptions { grid-template-columns: 1fr; }
   .tk-config-fields { grid-template-columns: 1fr; }

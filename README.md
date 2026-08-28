@@ -135,7 +135,7 @@ docker run -d --name tickraft -p 6153:6153 \
 
 | Assets | Monitor points | Alert records |
 |:---:|:---:|:---:|
-| [![Assets](docs/screenshots/collector-asset-list.png)](docs/screenshots/collector-asset-list.png) | [![Probers](docs/screenshots/collector-prober-list.png)](docs/screenshots/collector-prober-list.png) | [![Alerts](docs/screenshots/prism-record-list.png)](docs/screenshots/prism-record-list.png) |
+| [![Assets](docs/screenshots/telemetry-asset-list.png)](docs/screenshots/telemetry-asset-list.png) | [![Probers](docs/screenshots/telemetry-prober-list.png)](docs/screenshots/telemetry-prober-list.png) | [![Alerts](docs/screenshots/prism-record-list.png)](docs/screenshots/prism-record-list.png) |
 
 | Alert rule editor | Remediation |
 |:---:|:---:|

@@ -148,8 +148,13 @@ func newTestRunner(t *testing.T, registry *Registry) (Runner, event.Bus) {
 	return r, bus
 }
 
-// publishTrigger publishes an ExecutionTriggered event and returns.
+// publishTrigger publishes an ExecutionTriggered event and returns. Payloads
+// that do not carry an operation default to execute, the task-domain
+// convention for triggered events.
 func publishTrigger(bus event.Bus, payload event.ExecutionPayload, opts ...event.PublishOption) {
+	if payload.Operation == "" {
+		payload.Operation = OpExecute.String()
+	}
 	if err := event.Publish(context.Background(), bus, event.TypeExecutionTriggered, payload, opts...); err != nil {
 		panic(fmt.Sprintf("publishTrigger: %v", err))
 	}
@@ -1106,7 +1111,7 @@ func TestRunnerJudgmentOverridesStatus(t *testing.T) {
 
 // TestRunnerJudgmentDrivesRetry verifies that a judgment failure triggers
 // the retry machinery just like a protocol failure: user-defined
-// success/failure semantics drive retries (rule-engine-design §6.3.2).
+// success/failure semantics drive retries.
 func TestRunnerJudgmentDrivesRetry(t *testing.T) {
 	exec := &fakeExecutor{
 		typ: "judged-retry",

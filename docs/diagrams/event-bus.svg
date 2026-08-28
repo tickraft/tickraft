@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 460" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
   <title>Tickraft Event Bus Flow</title>
-  <desc>Three independent modules (scheduler, executor, collector) communicate only through a strongly typed event bus.</desc>
+  <desc>Three independent modules (scheduler, executor, telemetry) communicate only through a strongly typed event bus.</desc>
 
   <defs>
     <!-- Solid arrowhead -->
@@ -44,10 +44,10 @@
     <text x="685" y="183" text-anchor="middle" font-size="12" fill="#475569">+ retry</text>
   </g>
 
-  <!-- ===== collector node ===== -->
+  <!-- ===== telemetry node ===== -->
   <g>
     <rect x="310" y="350" width="200" height="80" rx="10" fill="#FFFBEB" stroke="#D97706" stroke-width="1.5"/>
-    <text x="410" y="380" text-anchor="middle" font-size="16" font-weight="700" fill="#92400E">collector</text>
+    <text x="410" y="380" text-anchor="middle" font-size="16" font-weight="700" fill="#92400E">telemetry</text>
     <text x="410" y="402" text-anchor="middle" font-size="12" fill="#475569">listener + aggregator</text>
     <text x="410" y="420" text-anchor="middle" font-size="11" fill="#92400E" font-style="italic">decoupled — subscribes to no scheduler events</text>
   </g>
@@ -68,7 +68,7 @@
   <line x1="349" y1="175" x2="232" y2="175" stroke="#1E40AF" stroke-width="2" marker-end="url(#arrow-solid)"/>
   <text x="290" y="193" text-anchor="middle" font-size="11" font-weight="600" fill="#1E40AF">TaskCompleted</text>
 
-  <!-- ===== Arrow 5: collector → bus (StatusChange, dashed) ===== -->
+  <!-- ===== Arrow 5: telemetry → bus (StatusChange, dashed) ===== -->
   <line x1="410" y1="348" x2="410" y2="217" stroke="#9CA3AF" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-dashed)"/>
   <text x="448" y="285" font-size="11" font-weight="600" fill="#6B7280">StatusChange</text>
   <text x="448" y="300" font-size="10" fill="#9CA3AF">(optional)</text>

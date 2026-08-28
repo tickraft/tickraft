@@ -609,3 +609,97 @@ func (s *ProbeRecordStore) Migrate() error {
 	}
 	return nil
 }
+
+// Migrate creates or updates the monitor_points table schema. It is
+// intended to be called once during application startup and is safe to
+// call repeatedly: GORM AutoMigrate is idempotent (additive only).
+func Migrate(ctx context.Context, dbc *gorm.DB) error {
+	if err := dbc.WithContext(ctx).AutoMigrate(&MonitorPoint{}); err != nil {
+		return fmt.Errorf("telemetry: auto-migrate monitor_points table: %w", err)
+	}
+	return nil
+}
+
+// LoadBuiltinTemplates loads the CE built-in templates into the database if
+// they do not already exist. It is idempotent: templates that already exist
+// (by name) are skipped, so it is safe to call on every startup. The
+// function also runs AutoMigrate for the template table to ensure the schema
+// exists before inserting, and removes any previously seeded pro-edition
+// builtin templates so the CE UI only shows templates the CE runtime can
+// actually execute.
+func LoadBuiltinTemplates(dbc *gorm.DB) error {
+	if err := loadTemplates(dbc, builtinTemplateNames); err != nil {
+		return err
+	}
+
+	// Drop pro-edition builtin templates seeded by older builds; CE cannot
+	// run their prober types.
+	var proNames []string
+	for _, name := range proBuiltinTemplateNames {
+		t, err := readBuiltinTemplate(name)
+		if err != nil {
+			return err
+		}
+		proNames = append(proNames, t.Name)
+	}
+	if len(proNames) > 0 {
+		if err := dbc.Where("is_builtin = ? AND name IN ?", true, proNames).
+			Delete(&Template{}).Error; err != nil {
+			return fmt.Errorf("telemetry: remove pro builtin templates: %w", err)
+		}
+	}
+	return nil
+}
+
+// LoadAllBuiltinTemplates loads both the CE and the pro-edition built-in
+// templates. It is intended for pro-edition runtimes that support the
+// dns/ssl/redis/mysql prober types.
+func LoadAllBuiltinTemplates(dbc *gorm.DB) error {
+	return loadTemplates(dbc, append(append([]string{}, builtinTemplateNames...), proBuiltinTemplateNames...))
+}
+
+// loadTemplates seeds the given template files. Templates that already
+// exist (by name) are skipped.
+func loadTemplates(dbc *gorm.DB, names []string) error {
+	if dbc == nil {
+		return fmt.Errorf("telemetry: load builtin templates: db is nil")
+	}
+
+	if err := dbc.AutoMigrate(&Template{}); err != nil {
+		return fmt.Errorf("telemetry: migrate template table: %w", err)
+	}
+
+	templates := make([]builtinTemplateFile, 0, len(names))
+	for _, name := range names {
+		t, err := readBuiltinTemplate(name)
+		if err != nil {
+			return err
+		}
+		templates = append(templates, t)
+	}
+
+	for _, t := range templates {
+		// Check by name to avoid re-inserting on restarts.
+		var count int64
+		if err := dbc.Model(&Template{}).Where("name = ?", t.Name).Count(&count).Error; err != nil {
+			return fmt.Errorf("telemetry: check builtin template %q: %w", t.Name, err)
+		}
+		if count > 0 {
+			continue
+		}
+
+		model := Template{
+			Name:         t.Name,
+			Description:  t.Description,
+			Category:     t.Category,
+			ExecutorType: t.ExecutorType,
+			Config:       string(t.Config),
+			IsBuiltin:    true,
+		}
+		if err := dbc.Create(&model).Error; err != nil {
+			return fmt.Errorf("telemetry: insert builtin template %q: %w", t.Name, err)
+		}
+	}
+
+	return nil
+}

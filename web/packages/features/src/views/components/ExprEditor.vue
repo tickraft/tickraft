@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 /**
- * Dual-mode expression editor (rule-engine-design §9).
+ * Dual-mode expression editor.
  *
  * The expression string is the single source of truth: the wizard
  * regenerates it on every row change, and the expert textarea edits it
@@ -13,7 +13,7 @@
  * wizard subset keep the editor in expert mode (saving is not
  * blocked). Expert input is validated against POST /expr/validate on
  * blur and before submit; a structurally valid wizard never calls the
- * backend (§9.4).
+ * backend.
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -117,7 +117,7 @@ function applyExternal(value: string, initial: boolean): void {
   if (parsed) model.value = parsed
   expertText.value = value
   if (initial && value && !parsed) {
-    // Hand-written rules reopen in expert mode (§9.1).
+ // Hand-written rules reopen in expert mode.
     mode.value = 'expert'
   }
   void nextTick(() => {

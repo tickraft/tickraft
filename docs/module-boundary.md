@@ -1,18 +1,18 @@
 # Module boundaries
 
-This document captures the rules that keep the scheduler, executor, and collector decoupled and that govern how a downstream repository may extend the kernel.
+This document captures the rules that keep the scheduler, executor, and telemetry decoupled and that govern how a downstream repository may extend the kernel.
 
 ## Three-module decoupling rules
 
-The scheduler, executor, and collector are independent subsystems. They never import each other and they never call methods on each other. All cross-module communication flows through the event bus.
+The scheduler, executor, and telemetry are independent subsystems. They never import each other and they never call methods on each other. All cross-module communication flows through the event bus.
 
 | Rule | Forbidden | Reason |
 |------|-----------|--------|
 | M-01 | scheduler → executor import | The scheduler only publishes `TaskTriggered`; direct calls would couple deployment units. |
 | M-02 | executor → scheduler import | The executor only publishes `TaskCompleted`; direct calls would create a cycle. |
-| M-03 | collector → scheduler import | The collector is fully decoupled; it may only optionally publish `StatusChange`. |
-| M-04 | collector → executor import | Collection and execution are separate concerns with no direct communication. |
-| M-05 | scheduler → collector import | The scheduler is unaware of the collector's existence. |
+| M-03 | telemetry → scheduler import | The telemetry module is fully decoupled; it may only optionally publish `StatusChange`. |
+| M-04 | telemetry → executor import | Telemetry and execution are separate concerns with no direct communication. |
+| M-05 | scheduler → telemetry import | The scheduler is unaware of the telemetry module. |
 
 ## Communication contract
 
@@ -20,9 +20,9 @@ The scheduler, executor, and collector are independent subsystems. They never im
 |----------------------|-------------------|------------|-------------------|
 | scheduler → executor | `TaskTriggered`   | scheduler  | executor          |
 | executor → scheduler | `TaskCompleted`   | executor   | scheduler         |
-| collector → scheduler | `StatusChange`   | collector  | scheduler (optional) |
+| telemetry → scheduler | `StatusChange`   | telemetry  | scheduler (optional) |
 
-The collector subscribes to no scheduler event, which guarantees it can run in isolation.
+The telemetry module subscribes to no scheduler event, which guarantees it can run in isolation.
 
 ## Layering principles
 
@@ -54,7 +54,8 @@ A downstream repository imports public types from `pkg/` and registers its imple
 
 - 所有 HTTP handler 统一在 `pkg/api/handler/`；中间件统一在 `pkg/api/middleware/`；路由组合根统一在 `pkg/api/router`（`RegisterRoutes` + `RegisterOption` 选项集）。
 - 业务包（`pkg/auth`、`pkg/task`、`pkg/prism/*`、`pkg/asset`、`pkg/executor` 等）禁止 import `cloudwego/hertz`、`net/http`。
-- 理由：`pkg/` 被跨仓导入（atlas / tickraft-x 均 import tickraft/pkg/*），必须传输层无关、可独立单测。
+- 豁免：仅引用 `net/http` 的 `http.Status*` 状态码常量（用于 `errdefs.ServiceError` 构造错误映射）不算传输层耦合，允许导入；除此之外的任何使用（`http.Request`/`http.ResponseWriter`/`http.Client` 等）仍被禁止。
+- 理由：`pkg/` 被跨仓导入（atlas / tickraft-x 均 import tickraft/pkg/*），必须传输层无关、可独立单测；状态码常量是纯量值，不引入对传输类型的依赖。
 
 ### internal/ 应用层 → 分布式 package-by-feature
 

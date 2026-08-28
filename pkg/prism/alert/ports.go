@@ -57,7 +57,7 @@ type RecordStore interface {
 // Lister defines the rule listing operation the Engine needs to reload
 // its rule set. It is the consumer-side port of the Store (see
 // store.go): the engine depends on this narrow interface rather
-// than the full persistence layer, per code-architecture.md §4.3.2.
+// than the full persistence layer, per
 type Lister interface {
 	// ListEnabled returns enabled rules, ordered by priority (descending)
 	// then ID (ascending). A zero tenantID returns rules across all

@@ -26,7 +26,7 @@ Supported targets: `linux/amd64`, `linux/arm64`, `windows/amd64`, `darwin/amd64`
 
 ## Run
 
-The open-source edition runs only in standalone mode — a single process that serves the API, the SPA, the scheduler, the executor, the collector, and the alerting engine on one HTTP port.
+The open-source edition runs only in standalone mode — a single process that serves the API, the SPA, the scheduler, the executor, the telemetry, and the alerting engine on one HTTP port.
 
 ```bash
 ./bin/tickraft start --config config.yaml
@@ -100,7 +100,7 @@ One Hertz engine serves every protocol on `server.addr`. Routes are partitioned 
 | Path prefix   | Service            | Authentication          | Notes                                  |
 |---------------|--------------------|-------------------------|----------------------------------------|
 | `/api/v1/*`   | JSON API           | JWT middleware          | Tasks, assets, alerts, system, etc.    |
-| `/webhook/*`  | Telemetry ingestion | Asset-Key header        | Collector reporting endpoint.          |
+| `POST /api/v1/telemetry` | Telemetry ingestion | Asset-Key header        | Unified telemetry reporting endpoint.  |
 | `/healthz`    | Health probe       | None (whitelisted)      | Returns 503 when dependencies are down.|
 | `/`           | SPA static assets  | None                    | Vue 3 frontend.                        |
 

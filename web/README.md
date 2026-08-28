@@ -4,14 +4,14 @@ Frontend of the Tickraft open-source edition — a pnpm monorepo consisting of `
 
 ## Tech Stack
 
-- **Vue 3.4+** — Composition API with `<script setup>`
-- **TypeScript 5.0+** — strict mode
-- **Vite 5** — build tooling
-- **Vue Router 4** — config-based routing
-- **Pinia 2** — state management (Composition API style)
+- **Vue 3.5+** — Composition API with `<script setup>`
+- **TypeScript 6** — strict mode
+- **Vite 8** — build tooling
+- **Vue Router 5** — config-based routing
+- **Pinia 4** — state management (Composition API style)
 - **Element Plus** — UI component library
 - **UnoCSS** — atomic CSS
-- **vee-validate 4 + zod 3** — form validation
+- **vee-validate 4 + zod 4** — form validation
 - **pnpm** — package manager (workspace monorepo)
 
 ## Directory Structure
@@ -30,8 +30,8 @@ web/
 
 ## Prerequisites
 
-- **Node.js** 18+
-- **pnpm** 8+
+- **Node.js** 22+
+- **pnpm** 9+
 
 ## Development
 

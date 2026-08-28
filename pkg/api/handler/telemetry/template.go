@@ -335,7 +335,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 	// executor), and Mode/AssetID bind the point into the prober service.
 	// AssetType is not set from the executor type — it describes the
 	// monitored asset's category, not the probe executor.
-	task := &telemetry.MonitorPoint{
+	point := &telemetry.MonitorPoint{
 		Name:        name,
 		Description: t.Description,
 		AssetID:     req.AssetID,
@@ -346,7 +346,7 @@ func (h *TemplateHandler) ApplyTemplate(ctx context.Context, arc *app.RequestCon
 		Config:      cfg,
 	}
 
-	created, err := h.svc.CreateTask(ctx, task)
+	created, err := h.svc.CreateMonitor(ctx, point)
 	if err != nil {
 		httputil.Fail(arc, err)
 		return

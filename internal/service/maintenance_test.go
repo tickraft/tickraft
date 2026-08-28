@@ -56,6 +56,10 @@ func (m *mockExecutionStore) Query(_ context.Context, _ task.ExecutionQuery,
 func (m *mockExecutionStore) Get(_ context.Context, _ int64) (*task.Execution, error) {
 	return nil, task.ErrExecutionNotFound
 }
+func (m *mockExecutionStore) MarkTimeout(
+	_ context.Context, _ int64, _ time.Time, _ int64) (bool, error) {
+	return false, nil
+}
 func (m *mockExecutionStore) DeleteExecutionsOlderThan(_ context.Context, before time.Time) error {
 	m.deleteCalled = true
 	m.deleteBefore = before

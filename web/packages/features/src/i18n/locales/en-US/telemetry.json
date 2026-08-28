@@ -159,7 +159,17 @@
       "statUpdatedAtSub": "Last updated time",
       "statusActive": "Running",
       "statusInactive": "Stopped",
-      "statLastProbeSub": "Last probe {time} · {ms}ms"
+      "statLastProbeSub": "Last probe {time} · {ms}ms",
+      "history": "Probe History",
+      "historyTimestamp": "Time",
+      "historyStatus": "Status",
+      "historyValue": "Value",
+      "historyEmpty": "No probe history yet",
+      "logs": "Logs",
+      "logTimestamp": "Time",
+      "logLevel": "Level",
+      "logMessage": "Message",
+      "logsEmpty": "No logs yet"
     },
     "report": {
       "title": "Reporting Guide",

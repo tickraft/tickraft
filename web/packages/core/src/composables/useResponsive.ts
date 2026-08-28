@@ -5,7 +5,7 @@
 /**
  * Responsive breakpoint composable.
  *
- * Aligned with docs/frontend/navigation-design.md §9.
+ * Aligned with
  *
  * Breakpoint definitions:
  * - xs: < 768px (mobile, drawer sidebar)

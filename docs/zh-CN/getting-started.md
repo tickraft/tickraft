@@ -8,7 +8,7 @@
 ## 前置条件
 
 - **Go** 1.26 或更高版本（用于构建后端）。
-- **Node.js** 18 或更高版本以及 **pnpm** 8 或更高版本（仅当你想运行前端开发服务器时需要）。
+- **Node.js** 22 或更高版本以及 **pnpm** 9 或更高版本（用于编译内嵌 SPA；仅 `make build` 需要）。
 - 支持 SQLite 的文件系统 —— SQLite 已内嵌，无需外部数据库服务器。
 
 ## 第 1 步 —— 构建二进制
@@ -16,10 +16,12 @@
 ```bash
 git clone https://github.com/tickraft/tickraft.git
 cd tickraft
-go build -o bin/tickraft ./cmd/tickraft
+make build
 ```
 
-二进制文件输出到 `bin/tickraft`。
+二进制文件输出到 `bin/tickraft`。`make build` 会先用 pnpm 编译 SPA 并内嵌进二进制，因此 UI 与 API 由同一进程提供服务。
+
+> 仅构建后端：`go build -o bin/tickraft ./cmd/tickraft` 可跳过前端工具链，但内嵌 SPA 为空 —— 浏览器 UI 无法加载，实例只能通过 API 使用。
 
 ## 第 2 步 —— 准备配置
 
@@ -69,7 +71,7 @@ export TICKRAFT_ADMIN_PASSWORD="admin"
 2. 点击 **创建**，填写名称和资产 key（例如 `web-1`），然后保存。
 3. 记下该资产 key —— 上报遥测数据时会用到它。
 
-![资产列表](../screenshots/collector-asset-list.png)
+![资产列表](../screenshots/telemetry-asset-list.png)
 
 ## 第 6 步 —— 创建你的第一个任务
 
@@ -102,7 +104,7 @@ export TICKRAFT_ADMIN_PASSWORD="admin"
 
 - **[用户指南](./user-guide.md)** —— 逐步介绍 Web UI 中的每个页面。
 - **[配置](./configuration.md)** —— 详解每一个配置字段。
-- **[架构](./architecture.md)** —— scheduler、executor 与 collector 如何协同工作。
+- **[架构](./architecture.md)** —— scheduler、executor 与 telemetry 如何协同工作。
 - **[扩展指南](./extension-guide.md)** —— 添加自定义的 executor、listener 和通知渠道。
 
 ## 故障排查

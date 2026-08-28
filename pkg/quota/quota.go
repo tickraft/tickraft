@@ -88,13 +88,3 @@ const (
 	// TypeAPIConcurrent is the concurrent API request quota type.
 	TypeAPIConcurrent Type = "api_concurrent"
 )
-
-// Backward-compatible type aliases. These allow existing callers to
-// reference renamed types without code changes during the transition.
-const (
-	// TypeTask is retained for callers that treat generic "task" assets
-	// as uncapped. Maps to TypeScheduledTask for ceiling lookups.
-	TypeTask = TypeScheduledTask
-	// TypeHTTPInterval is retained as an alias for TypeProbeInterval.
-	TypeHTTPInterval = TypeProbeInterval
-)

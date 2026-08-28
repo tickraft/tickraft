@@ -134,31 +134,80 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <BlankLayout layout="center">
-    <div class="tk-cp__bg" aria-hidden="true" />
+    <div
+      class="tk-cp__bg"
+      aria-hidden="true"
+    />
     <a
       class="tk-cp__back"
       href="javascript:void(0)"
       @click="handleBack"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      ><line
+        x1="19"
+        y1="12"
+        x2="5"
+        y2="12"
+      /><polyline points="12 19 5 12 12 5" /></svg>
       {{ t('auth.changePassword.backToLogin') }}
     </a>
 
     <div class="tk-cp__card">
       <header class="tk-cp__header">
         <div class="tk-cp__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          ><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></svg>
         </div>
-        <h1 class="tk-cp__title">{{ t('auth.changePassword.title') }}</h1>
-        <p class="tk-cp__subtitle">{{ t('auth.changePassword.subtitle') }}</p>
+        <h1 class="tk-cp__title">
+          {{ t('auth.changePassword.title') }}
+        </h1>
+        <p class="tk-cp__subtitle">
+          {{ t('auth.changePassword.subtitle') }}
+        </p>
       </header>
 
-      <form class="tk-cp__form" novalidate @submit.prevent="handleSubmit">
+      <form
+        class="tk-cp__form"
+        novalidate
+        @submit.prevent="handleSubmit"
+      >
         <div class="tk-cp__field">
-          <label class="tk-cp__label" for="tk-cp-current">{{ t('auth.changePassword.oldPassword') }}</label>
+          <label
+            class="tk-cp__label"
+            for="tk-cp-current"
+          >{{ t('auth.changePassword.oldPassword') }}</label>
           <div class="tk-cp__input-wrap">
-            <span class="tk-cp__input-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span
+              class="tk-cp__input-icon"
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><rect
+                x="3"
+                y="11"
+                width="18"
+                height="11"
+                rx="2"
+              /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </span>
             <input
               id="tk-cp-current"
@@ -168,19 +217,68 @@ async function handleSubmit(): Promise<void> {
               :placeholder="t('auth.changePassword.oldPasswordPlaceholder')"
               autocomplete="current-password"
             >
-            <button class="tk-cp__toggle-pw" type="button" :aria-label="t('auth.login.togglePassword')" @click="showOldPassword = !showOldPassword">
-              <svg v-if="!showOldPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button
+              class="tk-cp__toggle-pw"
+              type="button"
+              :aria-label="t('auth.login.togglePassword')"
+              @click="showOldPassword = !showOldPassword"
+            >
+              <svg
+                v-if="!showOldPassword"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle
+                cx="12"
+                cy="12"
+                r="3"
+              /></svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line
+                x1="1"
+                y1="1"
+                x2="23"
+                y2="23"
+              /></svg>
             </button>
           </div>
           <div class="tk-cp__field-error" />
         </div>
 
         <div class="tk-cp__field">
-          <label class="tk-cp__label" for="tk-cp-new">{{ t('auth.changePassword.newPassword') }}</label>
+          <label
+            class="tk-cp__label"
+            for="tk-cp-new"
+          >{{ t('auth.changePassword.newPassword') }}</label>
           <div class="tk-cp__input-wrap">
-            <span class="tk-cp__input-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span
+              class="tk-cp__input-icon"
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><rect
+                x="3"
+                y="11"
+                width="18"
+                height="11"
+                rx="2"
+              /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </span>
             <input
               id="tk-cp-new"
@@ -190,16 +288,49 @@ async function handleSubmit(): Promise<void> {
               :placeholder="t('auth.changePassword.newPasswordPlaceholder')"
               autocomplete="new-password"
             >
-            <button class="tk-cp__toggle-pw" type="button" :aria-label="t('auth.login.togglePassword')" @click="showNewPassword = !showNewPassword">
-              <svg v-if="!showNewPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button
+              class="tk-cp__toggle-pw"
+              type="button"
+              :aria-label="t('auth.login.togglePassword')"
+              @click="showNewPassword = !showNewPassword"
+            >
+              <svg
+                v-if="!showNewPassword"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle
+                cx="12"
+                cy="12"
+                r="3"
+              /></svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line
+                x1="1"
+                y1="1"
+                x2="23"
+                y2="23"
+              /></svg>
             </button>
           </div>
           <div class="tk-cp__field-error" />
         </div>
 
         <!-- Strength meter (hidden when new password is empty) -->
-        <div v-if="form.newPassword" class="tk-cp__strength">
+        <div
+          v-if="form.newPassword"
+          class="tk-cp__strength"
+        >
           <div class="tk-cp__strength-bar">
             <div
               v-for="i in 4"
@@ -210,7 +341,10 @@ async function handleSubmit(): Promise<void> {
           </div>
           <div class="tk-cp__strength-meta">
             <span>{{ t('auth.changePassword.strengthTitle') }}</span>
-            <span class="tk-cp__strength-label" :class="strengthLevel ? `tk-cp__strength-label--${strengthLevel}` : ''">{{ strengthLabel }}</span>
+            <span
+              class="tk-cp__strength-label"
+              :class="strengthLevel ? `tk-cp__strength-label--${strengthLevel}` : ''"
+            >{{ strengthLabel }}</span>
           </div>
         </div>
 
@@ -223,17 +357,43 @@ async function handleSubmit(): Promise<void> {
             :class="{ 'tk-cp__rule--ok': rules[rule.key] }"
           >
             <span class="tk-cp__rule-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><polyline points="20 6 9 17 4 12" /></svg>
             </span>
             <span>{{ rule.label }}</span>
           </div>
         </div>
 
         <div class="tk-cp__field">
-          <label class="tk-cp__label" for="tk-cp-confirm">{{ t('auth.changePassword.confirmPassword') }}</label>
+          <label
+            class="tk-cp__label"
+            for="tk-cp-confirm"
+          >{{ t('auth.changePassword.confirmPassword') }}</label>
           <div class="tk-cp__input-wrap">
-            <span class="tk-cp__input-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span
+              class="tk-cp__input-icon"
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><rect
+                x="3"
+                y="11"
+                width="18"
+                height="11"
+                rx="2"
+              /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </span>
             <input
               id="tk-cp-confirm"
@@ -244,12 +404,44 @@ async function handleSubmit(): Promise<void> {
               :placeholder="t('auth.changePassword.confirmPasswordPlaceholder')"
               autocomplete="new-password"
             >
-            <button class="tk-cp__toggle-pw" type="button" :aria-label="t('auth.login.togglePassword')" @click="showConfirmPassword = !showConfirmPassword">
-              <svg v-if="!showConfirmPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button
+              class="tk-cp__toggle-pw"
+              type="button"
+              :aria-label="t('auth.login.togglePassword')"
+              @click="showConfirmPassword = !showConfirmPassword"
+            >
+              <svg
+                v-if="!showConfirmPassword"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle
+                cx="12"
+                cy="12"
+                r="3"
+              /></svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line
+                x1="1"
+                y1="1"
+                x2="23"
+                y2="23"
+              /></svg>
             </button>
           </div>
-          <div class="tk-cp__field-error">{{ confirmError }}</div>
+          <div class="tk-cp__field-error">
+            {{ confirmError }}
+          </div>
         </div>
 
         <button
@@ -263,7 +455,10 @@ async function handleSubmit(): Promise<void> {
       </form>
 
       <div class="tk-cp__foot">
-        {{ t('auth.changePassword.footHelp') }}<a href="javascript:void(0)" @click="handleBack">{{ t('auth.changePassword.backToLogin') }}</a>{{ t('auth.changePassword.footOrContact') }}
+        {{ t('auth.changePassword.footHelp') }}<a
+          href="javascript:void(0)"
+          @click="handleBack"
+        >{{ t('auth.changePassword.backToLogin') }}</a>{{ t('auth.changePassword.footOrContact') }}
       </div>
     </div>
   </BlankLayout>
@@ -636,7 +831,7 @@ async function handleSubmit(): Promise<void> {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 480px) {
+@media (width <= 480px) {
   .tk-cp__card { padding: 28px 22px; }
   .tk-cp__rules { grid-template-columns: 1fr; }
 }

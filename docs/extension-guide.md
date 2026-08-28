@@ -34,7 +34,7 @@ Every extension capability is expressed as an interface defined in the kernel's 
 |---|-----------------|------------------|-------------------------------------------------|------------------------------------------------|
 | 1 | Executor        | `pkg/executor`   | `Registry.Register`                             | Custom task executors (e.g. SSH, MySQL).       |
 | 2 | Channel         | `pkg/prism/channel` | `channel.Register`                           | Custom alert notification channels.            |
-| 3 | Collector       | `pkg/collector`  | `ListenerRegistry.Register` / `ProcessorRegistry.Register` | Passive listeners and data processors. |
+| 3 | Telemetry       | `pkg/telemetry`  | `ListenerRegistry.Register` / `ProcessorRegistry.Register` | Passive listeners and data processors. |
 | 4 | API plugin      | `pkg/api`        | `Server.RegisterPlugin`                         | Custom routes, middleware, lifecycle hooks.    |
 | 5 | CLI subcommand  | `pkg/cli`        | `cli.RegisterCmd`                               | Custom CLI subcommands.                        |
 | 6 | Storage driver  | `pkg/db`         | `db.Register`                                   | Custom database drivers.                       |
@@ -92,18 +92,18 @@ channel.Register("slack", factory)
 
 ---
 
-## Collector extension
+## Telemetry extension
 
 Inject passive listeners (e.g. Syslog, SNMP trap, MQTT) and data processors. The open-source edition ships an HTTP listener and device/task processors.
 
-**Kernel package**: `pkg/collector` · **Registration**: `ListenerRegistry.Register` / `ProcessorRegistry.Register`
+**Kernel package**: `pkg/telemetry` · **Registration**: `ListenerRegistry.Register` / `ProcessorRegistry.Register`
 
-A `Listener` (`Type()`, `Start()`, `Stop()`) receives external data and forwards it to the ingestion callback. A `Processor` (`Type()`, `Process()`, `OnTimeout()`) handles a specific asset type. Duplicate `Type()` registrations return an error. The registries are constructed by the collector manager and injected into the downstream repository.
+A `Listener` (`Type()`, `Start()`, `Stop()`) receives external data and forwards it to the ingestion callback. A `Processor` (`Type()`, `Process()`, `OnTimeout()`) handles a specific asset type. Duplicate `Type()` registrations return an error. The registries are constructed by the telemetry manager and injected into the downstream repository.
 
 ```go
 type SyslogListener struct{}
 func (l *SyslogListener) Type() string { return "syslog" }
-func (l *SyslogListener) Start(ctx context.Context, ingest func(context.Context, *collector.Report)) error {
+func (l *SyslogListener) Start(ctx context.Context, ingest func(context.Context, *telemetry.Telemetry)) error {
     // start syslog server, call ingest(ctx, &report) for each message
     return nil
 }
@@ -195,7 +195,7 @@ All SPI registrations must complete before the server starts. The recommended or
 2. **Auth extensions** — so the authz service and permission middleware observe downstream providers when the API starts.
 3. **Channel factories** — so `LoadChannels` finds them in the config-loading phase.
 4. **Executors** — so the runner can dispatch extended task types.
-5. **Collector listeners / processors** — so the collector manager can start them.
+5. **Telemetry listeners / processors** — so the telemetry manager can start them.
 6. **CLI subcommands** — before the root command is constructed.
 7. **API plugins** — before `Server.Start()` so routes and hooks are wired.
 

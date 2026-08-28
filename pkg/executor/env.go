@@ -14,7 +14,7 @@ import (
 // and evaluated at the single choke point in the runner after the
 // executor returns and before the retry decision.
 //
-// Variable contract (rule-engine-design §4.3):
+// Variable contract:
 //
 //	code     int               unified result code (HTTP status, exit
 //	                          code, or 0 for tcp/icmp)

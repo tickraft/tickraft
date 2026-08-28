@@ -1299,7 +1299,7 @@ onMounted(async () => {
 }
 
 /* Responsive */
-@media (max-width: 1100px) {
+@media (width <= 1100px) {
   .tk-monitor-create__grid {
     grid-template-columns: 1fr;
   }
@@ -1309,7 +1309,7 @@ onMounted(async () => {
   }
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .tk-type-radio {
     grid-template-columns: 1fr;
   }

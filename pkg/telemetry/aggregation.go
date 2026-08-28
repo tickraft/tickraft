@@ -258,19 +258,16 @@ func (a *Aggregator) Start(ctx context.Context) {
 	go a.run(ctx)
 }
 
-// run is the background loop that flushes expired windows and flushes all
-// remaining buffers when the context is cancelled.
+// run supervises the background flush loop: superviseLoop restarts it after
+// a panic so windowed aggregation cannot silently stop.
 func (a *Aggregator) run(ctx context.Context) {
 	defer a.wg.Done()
-	defer func() {
-		if r := recover(); r != nil {
-			a.logger.Error("aggregator run goroutine panicked",
-				zap.Any("panic", r),
-				zap.Stack("stack"),
-			)
-		}
-	}()
+	superviseLoop(ctx, a.logger, "aggregator run", loopRestartBackoff, a.flushLoop)
+}
 
+// flushLoop periodically flushes expired windows and flushes all remaining
+// buffers when the context is cancelled.
+func (a *Aggregator) flushLoop(ctx context.Context) {
 	interval := a.window / 2
 	if interval <= 0 {
 		interval = a.window
@@ -332,6 +329,11 @@ func (a *Aggregator) send(am *aggregatedMetric) {
 // Stop gracefully stops the aggregator. It signals the background goroutine to
 // exit, which flushes all remaining buffers before returning. Stop blocks until
 // the goroutine has finished or the context is cancelled.
+//
+// When the caller's context expires first, Stop returns the timeout error
+// while the drain continues without it: the run goroutine observes the
+// cancelled internal context and exits promptly, so its lifetime can exceed
+// the Stop call only by that bounded drain, never indefinitely.
 func (a *Aggregator) Stop(ctx context.Context) error {
 	a.startMu.Lock()
 	if !a.started {

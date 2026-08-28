@@ -56,6 +56,8 @@ export interface TaskModel {
   executorType: string
   schedule: string
   enabled: boolean
+  /** Mode A: schedule only dispatches; the remote reports the outcome */
+  reportStatus?: boolean
   config?: Record<string, unknown>
   /** Task-level execution timeout in seconds */
   timeout?: number
@@ -126,6 +128,8 @@ export interface TaskCreateParams {
   executorType: string
   schedule: string
   enabled: boolean
+  /** Mode A: schedule only dispatches; the remote reports the outcome */
+  reportStatus?: boolean
   config?: Record<string, unknown>
   /** Task-level execution timeout in seconds */
   timeout?: number
@@ -168,6 +172,8 @@ export interface TaskFormData {
   group: string
   tags: string[]
   enabled: boolean
+  /** Mode A: schedule only dispatches; the remote reports the outcome */
+  reportStatus: boolean
   retryPolicy: string
   concurrency: number
 

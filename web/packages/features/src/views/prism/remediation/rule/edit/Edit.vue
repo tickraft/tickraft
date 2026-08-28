@@ -788,7 +788,7 @@ onMounted(() => {
     gap: 0 var(--tk-spacing-md);
   }
 
-  @media (max-width: 768px) {
+  @media (width <= 768px) {
     &__form-grid {
       grid-template-columns: 1fr;
     }

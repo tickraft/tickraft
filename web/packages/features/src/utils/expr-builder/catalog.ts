@@ -4,7 +4,7 @@
 
 /**
  * Variable catalog of the three expression environments
- * (rule-engine-design §9.3).
+ *.
  *
  * The catalog is the single source of the wizard's variable dropdown,
  * the operator filter, and the expert-mode cheat sheet. It must stay

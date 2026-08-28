@@ -12,7 +12,9 @@ Welcome to the Tickraft documentation. The open-source edition ships as a single
 | [Architecture](./architecture.md) | Layered architecture, the three-module design, and the event bus. |
 | [Deployment](./deployment.md) | Binary, Docker, and development deployment. |
 | [Extension guide](./extension-guide.md) | How to add custom executors, listeners, channels, and API plugins via SPI. |
-| [Module boundaries](./module-boundary.md) | The rules that keep the scheduler, executor, and collector decoupled. |
+| [Module boundaries](./module-boundary.md) | The rules that keep the scheduler, executor, and telemetry decoupled. |
+| [Model layering design](./model-layering-design.md) | Internal design record: merging the API and persistence data models into single dual-tag models. |
+| [Rule engine design](./rule-engine-design.md) | Internal design record: the unified rule engine (`pkg/expr`) and alert rule rework. |
 | [OpenAPI specification](./api/openapi.yaml) | REST API paths, request/response schemas, and error codes. |
 
 ## Languages

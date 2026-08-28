@@ -660,6 +660,7 @@ func TestExecutorRunnerIntegration(t *testing.T) {
 		TenantID:       strconv.FormatInt(wantTenantID, 10),
 		AssetID:        strconv.FormatInt(wantResourceID, 10),
 		ExecutorType:   "remediation",
+		Operation:      executor.OpExecute.String(),
 		TimeoutSeconds: int64(wantTimeout / time.Second),
 	})
 

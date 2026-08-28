@@ -84,7 +84,7 @@ func TestBuildExecutionEnvFields(t *testing.T) {
 }
 
 // TestApplyJudgment pins the judgment semantics of rule-engine-design
-// §6.3.2: empty expression is protocol default, true forces success,
+// : empty expression is protocol default, true forces success,
 // false forces failure with an ErrorMsg note, and a runtime evaluation
 // failure falls back to the protocol default.
 func TestApplyJudgment(t *testing.T) {

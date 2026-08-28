@@ -3,7 +3,7 @@
 // Dual-licensed — see details in LICENSE.
 
 /**
- * Wizard condition-row model (rule-engine-design §9.2). This is
+ * Wizard condition-row model. This is
  * frontend-internal state only — the generated expression string is
  * the single source of truth persisted to the backend.
  */

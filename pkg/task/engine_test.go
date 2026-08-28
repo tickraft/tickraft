@@ -55,7 +55,7 @@ func (m *mockStore) Get(_ context.Context, id int64) (*Task, error) {
 	return &cp, nil
 }
 
-func (m *mockStore) List(_ context.Context, _ ListOptions) ([]*Task, error) {
+func (m *mockStore) List(_ context.Context, opts ListOptions) ([]*Task, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
@@ -63,10 +63,23 @@ func (m *mockStore) List(_ context.Context, _ ListOptions) ([]*Task, error) {
 	defer m.mu.Unlock()
 	result := make([]*Task, 0, len(m.tasks))
 	for _, t := range m.tasks {
+		if opts.IDs != nil && !containsID(opts.IDs, t.ID) {
+			continue
+		}
 		cp := *t
 		result = append(result, &cp)
 	}
 	return result, nil
+}
+
+// containsID reports whether ids contains id.
+func containsID(ids []int64, id int64) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *mockStore) Delete(_ context.Context, id int64) error {
@@ -126,7 +139,7 @@ func TestTaskManagerList(t *testing.T) {
 	m.setTask(Task{ID: 1})
 	m.setTask(Task{ID: 2})
 
-	list := m.listTasks()
+	list := listTasks(m)
 	if len(list) != 2 {
 		t.Errorf("got %d tasks, want 2", len(list))
 	}
@@ -877,8 +890,8 @@ func TestTaskManagerRestoreNoStore(t *testing.T) {
 	if err := m.Restore(context.Background()); err != nil {
 		t.Fatalf("Restore with no store: %v", err)
 	}
-	if len(m.listTasks()) != 0 {
-		t.Errorf("expected 0 tasks, got %d", len(m.listTasks()))
+	if len(listTasks(m)) != 0 {
+		t.Errorf("expected 0 tasks, got %d", len(listTasks(m)))
 	}
 }
 
@@ -899,7 +912,7 @@ func TestTaskManagerRestoreFromStore(t *testing.T) {
 		t.Fatalf("Restore: %v", err)
 	}
 
-	list := m.listTasks()
+	list := listTasks(m)
 	if len(list) != 2 {
 		t.Fatalf("expected 2 restored tasks, got %d", len(list))
 	}
@@ -948,7 +961,7 @@ func TestTaskManagerRestoreIsIdempotent(t *testing.T) {
 		t.Fatalf("Restore (2): %v", err)
 	}
 
-	list := m.listTasks()
+	list := listTasks(m)
 	if len(list) != 1 {
 		t.Fatalf("expected 1 task after second Restore, got %d", len(list))
 	}
@@ -1422,5 +1435,51 @@ func TestRestoreClearsStaleSchedules(t *testing.T) {
 	m.mu.RUnlock()
 	if hasSchedAfter {
 		t.Fatal("stale schedule for deleted task 1 should be cleared after second Restore")
+	}
+}
+
+// listTasks collects the tasks held in the engine's in-memory store. It
+// exists so tests can observe engine state without going through the
+// public API.
+func listTasks(e *Engine) []Task {
+	e.taskMu.RLock()
+	defer e.taskMu.RUnlock()
+	result := make([]Task, 0, len(e.tasks))
+	for id := range e.tasks {
+		result = append(result, e.tasks[id])
+	}
+	return result
+}
+
+// failAddEngine rejects every wheel registration, to exercise Register's
+// rollback path.
+type failAddEngine struct {
+	scheduler.NoopEngine
+}
+
+func (failAddEngine) Add(int64, scheduler.Schedule, scheduler.Callback) error {
+	return errors.New("wheel add failed")
+}
+
+func TestRegisterRollsBackOnAddFailure(t *testing.T) {
+	store := newMockStore()
+	eng, err := NewEngine(
+		WithEngine(failAddEngine{}),
+		WithStore(store),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer eng.Stop(context.Background())
+
+	tk := Task{ID: 7, ExecutorType: "mock", Schedule: "@every 1h", Enabled: true}
+	if err := eng.Register(context.Background(), tk); err == nil {
+		t.Fatal("expected Register to fail when the wheel rejects the task")
+	}
+	if _, err := eng.getTask(7); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("task leaked in memory after failed register: %v", err)
+	}
+	if _, err := store.Get(context.Background(), 7); !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("task leaked in store after failed register: %v", err)
 	}
 }

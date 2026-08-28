@@ -9,7 +9,7 @@
 // keeps the "when" and "what happens on a match" for itself.
 //
 // The sandbox applies exactly three structural constraints (see
-// docs/rule-engine-design.md §3.3):
+// ):
 //
 //   - MaxNodes=1000 bounds the AST size of an expression;
 //   - AsBool requires the expression to be a predicate (bool result);

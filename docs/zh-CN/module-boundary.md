@@ -3,19 +3,19 @@
 > 本中文文档仅供参考，请以英文文档为准。
 > Chinese translation is for reference only; the English documentation is authoritative.
 
-本文档记录了保持 scheduler、executor 与 collector 解耦的规则，以及下游仓库扩展内核的准则。
+本文档记录了保持 scheduler、executor 与 telemetry 解耦的规则，以及下游仓库扩展内核的准则。
 
 ## 三模块解耦规则
 
-scheduler、executor 与 collector 是相互独立的子系统。它们彼此从不互相导入，也从不调用彼此的方法。所有跨模块通信都通过事件总线流转。
+scheduler、executor 与 telemetry 是相互独立的子系统。它们彼此从不互相导入，也从不调用彼此的方法。所有跨模块通信都通过事件总线流转。
 
 | 规则 | 禁止事项 | 原因 |
 |------|-----------|--------|
 | M-01 | scheduler → executor 导入 | scheduler 仅发布 `TaskTriggered`；直接调用会耦合部署单元。 |
 | M-02 | executor → scheduler 导入 | executor 仅发布 `TaskCompleted`；直接调用会形成环。 |
-| M-03 | collector → scheduler 导入 | collector 完全解耦；它只能可选地发布 `StatusChange`。 |
-| M-04 | collector → executor 导入 | 采集与执行是不同关注点，无直接通信。 |
-| M-05 | scheduler → collector 导入 | scheduler 不感知 collector 的存在。 |
+| M-03 | telemetry → scheduler 导入 | telemetry 完全解耦；它只能可选地发布 `StatusChange`。 |
+| M-04 | telemetry → executor 导入 | 采集与执行是不同关注点，无直接通信。 |
+| M-05 | scheduler → telemetry 导入 | scheduler 不感知 telemetry 的存在。 |
 
 ## 通信契约
 
@@ -23,9 +23,9 @@ scheduler、executor 与 collector 是相互独立的子系统。它们彼此从
 |----------------------|-------------------|------------|-------------------|
 | scheduler → executor | `TaskTriggered`   | scheduler  | executor          |
 | executor → scheduler | `TaskCompleted`   | executor   | scheduler         |
-| collector → scheduler | `StatusChange`   | collector  | scheduler（可选） |
+| telemetry → scheduler | `StatusChange`   | telemetry  | scheduler（可选） |
 
-collector 不订阅任何 scheduler 事件，这保证了它可以独立运行。
+telemetry 不订阅任何 scheduler 事件，这保证了它可以独立运行。
 
 ## 分层原则
 

@@ -655,6 +655,7 @@ defineExpose({ clearSelection, doLayout, clearSort })
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
+
     // gray-3 (neutral-100): one step above the row surface in BOTH themes —
     // in dark the flipped ramp keeps the header distinct from body rows
     background-color: var(--tk-gray-3);

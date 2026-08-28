@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/event"
+	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -110,7 +111,9 @@ func (e *Engine) handleStatusChange(payload event.StatusChangePayload) {
 			zap.Int64("task_id", task.ID),
 			zap.Int64("asset_id", assetID),
 		)
-		e.trigger(task, TriggerTypeEvent)
+		// No upstream ctx exists on the bus-subscriber path; Background is
+		// the honest base here.
+		e.trigger(context.Background(), task, TriggerTypeEvent)
 	}
 }
 
@@ -123,7 +126,7 @@ func (e *Engine) handleStatusChange(payload event.StatusChangePayload) {
 // publish fails (or the bus is nil), the running marker is released so the
 // next fire is not permanently blocked; the ExecutionCompleted subscriber is
 // the normal release path for successful publishes.
-func (e *Engine) trigger(task Task, triggerType TriggerType) {
+func (e *Engine) trigger(ctx context.Context, task Task, triggerType TriggerType) {
 	e.runningMu.Lock()
 	e.running[task.ID] = struct{}{}
 	e.runningMu.Unlock()
@@ -135,18 +138,25 @@ func (e *Engine) trigger(task Task, triggerType TriggerType) {
 		e.releaseRunning(task.ID)
 		return
 	}
+	// Task-domain executions run as execute; the prober overrides the
+	// operation when registering its tasks.
+	operation := task.Operation
+	if operation != executor.OpProbe && operation != executor.OpExecute {
+		operation = executor.OpExecute
+	}
 	payload := event.ExecutionPayload{
 		ExecutionID:          strconv.FormatInt(task.ID, 10),
 		TenantID:             strconv.FormatInt(task.TenantID, 10),
 		AssetID:              strconv.FormatInt(task.AssetID, 10),
 		ExecutorType:         task.ExecutorType,
-		Operation:            task.Operation.String(),
+		Operation:            operation.String(),
 		Action:               "triggered",
 		TimeoutSeconds:       task.TimeoutSeconds,
 		MaxRetries:           task.MaxRetries,
 		RetryIntervalSeconds: task.RetryIntervalSeconds,
 		RunID:                runID,
 		TriggerType:          string(triggerType),
+		ReportStatus:         task.ReportStatus,
 	}
 	if task.Config != nil {
 		raw, err := sonic.Marshal(task.Config)
@@ -163,7 +173,10 @@ func (e *Engine) trigger(task Task, triggerType TriggerType) {
 	if task.Metadata != nil {
 		pubOpts = append(pubOpts, event.WithMetadata(task.Metadata))
 	}
-	if err := event.Publish(context.Background(), e.bus, event.TypeExecutionTriggered, payload,
+	// Detach from the caller's cancellation: the trigger event must reach
+	// the bus even after the originating request returns, while keeping the
+	// request's trace metadata.
+	if err := event.Publish(context.WithoutCancel(ctx), e.bus, event.TypeExecutionTriggered, payload,
 		pubOpts...); err != nil {
 		e.logger.Warn("failed to publish execution triggered event",
 			zap.Int64("task_id", task.ID),
@@ -177,6 +190,12 @@ func (e *Engine) trigger(task Task, triggerType TriggerType) {
 }
 
 // newRunID generates a unique 32-char hex identifier for a task run.
+//
+// The format is load-bearing for report credential routing (see bindTaskRef):
+// a run ID is never parseable as a decimal task number — any hex letter
+// breaks base-10 parsing and an all-digit string is 32 chars long, beyond
+// int64 range — and the time-based fallback carries a "run-" prefix. Any
+// future ID format must preserve this invariant.
 func newRunID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

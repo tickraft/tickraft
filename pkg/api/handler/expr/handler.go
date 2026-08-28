@@ -4,7 +4,7 @@
 
 // Package expr exposes the expression validation endpoint shared by the
 // rule editors: alert rule expressions, remediation trigger conditions,
-// and execution judgments (rule-engine-design §8.4).
+// and execution judgments.
 package expr
 
 import (

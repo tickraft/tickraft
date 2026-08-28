@@ -12,7 +12,6 @@ import (
 	// Registers the tolerantjson serializer that Rule.Metadata depends on.
 	// The blank import guarantees registration before any schema parse.
 	_ "github.com/tickraft/tickraft/pkg/db"
-	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // Rule is the alert rule model: the single representation shared by the
@@ -104,14 +103,3 @@ type Record struct {
 
 // TableName returns the database table name.
 func (Record) TableName() string { return "sys_prism_alert_record" }
-
-// AfterFind self-heals legacy rows written before the severity column
-// gained its 'warning' default: an empty severity reads back as warning,
-// matching the API contract previously enforced by the service-layer
-// converter.
-func (r *Record) AfterFind() error {
-	if r.Severity == "" {
-		r.Severity = string(types.SeverityWarning)
-	}
-	return nil
-}

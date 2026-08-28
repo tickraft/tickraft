@@ -105,11 +105,10 @@ type Options struct {
 	// asset is declared offline even before its first report arrives.
 	// When nil, registration stays lazy: it happens on the first report.
 	MonitorStore *MonitorStore
-	// ListenerRegistry holds the passive telemetry listeners (HTTP and
-	// protocol listeners). When set, the Engine starts all registered
-	// ProtocolListeners on Start and stops them on Stop. HTTPListeners
-	// are looked up by the API router layer to mount their handlers.
-	// When nil, no protocol listeners are managed by the Engine.
+	// ListenerRegistry holds the passive protocol listeners. When set,
+	// the Engine starts all registered ProtocolListeners on Start and
+	// stops them on Stop. When nil, no protocol listeners are managed by
+	// the Engine.
 	ListenerRegistry *ListenerRegistry
 }
 
@@ -255,17 +254,17 @@ func (o listenerRegistryOption) apply(opts *Options) { opts.ListenerRegistry = o
 
 // WithListenerRegistry injects the passive listener registry. When set,
 // the Engine starts all registered ProtocolListeners on Start and stops
-// them on Stop. HTTPListeners in the registry are looked up by the API
-// router layer to mount their handlers on the telemetry endpoint.
+// them on Stop.
 func WithListenerRegistry(reg *ListenerRegistry) Option {
 	return listenerRegistryOption{reg: reg}
 }
 
 // New creates a new Collector with the given options.
 //
-// Returns an error if the internal time wheel or default telemetry pool
-// cannot be initialized (see [Engine] / [timewheel.New] for details).
-// The error path is unreachable in practice but is returned rather
+// Returns an error when no asset store is configured (WithAssetStore), or
+// if the internal time wheel or default telemetry pool cannot be
+// initialized (see [Engine] / [timewheel.New] for details). The pool and
+// wheel error paths are unreachable in practice but are returned rather
 // than panicking to honor the "no panic in business logic" rule.
 func New(options ...Option) (Collector, error) {
 	return newEngine(options...)

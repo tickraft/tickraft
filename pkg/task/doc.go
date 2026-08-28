@@ -18,7 +18,7 @@
 // to StatusChange events to trigger event-driven tasks.
 //
 // Key abstractions:
-//   - Manager: the task lifecycle management interface.
+//   - TaskEngine: the task scheduling engine contract.
 //   - Engine: the core implementation, holding a scheduler.Engine.
 //   - Task / Execution: the single dual-tag models (GORM + wire) for the
 //     sys_schedule_task and sys_schedule_log tables.

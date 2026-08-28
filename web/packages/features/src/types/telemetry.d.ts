@@ -23,7 +23,7 @@ export type ProberType =
 export type ListenerType = 'webhook' | 'syslog' | 'snmp' | 'mqtt'
 
 /**
- * Monitor mode enum — aligns with backend TelemetryTask.Mode.
+ * Monitor mode enum — aligns with backend MonitorPoint.Mode.
  * "active" = probed by ProberService; "passive" = receives via listener.
  */
 export type MonitorMode = 'active' | 'passive'
@@ -35,7 +35,7 @@ export type MonitorMode = 'active' | 'passive'
 export type MonitorType = ProberType | ListenerType
 
 /**
- * Monitor point model — aligns with backend handler.TelemetryTask.
+ * Monitor point model — aligns with backend telemetry.MonitorPoint.
  * Unified model merging prober (active) and listener (passive) into a single
  * table with a Mode field.
  */
@@ -65,7 +65,7 @@ export interface MonitorPoint {
 }
 
 /**
- * Monitor point creation parameters — matches backend TelemetryTask request body
+ * Monitor point creation parameters — matches backend MonitorPoint request body
  * for POST /api/v1/telemetry/monitors.
  */
 export interface MonitorCreateParams {
@@ -82,7 +82,7 @@ export interface MonitorCreateParams {
 }
 
 /**
- * Monitor point update parameters — matches backend TelemetryTask request body
+ * Monitor point update parameters — matches backend MonitorPoint request body
  * for PUT /api/v1/telemetry/monitors/:id. The backend replaces all fields,
  * so all required fields must be provided.
  */

@@ -159,7 +159,17 @@
       "statUpdatedAtSub": "最近更新时间",
       "statusActive": "运行中",
       "statusInactive": "未运行",
-      "statLastProbeSub": "最近探测 {time} · 延迟 {ms}ms"
+      "statLastProbeSub": "最近探测 {time} · 延迟 {ms}ms",
+      "history": "探测历史",
+      "historyTimestamp": "时间",
+      "historyStatus": "状态",
+      "historyValue": "数值",
+      "historyEmpty": "暂无探测历史",
+      "logs": "日志",
+      "logTimestamp": "时间",
+      "logLevel": "级别",
+      "logMessage": "内容",
+      "logsEmpty": "暂无日志"
     },
     "report": {
       "title": "上报引导",

@@ -454,7 +454,10 @@ function handleCancel(): void {
       </section>
 
       <!-- Section: Webhook Configuration -->
-      <section v-if="isWebhook" class="tk-channel-form__section">
+      <section
+        v-if="isWebhook"
+        class="tk-channel-form__section"
+      >
         <h3 class="tk-channel-form__section-title">
           {{ t('prism.channel.form.sectionWebhook') }}
         </h3>
@@ -535,36 +538,97 @@ function handleCancel(): void {
       </section>
 
       <!-- Section: Email Configuration -->
-      <section v-if="isEmail" class="tk-channel-form__section">
+      <section
+        v-if="isEmail"
+        class="tk-channel-form__section"
+      >
         <h3 class="tk-channel-form__section-title">
           {{ t('prism.channel.form.sectionEmail') }}
         </h3>
-        <el-form-item :label="t('prism.channel.form.emailHost')" prop="emailHost">
-          <el-input v-model="form.emailHost" :placeholder="t('prism.channel.form.emailHostPlaceholder')" />
+        <el-form-item
+          :label="t('prism.channel.form.emailHost')"
+          prop="emailHost"
+        >
+          <el-input
+            v-model="form.emailHost"
+            :placeholder="t('prism.channel.form.emailHostPlaceholder')"
+          />
         </el-form-item>
-        <el-form-item :label="t('prism.channel.form.emailPort')" prop="emailPort">
-          <el-input-number v-model="form.emailPort" :min="1" :max="65535" class="tk-channel-form__block" />
+        <el-form-item
+          :label="t('prism.channel.form.emailPort')"
+          prop="emailPort"
+        >
+          <el-input-number
+            v-model="form.emailPort"
+            :min="1"
+            :max="65535"
+            class="tk-channel-form__block"
+          />
         </el-form-item>
-        <el-form-item :label="t('prism.channel.form.emailUsername')" prop="emailUsername">
-          <el-input v-model="form.emailUsername" :placeholder="t('prism.channel.form.emailUsernamePlaceholder')" />
+        <el-form-item
+          :label="t('prism.channel.form.emailUsername')"
+          prop="emailUsername"
+        >
+          <el-input
+            v-model="form.emailUsername"
+            :placeholder="t('prism.channel.form.emailUsernamePlaceholder')"
+          />
         </el-form-item>
-        <el-form-item :label="t('prism.channel.form.emailPassword')" prop="emailPassword">
-          <el-input v-model="form.emailPassword" type="password" show-password :placeholder="t('prism.channel.form.emailPasswordPlaceholder')" />
+        <el-form-item
+          :label="t('prism.channel.form.emailPassword')"
+          prop="emailPassword"
+        >
+          <el-input
+            v-model="form.emailPassword"
+            type="password"
+            show-password
+            :placeholder="t('prism.channel.form.emailPasswordPlaceholder')"
+          />
         </el-form-item>
-        <el-form-item :label="t('prism.channel.form.emailFrom')" prop="emailFrom">
-          <el-input v-model="form.emailFrom" :placeholder="t('prism.channel.form.emailFromPlaceholder')" />
+        <el-form-item
+          :label="t('prism.channel.form.emailFrom')"
+          prop="emailFrom"
+        >
+          <el-input
+            v-model="form.emailFrom"
+            :placeholder="t('prism.channel.form.emailFromPlaceholder')"
+          />
         </el-form-item>
-        <el-form-item :label="t('prism.channel.form.emailTo')" prop="emailTo">
-          <el-input v-model="form.emailTo" type="textarea" :rows="2" :placeholder="t('prism.channel.form.emailToPlaceholder')" />
+        <el-form-item
+          :label="t('prism.channel.form.emailTo')"
+          prop="emailTo"
+        >
+          <el-input
+            v-model="form.emailTo"
+            type="textarea"
+            :rows="2"
+            :placeholder="t('prism.channel.form.emailToPlaceholder')"
+          />
         </el-form-item>
         <el-form-item :label="t('prism.channel.form.emailTlsMode')">
-          <el-select v-model="form.emailTlsMode" class="tk-channel-form__block">
-            <el-option v-for="opt in tlsModeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          <el-select
+            v-model="form.emailTlsMode"
+            class="tk-channel-form__block"
+          >
+            <el-option
+              v-for="opt in tlsModeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('prism.channel.form.emailAuthType')">
-          <el-select v-model="form.emailAuthType" class="tk-channel-form__block">
-            <el-option v-for="opt in authTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          <el-select
+            v-model="form.emailAuthType"
+            class="tk-channel-form__block"
+          >
+            <el-option
+              v-for="opt in authTypeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('prism.channel.form.emailHtmlMode')">

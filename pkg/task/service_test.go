@@ -91,7 +91,7 @@ func assertServiceErrorStatus(t *testing.T, err error, wantStatus, wantCode int)
 // bus that is closed automatically on Stop. SubscribeEvents is not called
 // because these tests do not exercise dependency tracking; the core
 // Register/Schedule/Update/Unschedule flow does not depend on it.
-func setupSchedulerTaskService(t *testing.T) (*TaskService, Manager, func()) {
+func setupSchedulerTaskService(t *testing.T) (*TaskService, TaskEngine, func()) {
 	t.Helper()
 
 	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})

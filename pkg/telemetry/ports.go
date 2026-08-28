@@ -116,32 +116,32 @@ type PointSummary struct {
 	Disabled int64 `json:"disabled"`
 }
 
-// Filter holds optional filtering criteria for listing telemetry
-// tasks. A zero-value Filter matches all tasks. The Mode field
+// Filter holds optional filtering criteria for listing monitoring
+// points. A zero-value Filter matches all points. The Mode field
 // filters by monitoring point mode ("active", "passive", or "" for all).
 type Filter struct {
-	// Mode filters tasks by monitoring point mode. An empty string matches
+	// Mode filters points by monitoring point mode. An empty string matches
 	// all modes. Valid values are "active" and "passive".
 	Mode string
 }
 
-// Service defines the operations for managing telemetry collection
-// tasks. The concrete implementation (TelemetryService) is injected via
-// the WithTelemetryService RouteOption; when omitted, the handler package
-// falls back to an in-memory implementation suitable for the runtime.
+// Service defines the operations for managing monitoring points. The
+// concrete implementation (TelemetryService) is injected via the
+// WithTelemetryService RouteOption; when omitted, the monitor routes are
+// not registered.
 type Service interface {
-	// ListTasks returns a page of telemetry tasks ordered by ascending
+	// ListMonitors returns a page of monitoring points ordered by ascending
 	// ID, plus the total count. The filter narrows results by mode when
 	// filter.Mode is non-empty.
-	ListTasks(ctx context.Context, page, size int, filter Filter) ([]MonitorPoint, int64, error)
-	// GetTask returns a single telemetry task by ID.
-	GetTask(ctx context.Context, id int64) (*MonitorPoint, error)
-	// CreateTask creates a new telemetry task from the given request.
-	CreateTask(ctx context.Context, req *MonitorPoint) (*MonitorPoint, error)
-	// UpdateTask updates an existing telemetry task identified by ID.
-	UpdateTask(ctx context.Context, id int64, req *MonitorPoint) (*MonitorPoint, error)
-	// DeleteTask deletes a telemetry task by ID.
-	DeleteTask(ctx context.Context, id int64) error
+	ListMonitors(ctx context.Context, page, size int, filter Filter) ([]MonitorPoint, int64, error)
+	// GetMonitor returns a single monitoring point by ID.
+	GetMonitor(ctx context.Context, id int64) (*MonitorPoint, error)
+	// CreateMonitor creates a new monitoring point from the given request.
+	CreateMonitor(ctx context.Context, req *MonitorPoint) (*MonitorPoint, error)
+	// UpdateMonitor updates an existing monitoring point identified by ID.
+	UpdateMonitor(ctx context.Context, id int64, req *MonitorPoint) (*MonitorPoint, error)
+	// DeleteMonitor deletes a monitoring point by ID.
+	DeleteMonitor(ctx context.Context, id int64) error
 	// ProbeNow dispatches an on-demand probe for an active monitoring
 	// point. It returns the point (for status rendering) after the probe
 	// has been queued; the outcome lands in the probe record store

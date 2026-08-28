@@ -74,10 +74,9 @@ type Engine struct {
 	// proberSvc coordinates active probing. When non-nil it is started
 	// alongside the listener pipeline and stopped in reverse order.
 	proberSvc *ProberService
-	// listenerRegistry holds passive telemetry listeners. When non-nil,
+	// listenerRegistry holds passive protocol listeners. When non-nil,
 	// all registered ProtocolListeners are started on Engine.Start and
-	// stopped on Engine.Stop. HTTPListeners are looked up by the API
-	// router layer to mount their handlers.
+	// stopped on Engine.Stop.
 	listenerRegistry *ListenerRegistry
 	// monitorStore holds the monitoring-point store. When non-nil, Start
 	// bootstraps passive offline detection by registering every asset
@@ -90,8 +89,11 @@ type Engine struct {
 
 // newEngine creates a new Engine with the given options.
 //
-// Returns an error if the internal time wheel or default telemetry pool
-// cannot be initialized. These paths are unreachable in practice
+// Returns an error when no asset store is configured — the engine cannot
+// track asset status without one, so a missing store is a wiring defect
+// that must fail at startup instead of surfacing as lost status updates.
+// It also returns an error if the internal time wheel or default telemetry
+// pool cannot be initialized. These paths are unreachable in practice
 // because the wheel's worker count and the IO pool's size are both
 // sanitized to positive values, but the error is returned rather than
 // panicking to honor the "no panic in business logic" rule.
@@ -99,6 +101,10 @@ func newEngine(options ...Option) (*Engine, error) {
 	opts := &Options{}
 	for _, o := range options {
 		o.apply(opts)
+	}
+
+	if opts.AssetStore == nil {
+		return nil, fmt.Errorf("telemetry: asset store is required, configure it with WithAssetStore")
 	}
 
 	logger := opts.Logger
@@ -189,12 +195,13 @@ func (m *Engine) Start(ctx context.Context) error {
 
 	// Start the telemetry processing loop.
 	m.wg.Add(1)
-	// goroutine lifecycle: bound to ctx (cancelled by Engine.Stop);
-	// processLoop selects on ctx.Done and exits; tracked by m.wg.
+	// goroutine lifecycle: bound to ctx (cancelled by Engine.Stop via
+	// m.cancel); processLoop selects on ctx.Done and exits; superviseLoop
+	// restarts it after a panic so ingestion cannot silently stop; tracked
+	// by m.wg.
 	go func() {
 		defer m.wg.Done()
-		defer m.recoverPanic("process loop")
-		m.processLoop(ctx)
+		superviseLoop(ctx, m.logger, "process loop", loopRestartBackoff, m.processLoop)
 	}()
 
 	// Start the aggregator and a consumer goroutine that persists flushed
@@ -203,11 +210,11 @@ func (m *Engine) Start(ctx context.Context) error {
 		m.aggregator.Start(ctx)
 		m.wg.Add(1)
 		// goroutine lifecycle: bound to ctx (cancelled by Engine.Stop);
-		// consumeAggregated selects on ctx.Done and exits; tracked by m.wg.
+		// consumeAggregated selects on ctx.Done and exits; superviseLoop
+		// restarts it after a panic; tracked by m.wg.
 		go func() {
 			defer m.wg.Done()
-			defer m.recoverPanic("aggregated consumer")
-			m.consumeAggregated(ctx)
+			superviseLoop(ctx, m.logger, "aggregated consumer", loopRestartBackoff, m.consumeAggregated)
 		}()
 	}
 
@@ -221,9 +228,7 @@ func (m *Engine) Start(ctx context.Context) error {
 
 	// Start all registered ProtocolListeners (Syslog, SNMP, MQTT, etc.).
 	// Each listener receives an ingest callback that feeds received
-	// telemetry into the same pipeline as webhook data. HTTPListeners are
-	// not started here — they are stateless handler providers mounted by
-	// the API router layer.
+	// telemetry into the same pipeline as webhook data.
 	if m.listenerRegistry != nil {
 		listeners := m.listenerRegistry.ListProtocol()
 		m.protocolListeners = make([]ProtocolListener, 0, len(listeners))
@@ -290,7 +295,13 @@ func (m *Engine) registerPassiveTimeouts(ctx context.Context) {
 	}
 }
 
-// Stop gracefully stops all components.
+// Stop gracefully stops all components in reverse start order.
+//
+// A caller context that is already cancelled or expires mid-shutdown makes
+// the per-component Stop calls return their timeout errors (logged, not
+// propagated); the underlying goroutines still terminate because every
+// component's internal context is cancelled here, so shutdown completes
+// on its own even after Stop has returned.
 func (m *Engine) Stop(ctx context.Context) error {
 	m.mu.Lock()
 	if !m.started {
@@ -429,16 +440,51 @@ func (m *Engine) Submit(t *Telemetry) {
 	}
 }
 
-// recoverPanic is the shared panic-isolation helper for telemetry-managed
-// goroutines. It logs the panic value and stack via zap so a single
-// goroutine failure does not crash the whole process and the engine can
-// keep serving other telemetry streams.
+// recoverPanic is the panic-isolation helper for inline fallback paths. It
+// logs the panic value and stack via zap so a single report failure does
+// not crash the calling goroutine. Long-lived loops use superviseLoop,
+// which recovers and restarts.
 func (m *Engine) recoverPanic(scope string) {
 	if r := recover(); r != nil {
 		m.logger.Error("telemetry goroutine panicked",
 			zap.String("scope", scope),
 			zap.Any("panic", r),
 			zap.Stack("stack"),
+		)
+	}
+}
+
+// loopRestartBackoff is the delay before superviseLoop relaunches a
+// recovered loop, bounding restart churn while keeping outage windows short.
+const loopRestartBackoff = time.Second
+
+// superviseLoop runs fn until ctx is cancelled, restarting it with a backoff
+// after a panic or an unexpected early return. Without the restart a single
+// recovered panic would permanently stop the loop while the engine keeps
+// accepting (and eventually dropping) telemetry.
+func superviseLoop(
+	ctx context.Context, logger *zap.Logger, scope string, backoff time.Duration, fn func(context.Context),
+) {
+	for {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("telemetry goroutine panicked",
+						zap.String("scope", scope),
+						zap.Any("panic", r),
+						zap.Stack("stack"),
+					)
+				}
+			}()
+			fn(ctx)
+		}()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		logger.Warn("telemetry goroutine restarting after recovery",
+			zap.String("scope", scope),
 		)
 	}
 }

@@ -12,6 +12,7 @@ import {
   setSessionStorage,
 } from './storage'
 import { camelizeKeys, snakeizeKeys } from './naming'
+import { localizeApiError, shouldLocalizeErrors } from './apiErrorMessages'
 
 /** Token storage key */
 const TOKEN_KEY = 'tk-token'
@@ -159,6 +160,16 @@ function redirectToLogin(): void {
 }
 
 /**
+ * Build the rejection error for a failed API call, localizing the backend's
+ * English message for zh-Hans users (see apiErrorMessages).
+ */
+function apiError(code: number | undefined, message: string | undefined, fallback: string): Error {
+  const raw = message || fallback
+  if (!shouldLocalizeErrors()) return new Error(raw)
+  return new Error(localizeApiError(code, raw))
+}
+
+/**
  * Response interceptor
  */
 service.interceptors.response.use(
@@ -212,16 +223,16 @@ service.interceptors.response.use(
     // Unauthorized, redirect to login
     if (data.code === 40100) {
       redirectToLogin()
-      return Promise.reject(new Error(data.message || 'Unauthorized'))
+      return Promise.reject(apiError(data.code, data.message, 'Unauthorized'))
     }
 
     // Forbidden
     if (data.code === 40300) {
-      return Promise.reject(new Error(data.message || 'Forbidden'))
+      return Promise.reject(apiError(data.code, data.message, 'Forbidden'))
     }
 
     // Other errors
-    return Promise.reject(new Error(data.message || `Error ${data.code}`))
+    return Promise.reject(apiError(data.code, data.message, `Error ${data.code}`))
   },
   (error) => {
     // Handle HTTP-level errors (e.g. 401, 403, 500).
@@ -282,17 +293,17 @@ service.interceptors.response.use(
       }
       // Any other 401 (invalid token, missing header) — go to login
       redirectToLogin()
-      return Promise.reject(new Error(body?.message || 'Unauthorized'))
+      return Promise.reject(apiError(body?.code, body?.message, 'Unauthorized'))
     }
 
     // 403 Forbidden — reject without redirecting
     if (status === 403) {
-      return Promise.reject(new Error(body?.message || 'Forbidden'))
+      return Promise.reject(apiError(body?.code, body?.message, 'Forbidden'))
     }
 
     // Extract message from response body if available
     const message = body?.message || error?.message || 'Request failed'
-    return Promise.reject(new Error(message))
+    return Promise.reject(apiError(body?.code, message, 'Request failed'))
   },
 )
 

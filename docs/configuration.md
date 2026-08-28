@@ -1,6 +1,6 @@
 # Configuration
 
-Tickraft is configured by a single YAML file. The `start` command loads it once at startup; every subsystem (API server, scheduler, executor, collector, alerting engine) reads the sections it needs from the same file.
+Tickraft is configured by a single YAML file. The `start` command loads it once at startup; every subsystem (API server, scheduler, executor, telemetry, alerting engine) reads the sections it needs from the same file.
 
 A complete, commented example lives at [`configs/config.example.yaml`](../configs/config.example.yaml). Copy it and edit it for your environment:
 
@@ -39,7 +39,7 @@ Check the file before launching the server — the validator applies interpolati
 
 ### `server` — HTTP API server
 
-The runtime runs in single-port mode: the REST API, the SPA, and the webhook listener all share `server.addr`. No separate ports are bound.
+The runtime runs in single-port mode: the REST API, the SPA, and the telemetry ingestion endpoint all share `server.addr`. No separate ports are bound.
 
 | Field                  | Type     | Default   | Description                                                        |
 |------------------------|----------|-----------|--------------------------------------------------------------------|
@@ -47,13 +47,13 @@ The runtime runs in single-port mode: the REST API, the SPA, and the webhook lis
 | `enable_cors`          | bool     | `true`    | Enable the CORS middleware.                                        |
 | `enable_access_log`    | bool     | `true`    | Enable the access-log middleware.                                  |
 | `max_header_bytes`     | int      | `1048576` | Maximum size of request headers in bytes.                          |
-| `read_timeout`         | duration | `10s`     | Maximum duration for reading the entire request. `0s` = no timeout.|
-| `write_timeout`        | duration | `30s`     | Maximum duration before timing out writes. `0s` = no timeout.      |
+| `read_timeout`         | duration | `0s`      | Maximum duration for reading the entire request. `0s` = no timeout; set an explicit value in production (e.g. `10s`). |
+| `write_timeout`        | duration | `0s`      | Maximum duration before timing out writes. `0s` = no timeout; set an explicit value in production (e.g. `30s`). |
 | `maintenance_interval` | duration | `5m`      | Interval between background maintenance sweeps (e.g. cleaning expired token blacklist entries). |
 
 ### `worker` — worker runtime
 
-The worker is a unified deployment mode. It always starts the scheduler, the executor, and the collector together in-process; no role parameter is needed and no extra ports are bound.
+The worker is a unified deployment mode. It always starts the scheduler, the executor, and the telemetry together in-process; no role parameter is needed and no extra ports are bound.
 
 | Field           | Type     | Default | Description                                                        |
 |-----------------|----------|---------|--------------------------------------------------------------------|
@@ -68,7 +68,6 @@ The alerting engine runs in-process with no extra listen port.
 |-----------------|----------|---------|--------------------------------------------------------------------|
 | `eval_interval` | duration | `30s`   | Interval between alert-rule evaluations.                           |
 | `concurrence`   | int      | `8`     | Goroutine pool size for sending notifications. `0` = synchronous.  |
-| `channel_config`| string   | `""`    | Opaque notification-channel configuration (path or inline JSON/YAML). |
 
 ### `database` — database connection
 
@@ -114,12 +113,16 @@ The kernel ships builtin locale bundles for `zh-Hans` (default) and `en-US`.
 
 Because every service shares `server.addr`, routes are partitioned by path prefix:
 
-| Prefix        | Service             | Authentication          |
-|---------------|---------------------|-------------------------|
-| `/api/v1/*`   | JSON API            | JWT middleware          |
-| `/webhook/*`  | Telemetry ingestion | `X-Tickraft-Asset-Key`  |
-| `/healthz`    | Health probe        | None (whitelisted)      |
-| `/`           | SPA static assets   | None                    |
+| Path                          | Service             | Authentication                    |
+|-------------------------------|---------------------|-----------------------------------|
+| `POST /api/v1/auth/login`     | Auth login          | None (public)                     |
+| `POST /api/v1/auth/refresh`   | Auth token refresh  | None (public)                     |
+| `GET /api/v1/i18n/locales`    | Locale listing      | None (public)                     |
+| `POST /api/v1/telemetry`      | Telemetry ingestion | `X-Tickraft-Asset-Key`            |
+| `/api/v1/*` (everything else) | JSON API            | JWT middleware                    |
+| `GET /ws`                     | WebSocket push      | Query-token auth (in-handler)     |
+| `GET /healthz`, `GET /readyz` | Health probes       | None (whitelisted)                |
+| `/`                           | SPA static assets   | None                              |
 
 ## Open-source edition quotas
 

@@ -506,6 +506,10 @@ func TestListener_NoIngestNoPanic(t *testing.T) {
 
 // --- task_status kind tests ---
 
+// testTaskRef is a run-handle-shaped task_ref (the dispatch credential the
+// engine stamps on every fire).
+const testTaskRef = "5f0e9d3c1a2b4e6f8d7c9a0b1c2d3e4f"
+
 func TestListener_TaskStatus_Valid(t *testing.T) {
 	store := newMockStore()
 	cb, peek := captureIngest()
@@ -515,9 +519,9 @@ func TestListener_TaskStatus_Valid(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body := telemetryRequest{
-		Kind:   kindTaskStatus,
-		TaskID: 42,
-		Reason: "manual trigger",
+		Kind:    kindTaskStatus,
+		TaskRef: testTaskRef,
+		Reason:  "manual trigger",
 		reportRequest: reportRequest{
 			AssetID: 1,
 			Status:  "running",
@@ -538,9 +542,9 @@ func TestListener_TaskStatus_Valid(t *testing.T) {
 	if got.AssetID != 1 {
 		t.Errorf("AssetID = %d, want 1", got.AssetID)
 	}
-	// The raw body must carry the task fields for downstream parsing.
-	if !bytes.Contains(got.RawData, []byte(`"task_id":42`)) {
-		t.Errorf("RawData does not contain task_id: %s", got.RawData)
+	// The raw body must carry the credential for downstream parsing.
+	if !bytes.Contains(got.RawData, []byte(`"task_ref":"`+testTaskRef+`"`)) {
+		t.Errorf("RawData does not contain task_ref: %s", got.RawData)
 	}
 	if !bytes.Contains(got.RawData, []byte(`"status":"running"`)) {
 		t.Errorf("RawData does not contain status: %s", got.RawData)
@@ -552,13 +556,13 @@ func TestListener_TaskStatus_BodyTooLarge(t *testing.T) {
 		WithStore(newMockStore()),
 		WithLogger(zap.NewNop()),
 	)
-	// task_status limit is 4 KiB. Build a body larger than the Kind
-	// limit but within the overall read limit.
+	// task_status limit is 16 KiB. Build a body larger than the Kind limit
+	// but within the overall read limit.
 	big := make([]byte, maxTaskStatusBodySize+1)
 	for i := range big {
 		big[i] = 'a'
 	}
-	prefix := []byte(`{"kind":"task_status","task_id":42,"status":"running","reason":"`)
+	prefix := []byte(`{"kind":"task_status","task_ref":"r-1","status":"running","output":"`)
 	big = append(prefix, big...)
 	big = append(big, []byte(`"}`)...)
 
@@ -569,7 +573,7 @@ func TestListener_TaskStatus_BodyTooLarge(t *testing.T) {
 	}
 }
 
-func TestListener_TaskStatus_MissingTaskID(t *testing.T) {
+func TestListener_TaskStatus_MissingTaskRef(t *testing.T) {
 	h := New(
 		WithStore(newMockStore()),
 		WithLogger(zap.NewNop()),
@@ -594,8 +598,8 @@ func TestListener_TaskStatus_MissingStatus(t *testing.T) {
 		WithLogger(zap.NewNop()),
 	)
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:   kindTaskStatus,
-		TaskID: 42,
+		Kind:    kindTaskStatus,
+		TaskRef: testTaskRef,
 		reportRequest: reportRequest{
 			AssetID: 1,
 		},
@@ -607,83 +611,123 @@ func TestListener_TaskStatus_MissingStatus(t *testing.T) {
 	}
 }
 
-// --- task_execution_status kind tests ---
-
-func TestListener_TaskExecStatus_Valid(t *testing.T) {
-	store := newMockStore()
-	cb, peek := captureIngest()
+// TestListener_TaskStatus_OffVocabularyStatus pins the closed vocabulary: the
+// removed task-level active/paused pair (and any other unknown status) is
+// rejected at the edge with 400, not silently accepted.
+func TestListener_TaskStatus_OffVocabularyStatus(t *testing.T) {
 	h := New(
-		WithStore(store),
-		WithIngest(cb),
+		WithStore(newMockStore()),
 		WithLogger(zap.NewNop()),
 	)
-	body := telemetryRequest{
-		Kind:        kindTaskExecutionStatus,
-		TaskID:      42,
-		ExecutionID: 1024,
-		Output:      "task completed",
-		Reason:      "executor finished",
+	for _, status := range []string{"active", "paused", "succeeded"} {
+		body, _ := json.Marshal(telemetryRequest{
+			Kind:    kindTaskStatus,
+			TaskRef: testTaskRef,
+			reportRequest: reportRequest{
+				AssetID: 1,
+				Status:  status,
+			},
+		})
+		resp := mustPost(t, h.ReportHandler(), body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != nethttp.StatusBadRequest {
+			t.Errorf("status %q: code = %d, want %d", status, resp.StatusCode, nethttp.StatusBadRequest)
+		}
+	}
+}
+
+// captureTaskReport returns a task-report callback that stores the received
+// report in a mutex-guarded variable for later assertion.
+func captureTaskReport() (cb telemetry.TaskReportCallback, peek func() *telemetry.TaskReport) {
+	var (
+		mu  sync.Mutex
+		got *telemetry.TaskReport
+	)
+	cb = func(_ context.Context, r *telemetry.TaskReport) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = r
+	}
+	peek = func() *telemetry.TaskReport {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
+	}
+	return cb, peek
+}
+
+// TestListener_TaskReport_CallbackTakesPrecedence pins the dedicated task
+// report path: with a callback configured, task kinds are delivered to it
+// and never reach the ingest pipeline.
+func TestListener_TaskReport_CallbackTakesPrecedence(t *testing.T) {
+	reportCb, reportPeek := captureTaskReport()
+	ingestCb, ingestPeek := captureIngest()
+	h := New(
+		WithStore(newMockStore()),
+		WithIngest(ingestCb),
+		WithTaskReport(reportCb),
+		WithLogger(zap.NewNop()),
+	)
+
+	started := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	body, _ := json.Marshal(telemetryRequest{
+		Kind:      kindTaskStatus,
+		TaskRef:   testTaskRef,
+		StartedAt: started,
+		Output:    "done",
 		reportRequest: reportRequest{
 			AssetID: 1,
-			Status:  "succeeded",
+			Status:  "completed",
 		},
-	}
-	bodyBytes, _ := json.Marshal(body)
-
-	resp := mustPost(t, h.ReportHandler(), bodyBytes)
+	})
+	resp := mustPost(t, h.ReportHandler(), body)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != nethttp.StatusAccepted {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)
 	}
 
-	got := peek()
+	if ingestPeek() != nil {
+		t.Fatalf("ingest called for a task report with a callback configured")
+	}
+	got := reportPeek()
 	if got == nil {
-		t.Fatalf("ingest not called")
+		t.Fatalf("task report callback not called")
 	}
-	if got.AssetID != 1 {
-		t.Errorf("AssetID = %d, want 1", got.AssetID)
+	if got.Kind != telemetry.KindTaskStatus {
+		t.Errorf("Kind = %q, want %q", got.Kind, telemetry.KindTaskStatus)
 	}
-	if !bytes.Contains(got.RawData, []byte(`"task_id":42`)) {
-		t.Errorf("RawData does not contain task_id: %s", got.RawData)
+	if got.TaskRef != testTaskRef {
+		t.Errorf("TaskRef = %q, want %q", got.TaskRef, testTaskRef)
 	}
-	if !bytes.Contains(got.RawData, []byte(`"execution_id":1024`)) {
-		t.Errorf("RawData does not contain execution_id: %s", got.RawData)
+	if got.Status != "completed" {
+		t.Errorf("Status = %q, want completed", got.Status)
 	}
-	if !bytes.Contains(got.RawData, []byte(`"status":"succeeded"`)) {
-		t.Errorf("RawData does not contain status: %s", got.RawData)
+	if got.Output != "done" {
+		t.Errorf("Output = %q, want done", got.Output)
 	}
-}
-
-func TestListener_TaskExecStatus_BodyTooLarge(t *testing.T) {
-	h := New(
-		WithStore(newMockStore()),
-		WithLogger(zap.NewNop()),
-	)
-	// task_execution_status limit is 16 KiB. Build a body larger than
-	// the Kind limit but within the overall read limit.
-	big := make([]byte, maxTaskExecStatusBodySize+1)
-	for i := range big {
-		big[i] = 'a'
+	// Tenant resolution still ran: the mock store's asset 1 is tenant 100.
+	if got.TenantID != 100 {
+		t.Errorf("TenantID = %d, want 100", got.TenantID)
 	}
-	prefix := []byte(`{"kind":"task_execution_status","task_id":42,"execution_id":1024,"status":"running","output":"`)
-	big = append(prefix, big...)
-	big = append(big, []byte(`"}`)...)
-
-	resp := mustPost(t, h.ReportHandler(), big)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != nethttp.StatusRequestEntityTooLarge {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusRequestEntityTooLarge)
+	if !got.StartedAt.Equal(started) {
+		t.Errorf("StartedAt = %v, want %v", got.StartedAt, started)
 	}
 }
 
-func TestListener_TaskExecStatus_MissingTaskID(t *testing.T) {
+// TestListener_TaskReport_NoCallbackFallsToIngest pins the compatibility
+// path: without a callback, task kinds flow through ingest as raw telemetry
+// (the distributed collector deployment relies on this).
+func TestListener_TaskReport_NoCallbackFallsToIngest(t *testing.T) {
+	ingestCb, ingestPeek := captureIngest()
 	h := New(
 		WithStore(newMockStore()),
+		WithIngest(ingestCb),
 		WithLogger(zap.NewNop()),
 	)
+
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:        kindTaskExecutionStatus,
-		ExecutionID: 1024,
+		Kind:    kindTaskStatus,
+		TaskRef: testTaskRef,
 		reportRequest: reportRequest{
 			AssetID: 1,
 			Status:  "running",
@@ -691,47 +735,42 @@ func TestListener_TaskExecStatus_MissingTaskID(t *testing.T) {
 	})
 	resp := mustPost(t, h.ReportHandler(), body)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != nethttp.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusBadRequest)
+	if resp.StatusCode != nethttp.StatusAccepted {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)
+	}
+	if ingestPeek() == nil {
+		t.Fatalf("ingest not called for a task report without a callback")
 	}
 }
 
-func TestListener_TaskExecStatus_MissingExecutionID(t *testing.T) {
+// TestListener_TaskReport_CallbackIgnoresOtherKinds pins that non-task
+// kinds never take the task report path even with a callback configured.
+func TestListener_TaskReport_CallbackIgnoresOtherKinds(t *testing.T) {
+	reportCb, reportPeek := captureTaskReport()
+	ingestCb, ingestPeek := captureIngest()
 	h := New(
 		WithStore(newMockStore()),
+		WithIngest(ingestCb),
+		WithTaskReport(reportCb),
 		WithLogger(zap.NewNop()),
 	)
+
 	body, _ := json.Marshal(telemetryRequest{
-		Kind:   kindTaskExecutionStatus,
-		TaskID: 42,
+		Kind: "heartbeat",
 		reportRequest: reportRequest{
 			AssetID: 1,
-			Status:  "running",
+			Status:  "normal",
 		},
 	})
 	resp := mustPost(t, h.ReportHandler(), body)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != nethttp.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusBadRequest)
+	if resp.StatusCode != nethttp.StatusAccepted {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)
 	}
-}
-
-func TestListener_TaskExecStatus_MissingStatus(t *testing.T) {
-	h := New(
-		WithStore(newMockStore()),
-		WithLogger(zap.NewNop()),
-	)
-	body, _ := json.Marshal(telemetryRequest{
-		Kind:        kindTaskExecutionStatus,
-		TaskID:      42,
-		ExecutionID: 1024,
-		reportRequest: reportRequest{
-			AssetID: 1,
-		},
-	})
-	resp := mustPost(t, h.ReportHandler(), body)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != nethttp.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusBadRequest)
+	if reportPeek() != nil {
+		t.Fatalf("task report callback called for a non-task kind")
+	}
+	if ingestPeek() == nil {
+		t.Fatalf("ingest not called for a non-task kind")
 	}
 }

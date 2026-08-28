@@ -451,9 +451,13 @@ var eventIDCounter uint64
 func init() {
 	// Seed the counter with a random offset so IDs from different process
 	// instances are unlikely to collide even if they start at the same nanosecond.
-	// crypto/rand is used here only once at init, not on the hot path.
+	// crypto/rand is used here only once at init, not on the hot path. A
+	// failed read means the system CSPRNG is unavailable; refusing to start
+	// is safer than silently seeding a constant.
 	var seed [8]byte
-	_, _ = rand.Read(seed[:])
+	if _, err := rand.Read(seed[:]); err != nil {
+		panic(fmt.Sprintf("prism: seed event id counter: %v", err))
+	}
 	eventIDCounter = binary.BigEndian.Uint64(seed[:])
 }
 

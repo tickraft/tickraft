@@ -108,34 +108,6 @@ func TestBuildAlertEnv(t *testing.T) {
 	})
 }
 
-// TestTagsFromMetadata covers the best-effort decode of an asset's JSON
-// metadata blob into the asset.tags domain.
-func TestTagsFromMetadata(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  string
-		want map[string]string
-	}{
-		{"empty blob yields empty map", "", map[string]string{}},
-		{"valid blob decodes", `{"env":"prod"}`, map[string]string{"env": "prod"}},
-		{"malformed blob yields empty map", `not-json`, map[string]string{}},
-		{"non-object blob yields empty map", `["env"]`, map[string]string{}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := tagsFromMetadata(tc.raw)
-			if len(got) != len(tc.want) {
-				t.Fatalf("tagsFromMetadata(%q) = %v, want %v", tc.raw, got, tc.want)
-			}
-			for k, v := range tc.want {
-				if got[k] != v {
-					t.Errorf("tagsFromMetadata(%q)[%q] = %q, want %q", tc.raw, k, got[k], v)
-				}
-			}
-		})
-	}
-}
-
 // TestAlertEnvVariables exercises every documented AlertEnv variable
 // through the Compiler so each name/type contract is pinned: a positive
 // case that must evaluate true and a negative case that must evaluate

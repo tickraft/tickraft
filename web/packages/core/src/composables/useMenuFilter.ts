@@ -5,7 +5,7 @@
 /**
  * Menu feature-flag filtering composable.
  *
- * Aligned with docs/frontend/navigation-design.md §6.5.
+ * Aligned with
  *
  * Filtering rules:
  * - Menu items without `feature` field are always visible (open-source base capabilities).

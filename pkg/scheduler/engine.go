@@ -16,7 +16,7 @@ import "context"
 //   - Rescheduling recurring entries automatically.
 //
 // It does NOT know about tasks, dependencies, concurrency control, or
-// event-driven triggers; those concerns belong to the task.Manager.
+// event-driven triggers; those concerns belong to the task.TaskEngine.
 type Engine interface {
 	// Add registers a timed callback under the given id. The engine
 	// computes the next fire time from schedule, invokes callback when

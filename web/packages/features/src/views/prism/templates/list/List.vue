@@ -134,7 +134,6 @@ function handleSizeChange(size: number): void {
       :count="totalCount"
       :count-label="t('prism.templates.countLabel')"
     >
-
       <template #chips>
         <button
           v-for="opt in SEVERITY_OPTIONS"

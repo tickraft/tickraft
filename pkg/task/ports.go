@@ -16,6 +16,10 @@ import (
 type ListOptions struct {
 	// Group filters tasks by an exact group match. An empty string matches all.
 	Group string
+	// IDs filters tasks to the given IDs. When non-nil, an empty slice
+	// matches nothing (used when a caller's ID list resolved to no rows);
+	// nil matches all tasks.
+	IDs []int64
 	// Tags filters tasks to those having at least one of the specified tags.
 	// An empty or nil slice matches all tasks.
 	Tags []string
@@ -86,15 +90,17 @@ type ExecutionQuery struct {
 type ExecutionStore interface {
 	// Save records a single execution in the persistent store.
 	Save(ctx context.Context, exec *Execution) error
-	// List returns execution history for the given task ID, ordered by
-	// most recent first, limited to at most limit records. A non-positive
-	// limit returns all records for the task.
-	List(ctx context.Context, taskID int64, limit int) ([]*Execution, error)
 	// Query returns a page of executions matching the filter, ordered by
 	// most recent first, along with the total count of matching rows.
 	Query(ctx context.Context, q ExecutionQuery, page, size int) ([]*Execution, int64, error)
 	// Get retrieves a single execution record by its ID.
 	Get(ctx context.Context, id int64) (*Execution, error)
+	// MarkTimeout transitions a still-running execution to the timeout
+	// state, stamping finished_at and duration. It reports whether the row
+	// was transitioned; false means the row was already terminal — a remote
+	// status report or another sweeper instance won the race — and no
+	// change was made.
+	MarkTimeout(ctx context.Context, id int64, finishedAt time.Time, durationMs int64) (bool, error)
 	// DeleteExecutionsOlderThan removes all execution records whose
 	// created_at timestamp is strictly before the given time. This is used
 	// for retention-based cleanup of stale execution history.

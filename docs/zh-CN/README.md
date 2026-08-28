@@ -14,7 +14,9 @@
 | [架构设计](./architecture.md) | 分层架构、三模块设计与事件总线。 |
 | [部署指南](./deployment.md) | 二进制、Docker 与开发环境部署。 |
 | [扩展指南](./extension-guide.md) | 如何通过 SPI 添加自定义 executor、listener、channel 与 API 插件。 |
-| [模块边界](./module-boundary.md) | 保持 scheduler、executor 与 collector 解耦的规则。 |
+| [模块边界](./module-boundary.md) | 保持 scheduler、executor 与 telemetry 解耦的规则。 |
+| [数据模型分层去重设计](./model-layering-design.md) | 内部设计记录：API 层与持久层数据模型合并为单一双 tag 模型。 |
+| [规则引擎统一设计](./rule-engine-design.md) | 内部设计记录：统一规则引擎（`pkg/expr`）与告警规则重构。 |
 | [OpenAPI 规范](../api/openapi.yaml) | REST API 路径、请求/响应模式与错误码。 |
 
 ## 语言版本

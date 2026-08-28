@@ -14,7 +14,7 @@
   - [创建任务](#创建任务)
   - [任务详情](#任务详情)
   - [执行日志](#执行日志)
-- [Collector](#collector)
+- [Telemetry](#telemetry)
   - [资产](#资产)
   - [Prober](#prober)
   - [Listener](#listener)
@@ -118,51 +118,51 @@ scheduler 模块管理周期性与事件驱动的任务。每个任务都定义�
 
 日志详情页展示完整的执行输出、错误信息（如有）、重试历史与时间分解。点击 **重试** 按钮可重新执行该任务。
 
-## Collector
+## Telemetry
 
-collector 模块从两类来源采集监控数据：**prober**（Tickraft 主动发出的探测）与 **listener**（接受外部上报的被动接收器）。每次探测结果被持久化为探测记录（`sys_probe_record`）并刷新监控点的运行时状态；listener 上报经采集管道处理并驱动资产状态机。
+telemetry 模块从两类来源采集监控数据：**prober**（Tickraft 主动发出的探测）与 **listener**（接受外部上报的被动接收器）。每次探测结果被持久化为探测记录（`sys_probe_record`）并刷新监控点的运行时状态；listener 上报经采集管道处理并驱动资产状态机。
 
 ### 资产
 
-![资产列表](../screenshots/collector-asset-list.png)
+![资产列表](../screenshots/telemetry-asset-list.png)
 
 资产即任何被监控的目标 — 主机、服务、网络设备等。在 prober 或 listener 上报数据之前，目标必须先注册为资产。
 
 **创建资产。** 点击 **创建**，填写资产名、asset key（用于 webhook 上报的唯一标识）、类型以及可选的元数据。
 
-![创建资产](../screenshots/collector-asset-create.png)
+![创建资产](../screenshots/telemetry-asset-create.png)
 
 **资产详情。** 点击资产行可查看其详情页，展示当前状态、最近遥测数据、关联的 prober 以及用于上报数据到该资产的 webhook 端点。
 
-![资产详情](../screenshots/collector-asset-detail.png)
+![资产详情](../screenshots/telemetry-asset-detail.png)
 
 ### Prober
 
 prober 是按调度计划主动探测目标的监控任务。开源版内置四种 prober 类型：`icmp`、`tcp`、`http` 与 `udp`。
 
-![Prober 列表](../screenshots/collector-prober-list.png)
+![Prober 列表](../screenshots/telemetry-prober-list.png)
 
 prober 列表展示每个已配置的 prober、其目标资产、探测类型、间隔、当前状态以及最近结果。
 
 **创建 prober。** 选择 prober 模板（ICMP、TCP、HTTP、UDP），选择目标资产，配置探测参数，并设置调度计划。
 
-![创建 prober](../screenshots/collector-prober-create.png)
+![创建 prober](../screenshots/telemetry-prober-create.png)
 
 **Prober 详情。** 详情页展示 prober 配置、最近探测状态与时延，以及最近的探测历史与日志——每次探测执行一条记录。
 
-![Prober 详情](../screenshots/collector-prober-detail.png)
+![Prober 详情](../screenshots/telemetry-prober-detail.png)
 
 ### Listener
 
 listener 是接受外部遥测上报的被动接收器。开源版内置 HTTP（webhook）listener。
 
-![Listener 概览](../screenshots/collector-listener-overview.png)
+![Listener 概览](../screenshots/telemetry-listener-overview.png)
 
 listener 概览页列出每个已配置的 listener、其类型、状态以及已接收的上报数。
 
 **Webhook listener。** webhook 配置页展示接收端点 URL、预期的鉴权方式（`X-Tickraft-Asset-Key` 请求头）以及示例 payload。外部系统可向该端点 POST 遥测数据以更新资产状态。
 
-![Webhook listener](../screenshots/collector-listener-webhook.png)
+![Webhook listener](../screenshots/telemetry-listener-webhook.png)
 
 ## Prism
 
@@ -253,6 +253,6 @@ API 密钥用于让外部系统对 REST API 进行鉴权。每个密钥包含名
 
 - [快速开始](./getting-started.md) — 五分钟从零到第一个任务。
 - [配置](./configuration.md) — 每个配置字段的详细说明。
-- [架构](./architecture.md) — scheduler、executor 与 collector 如何协作。
+- [架构](./architecture.md) — scheduler、executor 与 telemetry 如何协作。
 - [扩展指南](./extension-guide.md) — 添加自定义 executor、listener 与 channel。
 - [部署](./deployment.md) — 二进制、Docker 与开发部署。

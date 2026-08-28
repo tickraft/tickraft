@@ -119,8 +119,9 @@ type channelServiceOption struct {
 func (o channelServiceOption) apply(c *registerConfig) { c.channelService = o.svc }
 
 // WithChannelService provides the channel.Service implementation for
-// notification channel handlers. When omitted, the handler package falls
-// back to an in-memory implementation.
+// notification channel handlers. When omitted, the channel route group
+// is not registered (tests inject an in-memory Service; production
+// assemblies always inject the DB-backed one).
 func WithChannelService(svc channel.Service) RegisterOption {
 	return channelServiceOption{svc: svc}
 }
@@ -136,8 +137,9 @@ func (o remediationRuleServiceOption) apply(c *registerConfig) {
 }
 
 // WithRemediationRuleService provides the remediation.Service
-// implementation for self-healing rule handlers. When omitted, the handler
-// package falls back to an in-memory implementation.
+// implementation for self-healing rule handlers. When omitted, the
+// remediation route group is not registered (tests inject an in-memory
+// Service; production assemblies always inject the DB-backed one).
 func WithRemediationRuleService(svc remediation.Service) RegisterOption {
 	return remediationRuleServiceOption{svc: svc}
 }
@@ -184,7 +186,7 @@ func WithExecutorRegistry(reg *executor.Registry) RegisterOption {
 }
 
 // telemetryServiceOption provides the telemetry.Service implementation
-// for the telemetry collection task CRUD API.
+// for the monitor point CRUD API.
 type telemetryServiceOption struct {
 	svc telemetry.Service
 }
@@ -192,7 +194,7 @@ type telemetryServiceOption struct {
 func (o telemetryServiceOption) apply(c *registerConfig) { c.telemetryService = o.svc }
 
 // WithTelemetryService provides the telemetry.Service implementation
-// for the telemetry collection task CRUD API at /api/v1/telemetry. Required
+// for the monitor point CRUD API at /api/v1/telemetry/monitors. Required
 // by the handler route validator.
 func WithTelemetryService(svc telemetry.Service) RegisterOption {
 	return telemetryServiceOption{svc: svc}

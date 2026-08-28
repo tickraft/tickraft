@@ -11,6 +11,7 @@ package httputil
 
 import (
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/types"
@@ -54,4 +55,20 @@ func ResponseStatus(expect, code int) types.AssetStatus {
 func ReadBody(r io.Reader, limit int) []byte {
 	body, _ := io.ReadAll(io.LimitReader(r, int64(limit)))
 	return body
+}
+
+// HeaderTaskRef is the dispatch credential stamped on Mode A (ReportStatus)
+// outbound requests: the task_ref the remote echoes back verbatim in the
+// telemetry report to pin the exact execution row. Reporters that cannot
+// capture it may report by task number instead through the same endpoint.
+const HeaderTaskRef = "X-Tickraft-Task-Ref"
+
+// SetDispatchHeaders stamps the dispatch credential header on h when the
+// request belongs to a Mode A task with an opened execution row. It is a
+// no-op otherwise (Mode B tasks carry no dispatch identity).
+func SetDispatchHeaders(h http.Header, taskRef string) {
+	if taskRef == "" {
+		return
+	}
+	h.Set(HeaderTaskRef, taskRef)
 }

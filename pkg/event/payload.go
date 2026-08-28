@@ -4,6 +4,26 @@
 
 package event
 
+// Payload naming conventions:
+//
+// Every bus payload type carries the "Payload" suffix: payloads are the
+// event-carried representations of domain data and routinely meet their
+// same-named domain models at publish/bridge sites (telemetry.TaskReport →
+// event.TaskReportPayload), so the suffix is what keeps the two apart.
+// Do not rename payloads to bare nouns or to XxxEvent (the package already
+// exposes the generic Event[T]).
+//
+// Two sub-conventions select the prefix:
+//   - Entity payloads ({Entity}Payload): one struct serves all lifecycle
+//     events of an entity; the Action field discriminates the specific
+//     event type. Use when several event types share the entity's data
+//     shape (TaskPayload, ExecutionPayload, AlertLifecyclePayload,
+//     RemediationPayload).
+//   - Fact payloads ({Fact}Payload): one struct for a single occurrence,
+//     named after the past-tense action of its Type constant
+//     (StatusChangePayload for asset.status_changed, FaultDetectedPayload
+//     for asset.fault_detected).
+
 // TaskPayload is the payload for task lifecycle events, applicable to all task.* event types.
 // Published by Service when a task definition is created, updated, deleted, paused,
 // resumed, scheduled, or retry-scheduled.
@@ -54,8 +74,8 @@ type ExecutionPayload struct {
 	// AssetID is the target asset ID. Populated when the executor targets a specific asset.
 	AssetID string `json:"asset_id,omitempty"`
 	// Operation is the operation kind: "probe" (read-only probing) or
-	// "execute" (write action). Populated on every lifecycle event; empty is
-	// treated as "execute" by consumers for compatibility with older events.
+	// "execute" (write action). Required on triggered events; the runner
+	// drops payloads that do not carry a valid operation.
 	Operation string `json:"operation,omitempty"`
 	// Action is the lifecycle action: triggered, started, completed, progressed.
 	Action string `json:"action"`
@@ -71,8 +91,16 @@ type ExecutionPayload struct {
 	MaxRetries int `json:"max_retries,omitempty"`
 	// RetryIntervalSeconds is the configured delay between retries in seconds.
 	RetryIntervalSeconds int64 `json:"retry_interval_seconds,omitempty"`
-	// RunID is the run identifier, used to correlate executions within a retry chain.
+	// RunID is the run handle generated per trigger fire, before any
+	// execution row exists. It reaches the remote executor as the task_ref
+	// dispatch credential and is used for idempotency tracking and executor
+	// naming.
 	RunID string `json:"run_id,omitempty"`
+	// ReportStatus marks a Mode A task (remote status reporting): the
+	// executor outcome is only the dispatch result; the execution row stays
+	// running until the remote reporter closes it via the telemetry report
+	// endpoint (or the sweeper reaps it). Populated for triggered.
+	ReportStatus bool `json:"report_status,omitempty"`
 	// Result is the execution result summary. Populated for completed.
 	Result string `json:"result,omitempty"`
 	// Output is the raw execution output. Populated for completed.
@@ -91,6 +119,35 @@ type ExecutionPayload struct {
 	StartedAt int64 `json:"started_at,omitempty"`
 	// CompletedAt is the execution completion time as Unix nanoseconds. Populated for completed.
 	CompletedAt int64 `json:"completed_at,omitempty"`
+}
+
+// TaskReportPayload is the payload for remote task status report events
+// (TypeTaskStatusReported). The assembly layer converts a telemetry.TaskReport
+// into this payload; the task domain consumes it to bind the reported state
+// to the task's execution rows.
+type TaskReportPayload struct {
+	// Kind selects the report category: "task_status".
+	Kind string `json:"kind"`
+	// TaskRef identifies the reported execution: the dispatch credential
+	// (the run handle) or the task number as a decimal string.
+	TaskRef string `json:"task_ref"`
+	// Status is the reported status: running/completed/failed/timeout.
+	Status string `json:"status"`
+	// StartedAt is the reported execution start as Unix nanoseconds. Zero
+	// when the reporter omits it.
+	StartedAt int64 `json:"started_at,omitempty"`
+	// FinishedAt is the reported execution finish as Unix nanoseconds. Zero
+	// while running.
+	FinishedAt int64 `json:"finished_at,omitempty"`
+	// Output is the reported execution output.
+	Output string `json:"output,omitempty"`
+	// Error is the reported execution error message.
+	Error string `json:"error,omitempty"`
+	// Reason describes the status transition.
+	Reason string `json:"reason,omitempty"`
+	// TenantID is the tenant resolved from the reporter's credential at
+	// ingestion time.
+	TenantID int64 `json:"tenant_id,omitempty"`
 }
 
 // StatusChangePayload is the payload for asset status change events.
@@ -141,9 +198,11 @@ type StatusChangePayload struct {
 	DetectedAt int64 `json:"detected_at"`
 }
 
-// FaultPayload is the payload for asset fault events, sourced from fault information reported by external systems.
-// Published by Telemetry Emitter when a fault is detected via MQTT, SNMP, Syslog, or Webhook receivers.
-type FaultPayload struct {
+// FaultDetectedPayload is the payload for asset fault detected events
+// (TypeAssetFaultDetected), sourced from fault information reported by
+// external systems. Published by Telemetry Emitter when a fault is detected
+// via MQTT, SNMP, Syslog, or Webhook receivers.
+type FaultDetectedPayload struct {
 	// AssetID is the unique identifier of the asset.
 	AssetID string `json:"asset_id"`
 	// AssetName is the human-readable name of the asset.
@@ -345,10 +404,10 @@ type RemediationPayload struct {
 	CompletedAt int64 `json:"completed_at,omitempty"`
 }
 
-// SystemPayload is the payload for system configuration change events.
-// It serves the system.config_changed event type; license-change events
-// are handled by the callers's own payload type.
-type SystemPayload struct {
+// SystemConfigPayload is the payload for the system configuration change
+// event (TypeSystemConfigChanged); license-change events are handled by
+// the callers's own payload type.
+type SystemConfigPayload struct {
 	// Scope is the configuration scope: global, tenant.
 	Scope string `json:"scope"`
 	// TenantID is the tenant identifier. Populated when Scope is tenant.

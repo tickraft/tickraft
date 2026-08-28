@@ -226,39 +226,6 @@ func (w *hierarchicalWheel) removeEntry(id EntryID) {
 	releaseEntry(entry)
 }
 
-// Renew resets the expiration timer for an entry.
-// It removes the old entry and re-adds it with the new duration.
-// Returns the new entry ID.
-func (w *hierarchicalWheel) Renew(id EntryID, duration time.Duration) EntryID {
-	w.mu.Lock()
-	loc, ok := w.index[id]
-	if !ok {
-		w.mu.Unlock()
-		// Entry not found; create a new entry with an empty callback.
-		return w.Add(duration, func(EntryID) {})
-	}
-
-	var cb Callback
-	switch loc.layer {
-	case 0:
-		if e, exists := w.seconds[loc.slot][id]; exists {
-			cb = e.Callback
-		}
-	case 1:
-		if e, exists := w.minutes[loc.slot][id]; exists {
-			cb = e.Callback
-		}
-	}
-
-	w.removeEntry(id)
-	w.mu.Unlock()
-
-	if cb == nil {
-		cb = func(EntryID) {}
-	}
-	return w.Add(duration, cb)
-}
-
 // Start begins the time wheel tick loop.
 // It blocks until the context is cancelled or Stop is called.
 func (w *hierarchicalWheel) Start(ctx context.Context) {

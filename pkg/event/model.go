@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-// Package event provides in-process event bus capabilities, implementing
-// type-safe publish/subsccribe based on Go generics.
 package event
 
 // Type identifies an event type in the system.
@@ -37,6 +35,11 @@ const (
 	TypeTaskScheduled Type = "task.scheduled"
 	// TypeTaskRetryScheduled: retry scheduling after a task failure.
 	TypeTaskRetryScheduled Type = "task.retry_scheduled"
+	// TypeTaskStatusReported: a remote task status report arrived through
+	// the unified telemetry endpoint. Published by the assembly layer (which
+	// bridges the telemetry listener callback onto the bus) and consumed by
+	// the task domain's report consumer.
+	TypeTaskStatusReported Type = "task.status_reported"
 )
 
 // execution domain: execution lifecycle events, published by Service / Runner.

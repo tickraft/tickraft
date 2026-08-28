@@ -60,23 +60,30 @@ const (
 	// webhookSourceType is the SourceType identifier stamped on telemetry
 	// received through the webhook listener.
 	webhookSourceType = "webhook"
-	// kindTaskStatus is the Kind discriminator for task status telemetry.
+	// kindTaskStatus is the Kind discriminator for task execution status
+	// telemetry reported by remote executors.
 	kindTaskStatus = "task_status"
-	// kindTaskExecutionStatus is the Kind discriminator for task execution
-	// status telemetry.
-	kindTaskExecutionStatus = "task_execution_status"
 	// maxHeartbeatBodySize limits Telemetry{Kind:"heartbeat"} payloads to 1 KiB.
 	maxHeartbeatBodySize = 1 << 10
 	// maxMetricsBodySize limits Telemetry{Kind:"metrics"} payloads to 64 KiB.
 	maxMetricsBodySize = 64 << 10
 	// maxLogsBodySize limits Telemetry{Kind:"logs"} payloads to 1 MiB.
 	maxLogsBodySize = 1 << 20
-	// maxTaskStatusBodySize limits Telemetry{Kind:"task_status"} payloads to 4 KiB.
-	maxTaskStatusBodySize = 4 << 10
-	// maxTaskExecStatusBodySize limits Telemetry{Kind:"task_execution_status"}
-	// payloads to 16 KiB.
-	maxTaskExecStatusBodySize = 16 << 10
+	// maxTaskStatusBodySize limits Telemetry{Kind:"task_status"} payloads to
+	// 16 KiB (the kind carries the execution output).
+	maxTaskStatusBodySize = 16 << 10
 )
+
+// taskStatusVocabulary is the closed status vocabulary of the task_status
+// kind. The former task-level active/paused values were removed together
+// with the remote enable-flip semantics; a report carrying a status outside
+// this set is rejected at the edge so the reporter learns immediately.
+var taskStatusVocabulary = map[string]bool{
+	"running":   true,
+	"completed": true,
+	"failed":    true,
+	"timeout":   true,
+}
 
 // webhookListenerType is the Type() identifier for the webhook HTTPListener.
 const webhookListenerType = "webhook"
@@ -129,14 +136,22 @@ func (c *DailyEventCounter) Allow(ceiling int) bool {
 // the global HMAC secret via WithSecret, and asset-key resolution against
 // the asset store.
 //
+// Task status reports (kind task_status) take a dedicated path when a
+// task-report callback is configured via WithTaskReport: after
+// authentication the parsed report goes straight to the callback, bypassing
+// the ingest pipeline. Without the callback the reports flow through ingest
+// as raw telemetry, which is how the distributed collector deployment
+// consumes them.
+//
 // Implementations must be safe for concurrent use.
 type Listener struct {
-	secret   string
-	registry *SecretRegistry
-	store    asset.Store
-	ingest   func(context.Context, *telemetry.Telemetry)
-	logger   *zap.Logger
-	counter  *DailyEventCounter
+	secret     string
+	registry   *SecretRegistry
+	store      asset.Store
+	ingest     func(context.Context, *telemetry.Telemetry)
+	taskReport telemetry.TaskReportCallback
+	logger     *zap.Logger
+	counter    *DailyEventCounter
 }
 
 // Option configures a Listener.
@@ -193,7 +208,22 @@ func (o ingestOption) apply(h *Listener) { h.ingest = o.ingest }
 // the telemetry pipeline. It must be called before the handler methods are
 // invoked; the API router typically sets it during route registration.
 func WithIngest(ingest func(context.Context, *telemetry.Telemetry)) Option {
-	return ingestOption{ingest: ingest}
+	return ingestOption{ingest}
+}
+
+// taskReportOption sets the callback receiving parsed task status reports.
+type taskReportOption struct {
+	cb telemetry.TaskReportCallback
+}
+
+func (o taskReportOption) apply(h *Listener) { h.taskReport = o.cb }
+
+// WithTaskReport sets the callback that receives task status reports (kind
+// task_status) after authentication. When set, that kind bypasses the ingest
+// pipeline entirely; when unset, it flows through ingest as raw telemetry so
+// external wrappers (the distributed collector) can consume it.
+func WithTaskReport(cb telemetry.TaskReportCallback) Option {
+	return taskReportOption{cb: cb}
 }
 
 // loggerOption sets the structured logger.
@@ -230,8 +260,8 @@ func (h *Listener) Type() string { return webhookListenerType }
 // resulting Telemetry to the supplied ingest callback. The ingest
 // callback overrides any callback previously set via WithIngest.
 //
-// This is the SPI entry point used by telemetry.ListenerRegistry; the
-// ReportHandler method delegates here with the WithIngest callback.
+// The API router mounts this handler directly on the telemetry endpoint;
+// the ReportHandler method delegates here with the WithIngest callback.
 func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) nethttp.HandlerFunc {
 	return func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		if r.Method != nethttp.MethodPost {
@@ -283,11 +313,37 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 			return
 		}
 
+		// Task status reports with a configured callback are delivered to it
+		// directly instead of the ingest pipeline; without a callback they
+		// flow through ingest as raw telemetry, which is how the distributed
+		// collector deployment consumes them.
+		if isTaskKind(req.Kind) && h.taskReport != nil {
+			h.taskReport(r.Context(), &telemetry.TaskReport{
+				Kind:       telemetry.Kind(req.Kind),
+				TaskRef:    req.TaskRef,
+				Status:     req.Status,
+				StartedAt:  req.StartedAt,
+				FinishedAt: req.FinishedAt,
+				Output:     req.Output,
+				Error:      req.Error,
+				Reason:     req.Reason,
+				TenantID:   report.TenantID,
+			})
+			w.WriteHeader(nethttp.StatusAccepted)
+			return
+		}
+
 		if ingest != nil {
 			ingest(r.Context(), report)
 		}
 		w.WriteHeader(nethttp.StatusAccepted)
 	}
+}
+
+// isTaskKind reports whether the kind discriminator selects a task status
+// report category.
+func isTaskKind(kind string) bool {
+	return kind == kindTaskStatus
 }
 
 // authenticate verifies the request's signature credential (see the package
@@ -357,8 +413,6 @@ func kindLimit(kind string) (int, bool) {
 		return maxLogsBodySize, true
 	case kindTaskStatus:
 		return maxTaskStatusBodySize, true
-	case kindTaskExecutionStatus:
-		return maxTaskExecStatusBodySize, true
 	default:
 		return 0, false
 	}
@@ -374,25 +428,19 @@ func kindLimit(kind string) (int, bool) {
 // request shape. Task status processing logic itself is an extended concern
 // and is not implemented here.
 func validateRequest(req *telemetryRequest) string {
-	switch req.Kind {
-	case kindTaskStatus:
-		// task_id and status are required.
-		if req.TaskID <= 0 {
-			return "invalid request: missing required field: task_id"
+	if req.Kind == kindTaskStatus {
+		// task_ref and status are required. task_ref is the dispatch
+		// credential handed to the remote (the X-Tickraft-Task-Ref header /
+		// {{task_ref}} variable value); a reporter that only knows the task
+		// number sends it as a decimal string instead.
+		if req.TaskRef == "" {
+			return "invalid request: missing required field: task_ref"
 		}
 		if req.Status == "" {
 			return "invalid request: missing required field: status"
 		}
-	case kindTaskExecutionStatus:
-		// task_id, execution_id and status are required.
-		if req.TaskID <= 0 {
-			return "invalid request: missing required field: task_id"
-		}
-		if req.ExecutionID <= 0 {
-			return "invalid request: missing required field: execution_id"
-		}
-		if req.Status == "" {
-			return "invalid request: missing required field: status"
+		if !taskStatusVocabulary[req.Status] {
+			return "invalid request: unknown status for task_status: " + req.Status
 		}
 	}
 	return ""
@@ -403,29 +451,27 @@ func validateRequest(req *telemetryRequest) string {
 // former distributed endpoints while adding the Kind discriminator.
 type telemetryRequest struct {
 	// Kind identifies the telemetry data category (heartbeat, metrics,
-	// logs, task_status, task_execution_status) and selects the payload
-	// size limit.
+	// logs, task_status) and selects the payload size limit.
 	Kind string `json:"kind"`
-	// TaskID identifies the task for task_status and task_execution_status
-	// kinds. Required for those kinds (must be > 0).
-	TaskID int64 `json:"task_id,omitempty"`
-	// ExecutionID identifies a single task execution for the
-	// task_execution_status kind. Required for that kind (must be > 0).
-	ExecutionID int64 `json:"execution_id,omitempty"`
+	// TaskRef identifies the reported execution for the task_status kind:
+	// the dispatch credential (X-Tickraft-Task-Ref / {{task_ref}} value) or,
+	// for reporters that only know the task identity, the task number as a
+	// decimal string.
+	TaskRef string `json:"task_ref,omitempty"`
 	// StartedAt is when the task execution started. Optional, used by the
-	// task_execution_status kind.
+	// task_status kind.
 	StartedAt time.Time `json:"started_at,omitempty"`
 	// FinishedAt is when the task execution finished. Optional, used by
-	// the task_execution_status kind.
+	// the task_status kind.
 	FinishedAt time.Time `json:"finished_at,omitempty"`
 	// Output holds the task execution output. Optional, used by the
-	// task_execution_status kind.
+	// task_status kind.
 	Output string `json:"output,omitempty"`
 	// Error holds the task execution error message. Optional, used by the
-	// task_execution_status kind.
+	// task_status kind.
 	Error string `json:"error,omitempty"`
 	// Reason describes the task status transition reason. Optional, used
-	// by task_status and task_execution_status kinds.
+	// by the task_status kind.
 	Reason string `json:"reason,omitempty"`
 	reportRequest
 }

@@ -98,8 +98,10 @@ func (h *Handler) Logout(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// The request body is optional; the client may send the refresh token
-	// for server-side revocation.
+	// The request body is optional: the client may send the refresh token
+	// for server-side revocation. A missing body must not fail the logout,
+	// so the bind runs best-effort — BindAndValidate's hard 400 only suits
+	// required-body endpoints.
 	var req logoutRequest
 	_ = c.Bind(&req)
 

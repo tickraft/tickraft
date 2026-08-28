@@ -5,8 +5,6 @@
 package alert
 
 import (
-	"github.com/bytedance/sonic"
-
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/expr"
 )
@@ -90,24 +88,7 @@ func buildAlertEnv(evt Event, res *asset.Asset) AlertEnv {
 	if res != nil {
 		env.Asset["name"] = res.Name
 		env.Asset["type"] = string(res.AssetType)
-		env.Asset["tags"] = tagsFromMetadata(res.Metadata)
+		env.Asset["tags"] = asset.TagsFromMetadata(res.Metadata)
 	}
 	return env
-}
-
-// tagsFromMetadata decodes an asset's JSON metadata blob into a string
-// map. Malformed or empty metadata yields an empty map so asset.tags
-// lookups on such assets evaluate to "" rather than failing.
-func tagsFromMetadata(raw string) map[string]string {
-	tags := map[string]string{}
-	if raw == "" {
-		return tags
-	}
-	// Best-effort decode: a non-object or malformed blob leaves the
-	// map empty, which rules read as "no tags".
-	_ = sonic.Unmarshal([]byte(raw), &tags)
-	if tags == nil {
-		return map[string]string{}
-	}
-	return tags
 }

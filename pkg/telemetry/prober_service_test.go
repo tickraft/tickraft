@@ -11,7 +11,7 @@ import (
 )
 
 // TestPointToProbeTaskJudgmentTransmission pins the execution-judgment
-// transmission chain (rule-engine-design §6.3.3): the optional
+// transmission chain: the optional
 // "expression" key of a monitoring point's config JSON is copied into the
 // probe task's metadata, from where the trigger event carries it to the
 // runner.

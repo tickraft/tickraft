@@ -172,14 +172,3 @@ func (e *Engine) deleteTask(id int64) {
 		}
 	}
 }
-
-// listTasks returns all stored tasks.
-func (e *Engine) listTasks() []Task {
-	e.taskMu.RLock()
-	defer e.taskMu.RUnlock()
-	result := make([]Task, 0, len(e.tasks))
-	for id := range e.tasks {
-		result = append(result, e.tasks[id])
-	}
-	return result
-}

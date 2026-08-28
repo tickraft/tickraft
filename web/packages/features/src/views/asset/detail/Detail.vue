@@ -373,7 +373,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .tk-asset-detail-grid,
   .tk-asset-detail-relations {
     grid-template-columns: 1fr;

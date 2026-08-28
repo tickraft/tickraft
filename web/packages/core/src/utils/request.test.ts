@@ -132,6 +132,9 @@ describe('request naming interceptors', () => {
   })
 
   it('rejects with the envelope message for business error codes', async () => {
+    // English locale: the message passes through untranslated (localization
+    // is covered by the zh-Hans describe block below).
+    window.localStorage.setItem('tk-locale', JSON.stringify('en'))
     apiScript.push({ status: 200, body: { code: 40000, message: 'invalid request', data: null } })
 
     await expect(mod.request({ url: '/assets', method: 'get' })).rejects.toThrow('invalid request')
@@ -231,6 +234,7 @@ describe('40101 token expiry handling', () => {
 describe('40100 unauthorized handling', () => {
   it('redirects to login on envelope code 40100', async () => {
     mod.setToken('bad-token')
+    window.localStorage.setItem('tk-locale', JSON.stringify('en'))
     apiScript.push({ status: 200, body: { code: 40100, message: 'unauthorized', data: null } })
 
     await expect(mod.request({ url: '/e', method: 'get' })).rejects.toThrow('unauthorized')
@@ -239,9 +243,42 @@ describe('40100 unauthorized handling', () => {
 
   it('redirects to login on a plain HTTP 401 without 40101', async () => {
     mod.setToken('bad-token')
+    window.localStorage.setItem('tk-locale', JSON.stringify('en'))
     apiScript.push({ status: 401, body: { code: 40100, message: 'no auth', data: null } })
 
     await expect(mod.request({ url: '/f', method: 'get' })).rejects.toThrow('no auth')
     expect(window.location.href).toBe('/login')
+  })
+})
+
+describe('zh-Hans error localization', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('tk-locale', JSON.stringify('zh-Hans'))
+  })
+
+  it('maps known messages and codes to zh-Hans copy', async () => {
+    apiScript.push({ status: 200, body: { code: 40000, message: 'auth: unauthorized', data: null } })
+    await expect(mod.request({ url: '/login', method: 'post' })).rejects.toThrow('用户名或密码错误')
+  })
+
+  it('falls back to code-level copy for unknown messages under known codes', async () => {
+    apiScript.push({ status: 200, body: { code: 40400, message: 'widget not found', data: null } })
+    await expect(mod.request({ url: '/g', method: 'get' })).rejects.toThrow('资源不存在')
+  })
+
+  it('translates "<field> is required" validation messages', async () => {
+    apiScript.push({ status: 200, body: { code: 40001, message: 'triggerEventType is required', data: null } })
+    await expect(mod.request({ url: '/h', method: 'post' })).rejects.toThrow('请填写triggerEventType')
+  })
+
+  it('passes unknown messages through unchanged', async () => {
+    apiScript.push({ status: 200, body: { code: 43210, message: 'custom widget failure', data: null } })
+    await expect(mod.request({ url: '/i', method: 'get' })).rejects.toThrow('custom widget failure')
+  })
+
+  it('localizes HTTP-level error bodies too', async () => {
+    mod.setToken('bad-token')
+    apiScript.push({ status: 403, body: { code: 40300, message: 'admin role required', data: null } })
+    await expect(mod.request({ url: '/j', method: 'get' })).rejects.toThrow('需要管理员权限')
   })
 })

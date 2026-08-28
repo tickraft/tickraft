@@ -306,6 +306,7 @@ const cssVars = computed(() => {
     background-color: var(--tk-status-color);
     border: none;
     border-radius: 50%;
+
     // Fallback for browsers without color-mix support: solid ring in the status color
     box-shadow: 0 0 0 2px var(--tk-status-color);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--tk-status-color) 22%, transparent);

@@ -4,8 +4,7 @@
 
 package httputil
 
-// HTTP header constants. All custom headers use the X-Tickraft- prefix per
-// the global naming convention (00_tickraft_global.md §四.3.1).
+// HTTP header constants. All custom headers use the X-Tickraft- prefix.
 const (
 	// HeaderRequestID is the request tracing header, set by the RequestID
 	// middleware and echoed in every response.

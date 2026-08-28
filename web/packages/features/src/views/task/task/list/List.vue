@@ -321,7 +321,7 @@ onMounted(() => {
         <template #action-column>
           <el-table-column
             :label="t('task.task.list.action')"
-            width="130"
+            width="180"
             fixed="right"
             align="center"
             :resizable="false"
@@ -331,21 +331,19 @@ onMounted(() => {
                 <el-button
                   link
                   type="primary"
-                  :title="t('task.task.list.edit')"
                   @click="handleEdit(row as TaskModel)"
                 >
-                  <el-icon><Edit /></el-icon>
+                  {{ t('task.task.list.edit') }}
                 </el-button>
                 <el-button
                   link
                   type="success"
-                  :title="t('task.task.list.trigger')"
                   @click="handleTrigger(row as TaskModel)"
                 >
-                  <el-icon><Lightning /></el-icon>
+                  {{ t('task.task.list.trigger') }}
                 </el-button>
                 <el-dropdown
-                  trigger="hover"
+                  trigger="click"
                   @command="(cmd: string) => {
                     if (cmd === 'copy') handleCopy(row as TaskModel)
                     else if (cmd === 'delete') handleDelete(row as TaskModel)
@@ -354,9 +352,11 @@ onMounted(() => {
                   <el-button
                     link
                     type="info"
-                    class="tk-task-list__more-btn"
                   >
-                    <el-icon><MoreFilled /></el-icon>
+                    {{ t('common.app.more') }}
+                    <el-icon class="tk-task-list__more-icon">
+                      <ArrowDown />
+                    </el-icon>
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
@@ -384,7 +384,7 @@ onMounted(() => {
 </template>
 
 <script lang="ts">
-import { Refresh, Plus, Edit, Delete, Lightning, CopyDocument, MoreFilled } from '@element-plus/icons-vue'
+import { Refresh, Plus, Delete, CopyDocument, ArrowDown } from '@element-plus/icons-vue'
 export default { name: 'TaskList' }
 </script>
 
@@ -485,12 +485,20 @@ export default { name: 'TaskList' }
   &__row-actions {
     display: flex;
     flex-wrap: nowrap;
-    gap: 2px;
+    gap: var(--tk-spacing-4);
     align-items: center;
+
+    // Element Plus gives adjacent buttons a 12px sibling margin, which only
+    // applies to the Edit→Trigger pair (the More button sits inside the
+    // dropdown wrapper). Zero it so spacing comes from the flex gap alone.
+    :deep(.el-button + .el-button) {
+      margin-left: 0;
+    }
   }
 
-  &__more-btn {
-    padding: 0 4px;
+  &__more-icon {
+    margin-left: 2px;
+    font-size: 12px;
   }
 
   &__group {

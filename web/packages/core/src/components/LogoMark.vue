@@ -42,8 +42,14 @@ withDefaults(defineProps<Props>(), {
         y2="32"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0" stop-color="var(--tk-primary-color)" />
-        <stop offset="1" stop-color="var(--tk-primary-color-dark-2, var(--tk-primary-color))" />
+        <stop
+          offset="0"
+          stop-color="var(--tk-primary-color)"
+        />
+        <stop
+          offset="1"
+          stop-color="var(--tk-primary-color-dark-2, var(--tk-primary-color))"
+        />
       </linearGradient>
     </defs>
     <rect

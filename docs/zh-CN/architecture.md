@@ -7,7 +7,7 @@
 
 Tickraft 以单一自包含二进制文件形式发布，内置 REST API、Vue 3 单页应用、调度引擎、执行引擎、采集引擎与告警引擎。它将状态持久化到内嵌的 SQLite 数据库中，运行时无任何外部依赖，因此单个 `tickraft start` 进程即可运行整个产品。
 
-运行时被组织为三个相互独立的子系统——**scheduler**、**executor** 与 **collector**——它们彼此从不互相导入。所有跨模块通信都通过一个强类型事件总线流转，从而保证每个子系统都可独立替换与测试。
+运行时被组织为三个相互独立的子系统——**scheduler**、**executor** 与 **telemetry**——它们彼此从不互相导入。所有跨模块通信都通过一个强类型事件总线流转，从而保证每个子系统都可独立替换与测试。
 
 ## 分层架构
 
@@ -17,7 +17,7 @@ Tickraft 以单一自包含二进制文件形式发布，内置 REST API、Vue 3
 
 ## 三模块架构
 
-scheduler、executor 与 collector 被刻意解耦。它们不共享任何 Go 包，不调用彼此的方法，完全通过发布类型化事件来协同。
+scheduler、executor 与 telemetry 被刻意解耦。它们不共享任何 Go 包，不调用彼此的方法，完全通过发布类型化事件来协同。
 
 ### scheduler —— 纯调度引擎
 
@@ -41,9 +41,9 @@ executor 订阅 `TaskTriggered`，查找对应的 executor 实现，执行它，
 - **Executor 注册表** —— executor 按名称注册并声明能力位掩码：写动作（`local` 命令、`webhook` 通知回调）、只读探测（`icmp`、`tcp`），以及双模式的 `http`（`CapProbe | CapExec`，既探测端点也可作为定时任务动作）。创建任务时会拒绝不具备写能力的类型，创建主动探测点时会拒绝不具备探测能力的类型，均直接返回 400。
 - **操作类型与记录路由** —— 每次执行都携带操作类型（`probe` 或 `execute`）。执行完的记录交给装配层接线的路由存储：`execute` 记录落入任务执行日志（`sys_schedule_log`），`probe` 记录落入 telemetry 探测记录表（`sys_probe_record`）。两个领域包互不感知对方的存储。
 
-### collector —— 数据采集引擎
+### telemetry —— 数据采集引擎
 
-collector 摄取外部上报的数据，并与 scheduler 完全解耦——它不订阅任何 scheduler 事件。
+telemetry 摄取外部上报的数据，并与 scheduler 完全解耦——它不订阅任何 scheduler 事件。
 
 - **Listener SPI** —— 被动接收器将每个接收通道（webhook、syslog、SNMP trap、MQTT 等）建模为一个 `Listener`。
 - **主动探测** —— 监控点以合成任务的形式经 scheduler/executor 管道调度探测。每次结果存为一条结构化探测记录——每次探测一行，保存状态、时延、状态码、输出与错误——并刷新监控点的运行时状态列。探测记录是运行时执行的一次操作的结果；它不同于 listener 从外部上报方摄取的日志与指标，后者是对资产的观测。
@@ -60,19 +60,19 @@ collector 摄取外部上报的数据，并与 scheduler 完全解耦——它�
 |-------------------|------------|-------------------|------------------------------------------|
 | `TaskTriggered`   | scheduler  | executor          | 任务到期；executor 应执行它。              |
 | `TaskCompleted`   | executor   | scheduler         | 执行完成；更新依赖。                       |
-| `StatusChange`    | collector  | scheduler（可选） | 资源状态变化；触发事件驱动任务。           |
+| `StatusChange`    | telemetry  | scheduler（可选） | 资源状态变化；触发事件驱动任务。           |
 
 ![事件总线流程](../diagrams/event-bus.svg)
 
 执行生命周期事件携带 `operation` 字段（`probe` 或 `execute`）；消费方将空值按 `execute` 处理，以兼容该字段出现之前发布的事件。
 
-collector 从不订阅 scheduler 事件，这保证了采集引擎可以独立运行。
+telemetry 从不订阅 scheduler 事件，这保证了采集引擎可以独立运行。
 
 ## 数据流
 
 1. **调度 → 执行** —— 时间轮触发 → 发布 `TaskTriggered` → executor runner 消费 → executor 执行（带重试）→ 推断状态 → 发布 `TaskCompleted` → scheduler 更新依赖 → 持久化执行记录。
 2. **接收 → 持久化** —— 外部报告 → listener 接收 → 校验器检查 → processor 判定状态 → 状态管理器检测变化 → 聚合器对指标分窗口 → 持久化批量写入指标与日志。
-3. **事件驱动** —— collector 发出 `StatusChange` → scheduler 订阅 → 触发关联的事件驱动任务 → 流入调度 → 执行路径。
+3. **事件驱动** —— telemetry 发出 `StatusChange` → scheduler 订阅 → 触发关联的事件驱动任务 → 流入调度 → 执行路径。
 4. **主动探测 → 记录** —— 监控点触发 → 发布合成探测任务 → executor 执行探测 → `probe` 记录被路由到 `sys_probe_record` 并刷新监控点的运行时状态。任务执行走同一条管道但持久化到 `sys_schedule_log`；由操作类型决定落库目的地。
 
 ## 公共组件

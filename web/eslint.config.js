@@ -16,6 +16,7 @@ export default tseslint.config(
       '**/sb.bak/**',
       '**/.storyboard/**',
       '**/*.d.ts',
+      '**/.vite/**',
     ],
   },
   // eslint-plugin-vue@10 flat configs no longer inject browser globals the way

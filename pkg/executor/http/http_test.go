@@ -116,8 +116,8 @@ func TestExecuteTaskModePost(t *testing.T) {
 	if result.Metrics["status_code"] != float64(nethttp.StatusOK) {
 		t.Errorf("Metrics status_code: got %v, want 200", result.Metrics["status_code"])
 	}
-	if _, ok := result.Metrics["response_ms"]; !ok {
-		t.Error("Metrics response_ms missing")
+	if _, ok := result.Metrics["rtt_ms"]; !ok {
+		t.Error("Metrics rtt_ms missing")
 	}
 }
 

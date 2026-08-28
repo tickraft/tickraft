@@ -32,7 +32,11 @@ type stateManager struct {
 	wheel   timewheel.Wheel
 	cache   map[int64]types.AssetStatus
 	entries map[int64]timeoutEntry
-	logger  *zap.Logger
+	// lastActive records when the asset last renewed its timeout entry
+	// (heartbeat report or bootstrap registration). Timeout callbacks
+	// compare it against the entry timeout to drop stale fires.
+	lastActive map[int64]time.Time
+	logger     *zap.Logger
 	// onTimeout is called when an asset times out.
 	onTimeout func(ctx context.Context, assetID int64)
 }
@@ -46,14 +50,26 @@ func newStateManager(
 	onTimeout func(ctx context.Context, assetID int64),
 ) *stateManager {
 	return &stateManager{
-		store:     store,
-		dbc:       dbc,
-		wheel:     wheel,
-		cache:     make(map[int64]types.AssetStatus),
-		entries:   make(map[int64]timeoutEntry),
-		logger:    logger,
-		onTimeout: onTimeout,
+		store:      store,
+		dbc:        dbc,
+		wheel:      wheel,
+		cache:      make(map[int64]types.AssetStatus),
+		entries:    make(map[int64]timeoutEntry),
+		lastActive: make(map[int64]time.Time),
+		logger:     logger,
+		onTimeout:  onTimeout,
 	}
+}
+
+// armEntry adds a fresh timeout entry to the wheel for the asset. Each entry
+// carries its own callback closure capturing the returned ID so fireTimeout
+// can recognize superseded entries. The caller must hold sm.mu.
+func (sm *stateManager) armEntry(assetID int64, timeout time.Duration) timewheel.EntryID {
+	var entryID timewheel.EntryID
+	entryID = sm.wheel.Add(timeout, func(_ timewheel.EntryID) {
+		sm.fireTimeout(assetID, entryID)
+	})
+	return entryID
 }
 
 // RegisterAsset adds a timeout entry to the time wheel for the given asset.
@@ -68,21 +84,14 @@ func (sm *stateManager) RegisterAsset(assetID int64, timeout time.Duration) {
 		sm.wheel.Remove(prev.entryID)
 	}
 
-	entryID := sm.wheel.Add(timeout, func(_ timewheel.EntryID) {
-		sm.logger.Info("asset timeout detected",
-			zap.Int64("asset_id", assetID),
-			zap.Duration("timeout", timeout),
-		)
-		ctx := context.Background()
-		if sm.onTimeout != nil {
-			sm.onTimeout(ctx, assetID)
-		}
-	})
-
+	entryID := sm.armEntry(assetID, timeout)
 	sm.entries[assetID] = timeoutEntry{
 		entryID: entryID,
 		timeout: timeout,
 	}
+	// Stamp the arm time so a bootstrap-registered asset that never reports
+	// is declared silent after one full timeout window.
+	sm.lastActive[assetID] = time.Now()
 
 	// Initialize cache with unknown status if not already present.
 	if _, exists := sm.cache[assetID]; !exists {
@@ -100,6 +109,7 @@ func (sm *stateManager) UnregisterAsset(assetID int64) {
 		delete(sm.entries, assetID)
 	}
 	delete(sm.cache, assetID)
+	delete(sm.lastActive, assetID)
 }
 
 // UpdateActive renews the timeout entry for an asset (heartbeat). An asset
@@ -114,34 +124,63 @@ func (sm *stateManager) UpdateActive(assetID int64) {
 	entry, exists := sm.entries[assetID]
 	if !exists {
 		entry.timeout = DefaultHeartbeatTimeout
-		entryID := sm.wheel.Add(entry.timeout, func(_ timewheel.EntryID) {
-			sm.logger.Info("asset timeout detected",
-				zap.Int64("asset_id", assetID),
-				zap.Duration("timeout", entry.timeout),
-			)
-			ctx := context.Background()
-			if sm.onTimeout != nil {
-				sm.onTimeout(ctx, assetID)
-			}
-		})
-		sm.entries[assetID] = timeoutEntry{
-			entryID: entryID,
-			timeout: entry.timeout,
-		}
-		if _, cached := sm.cache[assetID]; !cached {
-			sm.cache[assetID] = types.AssetStatusUnknown
-		}
 		sm.logger.Info("asset auto-registered for observation on first report",
 			zap.Int64("asset_id", assetID),
 			zap.Duration("timeout", entry.timeout),
 		)
-		return
 	}
 
-	newEntryID := sm.wheel.Renew(entry.entryID, entry.timeout)
+	// Re-arm by adding a fresh entry and removing the old one instead of
+	// using wheel.Renew: an entry already dequeued by the wheel cannot be
+	// renewed and would come back with an empty callback, silently
+	// disabling timeout detection for the asset.
+	newEntryID := sm.armEntry(assetID, entry.timeout)
+	if exists {
+		sm.wheel.Remove(entry.entryID)
+	}
 	sm.entries[assetID] = timeoutEntry{
 		entryID: newEntryID,
 		timeout: entry.timeout,
+	}
+	sm.lastActive[assetID] = time.Now()
+
+	if _, cached := sm.cache[assetID]; !cached {
+		sm.cache[assetID] = types.AssetStatusUnknown
+	}
+}
+
+// fireTimeout guards a timeout callback against races with concurrent
+// reports. A report that arrived after this entry was armed has already
+// re-armed a fresh entry and stamped lastActive, so a superseded or
+// freshly-renewed callback is dropped instead of marking a live asset
+// offline.
+func (sm *stateManager) fireTimeout(assetID int64, firedID timewheel.EntryID) {
+	sm.mu.RLock()
+	entry, exists := sm.entries[assetID]
+	last := sm.lastActive[assetID]
+	sm.mu.RUnlock()
+
+	// The wheel has one-second resolution: the delay is truncated to whole
+	// slots and the arm position loses its sub-second phase, so a
+	// legitimate fire can land up to ~2s before the nominal deadline.
+	// Tolerate that slack so genuine timeouts are never dropped; the
+	// entry-identity check above remains the primary race guard.
+	threshold := max(entry.timeout-2*time.Second, 0)
+
+	if !exists || entry.entryID != firedID || time.Since(last) < threshold {
+		sm.logger.Debug("stale timeout callback skipped",
+			zap.Int64("asset_id", assetID),
+			zap.Int64("fired_entry", int64(firedID)),
+		)
+		return
+	}
+
+	sm.logger.Info("asset timeout detected",
+		zap.Int64("asset_id", assetID),
+		zap.Duration("timeout", entry.timeout),
+	)
+	if sm.onTimeout != nil {
+		sm.onTimeout(context.Background(), assetID)
 	}
 }
 
@@ -156,8 +195,14 @@ func (sm *stateManager) GetStatus(assetID int64) types.AssetStatus {
 	return types.AssetStatusUnknown
 }
 
-// UpdateStatus persists a status change, updates the cache, and records history.
-// It returns true if the status actually changed.
+// UpdateStatus persists a status change, records history, and only then
+// commits the cached value, so a failed write leaves the previous status in
+// place and the next report retries the transition. It returns true if the
+// status actually changed.
+//
+// The lock is held across the store write: status transitions are rare, and
+// serializing them keeps the cache commit order identical to the
+// persistence order.
 func (sm *stateManager) UpdateStatus(
 	ctx context.Context,
 	assetID int64,
@@ -165,69 +210,83 @@ func (sm *stateManager) UpdateStatus(
 	reason string,
 ) (bool, error) {
 	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	prevStatus, exists := sm.cache[assetID]
 	if !exists {
-		sm.cache[assetID] = newStatus
-		sm.mu.Unlock()
-		// First status assignment, persist to store.
-		if err := sm.store.UpdateStatus(ctx, assetID, newStatus, time.Now()); err != nil {
-			return false, fmt.Errorf("update status in store: %w", err)
-		}
-		return true, nil
-	}
-
-	if prevStatus == newStatus {
-		sm.mu.Unlock()
+		prevStatus = types.AssetStatusUnknown
+	} else if prevStatus == newStatus {
 		return false, nil
 	}
 
+	if err := sm.persistStatus(ctx, assetID, prevStatus, newStatus, reason); err != nil {
+		return false, err
+	}
 	sm.cache[assetID] = newStatus
-	sm.mu.Unlock()
 
-	// Persist the status change and the status history atomically. When a
-	// db handle is available both writes are wrapped in a single GORM
-	// transaction so that a history-record failure rolls back the status
-	// update. When no db handle is configured (e.g. unit tests with a mock
-	// store), only the store is updated.
-	if sm.dbc != nil {
-		if err := sm.dbc.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := sm.store.UpdateStatus(ctx, assetID, newStatus, time.Now()); err != nil {
-				return fmt.Errorf("update status in store: %w", err)
-			}
-			history := &StatusHistory{
-				AssetID:    assetID,
-				PrevStatus: prevStatus,
-				CurrStatus: newStatus,
-				Reason:     reason,
-			}
-			// Populate TenantID and AssetType (both not-null columns) from the
-			// asset store when available.
-			if sm.store != nil {
-				if a, err := sm.store.GetByID(ctx, assetID); err == nil && a != nil {
-					history.TenantID = a.TenantID
-					history.AssetType = string(a.AssetType)
-				}
-			}
-			if err := tx.Create(history).Error; err != nil {
-				return fmt.Errorf("create status history: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return false, err
-		}
-	} else {
-		// No db handle available: persist via store only.
-		if err := sm.store.UpdateStatus(ctx, assetID, newStatus, time.Now()); err != nil {
-			return false, fmt.Errorf("update status in store: %w", err)
-		}
+	if exists {
+		sm.logger.Info("asset status changed",
+			zap.Int64("asset_id", assetID),
+			zap.String("prev_status", string(prevStatus)),
+			zap.String("curr_status", string(newStatus)),
+			zap.String("reason", reason),
+		)
+	}
+	return true, nil
+}
+
+// SyncStatus refreshes the cached status of an asset from the store. It is
+// used after out-of-band status writes — timeout transitions performed by
+// processors — so the cache does not diverge from the persisted state and
+// suppress a later legitimate transition.
+func (sm *stateManager) SyncStatus(ctx context.Context, assetID int64) {
+	a, err := sm.store.GetByID(ctx, assetID)
+	if err != nil || a == nil {
+		sm.logger.Warn("timeout cache sync: fetch asset failed",
+			zap.Int64("asset_id", assetID),
+			zap.Error(err),
+		)
+		return
 	}
 
-	sm.logger.Info("asset status changed",
-		zap.Int64("asset_id", assetID),
-		zap.String("prev_status", string(prevStatus)),
-		zap.String("curr_status", string(newStatus)),
-		zap.String("reason", reason),
-	)
+	sm.mu.Lock()
+	sm.cache[assetID] = a.Status
+	sm.mu.Unlock()
+}
 
-	return true, nil
+// persistStatus writes the new status to the store and then records the
+// history row. The store update is the authoritative write; a history
+// failure surfaces as an error so the caller leaves the cache uncommitted
+// and the next report retries both writes (re-writing the same status is
+// harmless). The caller must hold sm.mu.
+func (sm *stateManager) persistStatus(
+	ctx context.Context,
+	assetID int64,
+	prevStatus, newStatus types.AssetStatus,
+	reason string,
+) error {
+	if err := sm.store.UpdateStatus(ctx, assetID, newStatus, time.Now()); err != nil {
+		return fmt.Errorf("update status in store: %w", err)
+	}
+
+	if sm.dbc == nil {
+		return nil
+	}
+
+	history := &StatusHistory{
+		AssetID:    assetID,
+		PrevStatus: prevStatus,
+		CurrStatus: newStatus,
+		Reason:     reason,
+	}
+	// Populate TenantID and AssetType (both not-null columns) from the
+	// asset store when available.
+	if a, err := sm.store.GetByID(ctx, assetID); err == nil && a != nil {
+		history.TenantID = a.TenantID
+		history.AssetType = string(a.AssetType)
+	}
+	if err := sm.dbc.WithContext(ctx).Create(history).Error; err != nil {
+		return fmt.Errorf("create status history: %w", err)
+	}
+	return nil
 }

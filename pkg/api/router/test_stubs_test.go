@@ -145,22 +145,22 @@ var _ remediation.Service = (*stubRemediationService)(nil)
 // stubTelemetryService implements telemetry.Service.
 type stubTelemetryService struct{}
 
-func (stubTelemetryService) ListTasks(_ context.Context, _, _ int,
+func (stubTelemetryService) ListMonitors(_ context.Context, _, _ int,
 	_ telemetry.Filter) ([]telemetry.MonitorPoint, int64, error) {
 	return nil, 0, nil
 }
-func (stubTelemetryService) GetTask(_ context.Context, _ int64) (*telemetry.MonitorPoint, error) {
+func (stubTelemetryService) GetMonitor(_ context.Context, _ int64) (*telemetry.MonitorPoint, error) {
 	return nil, nil
 }
-func (stubTelemetryService) CreateTask(
+func (stubTelemetryService) CreateMonitor(
 	_ context.Context, _ *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error) {
 	return &telemetry.MonitorPoint{}, nil
 }
-func (stubTelemetryService) UpdateTask(_ context.Context, _ int64,
+func (stubTelemetryService) UpdateMonitor(_ context.Context, _ int64,
 	_ *telemetry.MonitorPoint) (*telemetry.MonitorPoint, error) {
 	return &telemetry.MonitorPoint{}, nil
 }
-func (stubTelemetryService) DeleteTask(_ context.Context, _ int64) error { return nil }
+func (stubTelemetryService) DeleteMonitor(_ context.Context, _ int64) error { return nil }
 func (stubTelemetryService) ProbeNow(_ context.Context, _ int64) (*telemetry.MonitorPoint, error) {
 	return &telemetry.MonitorPoint{}, nil
 }

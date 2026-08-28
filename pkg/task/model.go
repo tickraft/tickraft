@@ -42,6 +42,10 @@ const (
 	// TriggerTypeEvent indicates the execution was initiated by an
 	// event-driven status change.
 	TriggerTypeEvent TriggerType = "event"
+	// TriggerTypeExternal indicates the execution row was created from a
+	// remote status report rather than a local dispatch — a purely
+	// externally driven execution with no scheduler fire behind it.
+	TriggerTypeExternal TriggerType = "external"
 )
 
 // Persisted execution status values, stored in the sys_schedule_log.status
@@ -108,6 +112,16 @@ type Task struct {
 	// column default: GORM substitutes the default for zero-valued fields
 	// on insert, which would store disabled (false) tasks as enabled.
 	Enabled bool `gorm:"column:enabled;not null" json:"enabled"`
+	// ReportStatus selects the task status mode. When true (Mode A), the
+	// scheduler only dispatches the task and the actual execution outcome
+	// is reported back by the remote executor via POST /api/v1/telemetry
+	// (kind=task_status), keyed by the task_ref dispatch credential; when
+	// false (Mode B, default), the schedule lifecycle is the task status.
+	// default:false (same value GORM's zero-value substitution would write):
+	// NOT NULL columns added by AutoMigrate to an existing table must carry
+	// a default — SQLite rejects ADD COLUMN NOT NULL without one, so legacy
+	// databases could not upgrade past this field.
+	ReportStatus bool `gorm:"column:report_status;not null;default:false" json:"report_status"`
 	// Config stores executor-specific configuration.
 	Config map[string]any `gorm:"column:executor_config;type:text;serializer:tolerantjson" json:"config,omitempty"`
 	// TimeoutSeconds bounds a single execution attempt. Values <= 0 let
@@ -140,8 +154,10 @@ type Task struct {
 	// (0=unlimited, 1=no concurrent execution). No column default: the
 	// GORM zero-value substitution would turn 0 (unlimited) into 1.
 	Concurrency int `gorm:"column:concurrency;type:tinyint" json:"concurrency,omitempty"`
-	// Operation specifies the operation type (probe or execute) for the
-	// executor. Runtime-only; never persisted or exposed on the wire.
+	// Operation overrides the operation published on this task's triggered
+	// events. The zero value means the task-domain default, execute; the
+	// telemetry prober sets probe for the tasks it registers. Runtime-only;
+	// never persisted or exposed on the wire.
 	Operation executor.Operation `gorm:"-" json:"-"`
 	// CreatedAt is the row creation timestamp.
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
@@ -190,8 +206,9 @@ type Execution struct {
 	// ExecutorType identifies which executor produced the record.
 	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null" json:"executor_type,omitempty"`
 	// Status is the execution outcome: success, failed, running or
-	// unknown.
-	Status string `gorm:"column:status;type:varchar(32);not null" json:"status"`
+	// unknown. Indexed because the sweeper scans for running rows on
+	// every pass.
+	Status string `gorm:"column:status;type:varchar(32);not null;index" json:"status"`
 	// StatusCode is the numeric status code returned by the executor.
 	StatusCode int `gorm:"column:status_code" json:"status_code,omitempty"`
 	// Output is the raw executor output.

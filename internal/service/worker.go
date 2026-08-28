@@ -110,7 +110,7 @@ func startWorkerEngines(
 ) (stopFunc, error) {
 	var (
 		runner    executor.Runner
-		sched     task.Manager
+		sched     task.TaskEngine
 		collector telemetry.Collector
 	)
 
@@ -151,16 +151,11 @@ func startWorkerEngines(
 	// the task scheduling log. The routing below is the assembly-layer
 	// decision that owns domain ownership: OpExecute records flow to the
 	// task adapter (sys_schedule_log), OpProbe records to the telemetry
-	// store keyed by monitor point. One-time cleanup removes probe rows
-	// that older builds wrote into sys_schedule_log before the split.
+	// store keyed by monitor point.
 	probeStore := telemetry.NewProbeRecordStore(rt.dbc)
 	if err = probeStore.Migrate(); err != nil {
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("migrate probe record table: %w", err)
-	}
-	if err = cleanupLegacyProbeRows(ctx, rt.dbc); err != nil {
-		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
-		return nil, fmt.Errorf("cleanup legacy probe rows: %w", err)
 	}
 	recordStore := routingRecordStore{
 		tasks:  task.NewExecutionRecordStore(execStore),
@@ -173,6 +168,11 @@ func startWorkerEngines(
 		executor.WithEventBus(bus),
 		executor.WithLogger(rt.logger),
 		executor.WithRecordStore(recordStore),
+		// Mode A (remote status reporting) dispatch rows always land in the
+		// task domain: they are schedule-task executions referenced by the
+		// telemetry report contract, independent of the probe/execute
+		// record routing above.
+		executor.WithDispatchStore(task.NewDispatchStore(rt.dbc)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create executor: %w", err)
@@ -187,6 +187,10 @@ func startWorkerEngines(
 		task.WithEventBus(bus),
 		task.WithLogger(rt.logger),
 		task.WithStore(taskStore),
+		// Sweeper: reaps running Mode A dispatch rows whose remote status
+		// report never arrived (miss-report fallback), flipping them to
+		// timeout and releasing the concurrency slot.
+		task.WithExecutionStore(execStore),
 	)
 	if err != nil {
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
@@ -207,6 +211,15 @@ func startWorkerEngines(
 	rt.schedulerTaskStore = taskStore
 	rt.schedulerExecStore = execStore
 
+	// Mode A report consumer: binds remote task status reports — bridged
+	// from the telemetry listener callback onto the bus by startAPIServer —
+	// to execution rows.
+	reportConsumer := task.NewReportConsumer(bus, rt.dbc, rt.logger)
+	if err = reportConsumer.Start(ctx); err != nil {
+		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
+		return nil, fmt.Errorf("start task report consumer: %w", err)
+	}
+
 	rt.logger.Info("scheduler started")
 
 	// Collector manager. In standalone single-port mode the telemetry does
@@ -222,9 +235,9 @@ func startWorkerEngines(
 	logStore := telemetry.NewLogStore(rt.dbc)
 
 	// ProberService: coordinates active probing by scheduling MonitorPoints
-	// (Mode=ModeActive) through the shared task.Manager. Created before
+	// (Mode=ModeActive) through the shared task.TaskEngine. Created before
 	// telemetry.New so it can be injected via WithProberService; the
-	// Manager.Start calls proberSvc.Start which loads and registers all
+	// engine's Start calls proberSvc.Start which loads and registers all
 	// active, enabled points from the DB.
 	monitorStore := telemetry.NewMonitorStore(rt.dbc)
 	proberSvc := telemetry.NewProberService(
@@ -267,6 +280,7 @@ func startWorkerEngines(
 	rt.logger.Info("telemetry started")
 
 	return func(ctx context.Context) error {
+		reportConsumer.Stop()
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil
 	}, nil
@@ -278,7 +292,7 @@ func stopWorkerEngines(
 	ctx context.Context,
 	logger *zap.Logger,
 	collector telemetry.Collector,
-	sched task.Manager,
+	sched task.TaskEngine,
 	runner executor.Runner,
 ) {
 	if collector != nil {
@@ -319,17 +333,3 @@ func (s routingRecordStore) Save(ctx context.Context, record executor.ExecutionR
 
 // Compile-time assertion that routingRecordStore satisfies the runner SPI.
 var _ executor.RecordStore = routingRecordStore{}
-
-// cleanupLegacyProbeRows removes probe execution rows that builds before the
-// task/telemetry record split wrote into sys_schedule_log. Prober task IDs
-// are ProbeTaskIDOffset + point ID, so every task_id at or above the offset
-// is a probe row; the task_id index keeps the sweep cheap. The delete is
-// idempotent — after the first run no new probe rows arrive there.
-func cleanupLegacyProbeRows(ctx context.Context, dbc *gorm.DB) error {
-	if err := dbc.WithContext(ctx).
-		Where("task_id >= ?", telemetry.ProbeTaskIDOffset).
-		Delete(&task.Execution{}).Error; err != nil {
-		return fmt.Errorf("delete legacy probe rows: %w", err)
-	}
-	return nil
-}

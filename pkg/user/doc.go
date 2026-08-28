@@ -13,7 +13,7 @@
 // domain callers (asset, task, audit, tenant) can depend on the user
 // identity without pulling in authentication logic — addressing the
 // "user lives in auth, so importing user means importing authorization"
-// confusion documented in the architecture spec §3.5.
+// confusion documented in the architecture spec
 //
 // # Current members
 //

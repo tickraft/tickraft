@@ -522,7 +522,7 @@ func TestLocalOperatorFailingCommandReportsFailure(t *testing.T) {
 // TestLocalOperatorJudgmentDrivesSuccess pins the judgment chain for the
 // local operator: the executor config's optional "expression" key is
 // applied to the result, so the user-defined success standard drives the
-// Success flag the circuit breaker counts (rule-engine-design §6.3).
+// Success flag the circuit breaker counts.
 func TestLocalOperatorJudgmentDrivesSuccess(t *testing.T) {
 	op := NewLocalOperator(nil, WithOperatorLogger(zap.NewNop()))
 

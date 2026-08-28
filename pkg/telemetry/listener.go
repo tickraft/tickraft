@@ -73,38 +73,24 @@ type ProtocolListener interface {
 	Stop(ctx context.Context) error
 }
 
-// ListenerRegistry manages HTTPListener and ProtocolListener registration
-// and lookup. It is the SPI registration point for passive telemetry
-// receivers: the kernel registers builtin HTTP listeners
-// (webhook), and callers may register protocol listeners (Syslog,
-// SNMP, MQTT) via this registry at startup.
+// ListenerRegistry manages ProtocolListener registration and lookup. It
+// is the SPI registration point for passive telemetry receivers: callers
+// register protocol listeners (Syslog, SNMP, MQTT) via this registry at
+// startup, and the Engine starts and stops them alongside the listener
+// pipeline. HTTP listeners need no registry — they expose a plain handler
+// that the API router mounts directly.
 //
 // The registry is safe for concurrent use.
 type ListenerRegistry struct {
 	mu                sync.RWMutex
-	httpListeners     map[string]HTTPListener
 	protocolListeners map[string]ProtocolListener
 }
 
 // NewListenerRegistry creates an empty listener registry.
 func NewListenerRegistry() *ListenerRegistry {
 	return &ListenerRegistry{
-		httpListeners:     make(map[string]HTTPListener),
 		protocolListeners: make(map[string]ProtocolListener),
 	}
-}
-
-// RegisterHTTP adds an HTTPListener. Returns an error if a listener with
-// the same Type() is already registered.
-func (r *ListenerRegistry) RegisterHTTP(l HTTPListener) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	t := l.Type()
-	if _, exists := r.httpListeners[t]; exists {
-		return fmt.Errorf("telemetry: http listener for %q already registered", t)
-	}
-	r.httpListeners[t] = l
-	return nil
 }
 
 // RegisterProtocol adds a ProtocolListener. Returns an error if a listener
@@ -118,18 +104,6 @@ func (r *ListenerRegistry) RegisterProtocol(l ProtocolListener) error {
 	}
 	r.protocolListeners[t] = l
 	return nil
-}
-
-// ListHTTP returns all registered HTTPListeners. The order is not
-// guaranteed.
-func (r *ListenerRegistry) ListHTTP() []HTTPListener {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	listeners := make([]HTTPListener, 0, len(r.httpListeners))
-	for _, l := range r.httpListeners {
-		listeners = append(listeners, l)
-	}
-	return listeners
 }
 
 // ListProtocol returns all registered ProtocolListeners. The order is not

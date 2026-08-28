@@ -30,10 +30,6 @@ func NewStore(dbc *gorm.DB) *store { //nolint:revive // returning the unexported
 	return &store{dbc: dbc}
 }
 
-// defaultExecutionListLimit caps execution history queries when the caller
-// does not specify a limit.
-const defaultExecutionListLimit = 200
-
 // Migrate creates or updates the sys_schedule_task table schema.
 func (s *store) Migrate(ctx context.Context) error {
 	if err := s.dbc.WithContext(ctx).AutoMigrate(&Task{}); err != nil {
@@ -91,6 +87,9 @@ func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
 	query := s.dbc.WithContext(ctx)
 	if opts.Group != "" {
 		query = query.Where("`group` = ?", opts.Group)
+	}
+	if opts.IDs != nil {
+		query = query.Where("id IN ?", opts.IDs)
 	}
 	if err := query.Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("task: list: %w", db.MapError(err))
@@ -155,6 +154,7 @@ var taskWriteColumns = []string{
 	"max_retries",
 	"retry_interval",
 	"enabled",
+	"report_status",
 	"metadata",
 	"group",
 	"tags",
@@ -194,26 +194,6 @@ func (s *executionStore) Save(ctx context.Context, exec *Execution) error {
 		return fmt.Errorf("task: save execution: %w", db.MapError(err))
 	}
 	return nil
-}
-
-// List returns execution history for the given task ID, ordered by most
-// recent first (descending ID). If limit is positive, at most limit records
-// are returned; otherwise at most defaultExecutionListLimit records are
-// returned. Execution history grows without bound, so callers can never
-// fetch the full table by passing a zero limit.
-func (s *executionStore) List(ctx context.Context, taskID int64, limit int) ([]*Execution, error) {
-	if limit <= 0 {
-		limit = defaultExecutionListLimit
-	}
-	var execs []*Execution
-	query := s.dbc.WithContext(ctx).
-		Where("task_id = ?", taskID).
-		Order("id DESC").
-		Limit(limit)
-	if err := query.Find(&execs).Error; err != nil {
-		return nil, fmt.Errorf("task: list executions: %w", db.MapError(err))
-	}
-	return execs, nil
 }
 
 // Query returns a page of executions matching the filter, ordered by most
@@ -269,6 +249,27 @@ func (s *executionStore) Get(ctx context.Context, id int64) (*Execution, error) 
 		return nil, fmt.Errorf("task: get execution: %w", db.MapError(err))
 	}
 	return &exec, nil
+}
+
+// MarkTimeout transitions a still-running execution to the timeout state.
+// The status guard makes the transition atomic: a row that already reached
+// a terminal state (remote report landed, or another instance swept it) is
+// left untouched and reported as not transitioned.
+func (s *executionStore) MarkTimeout(
+	ctx context.Context, id int64, finishedAt time.Time, durationMs int64,
+) (bool, error) {
+	res := s.dbc.WithContext(ctx).
+		Model(&Execution{}).
+		Where("id = ? AND status = ?", id, StatusRunning).
+		Updates(map[string]any{
+			"status":      StatusTimeout,
+			"finished_at": finishedAt,
+			"duration":    durationMs,
+		})
+	if res.Error != nil {
+		return false, fmt.Errorf("task: mark execution timeout: %w", db.MapError(res.Error))
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // DeleteExecutionsOlderThan removes all execution records whose created_at

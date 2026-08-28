@@ -168,6 +168,11 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 			httpReq.Header.Add(k, v)
 		}
 	}
+	// Stamp the dispatch credential after the configured headers so a Mode A
+	// dispatch always carries its task_ref.
+	if req.ReportStatus && req.ExecutionID > 0 {
+		httputil.SetDispatchHeaders(httpReq.Header, req.RunID)
+	}
 
 	// Execute request.
 	resp, err := e.client.Do(httpReq)
@@ -178,7 +183,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 		r.Status = types.AssetStatusAbnormal
 		r.ErrorMsg = err.Error()
 		r.Duration = duration
-		r.Metrics["response_ms"] = float64(duration.Milliseconds())
+		r.Metrics["rtt_ms"] = float64(duration.Milliseconds())
 		return r, nil
 	}
 	defer func() { _ = resp.Body.Close() }() // best-effort close, error not actionable
@@ -191,7 +196,7 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	r.StatusCode = resp.StatusCode
 	r.Body = string(bodyBytes)
 	r.Duration = duration
-	r.Metrics["response_ms"] = float64(duration.Milliseconds())
+	r.Metrics["rtt_ms"] = float64(duration.Milliseconds())
 	r.Metrics["status_code"] = float64(resp.StatusCode)
 	r.Metrics["content_length"] = float64(len(bodyBytes))
 	return r, nil

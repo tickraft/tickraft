@@ -450,10 +450,6 @@ func (m *mockWheel) AddAt(_ time.Time, cb timewheel.Callback) timewheel.EntryID 
 
 func (m *mockWheel) Remove(_ timewheel.EntryID) {}
 
-func (m *mockWheel) Renew(_ timewheel.EntryID, duration time.Duration) timewheel.EntryID {
-	return m.Add(duration, func(timewheel.EntryID) {})
-}
-
 func (m *mockWheel) Start(_ context.Context) {}
 
 func (m *mockWheel) Stop(_ context.Context) error {

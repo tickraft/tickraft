@@ -11,7 +11,7 @@ This guide walks through every screen in the Tickraft web UI. Each section expla
   - [Create a task](#create-a-task)
   - [Task detail](#task-detail)
   - [Execution logs](#execution-logs)
-- [Collector](#collector)
+- [Telemetry](#telemetry)
   - [Assets](#assets)
   - [Probers](#probers)
   - [Listeners](#listeners)
@@ -115,51 +115,51 @@ Click a row to open the [log detail](#execution-logs) page, which shows the full
 
 The log detail page displays the complete execution output, error message (if any), retry history, and timing breakdown. Use the **Retry** button to re-run the execution.
 
-## Collector
+## Telemetry
 
-The collector module ingests monitoring data from two sources: **probers** (active probes that Tickraft sends out) and **listeners** (passive receivers that accept inbound reports). Each probe result is persisted as a probe record (`sys_probe_record`) and refreshes the monitor point's runtime status; listener reports flow through the collection pipeline and drive the asset status machine.
+The telemetry module ingests monitoring data from two sources: **probers** (active probes that Tickraft sends out) and **listeners** (passive receivers that accept inbound reports). Each probe result is persisted as a probe record (`sys_probe_record`) and refreshes the monitor point's runtime status; listener reports flow through the collection pipeline and drive the asset status machine.
 
 ### Assets
 
-![Asset list](./screenshots/collector-asset-list.png)
+![Asset list](./screenshots/telemetry-asset-list.png)
 
 An asset is any monitored target — a host, a service, a network device. Before a prober or listener can report data, the target must be registered as an asset.
 
 **Create an asset.** Click **Create** and fill in the asset name, asset key (a unique identifier used in webhook reports), type, and optional metadata.
 
-![Create asset](./screenshots/collector-asset-create.png)
+![Create asset](./screenshots/telemetry-asset-create.png)
 
 **Asset detail.** Click an asset row to see its detail page, which shows the current status, recent telemetry, associated probers, and the webhook endpoint for reporting data to this asset.
 
-![Asset detail](./screenshots/collector-asset-detail.png)
+![Asset detail](./screenshots/telemetry-asset-detail.png)
 
 ### Probers
 
 A prober is a monitoring task that actively probes a target at a schedule. The open-source edition ships four prober types: `icmp`, `tcp`, `http`, and `udp`.
 
-![Prober list](./screenshots/collector-prober-list.png)
+![Prober list](./screenshots/telemetry-prober-list.png)
 
 The prober list shows every configured prober, its target asset, probe type, interval, current status, and last result.
 
 **Create a prober.** Choose a prober template (ICMP, TCP, HTTP, UDP), select the target asset, configure the probe parameters, and set the schedule.
 
-![Create prober](./screenshots/collector-prober-create.png)
+![Create prober](./screenshots/telemetry-prober-create.png)
 
 **Prober detail.** The detail page shows the prober configuration, the latest probe status and latency, and the recent probe history and logs — one entry per probe execution.
 
-![Prober detail](./screenshots/collector-prober-detail.png)
+![Prober detail](./screenshots/telemetry-prober-detail.png)
 
 ### Listeners
 
 A listener is a passive receiver that accepts inbound telemetry reports. The open-source edition ships an HTTP (webhook) listener.
 
-![Listener overview](./screenshots/collector-listener-overview.png)
+![Listener overview](./screenshots/telemetry-listener-overview.png)
 
 The listener overview page lists every configured listener, its type, status, and the number of reports received.
 
 **Webhook listener.** The webhook configuration page shows the ingestion endpoint URL, the expected authentication method (`X-Tickraft-Asset-Key` header), and a sample payload. External systems can POST telemetry data to this endpoint to update asset status.
 
-![Webhook listener](./screenshots/collector-listener-webhook.png)
+![Webhook listener](./screenshots/telemetry-listener-webhook.png)
 
 ## Prism
 
@@ -250,6 +250,6 @@ When a quota is reached, the UI shows a message indicating the limit. Existing i
 
 - [Getting started](./getting-started.md) — from zero to first task in five minutes.
 - [Configuration](./configuration.md) — every configuration field explained.
-- [Architecture](./architecture.md) — how the scheduler, executor, and collector cooperate.
+- [Architecture](./architecture.md) — how the scheduler, executor, and telemetry cooperate.
 - [Extension guide](./extension-guide.md) — add custom executors, listeners, and channels.
 - [Deployment](./deployment.md) — binary, Docker, and development deployment.

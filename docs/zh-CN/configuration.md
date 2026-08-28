@@ -3,7 +3,7 @@
 > 本中文文档仅供参考，请以英文文档为准。
 > Chinese translation is for reference only; the English documentation is authoritative.
 
-Tickraft 通过单个 YAML 文件进行配置。`start` 命令在启动时加载该文件一次；每个子系统（API 服务器、scheduler、executor、collector、告警引擎）都从同一文件中读取自己所需的段落。
+Tickraft 通过单个 YAML 文件进行配置。`start` 命令在启动时加载该文件一次；每个子系统（API 服务器、scheduler、executor、telemetry、告警引擎）都从同一文件中读取自己所需的段落。
 
 完整的带注释示例位于 [`configs/config.example.yaml`](../../configs/config.example.yaml)。复制一份并根据你的环境进行编辑：
 
@@ -42,7 +42,7 @@ auth:
 
 ### `server` —— HTTP API 服务器
 
-运行时以单端口模式运行：REST API、SPA 与 webhook listener 共享 `server.addr`。不会绑定额外端口。
+运行时以单端口模式运行：REST API、SPA 与遥测上报端点共享 `server.addr`。不会绑定额外端口。
 
 | 字段                  | 类型     | 默认值    | 说明                                                               |
 |-----------------------|----------|-----------|--------------------------------------------------------------------|
@@ -50,13 +50,13 @@ auth:
 | `enable_cors`         | bool     | `true`    | 是否启用 CORS 中间件。                                             |
 | `enable_access_log`   | bool     | `true`    | 是否启用访问日志中间件。                                           |
 | `max_header_bytes`    | int      | `1048576` | 请求头的最大字节数。                                               |
-| `read_timeout`        | duration | `10s`     | 读取整个请求的最长耗时。`0s` = 不超时。                            |
-| `write_timeout`       | duration | `30s`     | 写入超时前的最长耗时。`0s` = 不超时。                              |
+| `read_timeout`        | duration | `0s`      | 读取整个请求的最长耗时。`0s` = 不超时；生产环境建议显式配置（如 `10s`）。 |
+| `write_timeout`       | duration | `0s`      | 写入超时前的最长耗时。`0s` = 不超时；生产环境建议显式配置（如 `30s`）。   |
 | `maintenance_interval` | duration | `5m`      | 后台维护扫描之间的间隔（例如清理过期 token 黑名单条目）。          |
 
 ### `worker` —— worker 运行时
 
-worker 是一种统一的部署模式。它始终在进程内同时启动 scheduler、executor 和 collector；无需任何角色参数，也不会绑定额外端口。
+worker 是一种统一的部署模式。它始终在进程内同时启动 scheduler、executor 和 telemetry；无需任何角色参数，也不会绑定额外端口。
 
 | 字段            | 类型     | 默认值 | 说明                                                              |
 |-----------------|----------|--------|-------------------------------------------------------------------|
@@ -71,7 +71,6 @@ worker 是一种统一的部署模式。它始终在进程内同时启动 schedu
 |------------------|----------|--------|-------------------------------------------------------------------|
 | `eval_interval`  | duration | `30s`  | 告警规则求值之间的间隔。                                          |
 | `concurrence`    | int      | `8`    | 发送通知的 goroutine 池大小。`0` = 同步发送。                     |
-| `channel_config` | string   | `""`   | 不透明的通知渠道配置（路径或内联 JSON/YAML）。                    |
 
 ### `database` —— 数据库连接
 
@@ -117,12 +116,16 @@ database:
 
 由于所有服务共享 `server.addr`，路由按路径前缀进行划分：
 
-| 前缀          | 服务                | 鉴权方式                |
-|---------------|---------------------|-------------------------|
-| `/api/v1/*`   | JSON API            | JWT 中间件              |
-| `/webhook/*`  | 遥测数据接入        | `X-Tickraft-Asset-Key`  |
-| `/healthz`    | 健康探测            | 无（已加入白名单）      |
-| `/`           | SPA 静态资源        | 无                      |
+| 路径                           | 服务               | 鉴权方式                          |
+|--------------------------------|--------------------|-----------------------------------|
+| `POST /api/v1/auth/login`      | 登录               | 无（公开）                        |
+| `POST /api/v1/auth/refresh`    | 刷新令牌           | 无（公开）                        |
+| `GET /api/v1/i18n/locales`     | 语言列表           | 无（公开）                        |
+| `POST /api/v1/telemetry`       | 遥测数据接入       | `X-Tickraft-Asset-Key`            |
+| `/api/v1/*`（其余全部）        | JSON API           | JWT 中间件                        |
+| `GET /ws`                      | WebSocket 推送     | 查询参数令牌（handler 内校验）    |
+| `GET /healthz`、`GET /readyz`  | 健康探测           | 无（已加入白名单）                |
+| `/`                            | SPA 静态资源       | 无                                |
 
 ## 开源版配额
 

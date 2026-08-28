@@ -10,7 +10,7 @@
  * - value shape: `{ [tableId]: { [prop]: width } }`
  * - Privacy mode fallback: when localStorage is unavailable, automatically degrades to an in-memory Map
  *
- * Naming alignment: the local storage key carries the `tk-` prefix, complying with 03_tickraft_frontend.md §4.3.1.
+ * Naming alignment: the local storage key carries the `tk-` prefix, complying with
  */
 
 const STORAGE_KEY = 'tk-table-widths'

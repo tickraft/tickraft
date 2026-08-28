@@ -97,7 +97,7 @@ type runtime struct {
 	// by startAPIServer when wiring the task service into the API routes.
 	// The engine drives task scheduling while the task and execution stores
 	// persist configuration and history across process restarts.
-	schedulerEngine    task.Manager
+	schedulerEngine    task.TaskEngine
 	schedulerTaskStore task.Store
 	schedulerExecStore task.ExecutionStore
 

@@ -18,11 +18,11 @@ import (
 	"github.com/tickraft/tickraft/pkg/scheduler"
 )
 
-// Manager is the task lifecycle management interface. It owns task
-// registration, scheduling, pause/resume, dependency tracking, and
-// event-driven triggers. A Manager holds a scheduler.Engine instance
-// and registers timed callbacks via Engine.Add/Remove.
-type Manager interface {
+// TaskEngine is the task scheduling engine contract: task registration,
+// scheduling, pause/resume, dependency tracking, and event-driven
+// triggers. An implementation holds a scheduler.Engine instance and
+// registers timed callbacks via engine Add/Remove.
+type TaskEngine interface { //nolint:revive // task.TaskEngine stutter is deliberate: the concrete struct in this package already owns the name Engine
 	// Register registers a new task for scheduling.
 	Register(ctx context.Context, task Task) error
 	// Schedule manually triggers a task for execution by publishing an
@@ -37,7 +37,7 @@ type Manager interface {
 	Pause(taskID int64) error
 	// Resume re-adds a paused task to the scheduling wheel.
 	Resume(taskID int64) error
-	// Stop gracefully stops the manager and the underlying engine.
+	// Stop gracefully stops the engine and the underlying scheduler.
 	Stop(ctx context.Context) error
 	// SubscribeEvents subscribes to status change events (for event-driven
 	// tasks) and task completion events (for dependency tracking) on the
@@ -49,15 +49,15 @@ type Manager interface {
 	Restore(ctx context.Context) error
 }
 
-// Compile-time assertion that Service implements Manager.
-var _ Manager = (*Engine)(nil)
+// Compile-time assertion that Engine implements TaskEngine.
+var _ TaskEngine = (*Engine)(nil)
 
-// Option configures a Service.
+// Option configures the engine.
 type Option interface {
 	apply(*Options)
 }
 
-// Options holds the resolved Service configuration.
+// Options holds the resolved Engine configuration.
 type Options struct {
 	// Engine is the pure timing engine. Required.
 	Engine scheduler.Engine
@@ -68,14 +68,18 @@ type Options struct {
 	// Logger is the structured logger.
 	Logger *zap.Logger
 	// Store persists task configurations across restarts. If nil,
-	// persistence is disabled and the manager operates in-memory only.
+	// persistence is disabled and the engine operates in-memory only.
 	Store Store
-	// ShardManager controls which tasks this manager instance owns in a
+	// ExecutionStore persists execution history. When set, the engine runs
+	// a periodic sweeper that reaps running rows whose report deadline
+	// expired (Mode A miss-report fallback). If nil, no sweeper runs.
+	ExecutionStore ExecutionStore
+	// ShardManager controls which tasks this engine instance owns in a
 	// sharded deployment. If nil, all tasks are owned (no sharding).
 	ShardManager *scheduler.ShardManager
 }
 
-// engineOption sets the timing engine that the Service uses for scheduling
+// engineOption sets the timing engine that the Engine uses for scheduling
 // callbacks.
 type engineOption struct {
 	e scheduler.Engine
@@ -83,7 +87,7 @@ type engineOption struct {
 
 func (o engineOption) apply(opts *Options) { opts.Engine = o.e }
 
-// WithEngine sets the timing engine that the Service uses for
+// WithEngine sets the timing engine that the Engine uses for
 // scheduling callbacks. This option is required.
 func WithEngine(e scheduler.Engine) Option { return engineOption{e: e} }
 
@@ -122,6 +126,19 @@ func (o storeOption) apply(opts *Options) { opts.Store = o.s }
 // across restarts. Passing nil disables persistence.
 func WithStore(s Store) Option { return storeOption{s: s} }
 
+// executionStoreOption sets the execution history store that backs the
+// engine's stale-execution sweeper.
+type executionStoreOption struct {
+	es ExecutionStore
+}
+
+func (o executionStoreOption) apply(opts *Options) { opts.ExecutionStore = o.es }
+
+// WithExecutionStore configures the ExecutionStore used by the sweeper that
+// reaps running executions whose remote status report never arrived (Mode A
+// miss-report fallback). Passing nil (the default) disables the sweeper.
+func WithExecutionStore(es ExecutionStore) Option { return executionStoreOption{es: es} }
+
 // shardManagerOption sets the shard manager for distributed task ownership
 // filtering.
 type shardManagerOption struct {
@@ -141,7 +158,7 @@ func WithShardManager(sm *scheduler.ShardManager) Option {
 // If no Engine is provided via WithEngine, a default scheduler.Engine is
 // created internally and started automatically. If an Engine is provided,
 // the caller is responsible for starting it (calling Engine.Start) before
-// the Service schedules any tasks.
+// the Engine schedules any tasks.
 //
 // All options are optional except that at most one Engine may be provided.
 // Returns an error if the internal engine cannot be initialized.
@@ -178,6 +195,7 @@ func NewEngine(options ...Option) (*Engine, error) {
 		engine:           opts.Engine,
 		ownEngine:        ownEngine,
 		store:            opts.Store,
+		execStore:        opts.ExecutionStore,
 		deps:             newDependencyChecker(),
 		shardManager:     opts.ShardManager,
 		bus:              bus,
@@ -189,21 +207,30 @@ func NewEngine(options ...Option) (*Engine, error) {
 		eventDrivenTasks: make(map[int64]struct{}),
 		running:          make(map[int64]struct{}),
 	}
+	if e.execStore != nil {
+		e.startSweeper()
+	}
 	return e, nil
 }
 
-// Engine implements Manager by delegating timing to scheduler.Engine
+// Engine implements TaskEngine by delegating timing to scheduler.Engine
 // and owning all task business semantics: lifecycle, dependency tracking,
 // per-task concurrency control, and event-driven triggers.
 type Engine struct {
 	engine       scheduler.Engine
 	ownEngine    bool
 	store        Store
+	execStore    ExecutionStore
 	deps         *dependencyChecker
 	shardManager *scheduler.ShardManager
 	bus          event.Bus
 	ownBus       bool
 	logger       *zap.Logger
+
+	// sweepCancel and sweepDone control the stale-execution sweeper
+	// goroutine started when execStore is set. See sweeper.go.
+	sweepCancel context.CancelFunc
+	sweepDone   chan struct{}
 
 	// taskMu protects the tasks map.
 	taskMu sync.RWMutex
@@ -258,6 +285,15 @@ func (e *Engine) Register(ctx context.Context, task Task) error {
 	// triggered by external events via SubscribeEvents.
 	if task.Enabled && scheduleType != ScheduleTypeEvent {
 		if err := e.engine.Add(task.ID, sched, e.onFire); err != nil {
+			// Roll back the registration so the persisted state matches the
+			// error the caller sees: without this the task would survive in
+			// the store and in memory while the caller treats it as rejected.
+			e.mu.Lock()
+			delete(e.scheds, task.ID)
+			delete(e.scheduleTypes, task.ID)
+			delete(e.eventDrivenTasks, task.ID)
+			e.mu.Unlock()
+			e.deleteTask(task.ID)
 			return fmt.Errorf("register task %d: %w", task.ID, err)
 		}
 	}
@@ -272,12 +308,12 @@ func (e *Engine) Register(ctx context.Context, task Task) error {
 
 // Schedule manually triggers a task for immediate execution by publishing
 // a TaskTriggered event on the event bus.
-func (e *Engine) Schedule(_ context.Context, taskID int64) error {
+func (e *Engine) Schedule(ctx context.Context, taskID int64) error {
 	task, err := e.getTask(taskID)
 	if err != nil {
 		return fmt.Errorf("schedule task %d: %w", taskID, err)
 	}
-	e.trigger(task, TriggerTypeManual)
+	e.trigger(ctx, task, TriggerTypeManual)
 	return nil
 }
 
@@ -398,10 +434,11 @@ func (e *Engine) Resume(taskID int64) error {
 	return nil
 }
 
-// Stop gracefully stops the manager and, if the engine was created
-// internally, the underlying engine. It also closes the event bus if it
+// Stop gracefully stops the engine and, if the scheduler was created
+// internally, the underlying scheduler. It also closes the event bus if it
 // was created internally.
 func (e *Engine) Stop(ctx context.Context) error {
+	e.stopSweeper(ctx)
 	if e.ownEngine {
 		if err := e.engine.Stop(ctx); err != nil {
 			return fmt.Errorf("stop engine: %w", err)
@@ -476,7 +513,9 @@ func (e *Engine) onFire(taskID int64) {
 		}
 	}
 
-	e.trigger(task, TriggerTypeSchedule)
+	// The scheduling wheel callback has no upstream request; Background is
+	// the honest base here.
+	e.trigger(context.Background(), task, TriggerTypeSchedule)
 }
 
 // tryClaimRunning atomically checks whether the task is already running and,

@@ -42,15 +42,6 @@ func TestTypeConstants(t *testing.T) {
 	}
 }
 
-func TestTypeAliases(t *testing.T) {
-	if TypeTask != TypeScheduledTask {
-		t.Errorf("TypeTask (%s) should alias TypeScheduledTask (%s)", TypeTask, TypeScheduledTask)
-	}
-	if TypeHTTPInterval != TypeProbeInterval {
-		t.Errorf("TypeHTTPInterval (%s) should alias TypeProbeInterval (%s)", TypeHTTPInterval, TypeProbeInterval)
-	}
-}
-
 func TestLayerOf(t *testing.T) {
 	assetTypes := []Type{TypeAsset, TypeDevice, TypeHost, TypeTeamMember, TypeCustomField}
 	configTypes := []Type{TypeScheduledTask, TypeProber, TypeRemediation, TypeProbeInterval, TypeScheduledTaskInterval}

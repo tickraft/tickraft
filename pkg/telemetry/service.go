@@ -116,14 +116,14 @@ func NewTelemetryService(store *MonitorStore, logger *zap.Logger, options ...Ser
 // Sentinel service errors returned by the TelemetryService implementation.
 // They wrap the errdefs sentinels so errors.Is keeps working across layers.
 var (
-	ErrTelemetryTaskNotFound = fmt.Errorf("telemetry task not found: %w", errdefs.ErrNotFound)
-	ErrInvalidRequest        = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
+	ErrMonitorNotFound = fmt.Errorf("monitor point not found: %w", errdefs.ErrNotFound)
+	ErrInvalidRequest  = fmt.Errorf("invalid request: %w", errdefs.ErrInvalidArgument)
 )
 
-// ListTasks returns a page of telemetry tasks ordered by ascending ID, plus
-// the total count. When filter.Mode is non-empty, only tasks whose Mode matches
-// are returned.
-func (s *TelemetryService) ListTasks(
+// ListMonitors returns a page of monitoring points ordered by ascending ID,
+// plus the total count. When filter.Mode is non-empty, only points whose Mode
+// matches are returned.
+func (s *TelemetryService) ListMonitors(
 	ctx context.Context,
 	page, size int,
 	filter Filter,
@@ -139,8 +139,8 @@ func (s *TelemetryService) ListTasks(
 	return points, total, nil
 }
 
-// GetTask returns a single telemetry task by ID.
-func (s *TelemetryService) GetTask(ctx context.Context, id int64) (*MonitorPoint, error) {
+// GetMonitor returns a single monitoring point by ID.
+func (s *TelemetryService) GetMonitor(ctx context.Context, id int64) (*MonitorPoint, error) {
 	p, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapError(err)
@@ -148,9 +148,9 @@ func (s *TelemetryService) GetTask(ctx context.Context, id int64) (*MonitorPoint
 	return p, nil
 }
 
-// CreateTask creates a new telemetry task from the given request, applies quota
-// checks, and persists it.
-func (s *TelemetryService) CreateTask(
+// CreateMonitor creates a new monitoring point from the given request, applies
+// quota checks, and persists it.
+func (s *TelemetryService) CreateMonitor(
 	ctx context.Context, req *MonitorPoint,
 ) (*MonitorPoint, error) {
 	if req == nil {
@@ -177,14 +177,14 @@ func (s *TelemetryService) CreateTask(
 	if err := s.store.Create(ctx, req); err != nil {
 		return nil, mapError(err)
 	}
-	s.logger.Info("telemetry task created", zap.Int64("id", req.ID), zap.String("name", req.Name))
+	s.logger.Info("monitor point created", zap.Int64("id", req.ID), zap.String("name", req.Name))
 
 	// Schedule the point with the prober engine if it is active+enabled.
 	// Errors are logged but do not fail the create: the point is already
 	// persisted and will be picked up on the next ProberService.Start.
 	if s.onPointUpsert != nil {
 		if err := s.onPointUpsert(ctx, *req); err != nil {
-			s.logger.Warn("telemetry task created but prober registration failed",
+			s.logger.Warn("monitor point created but prober registration failed",
 				zap.Int64("id", req.ID),
 				zap.Error(err),
 			)
@@ -193,9 +193,9 @@ func (s *TelemetryService) CreateTask(
 	return req, nil
 }
 
-// UpdateTask merges the request fields onto the existing task. The ID and
+// UpdateMonitor merges the request fields onto the existing point. The ID and
 // CreatedAt are preserved; UpdatedAt is refreshed by GORM auto-update.
-func (s *TelemetryService) UpdateTask(
+func (s *TelemetryService) UpdateMonitor(
 	ctx context.Context,
 	id int64,
 	req *MonitorPoint,
@@ -225,7 +225,7 @@ func (s *TelemetryService) UpdateTask(
 	// hook will re-register it with the new schedule.
 	if s.onPointDelete != nil {
 		if err := s.onPointDelete(ctx, *existing); err != nil {
-			s.logger.Warn("telemetry task update: unregister old point failed",
+			s.logger.Warn("monitor point update: unregister old point failed",
 				zap.Int64("id", id),
 				zap.Error(err),
 			)
@@ -247,12 +247,12 @@ func (s *TelemetryService) UpdateTask(
 	if err := s.store.Update(ctx, existing); err != nil {
 		return nil, mapError(err)
 	}
-	s.logger.Info("telemetry task updated", zap.Int64("id", id))
+	s.logger.Info("monitor point updated", zap.Int64("id", id))
 
 	// Re-register the updated point if it is active+enabled.
 	if s.onPointUpsert != nil {
 		if err := s.onPointUpsert(ctx, *existing); err != nil {
-			s.logger.Warn("telemetry task updated but prober registration failed",
+			s.logger.Warn("monitor point updated but prober registration failed",
 				zap.Int64("id", id),
 				zap.Error(err),
 			)
@@ -261,8 +261,8 @@ func (s *TelemetryService) UpdateTask(
 	return existing, nil
 }
 
-// DeleteTask removes a telemetry task by ID.
-func (s *TelemetryService) DeleteTask(ctx context.Context, id int64) error {
+// DeleteMonitor removes a monitoring point by ID.
+func (s *TelemetryService) DeleteMonitor(ctx context.Context, id int64) error {
 	// Fetch the point before deleting so the unregister hook receives the
 	// full shape (mode, asset) it needs to reconcile the right engine.
 	existing, err := s.store.GetByID(ctx, id)
@@ -272,12 +272,12 @@ func (s *TelemetryService) DeleteTask(ctx context.Context, id int64) error {
 	if err := s.store.Delete(ctx, id); err != nil {
 		return mapError(err)
 	}
-	s.logger.Info("telemetry task deleted", zap.Int64("id", id))
+	s.logger.Info("monitor point deleted", zap.Int64("id", id))
 
 	// Unregister the point from the scheduling engines.
 	if s.onPointDelete != nil {
 		if err := s.onPointDelete(ctx, *existing); err != nil {
-			s.logger.Warn("telemetry task deleted but unregistration failed",
+			s.logger.Warn("monitor point deleted but unregistration failed",
 				zap.Int64("id", id),
 				zap.Error(err),
 			)
@@ -328,7 +328,7 @@ func (s *TelemetryService) Summary(ctx context.Context) (PointSummary, error) {
 
 // --- Quota helpers ---
 
-// checkProberQuotaForCreate returns an error when creating a task whose Mode
+// checkProberQuotaForCreate returns an error when creating a point whose Mode
 // is "active" would exceed the TypeProber ceiling.
 func (s *TelemetryService) checkProberQuotaForCreate(ctx context.Context, mode string) error {
 	if !strings.EqualFold(mode, string(ModeActive)) {
@@ -394,12 +394,12 @@ func (s *TelemetryService) checkActiveExecutor(mode, executorType string) error 
 }
 
 // checkHTTPIntervalQuota validates the schedule of an active HTTP prober
-// against the minimum HTTP probe interval quota (TypeHTTPInterval, in seconds).
+// against the minimum probe interval quota (TypeProbeInterval, in seconds).
 func checkHTTPIntervalQuota(mode, typ, schedule string) error {
 	if !strings.EqualFold(mode, string(ModeActive)) || !strings.EqualFold(typ, "http") {
 		return nil
 	}
-	ceiling := quota.Ceiling(quota.TypeHTTPInterval)
+	ceiling := quota.Ceiling(quota.TypeProbeInterval)
 	if ceiling <= 0 {
 		return nil
 	}
@@ -422,7 +422,7 @@ func mapError(err error) error {
 		return nil
 	}
 	if errors.Is(err, errdefs.ErrNotFound) {
-		return ErrTelemetryTaskNotFound
+		return ErrMonitorNotFound
 	}
 	if errors.Is(err, errdefs.ErrInvalidArgument) {
 		return ErrInvalidRequest

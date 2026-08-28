@@ -3,7 +3,7 @@
 // Dual-licensed — see details in LICENSE.
 
 /**
- * Wizard → expression generation (rule-engine-design §9.2 mapping
+ * Wizard → expression generation (mapping
  * table). Only structurally complete rows participate; the caller
  * decides what to do when the model is incomplete.
  */

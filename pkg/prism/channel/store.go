@@ -169,9 +169,3 @@ func (s *Store) ListEnabled(ctx context.Context) ([]*Channel, error) {
 	}
 	return models, nil
 }
-
-// Compile-time assertion that Store implements the expected CRUD
-// surface. The interface is not exported because the handler layer
-// defines its own ChannelService interface; the Store is consumed by
-// the prism channel service adapter (pkg/api/handler/service_channel.go).
-var _ = (*Store)(nil)

@@ -6,8 +6,24 @@ package alert
 
 import (
 	"context"
+	"strconv"
+	"time"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/cache"
+	"github.com/tickraft/tickraft/pkg/types"
+)
+
+// Matcher hot-path asset cache: every Match call resolves the asset to
+// enrich the evaluation env, so lookups are LRU-cached like the telemetry
+// validator's. There is no explicit invalidation hook in the prism engine;
+// the TTL bounds how long a renamed or retagged asset keeps evaluating
+// under its old attributes.
+const (
+	matcherCacheSize = 1024
+	matcherCacheTTL  = 5 * time.Minute
 )
 
 // MatchResult is the outcome of evaluating an alert event against the
@@ -59,6 +75,17 @@ var _ Matcher = (*AlertMatcher)(nil)
 type AlertMatcher struct {
 	engine *Engine
 	store  asset.Getter
+	cache  *cache.LRUCache
+}
+
+// cachedMatcherAsset is the cache snapshot of an asset lookup. The LRU
+// cache serializes entries as JSON, so only the fields the evaluation
+// env consumes are kept — caching the full asset.Asset would round-trip
+// every column for nothing.
+type cachedMatcherAsset struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Metadata string `json:"metadata,omitempty"`
 }
 
 // NewAlertMatcher creates an AlertMatcher backed by the supplied engine
@@ -67,7 +94,11 @@ type AlertMatcher struct {
 // the alert; a nil getter leaves the asset domain limited to the
 // event's asset id.
 func NewAlertMatcher(engine *Engine, store asset.Getter) *AlertMatcher {
-	return &AlertMatcher{engine: engine, store: store}
+	return &AlertMatcher{
+		engine: engine,
+		store:  store,
+		cache:  cache.NewLRU(matcherCacheSize, matcherCacheTTL),
+	}
 }
 
 // buildEnv projects the alert into an AlertEnv, enriching the asset
@@ -75,13 +106,40 @@ func NewAlertMatcher(engine *Engine, store asset.Getter) *AlertMatcher {
 // lookup is non-fatal: the env keeps the event's asset id and empty
 // name/type/tags.
 func (m *AlertMatcher) buildEnv(ctx context.Context, evt Event) AlertEnv {
-	var res *asset.Asset
-	if m.store != nil {
-		if found, err := m.store.GetByID(ctx, evt.AssetID); err == nil && found != nil {
-			res = found
+	return buildAlertEnv(evt, m.loadAsset(ctx, evt.AssetID))
+}
+
+// loadAsset resolves the asset for rule evaluation through the LRU
+// cache. Cache hits rebuild the three enrichment fields; misses load
+// from the store and populate the cache. A failed or absent lookup
+// yields nil and is not cached, mirroring the uncached semantics.
+func (m *AlertMatcher) loadAsset(ctx context.Context, assetID int64) *asset.Asset {
+	if m.store == nil {
+		return nil
+	}
+	key := strconv.FormatInt(assetID, 10)
+	if raw, ok := m.cache.Get(ctx, key); ok {
+		var snap cachedMatcherAsset
+		if sonic.Unmarshal(raw, &snap) == nil {
+			return &asset.Asset{
+				Name:      snap.Name,
+				AssetType: types.AssetType(snap.Type),
+				Metadata:  snap.Metadata,
+			}
 		}
 	}
-	return buildAlertEnv(evt, res)
+	found, err := m.store.GetByID(ctx, assetID)
+	if err != nil || found == nil {
+		return nil
+	}
+	if raw, err := sonic.Marshal(cachedMatcherAsset{
+		Name:     found.Name,
+		Type:     string(found.AssetType),
+		Metadata: found.Metadata,
+	}); err == nil {
+		m.cache.Set(ctx, key, raw)
+	}
+	return found
 }
 
 // Match implements Matcher. It projects the alert into an AlertEnv,

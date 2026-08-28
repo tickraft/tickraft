@@ -354,7 +354,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .tk-asset-form__grid {
     grid-template-columns: 1fr;
   }

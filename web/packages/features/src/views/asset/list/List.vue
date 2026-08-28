@@ -556,13 +556,13 @@ onMounted(() => {
   color: var(--tk-text-placeholder);
 }
 
-@media (max-width: 1023px) {
+@media (width <= 1023px) {
   .tk-asset-summary {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
-@media (max-width: 639px) {
+@media (width <= 639px) {
   .tk-asset-summary {
     grid-template-columns: repeat(2, 1fr);
   }

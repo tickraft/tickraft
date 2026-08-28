@@ -45,6 +45,16 @@ type ExecutionRequest struct {
 	// StartedAt is the worker pool pickup delay. It is propagated to the
 	// execution record.
 	TriggeredAt time.Time
+	// ReportStatus marks a Mode A task (remote status reporting): the
+	// executor outcome is only the dispatch result. A running execution
+	// row is opened before the executor runs and stays running until the
+	// remote reporter closes it via the telemetry report endpoint.
+	ReportStatus bool
+	// ExecutionID is the sys_schedule_log row ID opened by the dispatch
+	// store for a ReportStatus task. Zero on Mode B tasks (and on Mode A
+	// tasks when no dispatch store is injected). Executors use it to stamp
+	// the dispatch identity headers.
+	ExecutionID int64
 	// Metadata holds optional key-value extension data.
 	Metadata map[string]string
 }

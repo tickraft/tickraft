@@ -51,6 +51,7 @@ const form = reactive<TaskFormData>(props.initialData ?? {
   group: '',
   tags: [],
   enabled: true,
+  reportStatus: false,
   retryPolicy: 'fixed',
   concurrency: 0,
   scheduleType: 'cron',
@@ -814,6 +815,12 @@ function handleCancel() {
             <el-form-item :label="t('task.task.create.enabled')">
               <el-switch v-model="form.enabled" />
             </el-form-item>
+            <el-form-item :label="t('task.task.create.reportStatus')">
+              <el-switch v-model="form.reportStatus" />
+              <div class="tk-task-form-item__help">
+                {{ t('task.task.create.reportStatusHint') }}
+              </div>
+            </el-form-item>
           </div>
         </div>
       </div>
@@ -1258,7 +1265,7 @@ function handleCancel() {
   }
 }
 
-@media (max-width: 1100px) {
+@media (width <= 1100px) {
   .tk-task-form__grid {
     grid-template-columns: 1fr;
   }

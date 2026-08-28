@@ -83,7 +83,7 @@ func (op *LocalOperator) Execute(ctx context.Context, req ExecutionRequest) (*Ex
 	defer cancel()
 
 	// The optional "expression" key of the rule's executor config rides
-	// the metadata channel (rule-engine-design §6.3.3) and is applied to
+	// the metadata channel and is applied to
 	// the result below so the user-defined judgment drives the circuit
 	// breaker outcome.
 	metadata := map[string]string{"remediation": "true"}

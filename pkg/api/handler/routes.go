@@ -341,19 +341,19 @@ func registerTelemetryRoutes(
 		telemetryGroup.Use(cfg.jwtMiddleware)
 		if cfg.telemetrySvc != nil {
 			telemetryGroup.GET("/monitors", middleware.RequirePermission(middleware.ActionRead, "device"),
-				telemetryH.ListTelemetry)
+				telemetryH.ListMonitors)
 			// The summary route must be registered before /monitors/:id so
 			// the static segment is not captured as an :id parameter.
 			telemetryGroup.GET("/monitors/summary", middleware.RequirePermission(middleware.ActionRead, "device"),
 				telemetryH.GetMonitorSummary)
 			telemetryGroup.GET("/monitors/:id", middleware.RequirePermission(middleware.ActionRead, "device"),
-				telemetryH.GetTelemetry)
+				telemetryH.GetMonitor)
 			telemetryGroup.POST("/monitors", middleware.RequirePermission(middleware.ActionWrite, "device"),
-				telemetryH.CreateTelemetry)
+				telemetryH.CreateMonitor)
 			telemetryGroup.PUT("/monitors/:id", middleware.RequirePermission(middleware.ActionWrite, "device"),
-				telemetryH.UpdateTelemetry)
+				telemetryH.UpdateMonitor)
 			telemetryGroup.DELETE("/monitors/:id", middleware.RequirePermission(middleware.ActionDelete, "device"),
-				telemetryH.DeleteTelemetry)
+				telemetryH.DeleteMonitor)
 			telemetryGroup.GET("/monitors/:id/status", middleware.RequirePermission(middleware.ActionRead, "device"),
 				telemetryH.GetMonitorStatus)
 			telemetryGroup.GET("/monitors/:id/history", middleware.RequirePermission(middleware.ActionRead, "device"),

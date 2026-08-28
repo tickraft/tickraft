@@ -98,6 +98,8 @@
       "previewSchedule": "调度",
       "previewStatus": "状态",
       "previewStatusDefault": "启用（默认）",
+      "reportStatus": "状态上报",
+      "reportStatusHint": "开启后调度仅派发任务，实际执行状态（running/completed/failed/timeout）由远端以派发头 X-Tickraft-Task-Ref 中的 task_ref 凭据经 /api/v1/telemetry 上报，执行器配置可引用 {'{{task_ref}}'} 派发变量；未开启时以调度结果作为任务状态",
       "retryInterval": "重试间隔（秒）",
       "retryPolicy": "重试策略",
       "retryPolicyExponential": "指数退避重试",

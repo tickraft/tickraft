@@ -111,25 +111,15 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 }
 
 // ParseOperation parses a string into an Operation.
-// Accepts "probe" and "execute"; an empty string defaults to OpExecute.
-// Unrecognized strings return ErrInvalidOperation.
+// Accepts "probe" and "execute"; the empty string and unrecognized
+// values return ErrInvalidOperation.
 func ParseOperation(s string) (Operation, error) {
 	switch s {
-	case "", opExecuteName:
+	case opExecuteName:
 		return OpExecute, nil
 	case opProbeName:
 		return OpProbe, nil
 	default:
 		return 0, ErrInvalidOperation
 	}
-}
-
-// operationOrDefault is the package-internal convenience version of
-// ParseOperation. On parse failure it falls back to OpExecute.
-func operationOrDefault(s string) Operation {
-	op, err := ParseOperation(s)
-	if err != nil {
-		return OpExecute
-	}
-	return op
 }

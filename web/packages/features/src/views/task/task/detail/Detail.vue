@@ -506,7 +506,7 @@ onMounted(() => { void fetchData() })
 }
 .tk-json-view { max-height: 400px; padding: var(--tk-spacing-6); margin: 0; overflow: auto; font-family: var(--tk-font-mono); font-size: var(--tk-font-size-sm); line-height: var(--tk-line-height-snug); color: var(--tk-text-primary); word-break: break-all; white-space: pre-wrap; background: var(--tk-bg-fill-blank); border: 1px solid var(--tk-border-color-base); border-radius: var(--tk-radius-md); }
 
-@media (max-width: 960px) {
+@media (width <= 960px) {
   .tk-stat-strip { grid-template-columns: repeat(2, 1fr); }
   .tk-descriptions { grid-template-columns: 1fr; }
 }

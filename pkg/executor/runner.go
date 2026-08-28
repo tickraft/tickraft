@@ -48,16 +48,38 @@ type noopRecordStore struct{}
 
 func (noopRecordStore) Save(_ context.Context, _ ExecutionRecord) error { return nil }
 
+// DispatchStore persists the dispatch lifecycle of Mode A tasks (remote
+// status reporting). It opens a running execution row before the executor
+// runs — the row ID is the execution_id the remote reporter references —
+// and closes it from the dispatch outcome: a successful dispatch leaves
+// the row running until the remote report (or the sweeper) finishes it, a
+// failed dispatch writes a terminal state directly.
+// Implementations must be safe for concurrent use.
+type DispatchStore interface {
+	// StartDispatch inserts the running execution row for a dispatch and
+	// returns its ID. The context is detached from the execution deadline.
+	StartDispatch(ctx context.Context, req ExecutionRequest) (int64, error)
+	// FinishDispatch closes a dispatch: when dispatchErr is nil the row
+	// stays running (awaiting the remote report); otherwise it is set to a
+	// terminal failed/timeout state derived from dispatchErr. The return
+	// value tells whether the completion event should still be published
+	// (releasing the concurrency slot and updating dependents).
+	FinishDispatch(
+		ctx context.Context, req ExecutionRequest, execID int64, dispatchErr error,
+	) (publishCompletion bool, err error)
+}
+
 // runner is the default Runner implementation.
 type runner struct {
-	registry  *Registry
-	bus       event.Bus
-	logger    *zap.Logger
-	records   RecordStore
-	pool      pool.Pool
-	poolOwned bool
-	wheel     timewheel.Wheel
-	wg        sync.WaitGroup
+	registry   *Registry
+	bus        event.Bus
+	logger     *zap.Logger
+	records    RecordStore
+	dispatches DispatchStore
+	pool       pool.Pool
+	poolOwned  bool
+	wheel      timewheel.Wheel
+	wg         sync.WaitGroup
 
 	// mu protects started, runCtx, cancel, and sub.
 	mu      sync.RWMutex
@@ -82,6 +104,7 @@ type runnerOptions struct {
 	bus            event.Bus
 	logger         *zap.Logger
 	records        RecordStore
+	dispatches     DispatchStore
 	pool           pool.Pool
 	wheel          timewheel.Wheel
 }
@@ -157,6 +180,18 @@ func (o recordStoreOption) apply(opts *runnerOptions) { opts.records = o.store }
 // If not set, a no-op store is used.
 func WithRecordStore(store RecordStore) Option { return recordStoreOption{store: store} }
 
+// dispatchStoreOption sets the dispatch store for Mode A tasks.
+type dispatchStoreOption struct {
+	store DispatchStore
+}
+
+func (o dispatchStoreOption) apply(opts *runnerOptions) { opts.dispatches = o.store }
+
+// WithDispatchStore sets the dispatch store that persists the dispatch
+// lifecycle of Mode A tasks (ReportStatus). When not set, Mode A tasks
+// degrade to local recording (Mode B behavior).
+func WithDispatchStore(store DispatchStore) Option { return dispatchStoreOption{store: store} }
+
 // timeWheelOption injects a time wheel used to schedule asynchronous retry
 // delays.
 type timeWheelOption struct {
@@ -207,11 +242,12 @@ func New(options ...Option) (Runner, error) {
 	}
 
 	r := &runner{
-		registry: opts.registry,
-		bus:      opts.bus,
-		logger:   opts.logger,
-		records:  opts.records,
-		wheel:    opts.wheel,
+		registry:   opts.registry,
+		bus:        opts.bus,
+		logger:     opts.logger,
+		records:    opts.records,
+		dispatches: opts.dispatches,
+		wheel:      opts.wheel,
 	}
 
 	if opts.pool != nil {
@@ -265,6 +301,11 @@ func (r *runner) Start(ctx context.Context) error {
 // (or until the provided context is cancelled), and — when the runner owns
 // its default pool — shuts the pool down. Injected pools are left open;
 // the caller is responsible for their lifecycle.
+//
+// When the caller's context expires first, Stop returns the timeout error
+// while the wait continues without it: in-flight doExecute jobs observe
+// the cancelled run context and finish promptly, so worker lifetime can
+// exceed the Stop call only by that bounded tail, never indefinitely.
 func (r *runner) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	if !r.started {
@@ -363,6 +404,15 @@ func (r *runner) SubscribeEvents(ctx context.Context) {
 // time wheel.
 func (r *runner) dispatch(ctx context.Context, ev event.Event[event.ExecutionPayload]) {
 	payload := ev.Payload
+	operation, err := ParseOperation(payload.Operation)
+	if err != nil {
+		r.logger.Error("dropping triggered event with invalid operation",
+			zap.String("execution_id", payload.ExecutionID),
+			zap.String("operation", payload.Operation),
+			zap.Error(err),
+		)
+		return
+	}
 	taskID, _ := strconv.ParseInt(payload.ExecutionID, 10, 64)
 	tenantID, _ := strconv.ParseInt(payload.TenantID, 10, 64)
 	assetID, _ := strconv.ParseInt(payload.AssetID, 10, 64)
@@ -372,13 +422,14 @@ func (r *runner) dispatch(ctx context.Context, ev event.Event[event.ExecutionPay
 		AssetID:       assetID,
 		ExecutorName:  payload.ExecutorType,
 		Config:        payload.Config,
-		Operation:     operationOrDefault(payload.Operation),
+		Operation:     operation,
 		Timeout:       time.Duration(payload.TimeoutSeconds) * time.Second,
 		MaxRetries:    payload.MaxRetries,
 		RetryInterval: time.Duration(payload.RetryIntervalSeconds) * time.Second,
 		RunID:         payload.RunID,
 		TriggerType:   payload.TriggerType,
 		TriggeredAt:   time.Now(),
+		ReportStatus:  payload.ReportStatus,
 		Metadata:      ev.Metadata,
 	}
 

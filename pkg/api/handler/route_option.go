@@ -120,8 +120,9 @@ type channelServiceOption struct {
 func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
 
 // WithChannelService provides the Service implementation for
-// notification channel handlers. When omitted, the handler package falls
-// back to an in-memory implementation.
+// notification channel handlers. When omitted, the channel route group
+// is not registered (tests inject an in-memory Service; production
+// assemblies always inject the DB-backed one).
 func WithChannelService(svc channel.Service) RouteOption {
 	return channelServiceOption{svc: svc}
 }
@@ -135,8 +136,9 @@ type remediationRuleServiceOption struct {
 func (o remediationRuleServiceOption) apply(c *routeConfig) { c.remediationRuleSvc = o.svc }
 
 // WithRemediationRuleService provides the Service
-// implementation for self-healing rule handlers. When omitted, the handler
-// package falls back to an in-memory implementation.
+// implementation for self-healing rule handlers. When omitted, the
+// remediation route group is not registered (tests inject an in-memory
+// Service; production assemblies always inject the DB-backed one).
 func WithRemediationRuleService(svc remediation.Service) RouteOption {
 	return remediationRuleServiceOption{svc: svc}
 }

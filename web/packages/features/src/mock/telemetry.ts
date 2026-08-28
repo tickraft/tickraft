@@ -33,7 +33,7 @@ interface MonitorSeed {
 /**
  * Unified monitor point dataset (13 items: 8 active probes across icmp/tcp/http
  * and 5 passive webhook listeners, with varied schedules and some disabled),
- * aligned with backend TelemetryTask model.
+ * aligned with backend MonitorPoint model.
  */
 const mockMonitors: MonitorSeed[] = [
   // Active probing (8)

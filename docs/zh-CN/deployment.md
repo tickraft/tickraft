@@ -29,7 +29,7 @@ make cross-build
 
 ## 运行
 
-开源版仅以独立模式运行 —— 单个进程在同一个 HTTP 端口上提供 API、SPA、scheduler、executor、collector 以及告警引擎。
+开源版仅以独立模式运行 —— 单个进程在同一个 HTTP 端口上提供 API、SPA、scheduler、executor、telemetry 以及告警引擎。
 
 ```bash
 ./bin/tickraft start --config config.yaml
@@ -103,7 +103,7 @@ services:
 | 路径前缀      | 服务                | 鉴权方式                | 说明                                       |
 |---------------|---------------------|-------------------------|--------------------------------------------|
 | `/api/v1/*`   | JSON API            | JWT 中间件              | 任务、资产、告警、系统等。                  |
-| `/webhook/*`  | 遥测数据接入        | Asset-Key 请求头        | collector 上报端点。                        |
+| `POST /api/v1/telemetry` | 遥测数据接入       | Asset-Key 请求头        | 统一遥测上报端点。                          |
 | `/healthz`    | 健康探测            | 无（已加入白名单）      | 依赖不可用时返回 503。                      |
 | `/`           | SPA 静态资源        | 无                      | Vue 3 前端。                                |
 

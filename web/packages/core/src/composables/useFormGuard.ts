@@ -72,7 +72,7 @@ export function useFormGuard(options: UseFormGuardOptions): UseFormGuardReturn {
   onBeforeRouteLeave((_to, _from) => {
     if (!isDirty.value) return true
     const msg = confirmMessage ? confirmMessage() : message
-    // eslint-disable-next-line no-alert
+     
     if (window.confirm(msg)) {
       return true
     }

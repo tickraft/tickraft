@@ -785,7 +785,7 @@ onMounted(() => {
 }
 
 // ---- Responsive ----
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .tk-apikey__summary {
     grid-template-columns: 1fr;
   }

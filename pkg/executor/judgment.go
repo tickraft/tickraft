@@ -48,7 +48,7 @@ func ConfigExpression(config string) string {
 // success/failure decision: the runner's retry decision (doExecute) and
 // the remediation operators' circuit-breaker outcome.
 //
-// Semantics (rule-engine-design §6.3.2):
+// Semantics:
 //   - An empty expression leaves the result untouched (protocol default).
 //   - true judges success: Status is forced to normal.
 //   - false judges failure: Status is forced to abnormal and a note is

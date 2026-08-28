@@ -6,7 +6,7 @@
  * Menu type definitions.
  *
  * Describes sidebar menu item data structure, shared by core base menus
- * and extension injected menus. Aligned with docs/frontend/navigation-design.md §2.1.
+ * and extension injected menus. Aligned with
  */
 
 /**
@@ -34,7 +34,7 @@ export interface MenuBadge {
 export interface MenuItem {
   /** Route path, must match vue-router path for correct active highlight */
   path: string
-  /** Menu display title (i18n key or static text, see docs §7 i18n) */
+ /** Menu display title (i18n key or static text, see docs i18n) */
   title: string
   /** Element Plus icon component name, required only for level-1 menus */
   icon?: string

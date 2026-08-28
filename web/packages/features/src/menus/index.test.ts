@@ -79,7 +79,7 @@ describe('baseMenus', () => {
     checkPaths(baseMenus)
   })
 
-  it('uses correct icons per docs/frontend/navigation-design.md §3.3', () => {
+  it('uses the correct icon per menu entry', () => {
     const dashboard = baseMenus.find((m) => m.path === '/dashboard/overview')
     expect(dashboard?.icon).toBe('Odometer')
 

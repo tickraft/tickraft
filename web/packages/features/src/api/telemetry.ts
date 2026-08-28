@@ -79,7 +79,7 @@ export function createMonitor(params: MonitorCreateParams): Promise<MonitorPoint
 /**
  * Update an existing monitor point.
  *
- * The backend replaces all fields, so the full TelemetryTask body must be provided.
+ * The backend replaces all fields, so the full MonitorPoint body must be provided.
  */
 export function updateMonitor(id: number, params: MonitorUpdateParams): Promise<MonitorPoint> {
   return request<MonitorPoint>({
@@ -143,7 +143,7 @@ export function probeMonitor(id: number): Promise<MonitorStatus> {
  * Get monitor point history (paginated).
  *
  * Replaces the former getProbeRecords function. Returns historical data points
- * for the monitoring task.
+ * for the monitoring point.
  */
 export function getMonitorHistory(
   id: number,

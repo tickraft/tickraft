@@ -135,7 +135,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-loading="loading" class="tk-sysinfo__body">
+    <div
+      v-loading="loading"
+      class="tk-sysinfo__body"
+    >
       <!-- Stat strip -->
       <div
         v-if="statCards.length"
@@ -149,7 +152,10 @@ onMounted(() => {
         >
           <div class="tk-stat-card__body">
             <span class="tk-stat-card__label">{{ card.label }}</span>
-            <span class="tk-stat-card__value" :title="card.value">{{ card.value }}</span>
+            <span
+              class="tk-stat-card__value"
+              :title="card.value"
+            >{{ card.value }}</span>
             <span
               v-if="card.sub"
               class="tk-stat-card__sub"
@@ -507,7 +513,7 @@ onMounted(() => {
 }
 
 // ---- Responsive ----
-@media (max-width: 960px) {
+@media (width <= 960px) {
   .tk-sysinfo__stats {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -526,7 +532,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 600px) {
+@media (width <= 600px) {
   .tk-sysinfo__stats {
     grid-template-columns: 1fr;
   }

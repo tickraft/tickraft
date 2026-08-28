@@ -19,7 +19,7 @@
  * Padding and headline font-size scale with `clamp()` so the panel adapts fluidly
  * across viewports without abrupt breakpoints.
  *
- * All copy is resolved via `tf()` so it falls back gracefully when locale packs
+ * All copy is resolved through the shared i18n bundles.
  * are not yet loaded.
  *
  * Root element is `<aside class="tk-blank-layout__brand">`; the parent BlankLayout
@@ -60,48 +60,32 @@ interface AuthBrandPanelProps {
 
 const props = defineProps<AuthBrandPanelProps>()
 
-const { t, te, locale } = useI18n()
+const { t } = useI18n()
 
 /** Current year used in the bottom copyright line. */
 const year = new Date().getFullYear()
-
-/**
- * i18n translation with fallback.
- *
- * When the i18n key is not yet defined in the locale pack, returns the fallback
- * text for the current language, avoiding raw key strings in the UI.
- */
-function tf(key: string, zhFallback: string, enFallback: string): string {
-  if (te(key)) return t(key)
-  return locale.value === 'en-US' ? enFallback : zhFallback
-}
 
 /** Default icon cycle for features that do not declare an explicit icon. */
 const DEFAULT_FEATURE_ICONS: BrandFeatureIcon[] = ['activity', 'clock', 'shield', 'bolt']
 
 const eyebrow = computed(() =>
-  props.brandEyebrow || tf('auth.login.brand.eyebrow', 'SRE · 运维自动化', 'SRE · Ops Automation'),
+  props.brandEyebrow || t('auth.login.brand.eyebrow'),
 )
 
 const headline = computed(() =>
-  props.brandHeadline || tf('auth.login.brand.headline', '让每一次异常，', 'Every anomaly,'),
+  props.brandHeadline || t('auth.login.brand.headline'),
 )
 
 const headlineAccent = computed(() =>
-  props.brandHeadlineAccent || tf('auth.login.brand.headlineAccent', '都第一时间被看见', 'seen the moment it happens'),
+  props.brandHeadlineAccent || t('auth.login.brand.headlineAccent'),
 )
 
 const tagline = computed(() =>
-  props.brandTagline ||
-    tf(
-      'auth.login.brand.tagline',
-      '开源一体化运维平台 · 调度·监测·告警·自愈，单进程开箱即用',
-      'Open-source all-in-one ops platform — scheduling, monitoring, alerting, and self-healing in a single binary',
-    ),
+  props.brandTagline || t('auth.login.brand.tagline'),
 )
 
 const edition = computed(() =>
-  props.brandEdition || tf('auth.login.brand.edition', 'Community Edition', 'Community Edition'),
+  props.brandEdition || t('auth.login.brand.edition'),
 )
 
 /** Feature list with icon resolution (i18n-aware defaults aligned with the prototype). */
@@ -116,39 +100,23 @@ const features = computed<Required<BrandFeature>[]>(() => {
   return [
     {
       icon: 'activity',
-      title: tf('auth.login.brand.feature1Title', '全链路状态监测', 'Full-link monitoring'),
-      description: tf(
-        'auth.login.brand.feature1Desc',
-        '主动探测 + Webhook 被动接收，主机与服务异常秒级可见',
-        'Active probing + passive Webhook listening, host & service anomalies visible in seconds',
-      ),
+      title: t('auth.login.brand.feature1Title'),
+      description: t('auth.login.brand.feature1Desc'),
     },
     {
       icon: 'clock',
-      title: tf('auth.login.brand.feature2Title', '自动化任务调度', 'Automated task scheduling'),
-      description: tf(
-        'auth.login.brand.feature2Desc',
-        'Cron/事件/间隔触发，多执行器协同，把重复运维交给机器',
-        'Cron/event/interval triggers, multi-executor coordination, hand repetitive ops to the machine',
-      ),
+      title: t('auth.login.brand.feature2Title'),
+      description: t('auth.login.brand.feature2Desc'),
     },
     {
       icon: 'shield',
-      title: tf('auth.login.brand.feature3Title', '告警自愈闭环', 'Alert-to-remediation loop'),
-      description: tf(
-        'auth.login.brand.feature3Desc',
-        '规则引擎 + 多渠道通知 + 自愈脚本，从发现到处置全自动',
-        'Rule engine + multi-channel alerts + self-healing scripts, fully automated from detection to fix',
-      ),
+      title: t('auth.login.brand.feature3Title'),
+      description: t('auth.login.brand.feature3Desc'),
     },
     {
       icon: 'bolt',
-      title: tf('auth.login.brand.feature4Title', '极简单进程部署', 'Single-binary deployment'),
-      description: tf(
-        'auth.login.brand.feature4Desc',
-        '一个二进制，零外部依赖，3 分钟从下载到上线',
-        'One binary, zero external deps, from download to live in 3 minutes',
-      ),
+      title: t('auth.login.brand.feature4Title'),
+      description: t('auth.login.brand.feature4Desc'),
     },
   ]
 })
@@ -157,18 +125,83 @@ const features = computed<Required<BrandFeature>[]>(() => {
 <template>
   <aside class="tk-blank-layout__brand">
     <!-- Background layer 3: radar concentric rings (rotates slowly) -->
-    <svg class="tk-blank-layout__brand-radar" viewBox="0 0 760 760" aria-hidden="true">
-      <circle cx="380" cy="380" r="90" />
-      <circle cx="380" cy="380" r="170" />
-      <circle cx="380" cy="380" r="250" />
-      <line x1="380" y1="40" x2="380" y2="720" />
-      <line x1="40" y1="380" x2="720" y2="380" />
-      <circle class="tk-blank-layout__brand-radar-ring" cx="380" cy="380" r="330" />
-      <circle cx="380" cy="380" r="4" fill="#818cf8" stroke="none" />
-      <circle cx="540" cy="250" r="5" fill="#22d3ee" stroke="none" opacity="0.85" />
-      <circle cx="250" cy="500" r="5" fill="#a78bfa" stroke="none" opacity="0.75" />
-      <circle cx="520" cy="540" r="4" fill="#34d399" stroke="none" opacity="0.7" />
-      <circle cx="220" cy="260" r="3" fill="#e3b341" stroke="none" opacity="0.7" />
+    <svg
+      class="tk-blank-layout__brand-radar"
+      viewBox="0 0 760 760"
+      aria-hidden="true"
+    >
+      <circle
+        cx="380"
+        cy="380"
+        r="90"
+      />
+      <circle
+        cx="380"
+        cy="380"
+        r="170"
+      />
+      <circle
+        cx="380"
+        cy="380"
+        r="250"
+      />
+      <line
+        x1="380"
+        y1="40"
+        x2="380"
+        y2="720"
+      />
+      <line
+        x1="40"
+        y1="380"
+        x2="720"
+        y2="380"
+      />
+      <circle
+        class="tk-blank-layout__brand-radar-ring"
+        cx="380"
+        cy="380"
+        r="330"
+      />
+      <circle
+        cx="380"
+        cy="380"
+        r="4"
+        fill="#818cf8"
+        stroke="none"
+      />
+      <circle
+        cx="540"
+        cy="250"
+        r="5"
+        fill="#22d3ee"
+        stroke="none"
+        opacity="0.85"
+      />
+      <circle
+        cx="250"
+        cy="500"
+        r="5"
+        fill="#a78bfa"
+        stroke="none"
+        opacity="0.75"
+      />
+      <circle
+        cx="520"
+        cy="540"
+        r="4"
+        fill="#34d399"
+        stroke="none"
+        opacity="0.7"
+      />
+      <circle
+        cx="220"
+        cy="260"
+        r="3"
+        fill="#e3b341"
+        stroke="none"
+        opacity="0.7"
+      />
     </svg>
 
     <!-- Brand top: logo + wordmark + edition badge -->
@@ -196,22 +229,57 @@ const features = computed<Required<BrandFeature>[]>(() => {
           :key="feature.title"
           class="tk-blank-layout__brand-feature"
         >
-          <span class="tk-blank-layout__brand-feature-icon" aria-hidden="true">
-            <svg v-if="feature.icon === 'activity'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <span
+            class="tk-blank-layout__brand-feature-icon"
+            aria-hidden="true"
+          >
+            <svg
+              v-if="feature.icon === 'activity'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
-            <svg v-else-if="feature.icon === 'clock'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9" />
+            <svg
+              v-else-if="feature.icon === 'clock'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+              />
               <polyline points="12 7 12 12 15 14" />
             </svg>
-            <svg v-else-if="feature.icon === 'shield'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              v-else-if="feature.icon === 'shield'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
           </span>
@@ -238,6 +306,7 @@ const features = computed<Required<BrandFeature>[]>(() => {
 
   // Fallback for browsers without clamp() support: use the minimum values
   padding: 36px 40px;
+
   // Fluid padding scales across viewports without abrupt breakpoints; vertical
   // (top/bottom) uses a smaller range than horizontal to keep content dense.
   padding: clamp(36px, 4vw, 48px) clamp(40px, 5vw, 64px);
@@ -364,10 +433,12 @@ const features = computed<Required<BrandFeature>[]>(() => {
 .tk-blank-layout__brand-center {
   position: relative;
   z-index: 1;
+
   // Fallback for browsers without min() support: 480px cap (equivalent when the
   // container is narrower than 480px, width then follows the parent)
   max-width: 480px;
   max-width: min(480px, 100%);
+
   // Fallback for browsers without clamp() support: use the minimum value
   margin-top: 56px;
   margin-top: clamp(56px, 9vh, 104px);
@@ -404,6 +475,7 @@ const features = computed<Required<BrandFeature>[]>(() => {
 
   // Fallback for browsers without clamp() support: mid-range fixed size
   font-size: 38px;
+
   // Fluid font-size scales between 30px and 46px with viewport width, avoiding
   // the previous 46px→34px jump at 980px.
   font-size: clamp(30px, 3.4vw, 46px);
@@ -422,9 +494,9 @@ const features = computed<Required<BrandFeature>[]>(() => {
   // transparent because the background stops at the element box).
   display: block;
   width: max-content;
-  white-space: nowrap;
   font-style: normal;
   color: transparent;
+  white-space: nowrap;
   background: linear-gradient(135deg, #8ba1ef 0%, #e3b341 100%);
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -517,7 +589,7 @@ const features = computed<Required<BrandFeature>[]>(() => {
 
 // Narrow-viewport downscale for the fixed-size radar SVG only (padding and
 // headline font-size are already fluid via clamp() above, so no abrupt jumps).
-@media (max-width: 980px) {
+@media (width <= 980px) {
   .tk-blank-layout__brand-radar { width: 560px; height: 560px; }
 }
 </style>

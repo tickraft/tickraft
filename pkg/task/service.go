@@ -33,7 +33,7 @@ var _ Service = (*TaskService)(nil)
 const defaultTaskTimeoutSeconds = 30
 
 // TaskService implements Service by delegating task lifecycle
-// operations to the scheduler engine (Manager) and reading
+// operations to the scheduler engine (TaskEngine) and reading
 // persisted state from the task and execution stores.
 //
 // ID assignment uses an atomic counter seeded from the maximum existing ID
@@ -45,7 +45,7 @@ const defaultTaskTimeoutSeconds = 30
 //
 //nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type TaskService struct {
-	engine     Manager
+	engine     TaskEngine
 	tasks      Store
 	execs      ExecutionStore
 	registry   *executor.Registry
@@ -61,7 +61,7 @@ type TaskService struct {
 // registry skips the check, which keeps isolated tests unwired. If logger is
 // nil, a no-op logger is used.
 func NewTaskService(
-	engine Manager,
+	engine TaskEngine,
 	tasks Store,
 	execs ExecutionStore,
 	registry *executor.Registry,
@@ -101,7 +101,7 @@ func (s *TaskService) validateExecutorType(executorType string) error {
 // count. A zero-value Filter returns all tasks.
 func (s *TaskService) ListTasks(ctx context.Context, page, size int,
 	filter Filter) ([]*Task, int64, error) {
-	opts := ListOptions(filter)
+	opts := ListOptions{Group: filter.Group, Tags: filter.Tags}
 	all, err := s.tasks.List(ctx, opts)
 	if err != nil {
 		return nil, 0, mapError(err)
@@ -215,7 +215,6 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *Task) (*Tas
 	t.Priority = existing.Priority
 	t.DependsOn = existing.DependsOn
 	t.Metadata = existing.Metadata
-	t.Operation = existing.Operation
 	if t.TimeoutSeconds <= 0 {
 		t.TimeoutSeconds = existing.TimeoutSeconds
 	}

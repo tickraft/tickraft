@@ -101,15 +101,17 @@ const features = computed<UpgradeFeature[]>(() => [
   display: block;
   padding: var(--tk-spacing-lg);
   overflow: hidden;
+
   // Fallback for browsers without color-mix support (#4263eb is --tk-primary-color)
   background:
-    linear-gradient(135deg, rgba(66, 99, 235, 0.12) 0%, transparent 60%),
+    linear-gradient(135deg, rgb(66 99 235 / 12%) 0%, transparent 60%),
     var(--tk-bg-surface);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--tk-primary-color) 12%, transparent) 0%, transparent 60%),
     var(--tk-bg-surface);
+
   // Fallback for browsers without color-mix support
-  border: 1px solid rgba(66, 99, 235, 0.3);
+  border: 1px solid rgb(66 99 235 / 30%);
   border: 1px solid color-mix(in srgb, var(--tk-primary-color) 30%, var(--tk-border-color));
   border-radius: var(--tk-border-radius-lg);
   isolation: isolate;
@@ -123,10 +125,11 @@ const features = computed<UpgradeFeature[]>(() => [
   width: 220px;
   height: 220px;
   pointer-events: none;
+
   // Fallback for browsers without color-mix support
   background: radial-gradient(
     circle,
-    rgba(66, 99, 235, 0.22) 0%,
+    rgb(66 99 235 / 22%) 0%,
     transparent 70%
   );
   background: radial-gradient(
@@ -209,10 +212,11 @@ const features = computed<UpgradeFeature[]>(() => [
 
   &:hover {
     // Fallback for browsers without color-mix support
-    background-color: rgba(66, 99, 235, 0.05);
+    background-color: rgb(66 99 235 / 5%);
     background-color: color-mix(in srgb, var(--tk-primary-color) 5%, var(--tk-bg-surface));
+
     // Fallback for browsers without color-mix support
-    border-color: rgba(66, 99, 235, 0.4);
+    border-color: rgb(66 99 235 / 40%);
     border-color: color-mix(in srgb, var(--tk-primary-color) 40%, var(--tk-border-color));
   }
 }
@@ -277,13 +281,13 @@ const features = computed<UpgradeFeature[]>(() => [
   i { font-size: 14px; }
 }
 
-@media (max-width: 1199px) {
+@media (width <= 1199px) {
   .tk-upgrade-banner__features {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 639px) {
+@media (width <= 639px) {
   .tk-upgrade-banner__features {
     grid-template-columns: 1fr;
   }

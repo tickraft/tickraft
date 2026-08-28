@@ -18,7 +18,7 @@ import (
 )
 
 // ProbeTaskIDOffset separates prober task IDs from regular scheduled task
-// IDs in the shared task.Manager. Regular tasks use auto-increment IDs from
+// IDs in the shared task.TaskEngine. Regular tasks use auto-increment IDs from
 // sys_schedule_task (starting at 1). Prober tasks use this offset plus the
 // monitor_point ID to avoid collision in the scheduling engine and task store.
 // ProbeRecordStore inverts the mapping (task ID − offset = point ID) to key
@@ -29,10 +29,10 @@ func proberTaskID(pointID int64) int64 {
 	return ProbeTaskIDOffset + pointID
 }
 
-// ProberService manages active probing by holding a task.Manager
+// ProberService manages active probing by holding a task.TaskEngine
 // instance and consuming executor.Prober executors. When a monitoring
 // point (Mode=ModeActive) is registered, ProberService schedules it via the
-// task.Manager. On fire, the task.Manager publishes an ExecutionTriggered
+// task.TaskEngine. On fire, the task.TaskEngine publishes an ExecutionTriggered
 // event; the executor runner picks it up, runs the prober executor, and
 // publishes the result.
 //
@@ -40,7 +40,7 @@ func proberTaskID(pointID int64) int64 {
 // Mode=ModeActive. Passive points (Mode=ModePassive) are handled by the
 // listener pipeline and are never touched by this service.
 type ProberService struct {
-	sched task.Manager
+	sched task.TaskEngine
 	// store persists and queries monitoring points backed by the
 	// monitor_points table.
 	store  *MonitorStore
@@ -71,7 +71,7 @@ func WithProberMonitorStore(store *MonitorStore) ProberOption {
 // MonitorStore for point persistence without changing the positional
 // signature.
 func NewProberService(
-	sched task.Manager,
+	sched task.TaskEngine,
 	logger *zap.Logger,
 	options ...ProberOption,
 ) *ProberService {
@@ -96,7 +96,7 @@ func (s *ProberService) ListActivePoints(ctx context.Context) ([]MonitorPoint, e
 }
 
 // RegisterPoint registers an active monitoring point for periodic probing
-// via the task.Manager. The point must have Mode=ModeActive and Enabled=true;
+// via the task.TaskEngine. The point must have Mode=ModeActive and Enabled=true;
 // a passive point is rejected with an error and a disabled point is skipped
 // silently.
 func (s *ProberService) RegisterPoint(ctx context.Context, point MonitorPoint) error {
@@ -229,7 +229,7 @@ func pointToProbeTask(point MonitorPoint) task.Task {
 	metadata := map[string]string{
 		"monitor_point_id": strconv.FormatInt(point.ID, 10),
 	}
-	// Execution judgment transmission (rule-engine-design §6.3.3): the
+	// Execution judgment transmission: the
 	// optional "expression" key of the point's config JSON rides the task
 	// metadata through the trigger event into the runner, which applies it
 	// to the probe result.

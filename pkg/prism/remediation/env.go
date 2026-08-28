@@ -7,15 +7,13 @@ package remediation
 import (
 	"strconv"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/expr"
 )
 
 // Domain map keys of the closed field sets. Centralizing them keeps the
-// §4.2 contract keys greppable and prevents typo drift between
+// contract keys greppable and prevents typo drift between
 // ExampleEnv and buildRemediationEnv.
 const (
 	domainID   = "id"
@@ -31,7 +29,7 @@ const (
 // field sets so `metric.value` and `metric["value"]` are equivalent
 // and field typos are rejected by entry validation.
 //
-// Field-set contracts (rule-engine-design §4.2):
+// Field-set contracts:
 //   - metric: name, value
 //   - status: previous, current
 //   - asset:  id, key, name, type, tags
@@ -40,7 +38,7 @@ const (
 // by status_change triggers); asset.name/type/tags are enriched from
 // the asset store when the lookup succeeds.
 //
-//nolint:revive // RemediationEnv is the design-doc contract name (§4.2), kept identical to tickraft-x for cross-repo symmetry
+//nolint:revive // RemediationEnv is the design-doc contract name, kept identical to tickraft-x for cross-repo symmetry
 type RemediationEnv struct {
 	// Trigger is the trigger category: "metric", "log", or
 	// "status_change".
@@ -148,27 +146,9 @@ func buildRemediationEnv(te triggerEvent, res *asset.Asset) RemediationEnv {
 	if res != nil {
 		env.Asset[domainName] = res.Name
 		env.Asset[domainType] = string(res.AssetType)
-		env.Asset["tags"] = tagsFromMetadata(res.Metadata)
+		env.Asset["tags"] = asset.TagsFromMetadata(res.Metadata)
 	}
 	return env
-}
-
-// tagsFromMetadata decodes an asset's JSON metadata blob into a string
-// map. Malformed or empty metadata yields an empty map so
-// asset.tags["env"] lookups on such assets evaluate to "" rather than
-// failing.
-func tagsFromMetadata(raw string) map[string]string {
-	tags := map[string]string{}
-	if raw == "" {
-		return tags
-	}
-	// Best-effort decode: a non-object or malformed blob leaves the
-	// map empty, which rules read as "no tags".
-	_ = sonic.Unmarshal([]byte(raw), &tags)
-	if tags == nil {
-		return map[string]string{}
-	}
-	return tags
 }
 
 // parseID parses a decimal event payload identifier. The bool result

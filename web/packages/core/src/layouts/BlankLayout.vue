@@ -70,29 +70,18 @@ const props = withDefaults(defineProps<BlankLayoutProps>(), {
   showFooter: false,
 })
 
-const { t, te, locale } = useI18n()
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const isSplit = computed(() => props.layout === 'split')
 const isDark = computed(() => appStore.theme === 'dark')
 const year = new Date().getFullYear()
 
-/**
- * i18n translation with fallback.
- *
- * When the i18n key is not yet defined in the locale pack, returns the fallback text
- * for the current language, avoiding raw key strings in the UI.
- */
-function tf(key: string, zhFallback: string, enFallback: string): string {
-  if (te(key)) return t(key)
-  return locale.value === 'en-US' ? enFallback : zhFallback
-}
-
 /** Theme toggle button tooltip (hints the target mode to switch to) */
 const themeTooltip = computed(() =>
   isDark.value
-    ? tf('system.settings.lightTheme', '切换至浅色模式', 'Switch to light mode')
-    : tf('system.settings.darkTheme', '切换至深色模式', 'Switch to dark mode'),
+    ? t('system.settings.lightTheme')
+    : t('system.settings.darkTheme'),
 )
 
 /** Toggle theme */
@@ -230,14 +219,14 @@ function toggleTheme() {
   }
 
   // ===== Responsive =====
-  @media (max-width: 980px) {
+  @media (width <= 980px) {
     &--split {
       .tk-blank-layout__brand { flex: 0 0 52%; }
       .tk-blank-layout__main { flex: 0 0 48%; }
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width <= 767px) {
     &--split { flex-direction: column; }
 
     .tk-blank-layout__brand { display: none; }

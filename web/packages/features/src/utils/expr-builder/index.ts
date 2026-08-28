@@ -3,7 +3,7 @@
 // Dual-licensed — see details in LICENSE.
 
 /** Pure-frontend expr builder: catalog, wizard model, generation, and
- *  reverse parsing (rule-engine-design §9.2). */
+ * reverse parsing. */
 export type { ExprEnv, ValueKind, VariableDef } from './catalog'
 export {
   CATALOG,

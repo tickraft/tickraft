@@ -187,8 +187,8 @@ func TestStatusChangePayloadOmitEmpty(t *testing.T) {
 	}
 }
 
-func TestFaultPayloadJSON(t *testing.T) {
-	p := FaultPayload{
+func TestFaultDetectedPayloadJSON(t *testing.T) {
+	p := FaultDetectedPayload{
 		AssetID:    "asset-001",
 		AssetName:  "device-01",
 		AssetType:  "device",
@@ -206,7 +206,7 @@ func TestFaultPayloadJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var got FaultPayload
+	var got FaultDetectedPayload
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -218,8 +218,8 @@ func TestFaultPayloadJSON(t *testing.T) {
 	}
 }
 
-func TestFaultPayloadOmitEmpty(t *testing.T) {
-	p := FaultPayload{
+func TestFaultDetectedPayloadOmitEmpty(t *testing.T) {
+	p := FaultDetectedPayload{
 		AssetID:    "asset-001",
 		AssetName:  "device",
 		AssetType:  "device",
@@ -505,8 +505,8 @@ func TestRemediationPayloadOmitEmpty(t *testing.T) {
 	}
 }
 
-func TestSystemPayloadJSON(t *testing.T) {
-	p := SystemPayload{
+func TestSystemConfigPayloadJSON(t *testing.T) {
+	p := SystemConfigPayload{
 		Scope:     "global",
 		TenantID:  "tenant-001",
 		ConfigKey: "max_connections",
@@ -519,7 +519,7 @@ func TestSystemPayloadJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var got SystemPayload
+	var got SystemConfigPayload
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -531,8 +531,8 @@ func TestSystemPayloadJSON(t *testing.T) {
 	}
 }
 
-func TestSystemPayloadOmitEmpty(t *testing.T) {
-	p := SystemPayload{
+func TestSystemConfigPayloadOmitEmpty(t *testing.T) {
+	p := SystemConfigPayload{
 		Scope:     "global",
 		ChangedAt: 1700000000,
 	}

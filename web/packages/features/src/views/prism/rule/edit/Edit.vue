@@ -550,7 +550,7 @@ onMounted(() => {
   }
 
   /* Responsive: collapse to single column on narrow screens */
-  @media (max-width: 1100px) {
+  @media (width <= 1100px) {
     &__grid {
       grid-template-columns: 1fr;
     }

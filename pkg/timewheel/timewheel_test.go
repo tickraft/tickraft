@@ -119,7 +119,7 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-func TestRenew(t *testing.T) {
+func TestRearm(t *testing.T) {
 	wheel := mustNewWheel(t, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -132,20 +132,27 @@ func TestRenew(t *testing.T) {
 	var calledAt time.Time
 	start := time.Now()
 
-	id := wheel.Add(2*time.Second, func(_ EntryID) {
+	cb := func(_ EntryID) {
 		called.Add(1)
 		mu.Lock()
 		calledAt = time.Now()
 		mu.Unlock()
-	})
+	}
+	oldID := wheel.Add(2*time.Second, cb)
 
-	// Renew with a longer duration; the callback should fire at ~4s, not ~2s.
-	wheel.Renew(id, 4*time.Second)
+	// Re-arm the same callback with a longer duration and drop the old
+	// entry; the callback should fire once at ~4s, not ~2s. This is the
+	// re-arm pattern heartbeat tracking relies on.
+	newID := wheel.Add(4*time.Second, cb)
+	wheel.Remove(oldID)
+	if newID == oldID {
+		t.Fatalf("expected distinct entry IDs on re-arm, both %d", oldID)
+	}
 
 	time.Sleep(5 * time.Second)
 
 	if got := called.Load(); got != 1 {
-		t.Fatalf("expected callback to be called once, got %d", got)
+		t.Fatalf("expected callback to be called once, got %d calls", got)
 	}
 
 	mu.Lock()

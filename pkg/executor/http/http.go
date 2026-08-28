@@ -3,7 +3,7 @@
 // Dual-licensed — see LICENSE for details.
 
 // Package http implements the dual-mode HTTP executor. In probe mode
-// (OpProbe) it checks endpoint availability and measures response time; in
+// (OpProbe) it checks endpoint availability and measures round-trip time; in
 // task mode (OpExecute) it issues configured HTTP requests as scheduled
 // actions (refresh callbacks, trigger calls, heartbeat posts). Both modes
 // share one judgment: an explicit expect_status requires an exact match,
@@ -30,46 +30,46 @@ import (
 
 const executorName = string(types.ExecutorHTTP)
 
-// Option configures an HTTP prober at construction time.
+// Option configures an HTTP executor at construction time.
 type Option interface {
 	apply(*Executor)
 }
 
-// methodOption sets the HTTP method for the probe request.
+// methodOption sets the HTTP method for the request.
 type methodOption string
 
-func (o methodOption) apply(h *Executor) {
+func (o methodOption) apply(e *Executor) {
 	if string(o) != "" {
-		h.method = string(o)
+		e.method = string(o)
 	}
 }
 
-// WithMethod sets the HTTP method for the probe request.
+// WithMethod sets the HTTP method for the request.
 // An empty value is ignored, leaving the default (GET).
 func WithMethod(method string) Option { return methodOption(method) }
 
-// headersOption sets the HTTP request headers to send with each probe.
+// headersOption sets the HTTP request headers to send with each request.
 type headersOption struct {
 	headers map[string]string
 }
 
-func (o headersOption) apply(h *Executor) { h.headers = o.headers }
+func (o headersOption) apply(e *Executor) { e.headers = o.headers }
 
-// WithHeaders sets the HTTP request headers to send with each probe.
+// WithHeaders sets the HTTP request headers to send with each request.
 func WithHeaders(headers map[string]string) Option { return headersOption{headers: headers} }
 
-// bodyOption sets the HTTP request body for each probe.
+// bodyOption sets the HTTP request body for each request.
 type bodyOption string
 
-func (o bodyOption) apply(h *Executor) { h.body = string(o) }
+func (o bodyOption) apply(e *Executor) { e.body = string(o) }
 
-// WithBody sets the HTTP request body for each probe.
+// WithBody sets the HTTP request body for each request.
 func WithBody(body string) Option { return bodyOption(body) }
 
 // expectStatusOption sets the expected HTTP response status code.
 type expectStatusOption int
 
-func (o expectStatusOption) apply(h *Executor) { h.expectStatus = int(o) }
+func (o expectStatusOption) apply(e *Executor) { e.expectStatus = int(o) }
 
 // WithExpectStatus sets the expected HTTP response status code.
 // A value of 0 (the default) accepts any 2xx status as normal.
@@ -80,18 +80,17 @@ type loggerOption struct {
 	logger *zap.Logger
 }
 
-func (o loggerOption) apply(h *Executor) {
+func (o loggerOption) apply(e *Executor) {
 	if o.logger != nil {
-		h.logger = o.logger
+		e.logger = o.logger
 	}
 }
 
 // WithLogger sets the structured logger.
 func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
 
-// Executor sends HTTP requests to check endpoint availability and measure
-// response time. It implements the executor.Executor interface and is safe
-// for concurrent use.
+// Executor issues configured HTTP requests and judges each response. It
+// implements the executor.Executor interface and is safe for concurrent use.
 type Executor struct {
 	method       string
 	headers      map[string]string
@@ -111,7 +110,7 @@ var _ executor.Executor = (*Executor)(nil)
 // lifecycle or the remediation operator); the pooled client only carries the
 // defensive httputil.HardTimeout ceiling.
 func New(options ...Option) *Executor {
-	h := &Executor{
+	e := &Executor{
 		method:  nethttp.MethodGet,
 		headers: make(map[string]string),
 		client: httpx.NewPoolClient(httpx.Config{
@@ -123,26 +122,26 @@ func New(options ...Option) *Executor {
 		logger: zap.NewNop(),
 	}
 	for _, o := range options {
-		o.apply(h)
+		o.apply(e)
 	}
-	return h
+	return e
 }
 
 // Name returns the executor name identifier.
-func (p *Executor) Name() string {
+func (e *Executor) Name() string {
 	return executorName
 }
 
 // Capabilities returns the executor capability bitmask. The executor is
 // dual-mode: it probes endpoints (OpProbe) and issues HTTP requests as
 // scheduled actions (OpExecute), so it declares CapProbe | CapExec.
-func (p *Executor) Capabilities() executor.Capability {
+func (e *Executor) Capabilities() executor.Capability {
 	return executor.CapProbe | executor.CapExec
 }
 
 // config holds the per-execution configuration parsed from
 // ExecutionRequest.Config. HTTP-specific fields override the
-// prober's constructor-time defaults when set.
+// executor's constructor-time defaults when set.
 type config struct {
 	Address      string            `json:"address"`
 	Method       string            `json:"method,omitempty"`
@@ -162,10 +161,10 @@ type config struct {
 // Panic isolation: a defer-recover catches any unexpected panic from the
 // HTTP client or config parsing, logs it at Error level, and returns an
 // abnormal Result so the Runner can record the failure and optionally retry.
-func (p *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (result *executor.Result, err error) {
+func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (result *executor.Result, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			p.logger.Error("http executor panic recovered",
+			e.logger.Error("http executor panic recovered",
 				zap.Int64("asset_id", req.AssetID),
 				zap.Any("panic", rec),
 				zap.Stack("stack"),
@@ -192,20 +191,20 @@ func (p *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 
 	// If no HTTP-specific overrides are present, use the receiver directly.
 	if cfg.Method == "" && cfg.Body == "" && cfg.ExpectStatus == 0 && len(cfg.Headers) == 0 {
-		return p.probe(ctx, target)
+		return e.request(ctx, target, req)
 	}
 
-	// Build a derived prober with the per-request overrides applied on top of
-	// the receiver's constructor-time defaults.
-	runner := newDerived(p, cfg)
-	return runner.probe(ctx, target)
+	// Build a derived executor with the per-request overrides applied on top
+	// of the receiver's constructor-time defaults.
+	runner := newDerived(e, cfg)
+	return runner.request(ctx, target, req)
 }
 
 // newDerived constructs a per-request view of the executor with the config
 // overrides applied on top of the receiver's constructor-time defaults. The
 // derived executor shares the receiver's pooled HTTP client: building a
 // fresh pool per request would discard connection reuse, which is the main
-// win of pooling for a per-interval prober.
+// win of pooling for a per-interval executor.
 func newDerived(base *Executor, cfg config) *Executor {
 	derived := &Executor{
 		method:       base.method,
@@ -233,9 +232,13 @@ func newDerived(base *Executor, cfg config) *Executor {
 	return derived
 }
 
-// probe sends an HTTP request to the target URL and checks the response
-// status code against the expected value, measuring the total response time.
-func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*executor.Result, error) {
+// request sends one HTTP request to the target URL and checks the response
+// status code against the expected value, measuring the round-trip time.
+// The execution request supplies the Mode A dispatch identity stamped on
+// the outbound headers.
+func (e *Executor) request(
+	ctx context.Context, target executor.TargetConfig, exReq executor.ExecutionRequest,
+) (*executor.Result, error) {
 	if target.Address == "" {
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal
@@ -244,11 +247,11 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	}
 
 	var bodyReader io.Reader
-	if p.body != "" {
-		bodyReader = strings.NewReader(p.body)
+	if e.body != "" {
+		bodyReader = strings.NewReader(e.body)
 	}
 
-	req, err := nethttp.NewRequestWithContext(ctx, p.method, target.Address, bodyReader)
+	req, err := nethttp.NewRequestWithContext(ctx, e.method, target.Address, bodyReader)
 	if err != nil {
 		r := executor.AcquireResult()
 		r.Status = types.AssetStatusAbnormal
@@ -256,12 +259,17 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 		return r, nil
 	}
 
-	for key, val := range p.headers {
+	for key, val := range e.headers {
 		req.Header.Set(key, val)
+	}
+	// Stamp the dispatch credential after the configured headers so a Mode A
+	// dispatch always carries its task_ref.
+	if exReq.ReportStatus && exReq.ExecutionID > 0 {
+		httputil.SetDispatchHeaders(req.Header, exReq.RunID)
 	}
 
 	start := time.Now()
-	resp, err := p.client.Do(req)
+	resp, err := e.client.Do(req)
 	duration := time.Since(start)
 
 	if err != nil {
@@ -269,7 +277,7 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 		r.Status = types.AssetStatusAbnormal
 		r.ErrorMsg = fmt.Sprintf("http request failed: %v", err)
 		r.Duration = duration
-		r.Metrics["response_ms"] = float64(duration.Milliseconds())
+		r.Metrics["rtt_ms"] = float64(duration.Milliseconds())
 		return r, nil
 	}
 	defer func() { _ = resp.Body.Close() }() // best-effort close, error not actionable
@@ -278,11 +286,11 @@ func (p *Executor) probe(ctx context.Context, target executor.TargetConfig) (*ex
 	body := httputil.ReadBody(resp.Body, httputil.ProbeBodyLimit)
 
 	r := executor.AcquireResult()
-	r.Status = httputil.ResponseStatus(p.expectStatus, resp.StatusCode)
+	r.Status = httputil.ResponseStatus(e.expectStatus, resp.StatusCode)
 	r.StatusCode = resp.StatusCode
 	r.Body = string(body)
 	r.Duration = duration
-	r.Metrics["response_ms"] = float64(duration.Milliseconds())
+	r.Metrics["rtt_ms"] = float64(duration.Milliseconds())
 	r.Metrics["status_code"] = float64(resp.StatusCode)
 	r.Metrics["content_length"] = float64(len(body))
 	return r, nil

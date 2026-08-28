@@ -199,7 +199,7 @@ const isEmpty = computed(() => recentLogs.value.length === 0)
   }
 }
 
-@media (max-width: 960px) {
+@media (width <= 960px) {
   .tk-trend-tab__summary {
     grid-template-columns: 1fr;
   }

@@ -230,6 +230,9 @@ const (
 	KindMetrics Kind = "metrics"
 	// KindLogs carries asset log entries.
 	KindLogs Kind = "logs"
+	// KindTaskStatus carries a task's execution status report
+	// (running/completed/failed/timeout) submitted by a remote reporter.
+	KindTaskStatus Kind = "task_status"
 )
 
 // Template is the GORM model for the sys_telemetry_template table.
