@@ -61,15 +61,17 @@ func newStateManager(
 	}
 }
 
-// armEntry adds a fresh timeout entry to the wheel for the asset. Each entry
-// carries its own callback closure capturing the returned ID so fireTimeout
-// can recognize superseded entries. The caller must hold sm.mu.
+// armEntry adds a fresh timeout entry to the wheel for the asset. The wheel
+// hands each callback its own entry ID, so fireTimeout can recognize
+// superseded entries. The callback must use that parameter rather than the
+// Add return value: the return value is assigned only after Add returns,
+// which has no happens-before edge to the pool-worker callback — and an
+// already-expired duration dispatches the callback before Add returns at
+// all. The caller must hold sm.mu.
 func (sm *stateManager) armEntry(assetID int64, timeout time.Duration) timewheel.EntryID {
-	var entryID timewheel.EntryID
-	entryID = sm.wheel.Add(timeout, func(_ timewheel.EntryID) {
-		sm.fireTimeout(assetID, entryID)
+	return sm.wheel.Add(timeout, func(firedID timewheel.EntryID) {
+		sm.fireTimeout(assetID, firedID)
 	})
-	return entryID
 }
 
 // RegisterAsset adds a timeout entry to the time wheel for the given asset.
