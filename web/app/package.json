@@ -37,7 +37,7 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "core-js": "^3.50.0",
     "mockjs": "^1.1.0",
-    "sass": "^1.102.0",
+    "sass": "^1.103.1",
     "unocss": "^66.7.5",
     "unplugin-icons": "^23.0.1",
     "unplugin-vue-components": "^32.1.0",
