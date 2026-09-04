@@ -7,6 +7,7 @@ package prism
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -83,10 +84,11 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 		return nil, err
 	}
 
-	// OnAlert callback: use caller-provided or default to record persistence.
+	// OnAlert callback: use caller-provided or default to record
+	// persistence plus alert.triggered bus publication.
 	onAlert := cfg.OnAlert
 	if onAlert == nil {
-		onAlert = defaultOnAlert(stores.record, logger)
+		onAlert = defaultOnAlert(stores.record, cfg.Bus, logger)
 	}
 
 	engine, err := newDispatchEngine(cfg, logger, onAlert)
@@ -178,15 +180,43 @@ func migrateStores(ctx context.Context, dbc *gorm.DB) (*engineStores, error) {
 }
 
 // defaultOnAlert returns the default OnAlert callback that persists each
-// accepted alert to the alert RecordStore.
-func defaultOnAlert(recordStore alert.RecordStore, logger *zap.Logger) OnAlertFunc {
+// accepted alert to the alert RecordStore and then publishes an
+// alert.triggered bus event per created record. Publication is
+// best-effort: a bus error is logged and does not fail the callback. A
+// nil bus disables publication so deployments without subscribers keep
+// the historical persist-only behavior.
+func defaultOnAlert(recordStore alert.RecordStore, bus event.Bus, logger *zap.Logger) OnAlertFunc {
 	return func(ctx context.Context, evt alert.Event) {
-		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+		records, err := alert.RecordAlert(ctx, recordStore, evt)
+		if err != nil {
 			logger.Warn("persist alert record",
 				zap.String("type", string(evt.Type)),
 				zap.Int64("asset_id", evt.AssetID),
 				zap.Error(err),
 			)
+			return
+		}
+		if bus == nil {
+			return
+		}
+		for _, rec := range records {
+			payload := event.AlertPayload{
+				AlertID:     strconv.FormatInt(rec.ID, 10),
+				RuleID:      strconv.FormatInt(rec.RuleID, 10),
+				RuleName:    rec.RuleName,
+				AssetID:     strconv.FormatInt(evt.AssetID, 10),
+				TenantID:    strconv.FormatInt(evt.TenantID, 10),
+				AlertType:   string(evt.Type),
+				Severity:    rec.Severity,
+				Title:       rec.RuleName,
+				Message:     rec.Message,
+				TriggeredAt: rec.TriggeredAt.UnixNano(),
+			}
+			if err := bus.Publish(ctx, event.TypeAlertTriggered, payload); err != nil {
+				logger.Warn("publish alert.triggered event",
+					zap.Int64("alert_id", rec.ID),
+					zap.Error(err))
+			}
 		}
 	}
 }

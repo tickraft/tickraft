@@ -202,7 +202,7 @@ func TestRecordAlert(t *testing.T) {
 				Metric: &MetricContext{Name: "cpu_usage", Value: 95.0, Threshold: 90.0},
 			}},
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if _, err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
@@ -254,7 +254,7 @@ func TestRecordAlert(t *testing.T) {
 				Metric: &MetricContext{Name: "nonexistent"},
 			}},
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if _, err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 
@@ -281,7 +281,7 @@ func TestRecordAlert(t *testing.T) {
 				Metric: &MetricContext{Name: "cpu_usage"},
 			}},
 		}
-		if err := RecordAlert(ctx, nil, evt); err != nil {
+		if _, err := RecordAlert(ctx, nil, evt); err != nil {
 			t.Errorf("RecordAlert with nil recordStore should return nil, got %v", err)
 		}
 	})
@@ -299,7 +299,7 @@ func TestRecordAlert(t *testing.T) {
 			}},
 			// Timestamp left zero — RecordAlert should populate it with time.Now().
 		}
-		if err := RecordAlert(ctx, recordStore, evt); err != nil {
+		if _, err := RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Fatalf("RecordAlert: %v", err)
 		}
 		records, _, err := recordStore.List(ctx, 1, 10, RecordFilter{})

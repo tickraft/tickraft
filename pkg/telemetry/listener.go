@@ -51,10 +51,11 @@ type HTTPListener interface {
 // monitor_points table and starts the matching ProtocolListener for each
 // enabled passive point.
 //
-// The default deployment does not ship any ProtocolListener implementations;
-// they are provided by callers (Syslog, SNMP, MQTT). The SPI
-// lives in the kernel so callers plug in via the
-// ListenerRegistry without modifying core code.
+// The CE build does not ship any ProtocolListener implementations: all
+// implementations (Syslog, SNMP, MQTT) live in the pro repo
+// (tickraft-x internal/telemetry) and register through this SPI at
+// startup. The SPI lives in the kernel so pro listeners plug in via
+// the ListenerRegistry without modifying core code.
 //
 // Implementations must be safe for concurrent use and support graceful
 // cancellation via the context passed to Start.

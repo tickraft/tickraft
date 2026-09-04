@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/errdefs"
+	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/pagination"
 )
 
@@ -34,29 +36,50 @@ type AlertService struct {
 	rules   *Store
 	records RecordStore
 	reload  ReloadFunc
+	bus     event.Bus
 }
 
 var _ Service = (*AlertService)(nil)
 
+// ServiceOption configures optional AlertService behavior.
+type ServiceOption func(*AlertService)
+
+// WithLifecycleBus sets an event bus on which alert lifecycle events
+// (alert.acknowledged / alert.resolved) are published after a successful
+// record transition. Publication is best-effort: a bus error is logged
+// and does not fail the transition. A nil bus (the default) disables
+// publishing entirely.
+func WithLifecycleBus(bus event.Bus) ServiceOption {
+	return func(s *AlertService) { s.bus = bus }
+}
+
 // NewAlertService creates an AlertService backed by the given rule store,
 // record store, and rule engine. A nil ruleEngine disables hot reload.
-func NewAlertService(ruleStore *Store, recordStore RecordStore, ruleEngine *Engine) *AlertService {
+func NewAlertService(
+	ruleStore *Store, recordStore RecordStore, ruleEngine *Engine, opts ...ServiceOption,
+) *AlertService {
 	var reload ReloadFunc
 	if ruleEngine != nil {
 		reload = func(ctx context.Context) error { return ruleEngine.Reload(ctx, ruleStore) }
 	}
-	return NewAlertServiceFunc(ruleStore, recordStore, reload)
+	return NewAlertServiceFunc(ruleStore, recordStore, reload, opts...)
 }
 
 // NewAlertServiceFunc creates an AlertService with a custom reload hook.
 // Extended editions use it to propagate rule changes through their own
 // bus instead of reloading the in-process engine directly.
-func NewAlertServiceFunc(ruleStore *Store, recordStore RecordStore, reload ReloadFunc) *AlertService {
-	return &AlertService{
+func NewAlertServiceFunc(
+	ruleStore *Store, recordStore RecordStore, reload ReloadFunc, opts ...ServiceOption,
+) *AlertService {
+	s := &AlertService{
 		rules:   ruleStore,
 		records: recordStore,
 		reload:  reload,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // ListRules returns a page of alert rules and the total count.
@@ -177,6 +200,7 @@ func (s *AlertService) AcknowledgeRecord(ctx context.Context, id int64) (*Record
 	if err != nil {
 		return nil, mapRecordStoreError(err)
 	}
+	s.publishLifecycle(ctx, "acknowledged", record)
 	return record, nil
 }
 
@@ -186,7 +210,34 @@ func (s *AlertService) ResolveRecord(ctx context.Context, id int64) (*Record, er
 	if err != nil {
 		return nil, mapRecordStoreError(err)
 	}
+	s.publishLifecycle(ctx, "resolved", record)
 	return record, nil
+}
+
+// publishLifecycle publishes an alert lifecycle bus event for a completed
+// record transition. The payload carries only the alert ID and action:
+// alert records are not asset-scoped, so subscribers that need asset or
+// tenant context enrich from their own triggered-event history. A nil bus
+// or publish error only logs — the transition itself already succeeded.
+func (s *AlertService) publishLifecycle(ctx context.Context, action string, record *Record) {
+	if s.bus == nil || record == nil {
+		return
+	}
+	payload := event.AlertLifecyclePayload{
+		AlertID:   strconv.FormatInt(record.ID, 10),
+		Action:    action,
+		Timestamp: time.Now().UnixNano(),
+	}
+	typ := event.TypeAlertAcknowledged
+	if action == "resolved" {
+		typ = event.TypeAlertResolved
+	}
+	if err := s.bus.Publish(ctx, typ, payload); err != nil {
+		zap.L().Warn("publish alert lifecycle event",
+			zap.Int64("alert_id", record.ID),
+			zap.String("action", action),
+			zap.Error(err))
+	}
 }
 
 // reloadRules invokes the reload hook when one is wired.

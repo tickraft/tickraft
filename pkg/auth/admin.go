@@ -22,8 +22,9 @@ import (
 //
 //   - If pwd is non-empty, it is hashed and used as the admin password.
 //   - If pwd is empty, a random 32-character hex password is generated,
-//     hashed, and the plaintext form is returned so the caller can log it
-//     once for first-login.
+//     hashed, and the plaintext form is returned so the caller can surface
+//     it once for first-login (never in structured logs). The user is also
+//     flagged MustChangePassword so Login forces a password change.
 //
 // The created user has role=2 (admin), status=1 (active).
 // Returns the generated plaintext password (empty when the user already
@@ -73,10 +74,11 @@ func EnsureAdminUser(ctx context.Context, dbc *gorm.DB, username, pwd string) (s
 	}
 
 	u := user.User{
-		Username:     username,
-		PasswordHash: hash,
-		Role:         2, // admin
-		Status:       1, // active
+		Username:           username,
+		PasswordHash:       hash,
+		Role:               2, // admin
+		Status:             1, // active
+		MustChangePassword: pwd == "",
 	}
 
 	if err = dbc.Create(&u).Error; err != nil {

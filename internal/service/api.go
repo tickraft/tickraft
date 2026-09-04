@@ -260,7 +260,8 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if engine.RuleStore() == nil || engine.RecordStore() == nil {
 		return nil, fmt.Errorf("start api server: prism rule/record stores are nil; prism engine may not have started")
 	}
-	alertSvc := alert.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine())
+	alertSvc := alert.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine(),
+		alert.WithLifecycleBus(rt.eventBus()))
 
 	// Channel service: backed by the persistent channel store accessed
 	// via the prism engine.

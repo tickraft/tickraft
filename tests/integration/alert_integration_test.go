@@ -147,7 +147,7 @@ func TestAlertFlow(t *testing.T) {
 	// Wire the production OnAlert callback exactly as internal/service
 	// does so the test exercises the same record-persistence path.
 	onAlert := func(ctx context.Context, evt alert.Event) {
-		if err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
+		if _, err := alert.RecordAlert(ctx, recordStore, evt); err != nil {
 			t.Logf("RecordAlert returned error: %v", err)
 		}
 	}
@@ -253,7 +253,7 @@ func TestAlertFlowRuleSuppressed(t *testing.T) {
 	recordStore := newMockAlertRecordStore()
 
 	onAlert := func(ctx context.Context, evt alert.Event) {
-		_ = alert.RecordAlert(ctx, recordStore, evt)
+		_, _ = alert.RecordAlert(ctx, recordStore, evt)
 	}
 
 	eng, err := prismengine.New(

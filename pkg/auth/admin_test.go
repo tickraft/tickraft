@@ -70,6 +70,9 @@ func TestEnsureAdminUser_FirstCreateRandomPassword(t *testing.T) {
 	if err := Verify(u.PasswordHash, generated); err != nil {
 		t.Errorf("password verify failed: %v", err)
 	}
+	if !u.MustChangePassword {
+		t.Error("randomly generated password must set must_change_password")
+	}
 }
 
 // TestEnsureAdminUser_FirstCreateExplicitPassword verifies that when an explicit
@@ -92,6 +95,9 @@ func TestEnsureAdminUser_FirstCreateExplicitPassword(t *testing.T) {
 	}
 	if err := Verify(u.PasswordHash, "S3cret!pass"); err != nil {
 		t.Errorf("password verify failed: %v", err)
+	}
+	if u.MustChangePassword {
+		t.Error("explicit password must not set must_change_password")
 	}
 }
 

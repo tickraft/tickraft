@@ -17,9 +17,11 @@ import (
 // When the event carries multiple violations, a single batch INSERT is used
 // to minimize DB round-trips. A nil store makes the function a no-op
 // so the callback is safe to register even when record persistence is disabled.
-func RecordAlert(ctx context.Context, store RecordStore, evt Event) error {
+// The created records are returned with their database-assigned IDs so
+// callers can publish alert.triggered bus events referencing them.
+func RecordAlert(ctx context.Context, store RecordStore, evt Event) ([]*Record, error) {
 	if store == nil || len(evt.Violations) == 0 {
-		return nil
+		return nil, nil
 	}
 	triggeredAt := evt.Timestamp
 	if triggeredAt.IsZero() {
@@ -30,9 +32,9 @@ func RecordAlert(ctx context.Context, store RecordStore, evt Event) error {
 		records = append(records, ViolationToRecord(v, triggeredAt))
 	}
 	if err := store.CreateBatch(ctx, records); err != nil {
-		return fmt.Errorf("persist alert records: %w", err)
+		return nil, fmt.Errorf("persist alert records: %w", err)
 	}
-	return nil
+	return records, nil
 }
 
 // ViolationToRecord builds an alert Record from a single violation. The
