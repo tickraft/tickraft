@@ -32,7 +32,7 @@
     "@intlify/unplugin-vue-i18n": "^11.0.0",
     "@types/humps": "^2.0.4",
     "@types/mockjs": "^1.0.10",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.1",
     "@vitejs/plugin-legacy": "^8.2.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "core-js": "^3.50.0",
