@@ -1468,9 +1468,9 @@ func listTasks(e *Engine) []Task {
 type noopEngine struct{}
 
 func (noopEngine) Add(int64, scheduler.Schedule, scheduler.Callback) error { return nil }
-func (noopEngine) Remove(int64) error                                     { return nil }
-func (noopEngine) Start(context.Context) error                            { return nil }
-func (noopEngine) Stop(context.Context) error                             { return nil }
+func (noopEngine) Remove(int64) error                                      { return nil }
+func (noopEngine) Start(context.Context) error                             { return nil }
+func (noopEngine) Stop(context.Context) error                              { return nil }
 
 // failAddEngine rejects every wheel registration, to exercise Register's
 // rollback path.

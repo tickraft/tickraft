@@ -116,7 +116,9 @@ func (adapter *serviceAdapter) CreateAPIKey(
 }
 
 // ListAPIKeys returns a page of API keys together with the total count.
-func (adapter *serviceAdapter) ListAPIKeys(ctx context.Context, page, size int, keyword string) ([]user.APIKey, int64, error) {
+func (adapter *serviceAdapter) ListAPIKeys(
+	ctx context.Context, page, size int, keyword string,
+) ([]user.APIKey, int64, error) {
 	return adapter.svc.ListAPIKeys(ctx, page, size, keyword)
 }
 

@@ -94,4 +94,3 @@ func TestNewTransport_NegativeValuesFallBack(t *testing.T) {
 		t.Fatalf("expected fallback to default, got %v", tr.IdleConnTimeout)
 	}
 }
-

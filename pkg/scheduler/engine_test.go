@@ -62,4 +62,3 @@ func TestNeverSchedule(t *testing.T) {
 		t.Errorf("next = %v, want zero for neverSchedule", next)
 	}
 }
-

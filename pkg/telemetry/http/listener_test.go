@@ -173,7 +173,9 @@ func postHandler(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers
 
 // postHandlerTo is postHandler with an explicit request target appended to
 // the server URL (e.g. "?point_id=1").
-func postHandlerTo(t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string) *nethttp.Response {
+func postHandlerTo(
+	t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string,
+) *nethttp.Response {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -198,7 +200,9 @@ func mustPost(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers ..
 
 // mustPostTo is mustPost with an explicit request target appended to the
 // server URL.
-func mustPostTo(t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string) *nethttp.Response {
+func mustPostTo(
+	t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string,
+) *nethttp.Response {
 	t.Helper()
 	return postHandlerTo(t, handler, target, body, headers...)
 }

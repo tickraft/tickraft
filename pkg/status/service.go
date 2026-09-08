@@ -23,6 +23,8 @@ var _ Service = (*StatusService)(nil)
 
 // StatusService aggregates monitor points, their latest probe records,
 // and the injected infrastructure probes into the public status view.
+//
+//nolint:revive // intentional stutter: mirrors the <Domain>Service convention
 type StatusService struct {
 	store         *Store
 	monitors      MonitorLister
