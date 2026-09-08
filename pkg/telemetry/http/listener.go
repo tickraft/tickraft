@@ -19,7 +19,10 @@
 //     request body — is verified against every registered per-point secret
 //     (SecretRegistry, WithSecretRegistry). A match binds the report to the
 //     owning point's asset: the request may omit asset identity entirely, and
-//     an explicit asset_id naming a different asset is rejected.
+//     an explicit asset_id naming a different asset is rejected. A request
+//     carrying a point_id query parameter is verified against exactly that
+//     point's secret (one HMAC per request); a hint that fails does not fall
+//     back to scanning the other points' secrets.
 //   - Global HMAC signature: failing a per-point match, the signature is
 //     verified against the global secret configured via WithSecret. When a
 //     global secret is configured, unsigned requests are rejected.
@@ -361,7 +364,16 @@ func (h *Listener) authenticate(w nethttp.ResponseWriter, r *nethttp.Request, bo
 	sig := r.Header.Get(headerSignature)
 	if sig != "" {
 		if h.registry != nil {
-			if owner, ok := h.registry.Match(body, sig); ok {
+			if pointID := queryID(r.URL.Query().Get("point_id")); pointID > 0 {
+				// Hinted path: the sender identified its point, so exactly
+				// that point's secret is tried — one HMAC instead of a scan
+				// over every registered secret. A hint that fails does not
+				// fall back to the scan: a credential for a different point
+				// must not authenticate a request claiming this point.
+				if owner, ok := h.registry.MatchPoint(pointID, body, sig); ok {
+					sigOwner = &owner
+				}
+			} else if owner, ok := h.registry.Match(body, sig); ok {
 				sigOwner = &owner
 			}
 		}

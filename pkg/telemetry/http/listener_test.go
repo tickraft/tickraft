@@ -168,9 +168,16 @@ func computeHMAC(body []byte, secret string) string {
 // path does not matter (the listener handler ignores the path).
 func postHandler(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers ...[2]string) *nethttp.Response {
 	t.Helper()
+	return postHandlerTo(t, handler, "", body, headers...)
+}
+
+// postHandlerTo is postHandler with an explicit request target appended to
+// the server URL (e.g. "?point_id=1").
+func postHandlerTo(t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string) *nethttp.Response {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
-	req, _ := nethttp.NewRequestWithContext(t.Context(), nethttp.MethodPost, srv.URL, bytes.NewReader(body))
+	req, _ := nethttp.NewRequestWithContext(t.Context(), nethttp.MethodPost, srv.URL+target, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for _, h := range headers {
 		req.Header.Set(h[0], h[1])
@@ -186,8 +193,14 @@ func postHandler(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers
 // the test if the request could not be performed.
 func mustPost(t *testing.T, handler nethttp.HandlerFunc, body []byte, headers ...[2]string) *nethttp.Response {
 	t.Helper()
-	resp := postHandler(t, handler, body, headers...)
-	return resp
+	return postHandler(t, handler, body, headers...)
+}
+
+// mustPostTo is mustPost with an explicit request target appended to the
+// server URL.
+func mustPostTo(t *testing.T, handler nethttp.HandlerFunc, target string, body []byte, headers ...[2]string) *nethttp.Response {
+	t.Helper()
+	return postHandlerTo(t, handler, target, body, headers...)
 }
 
 // captureIngest returns an ingest callback that stores the received telemetry

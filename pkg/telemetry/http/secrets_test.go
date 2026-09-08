@@ -55,6 +55,38 @@ func TestSecretRegistry_Match(t *testing.T) {
 	}
 }
 
+func TestSecretRegistry_MatchPoint(t *testing.T) {
+	reg := NewSecretRegistry()
+	reg.SetPoint(passivePoint(1, 10, "point-one-secret", "hmac"))
+	reg.SetPoint(passivePoint(2, 20, "point-two-secret", ""))
+
+	body := []byte(`{"kind":"heartbeat"}`)
+
+	owner, ok := reg.MatchPoint(2, body, computeHMAC(body, "point-two-secret"))
+	if !ok {
+		t.Fatal("expected the hinted point's secret to match")
+	}
+	if owner.PointID != 2 || owner.AssetID != 20 {
+		t.Fatalf("expected owner point 2 / asset 20, got point %d / asset %d", owner.PointID, owner.AssetID)
+	}
+
+	// A signature signed with a different point's secret must not match the
+	// hinted point.
+	if _, ok := reg.MatchPoint(1, body, computeHMAC(body, "point-two-secret")); ok {
+		t.Fatal("expected another point's credential to fail the hinted match")
+	}
+	// Unknown points and non-positive IDs never match.
+	if _, ok := reg.MatchPoint(999, body, computeHMAC(body, "point-one-secret")); ok {
+		t.Fatal("expected an unknown point ID to fail")
+	}
+	if _, ok := reg.MatchPoint(0, body, computeHMAC(body, "point-one-secret")); ok {
+		t.Fatal("expected a zero point ID to fail")
+	}
+	if _, ok := reg.MatchPoint(1, body, ""); ok {
+		t.Fatal("expected an empty signature to fail")
+	}
+}
+
 func TestSecretRegistry_SetPointReplacesSecret(t *testing.T) {
 	reg := NewSecretRegistry()
 	reg.SetPoint(passivePoint(1, 10, "old-secret", "hmac"))
@@ -235,6 +267,68 @@ func TestListener_PointSecret_GlobalFallback(t *testing.T) {
 	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1}})
 	sig := computeHMAC(body, "global-secret")
 	resp := mustPost(t, h.ReportHandler(), body, [2]string{"X-Tickraft-Signature", sig})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != nethttp.StatusAccepted {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)
+	}
+}
+
+func TestListener_PointSecret_PointIDHint(t *testing.T) {
+	// The point_id query hint narrows verification to exactly that point's
+	// secret: one HMAC instead of a scan over the registry.
+	reg := NewSecretRegistry()
+	reg.SetPoint(passivePoint(1, 1, "point-one-secret", "hmac"))
+	reg.SetPoint(passivePoint(2, 2, "point-two-secret", "hmac"))
+	cb, peek := captureIngest()
+	h := newPointSecretListener(reg, cb)
+
+	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{LogContent: "hinted"}})
+	sig := computeHMAC(body, "point-two-secret")
+	resp := mustPostTo(t, h.ReportHandler(), "?point_id=2", body, [2]string{"X-Tickraft-Signature", sig})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != nethttp.StatusAccepted {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)
+	}
+	if got := peek(); got == nil || got.AssetID != 2 {
+		t.Fatalf("expected report bound to hinted point's asset 2, got %+v", got)
+	}
+}
+
+func TestListener_PointSecret_PointIDHintNarrowsNoScan(t *testing.T) {
+	// A request claiming point 2 but signed with point 1's secret must be
+	// rejected even though an unhinted scan would have matched point 1: the
+	// hint disables the fallback scan, and no global secret is configured.
+	reg := NewSecretRegistry()
+	reg.SetPoint(passivePoint(1, 1, "point-one-secret", "hmac"))
+	reg.SetPoint(passivePoint(2, 2, "point-two-secret", "hmac"))
+	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) {})
+
+	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1}})
+	sig := computeHMAC(body, "point-one-secret")
+	resp := mustPostTo(t, h.ReportHandler(), "?point_id=2", body, [2]string{"X-Tickraft-Signature", sig})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != nethttp.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusUnauthorized)
+	}
+}
+
+func TestListener_PointSecret_PointIDHintFallsBackToGlobal(t *testing.T) {
+	// A hint for a point without a registered secret (asset-key point) is
+	// not an error: the global secret remains the fallback credential.
+	reg := NewSecretRegistry()
+	reg.SetPoint(passivePoint(1, 1, "asset-key-secret", "asset-key"))
+	cb, _ := captureIngest()
+	h := New(
+		WithStore(newMockStore()),
+		WithSecretRegistry(reg),
+		WithSecret("global-secret"),
+		WithIngest(cb),
+		WithLogger(zap.NewNop()),
+	)
+
+	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1}})
+	sig := computeHMAC(body, "global-secret")
+	resp := mustPostTo(t, h.ReportHandler(), "?point_id=1", body, [2]string{"X-Tickraft-Signature", sig})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != nethttp.StatusAccepted {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, nethttp.StatusAccepted)

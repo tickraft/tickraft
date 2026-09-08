@@ -89,7 +89,10 @@ func (r *SecretRegistry) Len() int {
 
 // Match verifies the hex-encoded HMAC-SHA256 signature against every
 // registered per-point secret and returns the owner of the matching one.
-// Comparison is constant-time per candidate.
+// Comparison is constant-time per candidate. Requests that identify their
+// point via the point_id query parameter should use MatchPoint instead: a
+// scan costs one full-body HMAC per registered secret, which grows with the
+// fleet size on the hottest path in the system.
 func (r *SecretRegistry) Match(body []byte, signature string) (SecretOwner, bool) {
 	if signature == "" {
 		return SecretOwner{}, false
@@ -97,14 +100,41 @@ func (r *SecretRegistry) Match(body []byte, signature string) (SecretOwner, bool
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for secret, owner := range r.bySecret {
-		mac := hmac.New(sha256.New, []byte(secret))
-		mac.Write(body)
-		expected := hex.EncodeToString(mac.Sum(nil))
-		if hmac.Equal([]byte(signature), []byte(expected)) {
+		if verifyHMAC(secret, body, signature) {
 			return owner, true
 		}
 	}
 	return SecretOwner{}, false
+}
+
+// MatchPoint verifies the signature against a single point's secret: the
+// hinted path for requests carrying a point_id query parameter, costing one
+// HMAC per request regardless of fleet size. A point with no registered
+// secret (asset-key points, disabled points, unknown IDs) never matches.
+func (r *SecretRegistry) MatchPoint(pointID int64, body []byte, signature string) (SecretOwner, bool) {
+	if signature == "" || pointID <= 0 {
+		return SecretOwner{}, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	secret, ok := r.byPoint[pointID]
+	if !ok {
+		return SecretOwner{}, false
+	}
+	owner, ok := r.bySecret[secret]
+	if !ok || !verifyHMAC(secret, body, signature) {
+		return SecretOwner{}, false
+	}
+	return owner, true
+}
+
+// verifyHMAC reports whether signature is the hex-encoded HMAC-SHA256 of
+// body keyed with secret. Comparison is constant-time.
+func verifyHMAC(secret string, body []byte, signature string) bool {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(signature), []byte(expected))
 }
 
 // pointSecret extracts the HMAC secret from a passive point's config. Only
