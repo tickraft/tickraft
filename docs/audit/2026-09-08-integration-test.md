@@ -93,3 +93,39 @@
 - 临时产物全部删除：`build/`（it.yaml、it.db、prod/、二进制、接收器脚本、日志、channel.key 等 84 MB）。
 - 仓库根开发者本地 `tickraft.db` 未受影响（mtime 保持 08-30）。
 - `internal/web/dist` 内容为 B10 构建产物（目录 `.gitkeep` 占位保留），供后续发布构建参考。
+
+## 8. 覆盖完备性复查（2026-09-08 二轮，报告日后追加）
+
+以代码权威清单为基准逐项对照 B0–B10 实测覆盖：后端路由注册表（`pkg/api/handler/routes.go`）68 个端点、前端路由表（`web/packages/features/src/routes/`）31 个页面、GORM 模型 21 张 `sys_*` 表。
+
+**复查结论：全部功能模块均有集成测试覆盖；三个盲点当日补验；未发现新缺陷。**
+
+### 8.1 端点级对照（68 个）
+
+67 个端点由 B1–B10 实测 + `tests/httpapi` 永久回归覆盖（含 `/healthz`、`/readyz`、`/ws`、`/i18n/locales`、SPA 静态服务等免认证面）。补验与豁免项：
+
+| 端点 | 复查处置 |
+| --- | --- |
+| `GET /readyz` | 原 harness 仅注册未断言 —— 新增 `TestHealthReadyzProbes`（`/healthz`→`ok`、`/readyz`→`ready`，信封断言），已入回归 |
+| `POST /system/certificates/reload` | TLS 启用时才注册的条件路由，非 TLS 部署不可达属预期；处理器有专项单测（`TestCertificateReloadSuccess/Failure/Signature`）+ TLS/ACME 装配测试（`pkg/api/tls_test.go`/`acme_test.go`）。豁免理由成立 |
+| `PUT /system/profile` | 后端能力暂无前端界面入口（GET 由登录流消费、实测覆盖；PUT 由 `TestSystemProfile` 回归覆盖）。如实记录，非缺陷 |
+
+### 8.2 页面级对照（31 个）
+
+29 个页面在 B1–B10 有明确实测证据（含资产编辑、渠道编辑掩码回显、执行日志详情、双语言切换）。两个页面缺批次级证据，本轮起栈（vite + 真后端 + 独立库）实测补齐：
+
+| 页面 | 补验结果 |
+| --- | --- |
+| `/prism/templates`（告警模板） | 10 个预设渲染（critical 4 / warning 5 / info 1）→ Apply Template → 确认框 → `/prism/rule/edit?templateId=1` 向导模式预填（`cpu_usage > 90`）→ 保存 → `sys_prism_alert_rule` 落库（表达式 `metrics["cpu_usage"] > 90`，enabled）。前端预设库无独立后端端点，集成面即规则创建流，链路全通 |
+| `/task/edit/:id`（任务编辑） | 表单全量回填（名称/调度/命令/参数/高级项）→ 修改名称与参数 → 保存 → 详情页与 `sys_schedule_task` 落库一致（`executor_config` 由 `before-edit` 变 `after-edit`） |
+
+### 8.3 表级对照（21 张）
+
+19 张在批次中行级对照。两张内部表补记：
+
+- `sys_probe_status_history`：状态迁移历史，由 `StateManager.UpdateStatus` 在每次资产状态迁移时写入；B5/B10 的 unknown→abnormal→normal 迁移即真实执行了该写路径（写入失败会中断迁移并留 ERROR 日志，实测迁移成功即写入成功）；另有 `state_guard_test.go` SQLite 直测。
+- `sys_event_failed`：事件总线投递失败兜底表；正常集成链路无持续失败故无行（预期为空）；写入方有 `pkg/event` 单测覆盖。
+
+### 8.4 复查后回归
+
+`tests/httpapi` 全套（含新增 `TestHealthReadyzProbes`）通过；golangci-lint 0 告警；验证栈已停、临时文件已清（`build/` 移除，仓库根 dev 库不受影响）。

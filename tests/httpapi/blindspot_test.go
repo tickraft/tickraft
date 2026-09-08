@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -342,5 +343,50 @@ func TestSPAServing(t *testing.T) {
 	}
 	if env.Code == 0 {
 		t.Fatalf("unknown api path: expected non-zero envelope code, got 0 (%s)", env.Message)
+	}
+}
+
+// TestHealthReadyzProbes covers the unauthenticated health endpoints.
+// /healthz asserts liveness with a JSON body; /readyz asserts readiness
+// against the live database (200 with ok status while the harness DB is
+// up, so a regression in the readiness wiring fails here instead of only
+// surfacing on a load balancer).
+func TestHealthReadyzProbes(t *testing.T) {
+	hs := newHarness(t)
+
+	// Both endpoints wrap their payload in the standard success envelope
+	// ({"code":0,...,"data":{...}}) and are reachable without a token.
+	expectations := map[string]string{
+		"/healthz": "ok",
+		"/readyz":  "ready",
+	}
+	for path, want := range expectations {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, hs.baseURL+path, http.NoBody)
+		if err != nil {
+			t.Fatalf("build %s request: %v", path, err)
+		}
+		resp, err := hs.client.Do(req)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			t.Fatalf("get %s: expected 200, got %d", path, resp.StatusCode)
+		}
+		var env struct {
+			Code int `json:"code"`
+			Data struct {
+				Status string `json:"status"`
+			} `json:"data"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&env)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			t.Fatalf("decode %s body: %v", path, decodeErr)
+		}
+		if env.Code != 0 || env.Data.Status != want {
+			t.Fatalf("get %s: expected code 0 / status %q, got code %d / status %q",
+				path, want, env.Code, env.Data.Status)
+		}
 	}
 }
