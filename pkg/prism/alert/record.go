@@ -29,7 +29,11 @@ func RecordAlert(ctx context.Context, store RecordStore, evt Event) ([]*Record, 
 	}
 	records := make([]*Record, 0, len(evt.Violations))
 	for _, v := range evt.Violations {
-		records = append(records, ViolationToRecord(v, triggeredAt))
+		r := ViolationToRecord(v, triggeredAt)
+		// Stamp the dispatch-assigned EventID so inbound card callbacks
+		// can locate every record born from the same event.
+		r.EventID = evt.EventID
+		records = append(records, r)
 	}
 	if err := store.CreateBatch(ctx, records); err != nil {
 		return nil, fmt.Errorf("persist alert records: %w", err)

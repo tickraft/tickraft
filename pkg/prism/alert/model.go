@@ -93,6 +93,11 @@ type Record struct {
 	Severity string  `gorm:"column:severity;type:varchar(32);not null;default:'warning'" json:"severity"`
 	Value    float64 `gorm:"column:value;not null;default:0" json:"value"`
 	Message  string  `gorm:"column:message;type:varchar(1024)" json:"message,omitempty"`
+	// EventID is the engine-assigned event identifier shared by every
+	// record created from one dispatch. It is the correlation key inbound
+	// card callbacks use to locate records without exposing record IDs in
+	// IM payloads. Empty on records persisted before the column existed.
+	EventID string `gorm:"column:event_id;type:varchar(64);index" json:"event_id,omitempty"`
 	// firing, acknowledged, resolved
 	Status         string     `gorm:"column:status;type:varchar(16);not null;default:'firing'" json:"status"`
 	TriggeredAt    time.Time  `gorm:"column:triggered_at;not null;index" json:"triggered_at"`

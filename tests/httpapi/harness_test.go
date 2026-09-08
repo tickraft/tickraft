@@ -47,6 +47,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	statussvc "github.com/tickraft/tickraft/pkg/status"
 	systemsvc "github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -302,11 +303,17 @@ func newHarness(t *testing.T) *harness {
 	cfg.SetDefaults()
 	srv := api.NewServer(cfg)
 
+	statusStore := statussvc.NewStore(dbc)
+	if err := statusStore.Migrate(ctx); err != nil {
+		t.Fatalf("migrate status tables: %v", err)
+	}
+
 	routeOpts := []router.RegisterOption{
 		router.WithTaskService(task.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
 		router.WithAlertService(alert.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
-		router.WithChannelService(channel.NewChannelService(prismEngine.ChannelStore(), prismEngine)),
+		router.WithChannelService(channel.NewChannelService(
+			prismEngine.ChannelStore(), prismEngine.DeliveryStore(), prismEngine)),
 		router.WithRemediationRuleService(remediation.NewRemediationService(prismEngine.RemediationStore())),
 		router.WithSystemService(systemSrv),
 		router.WithTelemetryService(telemetrySrv),
@@ -318,6 +325,7 @@ func newHarness(t *testing.T) *harness {
 		router.WithExecutorRegistry(reg),
 		router.WithHealthzHandler(healthz.NewHandler(dbc, nil)),
 		router.WithReadyzHandler(readyz.NewHandler(dbc, nil)),
+		router.WithStatusService(statussvc.NewService(statusStore, monitorStore, probeStore, logger)),
 		router.WithAPIKeyAuth(),
 	}
 	assetKeyGetter := func(ctx context.Context, key string) (bool, error) {

@@ -8,6 +8,7 @@
 export type ProberType =
   | 'icmp'
   | 'tcp'
+  | 'mqtt_probe'
   | 'http'
   | 'dns'
   | 'udp'

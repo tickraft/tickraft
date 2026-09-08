@@ -55,15 +55,6 @@ export const METRIC_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'cert_days', label: 'cert_days' },
 ]
 
-/** Notification channel options */
-export const CHANNEL_OPTIONS: Array<{ value: string; labelKey: string }> = [
-  { value: 'webhook', labelKey: 'prism.channel.webhook' },
-  { value: 'email', labelKey: 'prism.channel.email' },
-  { value: 'sms', labelKey: 'prism.channel.sms' },
-  { value: 'dingtalk', labelKey: 'prism.channel.dingtalk' },
-  { value: 'feishu', labelKey: 'prism.channel.feishu' },
-]
-
 /** Parse time string to Date (supports 'YYYY-MM-DD HH:mm:ss' and ISO) */
 export function parseDate(value: string): Date {
   return new Date(value.includes(' ') ? value.replace(' ', 'T') : value)

@@ -1187,7 +1187,7 @@ func TestFormatSubject(t *testing.T) {
 }
 
 func TestFormatPlainText(t *testing.T) {
-	text := formatPlainText(testAlert(), i18n.FormattedMessage{})
+	text := formatPlainText(testAlert(), i18n.FormattedMessage{}, "")
 	if !strings.Contains(text, "Alert type: metric") {
 		t.Errorf("missing alert type")
 	}
@@ -1198,7 +1198,7 @@ func TestFormatPlainText(t *testing.T) {
 		t.Errorf("missing resources")
 	}
 
-	logText := formatPlainText(testLogAlert(), i18n.FormattedMessage{})
+	logText := formatPlainText(testLogAlert(), i18n.FormattedMessage{}, "")
 	if !strings.Contains(logText, "Alert type: log") {
 		t.Errorf("missing log alert type")
 	}
@@ -1208,7 +1208,7 @@ func TestFormatPlainText(t *testing.T) {
 }
 
 func TestFormatHTML(t *testing.T) {
-	html := formatHTML(testAlert(), i18n.FormattedMessage{})
+	html := formatHTML(testAlert(), i18n.FormattedMessage{}, "")
 	if !strings.Contains(html, "<table") {
 		t.Errorf("missing table element")
 	}
@@ -1557,7 +1557,7 @@ func TestBuildMessage_NilFormatterAndLibrary(t *testing.T) {
 // Formatter when none is injected.
 func TestRenderAlert_DefaultFormatter(t *testing.T) {
 	cfg := Config{}
-	msg := renderAlert(context.Background(), testAlert(), cfg, zap.NewNop())
+	msg, _ := renderAlert(context.Background(), testAlert(), cfg, zap.NewNop())
 
 	if msg.Title == "" {
 		t.Error("default Formatter should produce non-empty title")
@@ -1577,7 +1577,7 @@ func TestRenderAlert_TemplateLibrary(t *testing.T) {
 	evt.TemplateID = "cpu_high"
 	evt.Locale = "zh-Hans"
 
-	msg := renderAlert(context.Background(), evt, cfg, zap.NewNop())
+	msg, _ := renderAlert(context.Background(), evt, cfg, zap.NewNop())
 
 	if msg.Title == "" {
 		t.Error("template render should produce non-empty title")
@@ -1633,5 +1633,76 @@ func TestBuildAuth(t *testing.T) {
 	auth = ch.buildAuth()
 	if auth != nil {
 		t.Errorf("buildAuth(unknown): got non-nil, want nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SOCKS5 proxy (private-deployment egress)
+// ---------------------------------------------------------------------------
+
+// TestValidateProxyScheme verifies email proxies must be socks5:// — SMTP
+// is a raw socket protocol, so http/https CONNECT proxies cannot be layered
+// underneath it.
+func TestValidateProxyScheme(t *testing.T) {
+	base := Config{
+		Host:     "smtp.example.com",
+		Port:     587,
+		From:     "alert@example.com",
+		To:       []string{"ops@example.com"},
+		TLSMode:  TLSModeStartTLS,
+		AuthType: AuthTypePlain,
+	}
+
+	valid := base
+	valid.ProxyURL = "socks5://proxy.intranet.example.com:1080"
+	if err := valid.Validate(); err != nil {
+		t.Errorf("socks5 proxy should validate, got %v", err)
+	}
+
+	for _, bad := range []string{
+		"http://proxy.example.com:8080",
+		"https://proxy.example.com:8443",
+		"socks5://", // no host
+		"proxy.example.com:1080",
+	} {
+		invalid := base
+		invalid.ProxyURL = bad
+		err := invalid.Validate()
+		if err == nil {
+			t.Errorf("proxy %q should fail validation", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "socks5") {
+			t.Errorf("proxy %q error should mention socks5, got %v", bad, err)
+		}
+	}
+}
+
+// TestNewBuildsSocks5Dialer verifies New wires the SOCKS5 dialer only when
+// a proxy is configured; without one the channel dials directly.
+func TestNewBuildsSocks5Dialer(t *testing.T) {
+	base := Config{
+		Host: "smtp.example.com",
+		Port: 25,
+		From: "alert@example.com",
+		To:   []string{"ops@example.com"},
+	}
+
+	proxied := base
+	proxied.ProxyURL = "socks5://127.0.0.1:1080"
+	ch, err := New(proxied)
+	if err != nil {
+		t.Fatalf("New with socks5 proxy: %v", err)
+	}
+	if ch.proxyDialer == nil {
+		t.Error("proxyDialer should be set when ProxyURL is configured")
+	}
+
+	direct, err := New(base)
+	if err != nil {
+		t.Fatalf("New without proxy: %v", err)
+	}
+	if direct.proxyDialer != nil {
+		t.Error("proxyDialer should be nil without ProxyURL (direct connection)")
 	}
 }

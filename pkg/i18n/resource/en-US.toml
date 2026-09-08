@@ -27,6 +27,9 @@
 
 "time.format" = "Jan 2, 2006 3:04 PM"
 
+# L0 plain-notification annotation appended next to intranet resource links.
+"notify.link_intranet_hint" = "intranet address"
+
 [alert.metric.title]
 concise = "Alert: {{.metric_name}}"
 detailed = "Alert: {{.metric_name}} exceeded threshold on asset {{.asset_name}}"

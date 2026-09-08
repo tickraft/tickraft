@@ -1,0 +1,39 @@
+{
+  "public": {
+    "title": "Service Status",
+    "loading": "Loading status…",
+    "unavailableTitle": "Status page unavailable",
+    "unavailableDesc": "The status page is not published or is temporarily unreachable.",
+    "lastChecked": "Last checked: {time}",
+    "updatedAt": "Updated {time}",
+    "neverChecked": "No data yet"
+  },
+  "level": {
+    "operational": "All systems operational",
+    "degraded": "Degraded performance",
+    "partial_outage": "Partial outage",
+    "major_outage": "Major outage",
+    "unknown": "Unknown"
+  },
+  "settings": {
+    "title": "Status Page Settings",
+    "viewPublic": "View public page",
+    "fieldTitle": "Page title",
+    "fieldTitlePlaceholder": "e.g. Acme Service Status",
+    "fieldDescription": "Page description",
+    "fieldDescriptionPlaceholder": "Shown below the title (optional)",
+    "fieldEnabled": "Publish status page",
+    "fieldEnabledHelp": "When enabled, anonymous visitors can read the aggregated status at /status.",
+    "components": "Component map",
+    "componentsHelp": "Group monitor points into public component entries; leave empty to derive one component per enabled monitor point automatically. Monitor point IDs are listed in the telemetry center.",
+    "addComponent": "Add component",
+    "removeComponent": "Remove component",
+    "componentName": "Component name",
+    "componentDescription": "Description (optional)",
+    "componentPoints": "Monitor point IDs, comma separated",
+    "noComponents": "No components; one per enabled monitor point will be derived on save",
+    "saved": "Status page configuration saved",
+    "saveFailed": "Save failed",
+    "loadFailed": "Failed to load configuration"
+  }
+}

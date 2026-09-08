@@ -100,21 +100,40 @@ var _ alert.Service = (*stubAlertService)(nil)
 // stubChannelService implements channel.Service (model: channel.Channel).
 type stubChannelService struct{}
 
-func (stubChannelService) ListChannels(_ context.Context, _, _ int) ([]*channel.Channel, int64, error) {
-	return nil, 0, nil
+func (stubChannelService) ListChannels(_ context.Context) ([]*channel.Channel, error) {
+	return nil, nil
 }
 func (stubChannelService) GetChannel(_ context.Context, _ int64) (*channel.Channel, error) {
 	return nil, nil
 }
-func (stubChannelService) CreateChannel(_ context.Context, _ *channel.Channel) (*channel.Channel, error) {
+func (stubChannelService) CreateChannel(_ context.Context, _ *channel.CreateRequest) (*channel.Channel, error) {
 	return &channel.Channel{}, nil
 }
 func (stubChannelService) UpdateChannel(_ context.Context, _ int64,
-	_ *channel.Channel) (*channel.Channel, error) {
+	_ *channel.UpdateRequest) (*channel.Channel, error) {
 	return &channel.Channel{}, nil
 }
 func (stubChannelService) DeleteChannel(_ context.Context, _ int64) error { return nil }
-func (stubChannelService) TestChannel(_ context.Context, _ int64) error   { return nil }
+func (stubChannelService) TestChannel(_ context.Context, _ *channel.TestRequest) error {
+	return nil
+}
+func (stubChannelService) TestAllChannels(_ context.Context) ([]channel.TestResult, error) {
+	return nil, nil
+}
+func (stubChannelService) ListChannelOptions(_ context.Context) ([]channel.Option, error) {
+	return nil, nil
+}
+func (stubChannelService) ListDeliveries(_ context.Context, _ channel.DeliveryListParams,
+) ([]channel.DeliveryRecord, int64, error) {
+	return nil, 0, nil
+}
+func (stubChannelService) ListDeliveriesKeyset(_ context.Context, _ channel.DeliveryListParams,
+) (pagination.PageResult[channel.DeliveryRecord], error) {
+	return pagination.PageResult[channel.DeliveryRecord]{}, nil
+}
+func (stubChannelService) RetryDelivery(_ context.Context, _ int64) (*channel.DeliveryRecord, error) {
+	return nil, nil
+}
 
 var _ channel.Service = (*stubChannelService)(nil)
 

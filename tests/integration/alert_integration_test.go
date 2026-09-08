@@ -69,6 +69,19 @@ func (s *mockAlertRecordStore) GetByID(_ context.Context, _ int64) (*alert.Recor
 	return nil, nil
 }
 
+func (s *mockAlertRecordStore) FindByEventID(_ context.Context, eventID string) ([]*alert.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []*alert.Record
+	for _, r := range s.records {
+		if r.EventID == eventID {
+			cp := *r
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
 func (s *mockAlertRecordStore) List(_ context.Context, _, _ int, _ alert.RecordFilter) ([]*alert.Record, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

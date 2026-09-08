@@ -77,6 +77,8 @@ type Engine struct {
 	ruleStore         *alert.Store
 	recordStore       alert.RecordStore
 	channelStore      *channel.Store
+	channelBuildOpts  channel.BuildOptions
+	deliveryStore     *channel.DeliveryStore
 	remediationStore  *remediation.Store
 	remediationEngine *remediation.Engine
 	ruleEngineStopFn  func(context.Context) error
@@ -303,8 +305,9 @@ func (e *Engine) SetChannels(chs []Channel) {
 
 // ReloadChannels reloads notification channels from the database channel
 // store. It queries all enabled channel definitions, builds runtime Channel
-// instances, and atomically replaces the engine's channel list. This is
-// called by the API layer after channel CRUD operations.
+// instances wrapped with the delivery-tracking decorator, and atomically
+// replaces the engine's channel list. This is called by the API layer
+// after channel CRUD operations.
 func (e *Engine) ReloadChannels(ctx context.Context) error {
 	if e.channelStore == nil {
 		return nil
@@ -313,7 +316,7 @@ func (e *Engine) ReloadChannels(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list enabled channels: %w", err)
 	}
-	channels, err := BuildChannels(defs)
+	channels, err := BuildChannels(defs, e.channelBuildOpts, e.deliveryStore)
 	if err != nil {
 		e.logger.Warn("reload channels: some channels failed to build", zap.Error(err))
 	}
@@ -322,12 +325,27 @@ func (e *Engine) ReloadChannels(ctx context.Context) error {
 	return nil
 }
 
+// SetChannelBuildOptions atomically replaces the BuildOptions used for
+// subsequent channel builds and reloads the channel list, so changes to
+// deployment-wide settings (egress proxy, plain-notification policy) take
+// effect without a restart. Channels built before the swap keep running
+// on their old clients until the reload replaces them.
+func (e *Engine) SetChannelBuildOptions(ctx context.Context, opts channel.BuildOptions) error {
+	e.channelBuildOpts = opts
+	return e.ReloadChannels(ctx)
+}
+
 // BuildChannel constructs a runtime alert.Channel from a persisted channel
-// definition. It is a method wrapper over the package-level BuildChannel so
-// the engine satisfies the channel.Runtime seam interface; the operation is
-// stateless and never touches engine state.
+// definition. It is a method wrapper over the registry-driven builder so
+// the engine satisfies the channel.Runtime seam interface; the operation
+// is stateless and never touches engine state. The returned channel is
+// unwrapped (no delivery tracking): the test-dispatch and retry paths
+// record outcomes themselves.
 func (e *Engine) BuildChannel(ch *channel.Channel) (alert.Channel, error) {
-	return BuildChannel(ch)
+	if ch == nil {
+		return nil, fmt.Errorf("channel: build from nil channel")
+	}
+	return buildChannelOfType(ch.Type, ch.Config, e.channelBuildOpts)
 }
 
 // Channels returns the registered notification channels. The returned
@@ -517,6 +535,11 @@ func (e *Engine) RecordStore() alert.RecordStore { return e.recordStore }
 // ChannelStore returns the notification channel persistence store. Returns
 // nil when the Engine was created via New() directly without orchestration.
 func (e *Engine) ChannelStore() *channel.Store { return e.channelStore }
+
+// DeliveryStore returns the notification delivery record persistence store.
+// Returns nil when the Engine was created via New() directly without
+// orchestration.
+func (e *Engine) DeliveryStore() *channel.DeliveryStore { return e.deliveryStore }
 
 // RemediationStore returns the remediation rule persistence store. Returns
 // nil when the Engine was created via New() directly without orchestration.

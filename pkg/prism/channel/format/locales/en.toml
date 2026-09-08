@@ -1,0 +1,56 @@
+# Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Dual-licensed — see LICENSE for details.
+
+# Pro channel-specific i18n keys for English.
+# These keys extend the open-source i18n bundle with labels used by
+# pro notification channels (Feishu, Discord, Telegram, Slack,
+# Teams, DingTalk, WeCom, SMS). The open-source bundle provides the
+# generic alert.* / level.* / field.* keys; this file adds the
+# channel.* keys that are only meaningful in the pro edition.
+
+# Feishu (Lark) interactive card labels.
+[feishu]
+card_footer = "Tickraft Alert System"
+card_header_template = "Alert Notification"
+button_view_detail = "View Detail"
+button_acknowledge = "Acknowledge"
+
+# Discord embed labels.
+[discord]
+embed_footer = "Powered by Tickraft"
+embed_color_warning = "F39C12"
+embed_color_critical = "E74C3C"
+embed_color_info = "3498DB"
+
+# Telegram Markdown markers.
+[telegram]
+bold_marker = "*"
+code_marker = "`"
+link_template = "[{{.text}}]({{.url}})"
+
+# Slack Block Kit labels.
+[slack]
+section_field_label = "Alert Detail"
+header_text = "Alert Notification"
+footer_text = "Tickraft Alert System"
+
+# Microsoft Teams labels.
+[teams]
+summary = "Tickraft Alert Notification"
+title = "Alert"
+
+# DingTalk markdown labels.
+[dingtalk]
+title = "Alert Notification"
+footer = "Tickraft Alert System"
+
+# WeCom (WeChat Work) labels.
+[wecom]
+title = "Alert Notification"
+emphasis_content_label = "Value"
+
+# SMS labels (plain text, no formatting).
+[sms]
+prefix = "[Tickraft]"
+suffix = "Reply STOP to unsubscribe"

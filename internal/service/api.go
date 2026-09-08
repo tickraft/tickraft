@@ -30,6 +30,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/status"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -196,6 +197,12 @@ func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]route
 	}
 	routeOpts = append(routeOpts, systemOpts...)
 
+	statusOpts, err := newStatusRouteOptions(ctx, rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, statusOpts...)
+
 	// i18n handler: exposes the locale list via GET /api/v1/i18n/locales.
 	// The endpoint is public (no JWT) so the frontend can discover
 	// available locales before authentication. The callers
@@ -263,12 +270,13 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	alertSvc := alert.NewAlertService(engine.RuleStore(), engine.RecordStore(), engine.RuleEngine(),
 		alert.WithLifecycleBus(rt.eventBus()))
 
-	// Channel service: backed by the persistent channel store accessed
-	// via the prism engine.
-	if engine.ChannelStore() == nil {
-		return nil, fmt.Errorf("start api server: prism channel store is nil; prism engine may not have started")
+	// Channel service: backed by the persistent channel and delivery
+	// stores accessed via the prism engine.
+	if engine.ChannelStore() == nil || engine.DeliveryStore() == nil {
+		return nil, fmt.Errorf(
+			"start api server: prism channel/delivery stores are nil; prism engine may not have started")
 	}
-	channelSvc := channel.NewChannelService(engine.ChannelStore(), engine)
+	channelSvc := channel.NewChannelService(engine.ChannelStore(), engine.DeliveryStore(), engine)
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.
@@ -483,6 +491,25 @@ func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 		return nil, fmt.Errorf("migrate system service: %w", err)
 	}
 	return []router.RegisterOption{router.WithSystemService(systemSvc)}, nil
+}
+
+// newStatusRouteOptions builds the status page service route option and
+// migrates its schema. The aggregation sources are the shared monitor
+// store and the probe record store started by the worker engines; both
+// are stateless wrappers over the database handle, so fresh instances are
+// equivalent to the shared ones.
+func newStatusRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterOption, error) {
+	statusStore := status.NewStore(rt.dbc)
+	if err := statusStore.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("migrate status store: %w", err)
+	}
+	statusSvc := status.NewService(
+		statusStore,
+		telemetry.NewMonitorStore(rt.dbc),
+		rt.probeRecordStore,
+		rt.logger,
+	)
+	return []router.RegisterOption{router.WithStatusService(statusSvc)}, nil
 }
 
 // acmeRenewalDeps bundles the server-side dependencies required to start

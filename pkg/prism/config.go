@@ -51,6 +51,15 @@ type Config struct {
 	RuleConfig alert.Config
 	// AssetStore is used by the rule AlertMatcher for asset enrichment.
 	AssetStore asset.Store
+	// ChannelBuild carries the render collaborators (logger, i18n
+	// formatter, template library, i18n registry) injected into every
+	// built notification channel. All fields may be zero; the built
+	// channels then fall back to type-specific defaults.
+	ChannelBuild channel.BuildOptions
+	// ChannelEncryptionKey is the 32-byte AES-256 key used to encrypt
+	// sensitive channel config fields at rest. A nil key disables
+	// encryption (development/test only).
+	ChannelEncryptionKey []byte
 	// RemediationOperators registers additional remediation action
 	// operators (beyond the default LocalOperator) with the remediation
 	// engine started by NewFromConfig. Each operator's Name must match a
@@ -79,7 +88,7 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 		logger = zap.NewNop()
 	}
 
-	stores, err := migrateStores(ctx, cfg.DB)
+	stores, err := migrateStores(ctx, cfg.DB, cfg.ChannelEncryptionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +105,11 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 		return nil, err
 	}
 
+	// Ensure the built-in channel types are resolvable before loading
+	// channel definitions from the database. Re-registration overwrites
+	// in place, so repeated calls are safe.
+	RegisterBuiltinChannelTypes()
+
 	// Load enabled channels from the database into the dispatch engine.
 	if err := loadEnabledChannels(ctx, engine, stores.channel, logger); err != nil {
 		return nil, err
@@ -111,6 +125,8 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	engine.ruleStore = stores.rule
 	engine.recordStore = stores.record
 	engine.channelStore = stores.channel
+	engine.deliveryStore = stores.delivery
+	engine.channelBuildOpts = cfg.ChannelBuild
 	engine.remediationStore = stores.remediation
 	engine.ruleEngine = ruleEng
 
@@ -145,12 +161,13 @@ type engineStores struct {
 	rule        *alert.Store
 	record      alert.RecordStore
 	channel     *channel.Store
+	delivery    *channel.DeliveryStore
 	remediation *remediation.Store
 }
 
 // migrateStores creates and migrates the rule, alert record, channel,
-// and remediation stores.
-func migrateStores(ctx context.Context, dbc *gorm.DB) (*engineStores, error) {
+// delivery record, and remediation stores.
+func migrateStores(ctx context.Context, dbc *gorm.DB, channelEncryptionKey []byte) (*engineStores, error) {
 	ruleStore := alert.NewStore(dbc, alert.NewCompiler())
 	if err := ruleStore.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("prism: migrate rule store: %w", err)
@@ -161,8 +178,9 @@ func migrateStores(ctx context.Context, dbc *gorm.DB) (*engineStores, error) {
 		return nil, fmt.Errorf("prism: migrate alert store: %w", err)
 	}
 
-	channelStore := channel.NewStore(dbc)
-	if err := channelStore.Migrate(ctx); err != nil {
+	channelStore := channel.NewStore(dbc, channelEncryptionKey)
+	deliveryStore := channel.NewDeliveryStore(dbc)
+	if err := channel.Migrate(ctx, dbc); err != nil {
 		return nil, fmt.Errorf("prism: migrate channel store: %w", err)
 	}
 
@@ -175,6 +193,7 @@ func migrateStores(ctx context.Context, dbc *gorm.DB) (*engineStores, error) {
 		rule:        ruleStore,
 		record:      recordStore,
 		channel:     channelStore,
+		delivery:    deliveryStore,
 		remediation: remediationStore,
 	}, nil
 }
@@ -248,13 +267,13 @@ func newDispatchEngine(cfg Config, logger *zap.Logger, onAlert OnAlertFunc) (*En
 }
 
 // loadEnabledChannels loads the enabled channels from the database into
-// the dispatch engine.
+// the dispatch engine, each wrapped with the delivery-tracking decorator.
 func loadEnabledChannels(ctx context.Context, engine *Engine, channelStore *channel.Store, logger *zap.Logger) error {
 	enabledChannels, err := channelStore.ListEnabled(ctx)
 	if err != nil {
 		return fmt.Errorf("prism: list enabled channels: %w", err)
 	}
-	channels, err := BuildChannels(enabledChannels)
+	channels, err := BuildChannels(enabledChannels, engine.channelBuildOpts, engine.deliveryStore)
 	if err != nil {
 		logger.Warn("prism: some channels failed to build", zap.Error(err))
 	}

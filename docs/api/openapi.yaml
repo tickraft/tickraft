@@ -1,4 +1,4 @@
-# Version: 2.0.0 | Updated: 2026-08-28 | Status: active
+# Version: 2.1.0 | Updated: 2026-09-07 | Status: active
 #
 # Tickraft open-source repository OpenAPI specification
 # - Includes only routes actually registered in the open-source repository
@@ -9,7 +9,7 @@
 openapi: 3.0.3
 info:
   title: Tickraft Open API
-  version: 2.0.0
+  version: 2.1.0
   description: |
     Tickraft open-source edition REST API specification.
 
@@ -55,6 +55,8 @@ tags:
     description: "Internationalization: locale listing"
   - name: realtime
     description: "Realtime push: WebSocket endpoint"
+  - name: status
+    description: "Public status page: aggregated component view and its configuration"
   - name: system
     description: "System settings module: manage global configuration and runtime information"
   - name: meta
@@ -967,6 +969,17 @@ paths:
         Receives telemetry through a single endpoint; the `kind` field
         discriminates the payload and selects the size limit (heartbeat 1 KiB /
         metrics 64 KiB / logs 1 MiB / task_status 16 KiB).
+
+        The endpoint also accepts the Prometheus text exposition format:
+        requests with Content-Type `text/plain; version=0.0.4` are parsed
+        with the exposition text parser and ingested as a metrics-kind
+        report. Labels fold into the metric key
+        (`http_requests_total{code="200",method="get"}`); histograms and
+        summaries expand into `_sum`/`_count`/`_bucket{le="..."}`/
+        `{quantile="..."}` series. Asset identity arrives via the query
+        string (asset_id, or asset_key + tenant_id) and the same
+        signature authentication applies; the push is capped at 64 KiB
+        and counts as one event against the daily quota.
 
         The `task_status` kind carries a single execution outcome
         (running/completed/failed/timeout) keyed by the required `task_ref`
@@ -1900,6 +1913,59 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/prism/alert/records/export:
+    get:
+      tags: [alert]
+      summary: Export alert records as CSV
+      description: |
+        Streams the records matching the same filters as the list endpoint
+        (severity/status/from/to) as a CSV download, ordered by descending
+        id like the list. Rows stream page by page (chunked transfer) and
+        the export is capped at 100,000 rows; store failures after the
+        headers are sent surface as a truncated download.
+      operationId: exportAlertRecords
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by severity.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by record status.
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter records triggered at or after this RFC3339 timestamp.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter records triggered before this RFC3339 timestamp.
+      responses:
+        '200':
+          description: CSV file download (attachment, alert_records.csv)
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/v1/prism/alert/records/{id}:
     get:
       tags: [alert]
@@ -2563,6 +2629,154 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/status:
+    get:
+      tags: [status]
+      summary: Public status page view
+      description: |
+        Intentionally public endpoint (no authentication): returns the
+        aggregated status view rendered from the status configuration,
+        monitor points, probe records, and the task engine health. The
+        view is cached for 30 seconds. When the page is disabled (the
+        default) or the service is not configured, the endpoint returns
+        404 — indistinguishable from a missing route.
+      operationId: getPublicStatus
+      security: []
+      responses:
+        '200':
+          description: Rendered status page view
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          description:
+                            type: string
+                          overall:
+                            type: string
+                            enum: [operational, degraded, partial_outage, major_outage, unknown]
+                          components:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                description:
+                                  type: string
+                                status:
+                                  type: string
+                                  enum: [operational, degraded, partial_outage, major_outage, unknown]
+                                monitor_count:
+                                  type: integer
+                                last_checked:
+                                  type: string
+                                  format: date-time
+                          updated_at:
+                            type: string
+                            format: date-time
+        '404':
+          description: Status page disabled or status service not configured
+  /api/v1/status/config:
+    get:
+      tags: [status]
+      summary: Get status page configuration
+      description: |
+        Returns the sys_status_config singleton: title, description,
+        enabled flag, and the component mapping onto monitor points.
+        Requires JWT authentication with the wildcard permission.
+      operationId: getStatusConfig
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Current status page configuration
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          description:
+                            type: string
+                          enabled:
+                            type: boolean
+                          components:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                description:
+                                  type: string
+                                point_ids:
+                                  type: array
+                                  items:
+                                    type: integer
+                                    format: int64
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [status]
+      summary: Update status page configuration
+      description: |
+        Replaces the status page configuration. Validation: title is
+        required (max 255 chars), description max 1024 chars, component
+        names required and unique. The page stays private until enabled
+        is set to true.
+      operationId: updateStatusConfig
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                description:
+                  type: string
+                  maxLength: 1024
+                enabled:
+                  type: boolean
+                components:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      point_ids:
+                        type: array
+                        items:
+                          type: integer
+                          format: int64
+      responses:
+        '200':
+          description: Updated configuration
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/i18n/locales:
     get:
       tags: [i18n]

@@ -10,6 +10,7 @@ import taskRoutes from './task'
 import telemetryRoutes from './telemetry'
 import prismRoutes from './prism'
 import systemRoutes from './system'
+import statusRoutes from './status'
 
 /**
  * Open-source base routes.
@@ -27,4 +28,5 @@ export const baseRoutes: RouteRecordRaw[] = [
   ...telemetryRoutes,
   ...prismRoutes,
   ...systemRoutes,
+  ...statusRoutes,
 ]

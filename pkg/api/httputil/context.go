@@ -169,3 +169,31 @@ func GetUser(arc *app.RequestContext) *user.User {
 	}
 	return nil
 }
+
+// tenantCtxKey is the Go-context key carrying the authenticated tenant ID
+// from the request claims. The kernel transports the tenant; whether (and
+// how) it is used is decided by the edition's service implementations.
+type tenantCtxKey struct{}
+
+// WithTenantContext returns ctx annotated with the given tenant ID.
+func WithTenantContext(ctx context.Context, tenantID int64) context.Context {
+	return context.WithValue(ctx, tenantCtxKey{}, tenantID)
+}
+
+// TenantFromContext extracts the tenant ID stored by WithTenantContext.
+// The second return reports whether a tenant is present.
+func TenantFromContext(ctx context.Context) (int64, bool) {
+	tenantID, ok := ctx.Value(tenantCtxKey{}).(int64)
+	return tenantID, ok
+}
+
+// ScopeTenantContext returns ctx annotated with the authenticated tenant
+// from the request claims (see GetUserClaims), or ctx unchanged when no
+// claims are present. Handlers call it once at entry so downstream
+// services receive the tenant through the ordinary context.
+func ScopeTenantContext(ctx context.Context, arc *app.RequestContext) context.Context {
+	if claims, ok := GetUserClaims(arc); ok && claims != nil {
+		return WithTenantContext(ctx, claims.TenantID)
+	}
+	return ctx
+}

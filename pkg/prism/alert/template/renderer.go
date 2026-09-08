@@ -39,7 +39,10 @@ func NewRenderer(lib Library, r i18n.Registry, logger *zap.Logger) Renderer {
 
 // Render implements Renderer. It performs the following steps:
 //
-//  1. Look up the template by opts.TemplateID.
+//  1. Look up the template by opts.TemplateID, honoring opts.NetworkScope:
+//     a scoped sibling variant ("<id>_<scope>") wins when it exists and
+//     serves the scope; otherwise the base template is used when its own
+//     NetworkScope allows it (see resolveTemplate).
 //  2. Resolve the locale (opts.Locale → default i18n.DefaultLocale), with
 //     fallback to the default locale when the requested locale has no
 //     translation.
@@ -76,7 +79,7 @@ func (r *renderer) Render(
 		return i18n.FormattedMessage{}, ErrTemplateNotFound
 	}
 
-	tmpl, err := r.library.Get(opts.TemplateID)
+	tmpl, err := r.resolveTemplate(opts.TemplateID, opts.NetworkScope)
 	if err != nil {
 		return i18n.FormattedMessage{}, err
 	}
@@ -133,6 +136,56 @@ func (r *renderer) Render(
 		AssetLink:   assetLink,
 		Direction:   dir,
 	}, nil
+}
+
+// resolveTemplate applies the network-scope variant selection on top of the
+// plain library lookup. When scope is ScopeIntranet or ScopeExtranet, the
+// scoped sibling variant (see ScopedTemplateID) wins when it exists and
+// serves the scope; otherwise the base template is used when its own scope
+// allows it. When neither serves the scope, ErrTemplateNotFound is returned
+// so callers (the format.Render helper) fall back to the generic rendering
+// path. Without a scope policy every template remains eligible.
+func (r *renderer) resolveTemplate(id, scope string) (Template, error) {
+	if scope == ScopeIntranet || scope == ScopeExtranet {
+		if variant, err := r.library.Get(ScopedTemplateID(id, scope)); err == nil &&
+			scopeServes(variant.NetworkScope, scope) {
+			return variant, nil
+		}
+	}
+	tmpl, err := r.library.Get(id)
+	if err != nil {
+		return Template{}, err
+	}
+	if !scopeServes(tmpl.NetworkScope, scope) {
+		return Template{}, fmt.Errorf("%w: template %s does not serve scope %s",
+			ErrTemplateNotFound, id, scope)
+	}
+	return tmpl, nil
+}
+
+// scopeServes reports whether a template scoped tmplScope may render for
+// the requested scope. Empty and ScopeBoth templates serve every scope;
+// without a scope policy (scope neither intranet nor extranet) every
+// template is eligible.
+func scopeServes(tmplScope, scope string) bool {
+	if scope != ScopeIntranet && scope != ScopeExtranet {
+		return true
+	}
+	return tmplScope == "" || tmplScope == ScopeBoth || tmplScope == scope
+}
+
+// ScopedTemplateID returns the conventional sibling-variant ID of a
+// template for a network scope: the ID itself for ScopeBoth/empty/invalid
+// scopes, and "<id>_intranet" / "<id>_extranet" otherwise. A tenant
+// publishes the lightweight variant of "cpu_high" for public channels as
+// the custom template "cpu_high_extranet" and the renderer picks it up
+// automatically.
+func ScopedTemplateID(id, scope string) string {
+	switch scope {
+	case ScopeIntranet, ScopeExtranet:
+		return id + "_" + scope
+	}
+	return id
 }
 
 // resolveTranslation finds the best-matching translation for locale. It

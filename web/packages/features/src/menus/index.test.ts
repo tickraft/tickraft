@@ -56,10 +56,12 @@ describe('baseMenus', () => {
     expect(childPaths).toContain('/task/log/list')
   })
 
-  it('system menu has basic settings, apikey, and info children', () => {
+  it('system menu has basic settings, apikey, info, and status page children', () => {
     const system = baseMenus.find((m) => m.path === '/system')
     expect(system?.children).toBeDefined()
-    expect(system?.children).toHaveLength(3)
+    expect(system?.children).toHaveLength(4)
+    const childPaths = system?.children?.map((c) => c.path)
+    expect(childPaths).toContain('/system/status')
   })
 
   it('dashboard menu has no children (leaf menu)', () => {

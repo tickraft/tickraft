@@ -50,6 +50,15 @@ interface TcpConfig {
   port: number
 }
 
+interface MqttProbeConfig {
+  address: string
+  topic: string
+  username: string
+  password: string
+  expectPayload: string
+  waitSeconds: number
+}
+
 interface HttpConfig {
   method: string
   url: string
@@ -98,6 +107,14 @@ const selectedAssetId = ref<number | undefined>(undefined)
 /** Active mode configs */
 const icmpConfig = reactive<IcmpConfig>({ host: '', count: 4 })
 const tcpConfig = reactive<TcpConfig>({ host: '', port: 0 })
+const mqttProbeConfig = reactive<MqttProbeConfig>({
+  address: '',
+  topic: '',
+  username: '',
+  password: '',
+  expectPayload: '',
+  waitSeconds: 5,
+})
 const httpConfig = reactive<HttpConfig>({
   method: 'GET',
   url: '',
@@ -192,6 +209,15 @@ function buildConfig(): Record<string, unknown> {
       return withJudgment({ address: icmpConfig.host, count: icmpConfig.count })
     case 'tcp':
       return withJudgment({ address: tcpConfig.host, port: tcpConfig.port })
+    case 'mqtt_probe':
+      return withJudgment({
+        address: mqttProbeConfig.address,
+        topic: mqttProbeConfig.topic,
+        username: mqttProbeConfig.username || undefined,
+        password: mqttProbeConfig.password || undefined,
+        expect_payload: mqttProbeConfig.expectPayload || undefined,
+        wait_seconds: mqttProbeConfig.waitSeconds,
+      })
     case 'http':
       return withJudgment({
         address: httpConfig.url,
@@ -261,6 +287,16 @@ async function handleSubmit(): Promise<void> {
     }
     if (tcpConfig.port < 1 || tcpConfig.port > 65535) {
       ElMessage.warning(t('telemetry.monitor.create.portRequired'))
+      return
+    }
+  }
+  if (form.type === 'mqtt_probe') {
+    if (!mqttProbeConfig.address) {
+      ElMessage.warning(t('telemetry.monitor.create.mqttAddressRequired'))
+      return
+    }
+    if (!mqttProbeConfig.topic) {
+      ElMessage.warning(t('telemetry.monitor.create.mqttTopicRequired'))
       return
     }
   }
@@ -418,6 +454,13 @@ async function fetchMonitor(): Promise<void> {
     } else if (form.type === 'tcp') {
       tcpConfig.host = ((config.address ?? config.host) as string) ?? ''
       tcpConfig.port = (config.port as number) ?? 0
+    } else if (form.type === 'mqtt_probe') {
+      mqttProbeConfig.address = (config.address as string) ?? ''
+      mqttProbeConfig.topic = (config.topic as string) ?? ''
+      mqttProbeConfig.username = (config.username as string) ?? ''
+      mqttProbeConfig.password = (config.password as string) ?? ''
+      mqttProbeConfig.expectPayload = (config.expect_payload as string) ?? ''
+      mqttProbeConfig.waitSeconds = (config.wait_seconds as number) ?? 5
     } else if (form.type === 'http') {
       const headers = config.headers
       httpConfig.method = (config.method as string) ?? 'GET'
@@ -664,6 +707,51 @@ onMounted(async () => {
                   />
                   <div class="tk-form-help">
                     {{ t('telemetry.monitor.create.targetPortHelp') }}
+                  </div>
+                </el-form-item>
+              </template>
+
+              <!-- MQTT parameters -->
+              <template v-if="form.type === 'mqtt_probe'">
+                <el-form-item :label="t('telemetry.monitor.create.mqttAddress')">
+                  <el-input
+                    v-model="mqttProbeConfig.address"
+                    :placeholder="t('telemetry.monitor.create.mqttAddressPlaceholder')"
+                  />
+                  <div class="tk-form-help">
+                    {{ t('telemetry.monitor.create.mqttAddressHelp') }}
+                  </div>
+                </el-form-item>
+                <el-form-item :label="t('telemetry.monitor.create.mqttTopic')">
+                  <el-input
+                    v-model="mqttProbeConfig.topic"
+                    :placeholder="t('telemetry.monitor.create.mqttTopicPlaceholder')"
+                  />
+                </el-form-item>
+                <el-form-item :label="t('telemetry.monitor.create.mqttUsername')">
+                  <el-input v-model="mqttProbeConfig.username" />
+                </el-form-item>
+                <el-form-item :label="t('telemetry.monitor.create.mqttPassword')">
+                  <el-input
+                    v-model="mqttProbeConfig.password"
+                    type="password"
+                    show-password
+                  />
+                </el-form-item>
+                <el-form-item :label="t('telemetry.monitor.create.mqttExpectPayload')">
+                  <el-input
+                    v-model="mqttProbeConfig.expectPayload"
+                    :placeholder="t('telemetry.monitor.create.mqttExpectPayloadPlaceholder')"
+                  />
+                </el-form-item>
+                <el-form-item :label="t('telemetry.monitor.create.mqttWaitSeconds')">
+                  <el-input-number
+                    v-model="mqttProbeConfig.waitSeconds"
+                    :min="1"
+                    :max="300"
+                  />
+                  <div class="tk-form-help">
+                    {{ t('telemetry.monitor.create.mqttWaitSecondsHelp') }}
                   </div>
                 </el-form-item>
               </template>

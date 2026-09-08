@@ -18,6 +18,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/executor/http"
 	"github.com/tickraft/tickraft/pkg/executor/icmp"
 	"github.com/tickraft/tickraft/pkg/executor/local"
+	mqttexec "github.com/tickraft/tickraft/pkg/executor/mqtt"
 	"github.com/tickraft/tickraft/pkg/executor/tcp"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
 	"github.com/tickraft/tickraft/pkg/task"
@@ -26,14 +27,15 @@ import (
 )
 
 // registerBuiltinExecutors registers the built-in executors (local script,
-// webhook, and ICMP/TCP/HTTP probers) into the registry using the given
-// probe timeout for prober executors.
+// webhook, and ICMP/TCP/MQTT/HTTP probers) into the registry using the
+// given probe timeout for prober executors.
 func registerBuiltinExecutors(reg *executor.Registry, probeTimeout time.Duration) error {
 	executors := []executor.Executor{
 		local.New(local.WithLogger(zap.L())),
 		webhook.New(webhook.WithLogger(zap.L())),
 		icmp.New(probeTimeout),
 		tcp.New(probeTimeout),
+		mqttexec.New(probeTimeout, mqttexec.WithLogger(zap.L())),
 		http.New(http.WithLogger(zap.L())),
 	}
 	for _, e := range executors {

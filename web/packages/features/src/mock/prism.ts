@@ -399,6 +399,24 @@ export default [
     },
   },
   {
+    // Registered before the :id route so /export is not captured by the
+    // id pattern. The mock server always JSON-encodes responses, so the
+    // CSV text rides in the envelope's data field; the real backend
+    // streams text/csv.
+    url: '/api/v1/prism/alert/records/export',
+    method: 'get',
+    response: ({ query }: { query: Record<string, string> }) => {
+      const header = 'id,rule_id,rule_name,severity,value,message,status,triggered_at,acknowledged_at,resolved_at'
+      const lines = filterRecords(query).map((r) =>
+        [r.id, r.rule_id, r.rule_name, r.severity, r.value, r.message, r.status, r.triggered_at, r.acknowledged_at, r.resolved_at].join(','))
+      return {
+        code: 0,
+        message: 'success',
+        data: [header, ...lines].join('\n'),
+      }
+    },
+  },
+  {
     url: '/api/v1/prism/alert/records/:id',
     method: 'get',
     response: ({ url }: { url: string }) => {

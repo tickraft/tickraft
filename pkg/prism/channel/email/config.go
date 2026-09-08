@@ -9,14 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
+	"github.com/tickraft/tickraft/pkg/prism/channel/format"
 	"github.com/tickraft/tickraft/pkg/retry"
 )
 
@@ -147,6 +150,12 @@ type Config struct {
 	// HTMLMode controls whether messages are sent as multipart/alternative
 	// (plain text + HTML) instead of plain text only.
 	HTMLMode bool
+	// ProxyURL is an optional SOCKS5 proxy URL used for outbound SMTP
+	// connections. SMTP is not HTTP, so only the socks5 scheme is
+	// supported; http/https egress proxies cannot be layered on a raw
+	// socket without a tunnel client. When empty the channel connects
+	// directly.
+	ProxyURL string
 	// RetryMaxAttempts is the maximum number of send attempts including
 	// the first. Defaults to 3 when zero or negative.
 	RetryMaxAttempts int
@@ -171,6 +180,11 @@ type Config struct {
 	// buildMessage calls Library.Render instead of Formatter.Format,
 	// producing output from the named template (built-in or custom).
 	Library template.Library
+	// Scope carries the network-scope rendering policy (M5 private
+	// deployment: scoped template variants, content masking, link
+	// adaptation). Set by the build layer from the deployment-wide scope
+	// settings and never part of the stored user config JSON.
+	Scope format.ScopeOptions `json:"-"`
 }
 
 // Validate checks that the Config is usable. It verifies that Host is
@@ -190,6 +204,27 @@ func (c Config) Validate() error {
 	if !c.AuthType.valid() {
 		return fmt.Errorf("email: invalid auth type %d", c.AuthType)
 	}
+	if err := c.validateRecipients(); err != nil {
+		return err
+	}
+	// Auth consistency: when username is empty, no authentication is
+	// performed and password should also be empty. When username is set,
+	// password must also be set.
+	if c.Username == "" && c.Password != "" {
+		return errors.New("email: password set without username")
+	}
+	if c.Username != "" && c.Password == "" {
+		return errors.New("email: username set without password")
+	}
+	if err := c.validateProxy(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateRecipients checks the From address is a valid mailbox and every
+// To entry parses as a mailbox address.
+func (c Config) validateRecipients() error {
 	if c.From == "" {
 		return errors.New("email: from address is required")
 	}
@@ -204,14 +239,21 @@ func (c Config) Validate() error {
 			return fmt.Errorf("email: invalid to address at index %d %q: %w", i, addr, err)
 		}
 	}
-	// Auth consistency: when username is empty, no authentication is
-	// performed and password should also be empty. When username is set,
-	// password must also be set.
-	if c.Username == "" && c.Password != "" {
-		return errors.New("email: password set without username")
+	return nil
+}
+
+// validateProxy enforces the SOCKS5-only proxy constraint: SMTP speaks raw
+// sockets, so http/https proxies cannot carry it.
+func (c Config) validateProxy() error {
+	if c.ProxyURL == "" {
+		return nil
 	}
-	if c.Username != "" && c.Password == "" {
-		return errors.New("email: username set without password")
+	u, err := url.Parse(c.ProxyURL)
+	if err != nil || !strings.EqualFold(u.Scheme, "socks5") || u.Hostname() == "" {
+		return fmt.Errorf(
+			"email: proxy_url must be a socks5:// URL (http/https proxies are not supported for SMTP), got %q",
+			c.ProxyURL,
+		)
 	}
 	return nil
 }
@@ -480,6 +522,22 @@ func New(cfg Config, options ...Option) (*Channel, error) {
 		return nil, err
 	}
 
+	// Build the SOCKS5 dialer when a proxy is configured. Validate has
+	// already pinned the socks5 scheme; a FromURL failure here is a
+	// construction error (for example an unresolvable proxy address
+	// string), not a config error.
+	var proxyDialer proxy.Dialer
+	if opts.cfg.ProxyURL != "" {
+		u, err := url.Parse(opts.cfg.ProxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("email: parse proxy url: %w", err)
+		}
+		proxyDialer, err = proxy.FromURL(u, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("email: build socks5 dialer: %w", err)
+		}
+	}
+
 	base := opts.cfg.RetryBaseInterval
 	maxBackoff := retryMaxBackoff
 	maxBackoff = max(maxBackoff, base)
@@ -511,10 +569,11 @@ func New(cfg Config, options ...Option) (*Channel, error) {
 	opts.cfg.To = recipients
 
 	return &Channel{
-		config: opts.cfg,
-		cb:     breaker,
-		retry:  r,
-		logger: logger,
-		tls:    opts.tls,
+		config:      opts.cfg,
+		cb:          breaker,
+		retry:       r,
+		logger:      logger,
+		tls:         opts.tls,
+		proxyDialer: proxyDialer,
 	}, nil
 }

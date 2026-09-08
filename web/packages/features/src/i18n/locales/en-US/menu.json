@@ -28,6 +28,7 @@
     "subscription_service": "Subscription & Service",
     "quota": "Quota Management",
     "about": "About",
-    "info": "System Info"
+    "info": "System Info",
+    "status": "Status Page"
   }
 }

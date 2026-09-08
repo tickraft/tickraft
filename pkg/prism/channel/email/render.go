@@ -17,6 +17,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
+	"github.com/tickraft/tickraft/pkg/prism/channel/format"
 )
 
 // buildMessage constructs the raw SMTP message bytes (headers + body) from
@@ -26,14 +27,14 @@ import (
 // Formatter backed by the built-in i18n bundle is used so that
 // deployments produce localized output out of the box.
 func buildMessage(ctx context.Context, evt alert.Event, cfg Config, logger *zap.Logger) []byte {
-	formatted := renderAlert(ctx, evt, cfg, logger)
+	formatted, linkNote := renderAlert(ctx, evt, cfg, logger)
 
 	subject := formatted.Title
 	if subject == "" {
 		subject = formatSubject(evt)
 	}
 
-	plainBody := formatPlainText(evt, formatted)
+	plainBody := formatPlainText(evt, formatted, linkNote)
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", cfg.From)
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(cfg.To, ", "))
@@ -43,7 +44,6 @@ func buildMessage(ctx context.Context, evt alert.Event, cfg Config, logger *zap.
 	fmt.Fprintf(&buf, "Message-ID: <%d.%d@tickraft>\r\n", evt.AssetID, time.Now().UnixNano())
 
 	if cfg.HTMLMode {
-		htmlBody := formatHTML(evt, formatted)
 		boundary := fmt.Sprintf("tickraft-boundary-%d", time.Now().UnixNano())
 		fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%s\r\n", boundary)
 		fmt.Fprintf(&buf, "\r\n")
@@ -59,7 +59,7 @@ func buildMessage(ctx context.Context, evt alert.Event, cfg Config, logger *zap.
 		fmt.Fprintf(&buf, "Content-Type: text/html; charset=UTF-8\r\n")
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: 8bit\r\n")
 		fmt.Fprintf(&buf, "\r\n")
-		buf.WriteString(htmlBody)
+		buf.WriteString(formatHTML(evt, formatted, linkNote))
 		buf.WriteString("\r\n")
 
 		fmt.Fprintf(&buf, "--%s--\r\n", boundary)
@@ -97,7 +97,9 @@ func buildDefaultFormatter(logger *zap.Logger) i18n.Formatter {
 // both are nil, a default Formatter backed by the built-in i18n bundle is
 // constructed so that callers who build a Config directly (without going
 // through New) still get localized output without explicit injection.
-func renderAlert(ctx context.Context, evt alert.Event, cfg Config, logger *zap.Logger) i18n.FormattedMessage {
+func renderAlert(
+	ctx context.Context, evt alert.Event, cfg Config, logger *zap.Logger,
+) (formatted i18n.FormattedMessage, linkNote string) {
 	locale := evt.Locale
 	if locale == "" {
 		locale = i18n.DefaultLocale
@@ -112,14 +114,14 @@ func renderAlert(ctx context.Context, evt alert.Event, cfg Config, logger *zap.L
 	if cfg.Library != nil && evt.TemplateID != "" {
 		r := template.NewRenderer(cfg.Library, nil, logger)
 		msg, err := r.Render(ctx, evt, template.RenderOptions{
-			TemplateID: evt.TemplateID,
-			Locale:     locale,
-			Style:      template.StyleDetailed,
+			TemplateID:   evt.TemplateID,
+			Locale:       locale,
+			Style:        template.StyleDetailed,
+			NetworkScope: cfg.Scope.NetworkScope,
 		})
 		if err == nil {
-			return msg
-		}
-		if logger != nil {
+			formatted = msg
+		} else if logger != nil {
 			logger.Warn("email: template render failed, falling back to formatter",
 				zap.String("template_id", evt.TemplateID),
 				zap.Error(err),
@@ -130,11 +132,45 @@ func renderAlert(ctx context.Context, evt alert.Event, cfg Config, logger *zap.L
 	// Formatter-based rendering. New normally caches a default Formatter
 	// at construction time; the lazy fallback here is a safety net for
 	// callers who construct Config directly.
-	formatter := cfg.Formatter
-	if formatter == nil {
-		formatter = buildDefaultFormatter(logger)
+	if formatted.Title == "" && formatted.Description == "" {
+		formatter := cfg.Formatter
+		if formatter == nil {
+			formatter = buildDefaultFormatter(logger)
+		}
+		formatted = formatter.Format(ctx, evt, opts)
 	}
-	return formatter.Format(ctx, evt, opts)
+	return applyEmailScope(formatted, cfg.Scope)
+}
+
+// applyEmailScope adapts the rendered message for extranet delivery (M5
+// L1): the Title, Description, and Fields are masked and the asset link is
+// adapted onto the public domain. linkNote carries the localized
+// intranet-address annotation when no public domain is configured.
+func applyEmailScope(
+	formatted i18n.FormattedMessage, scope format.ScopeOptions,
+) (adapted i18n.FormattedMessage, linkNote string) {
+	if scope.NetworkScope != format.ScopeExtranet {
+		return formatted, ""
+	}
+	if scope.Masker != nil {
+		masked := scope.Masker.Mask(format.Message{
+			Title:       formatted.Title,
+			Description: formatted.Description,
+			Fields:      formatted.Fields,
+		})
+		formatted.Title = masked.Title
+		formatted.Description = masked.Description
+		formatted.Fields = masked.Fields
+	}
+	if formatted.AssetLink == "" {
+		return formatted, ""
+	}
+	link, hint := format.ExtranetLink(formatted.AssetLink, scope)
+	formatted.AssetLink = link
+	if hint {
+		return formatted, format.IntranetLinkHint(nil, "")
+	}
+	return formatted, ""
 }
 
 // formatSubject builds a fallback email subject from the alert event when no
@@ -175,9 +211,10 @@ func formatSubject(evt alert.Event) string {
 // alert message followed by the structured fields. The localized
 // description (when available) is placed at the top as a summary; the
 // structured fields always follow so that automated parsers and tests can
-// rely on the stable field labels.
+// rely on the stable field labels. linkNote, when non-empty, annotates the
+// asset link as an intranet address.
 // All violations in the event are rendered, not just the first one.
-func formatPlainText(evt alert.Event, formatted i18n.FormattedMessage) string {
+func formatPlainText(evt alert.Event, formatted i18n.FormattedMessage, linkNote string) string {
 	var buf bytes.Buffer
 
 	if formatted.Description != "" {
@@ -203,7 +240,11 @@ func formatPlainText(evt alert.Event, formatted i18n.FormattedMessage) string {
 	}
 
 	if formatted.AssetLink != "" {
-		fmt.Fprintf(&buf, "\nAsset link: %s\n", formatted.AssetLink)
+		if linkNote != "" {
+			fmt.Fprintf(&buf, "\nAsset link: %s (%s)\n", formatted.AssetLink, linkNote)
+		} else {
+			fmt.Fprintf(&buf, "\nAsset link: %s\n", formatted.AssetLink)
+		}
 	}
 
 	return buf.String()
@@ -244,9 +285,11 @@ func renderViolationPlainText(buf *bytes.Buffer, v alert.Violation, eventType al
 
 // formatHTML builds an HTML email body with a table of alert fields. The root
 // div carries a dir attribute derived from formatted.Direction so that RTL
-// locales (ar, he) render correctly in mail clients.
+// locales (ar, he) render correctly in mail clients. linkNote, when
+// non-empty, is appended next to the asset link as plain text (outside the
+// anchor so the href stays a clean URL).
 // All violations in the event are rendered, not just the first one.
-func formatHTML(evt alert.Event, formatted i18n.FormattedMessage) string {
+func formatHTML(evt alert.Event, formatted i18n.FormattedMessage, linkNote string) string {
 	var buf bytes.Buffer
 	dir := string(formatted.Direction)
 	if dir == "" {
@@ -285,8 +328,13 @@ func formatHTML(evt alert.Event, formatted i18n.FormattedMessage) string {
 	buf.WriteString("</table>")
 
 	if formatted.AssetLink != "" {
-		fmt.Fprintf(&buf, `<p style="margin: 12px 0 0;"><a href="%s" style="color: #1890ff;">%s</a></p>`,
-			escapeHTML(formatted.AssetLink), escapeHTML(formatted.AssetLink))
+		if linkNote != "" {
+			fmt.Fprintf(&buf, `<p style="margin: 12px 0 0;"><a href="%s" style="color: #1890ff;">%s</a> (%s)</p>`,
+				escapeHTML(formatted.AssetLink), escapeHTML(formatted.AssetLink), escapeHTML(linkNote))
+		} else {
+			fmt.Fprintf(&buf, `<p style="margin: 12px 0 0;"><a href="%s" style="color: #1890ff;">%s</a></p>`,
+				escapeHTML(formatted.AssetLink), escapeHTML(formatted.AssetLink))
+		}
 	}
 
 	buf.WriteString("</div>")

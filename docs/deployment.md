@@ -106,6 +106,30 @@ One Hertz engine serves every protocol on `server.addr`. Routes are partitioned 
 
 Global middleware (RequestID → AccessLog → Recovery → CORS → TrustedProxy) runs on every path; route-group middleware is mounted per prefix.
 
+## Ingesting Prometheus exposition format
+
+`POST /api/v1/telemetry` also accepts the Prometheus text exposition format (Content-Type `text/plain; version=0.0.4; charset=utf-8`), so anything that can emit a `.prom` file can report metrics without a JSON wrapper. Authentication and identity follow the same model as JSON pushes:
+
+- **Signature** (recommended): `X-Tickraft-Signature` carries the hex-encoded HMAC-SHA256 of the raw body, signed with the global secret or a per-point secret. A per-point match also binds the report to that point's asset.
+- **Asset identity via query string**: `?asset_id=<id>` or `?asset_key=<key>&tenant_id=<id>` when no signature credential applies.
+
+Series are flattened into the metric map: labels fold into the key (`http_requests_total{code="200",method="get"}`), and histograms/summaries expand into `_sum`, `_count`, `_bucket{le="..."}`, and `{quantile="..."}` series. One push counts as one event against the daily quota and is capped at 64 KiB.
+
+```bash
+curl -X POST "http://localhost:6153/api/v1/telemetry?asset_id=1" \
+  -H 'Content-Type: text/plain; version=0.0.4; charset=utf-8' \
+  -H "X-Tickraft-Signature: $(openssl dgst -sha256 -hmac "$SECRET" -hex < metrics.prom | cut -d' ' -f2)" \
+  --data-binary @metrics.prom
+```
+
+### node_exporter textfile bridge
+
+A one-line cron forwards every file the node_exporter textfile collector produces:
+
+```cron
+* * * * * cat /var/lib/node_exporter/textfile_collector/*.prom > /tmp/all.prom && curl -s -X POST "http://tickraft:6153/api/v1/telemetry?asset_id=1" -H 'Content-Type: text/plain; version=0.0.4' -H "X-Tickraft-Signature: $(openssl dgst -sha256 -hmac \"$SECRET\" -hex < /tmp/all.prom | cut -d' ' -f2)" --data-binary @/tmp/all.prom
+```
+
 ## System requirements
 
 - **Operating system**: Linux, macOS, or Windows.

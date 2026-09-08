@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
-	"github.com/tickraft/tickraft/pkg/httpx"
+	"github.com/tickraft/tickraft/pkg/prism/channel/httpclient"
 	"github.com/tickraft/tickraft/pkg/retry"
 )
 
@@ -40,6 +40,14 @@ type Config struct {
 	Timeout time.Duration
 	// Headers are custom HTTP headers added to every outbound request.
 	Headers map[string]string
+	// ProxyURL is an optional per-channel outbound proxy. Supported
+	// schemes are http, https, and socks5. When empty the
+	// deployment-wide egress proxy applies (when configured).
+	ProxyURL string
+	// ProxyBypass is the NO_PROXY-style host/domain suffix list applied
+	// together with ProxyURL. It is set by the build layer from the
+	// deployment-wide egress settings and is never user-facing config.
+	ProxyBypass []string
 	// RetryMaxAttempts is the maximum number of send attempts including
 	// the first. Defaults to 3 when zero or negative.
 	RetryMaxAttempts int
@@ -63,6 +71,9 @@ func (c Config) Validate() error {
 	}
 	if !isHTTPURL(c.URL) {
 		return fmt.Errorf("webhook: url must use http or https scheme, got %q", c.URL)
+	}
+	if err := httpclient.ValidateProxyURL(c.ProxyURL); err != nil {
+		return fmt.Errorf("webhook: %w", err)
 	}
 	return nil
 }
@@ -221,7 +232,15 @@ func New(cfg Config, options ...Option) (*Channel, error) {
 
 	client := opts.client
 	if client == nil {
-		client = httpx.NewPoolClient(httpx.Config{Timeout: opts.cfg.Timeout})
+		c, err := httpclient.New(httpclient.Config{
+			ProxyURL:    opts.cfg.ProxyURL,
+			ProxyBypass: opts.cfg.ProxyBypass,
+			Timeout:     opts.cfg.Timeout,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("webhook: build http client: %w", err)
+		}
+		client = c
 	} else if client.Timeout <= 0 {
 		client.Timeout = opts.cfg.Timeout
 	}

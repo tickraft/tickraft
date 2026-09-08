@@ -19,6 +19,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/status"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -56,6 +57,7 @@ type routeConfig struct {
 	i18nHandler            *i18n.Handler
 	wsHandler              *ws.Handler
 	executorRegistry       *executorpkg.Registry
+	statusSvc              status.Service
 }
 
 // jwtAuthOption provides the JWT authentication middleware.
@@ -325,4 +327,19 @@ func (o executorRegistryOption) apply(c *routeConfig) { c.executorRegistry = o.r
 // return empty lists.
 func WithExecutorRegistry(reg *executorpkg.Registry) RouteOption {
 	return executorRegistryOption{reg: reg}
+}
+
+// statusServiceOption provides the Service implementation for the status
+// page handlers.
+type statusServiceOption struct {
+	svc status.Service
+}
+
+func (o statusServiceOption) apply(c *routeConfig) { c.statusSvc = o.svc }
+
+// WithStatusService provides the status.Service implementation for the
+// public status page and its configuration management endpoints. When
+// omitted, the status route group is not registered.
+func WithStatusService(svc status.Service) RouteOption {
+	return statusServiceOption{svc: svc}
 }

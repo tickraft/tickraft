@@ -63,6 +63,9 @@ func validateIdentity(t Template) error {
 	if !IsValidAlertType(t.AlertType) {
 		return fmt.Errorf("template: invalid AlertType %q", t.AlertType)
 	}
+	if !IsValidNetworkScope(t.NetworkScope) {
+		return fmt.Errorf("template: invalid NetworkScope %q", t.NetworkScope)
+	}
 	return nil
 }
 

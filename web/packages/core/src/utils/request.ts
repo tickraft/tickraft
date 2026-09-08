@@ -176,6 +176,11 @@ service.interceptors.response.use(
   (response: AxiosResponse) => {
     const { data } = response
 
+    // Blob responses (file downloads) bypass the JSON envelope.
+    if (response.config.responseType === 'blob' || data instanceof Blob) {
+      return data
+    }
+
     // code=0 means success, return data directly (camelize keys)
     if (data.code === 0) {
       return camelizeKeys(data.data)

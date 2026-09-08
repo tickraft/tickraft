@@ -28,6 +28,7 @@
     "subscription_service": "订阅与服务",
     "quota": "配额管理",
     "about": "关于系统",
-    "info": "系统信息"
+    "info": "系统信息",
+    "status": "状态页"
   }
 }

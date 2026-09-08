@@ -105,6 +105,19 @@ export function acknowledgeAlertRecord(id: number): Promise<AlertRecord> {
 }
 
 /**
+ * Export alert records as CSV (server-side streaming; same filters as the
+ * list endpoint, paging params are ignored)
+ */
+export function exportAlertRecords(params: AlertRecordListParams): Promise<Blob> {
+  return request<Blob>({
+    url: '/prism/alert/records/export',
+    method: 'get',
+    params,
+    responseType: 'blob',
+  })
+}
+
+/**
  * Fetch alert rule list
  */
 export function getAlertRules(params: PageParams): Promise<PageData<AlertRule>> {
@@ -157,141 +170,6 @@ export function deleteAlertRule(id: number): Promise<void> {
   return request<void>({
     url: `/prism/alert/rules/${id}`,
     method: 'delete',
-  })
-}
-
-// ── Notification channels ──
-
-/** Notification channel type (supports "webhook" and "email"; extensible via SPI) */
-export type ChannelType = 'webhook' | 'email' | string
-
-/** Webhook channel configuration (stored as JSON in NotificationChannel.config) */
-export interface WebhookConfig {
-  /** Target endpoint URL */
-  url: string
-  /** HTTP method (POST or PUT) */
-  method: 'POST' | 'PUT'
-  /** Request timeout as a duration string (e.g. "10s") */
-  timeout: string
-  /** Custom HTTP headers */
-  headers: Record<string, string>
-}
-
-/** Email channel configuration (stored as JSON in NotificationChannel.config).
- *  Field names use snake_case to align with the backend channel.Config JSON tags. */
-export interface EmailConfig {
-  /** SMTP server hostname */
-  host: string
-  /** SMTP server port (25, 465 for implicit TLS, 587 for STARTTLS) */
-  port: number
-  /** SMTP authentication username */
-  username: string
-  /** SMTP authentication password */
-  password: string
-  /** Sender email address */
-  from: string
-  /** Recipient email addresses */
-  to: string[]
-  /** TLS mode: none, implicit, starttls */
-  tls_mode: string
-  /** Auth type: plain, login, cram-md5 */
-  auth_type: string
-  /** Send as HTML email */
-  html_mode: boolean
-}
-
-/** Notification channel (aligned with backend handler.NotificationChannel) */
-export interface NotificationChannel {
-  id: number
-  name: string
-  type: ChannelType
-  /** JSON-encoded channel config payload (e.g. WebhookConfig) */
-  config: string
-  enabled: boolean
-  /** Last successful delivery time (nullable until first use) */
-  lastUsedAt: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-/** Channel list query parameters (backend only supports page/size) */
-export type ChannelListParams = PageParams
-
-/** Channel create/update payload */
-export interface ChannelPayload {
-  name: string
-  type: ChannelType
-  config: string
-  enabled: boolean
-}
-
-/**
- * Fetch notification channel list (paginated)
- */
-export function getChannels(
-  params: ChannelListParams,
-): Promise<PageData<NotificationChannel>> {
-  return request<PageData<NotificationChannel>>({
-    url: '/prism/channels',
-    method: 'get',
-    params,
-  })
-}
-
-/**
- * Fetch a single notification channel by ID
- */
-export function getChannel(id: number): Promise<NotificationChannel> {
-  return request<NotificationChannel>({
-    url: `/prism/channels/${id}`,
-    method: 'get',
-  })
-}
-
-/**
- * Create a new notification channel
- */
-export function createChannel(
-  params: ChannelPayload,
-): Promise<NotificationChannel> {
-  return request<NotificationChannel>({
-    url: '/prism/channels',
-    method: 'post',
-    data: params,
-  })
-}
-
-/**
- * Update an existing notification channel
- */
-export function updateChannel(
-  id: number,
-  params: ChannelPayload,
-): Promise<NotificationChannel> {
-  return request<NotificationChannel>({
-    url: `/prism/channels/${id}`,
-    method: 'put',
-    data: params,
-  })
-}
-
-/**
- * Delete a notification channel
- */
-export function deleteChannel(id: number): Promise<void> {
-  return request<void>({
-    url: `/prism/channels/${id}`,
-    method: 'delete',
-  })
-}
-
-/**
- * Send a test notification through the given channel
- */
-export function testChannel(id: number): Promise<void> {
-  return request<void>({
-    url: `/prism/channels/${id}/test`,
-    method: 'post',
   })
 }
 

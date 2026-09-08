@@ -10,8 +10,8 @@
     ".": "./src/index.ts",
     "./routes": "./src/routes/index.ts",
     "./i18n": "./src/i18n/index.ts",
-    "./api/*": "./src/api/*.ts",
-    "./views/*": "./src/views/*.vue"
+    "./api/*": "./src/api/*",
+    "./views/*": "./src/views/*"
   },
   "dependencies": {
     "@tickraft/core": "workspace:*"

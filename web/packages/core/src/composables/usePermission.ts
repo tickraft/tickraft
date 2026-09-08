@@ -41,13 +41,13 @@ export const FeatureConstants = {
   // ── Open-source · System settings ──
   BASIC_SYSTEM: 'basic_system',
   BASIC_API_KEY: 'basic_api_key',
-  // ── Personal tier ──
-  SSH_EXECUTOR: 'ssh_executor',
+  // ── Starter tier ──
   MYSQL_EXECUTOR: 'mysql_executor',
   REDIS_EXECUTOR: 'redis_executor',
   DNS_PROBER: 'dns_prober',
   REDIS_PROBER: 'redis_prober',
   SSL_CERT_PROBER: 'ssl_cert_prober',
+  PRIVATE_ALERT_PROXY: 'private_alert_proxy',
   // ── Team tier ──
   USER_MANAGEMENT: 'user_management',
   ROLE_PERMISSION: 'role_permission',
@@ -57,12 +57,16 @@ export const FeatureConstants = {
   MQTT_LISTENER: 'mqtt_listener',
   METRIC_DASHBOARD: 'metric_dashboard',
   MULTI_NOTIFICATION: 'multi_notification',
-  // ── Enterprise tier ──
+  PRIVATE_ALERT_L1: 'private_alert_l1',
+  // ── Premium tier ──
+  SSH_EXECUTOR: 'ssh_executor',
   LOG_SEARCH: 'log_search',
   DISTRIBUTED_CLUSTER: 'distributed_cluster',
   SSO: 'sso',
   CUSTOM_ROLE: 'custom_role',
   DATA_PERMISSION: 'data_permission',
+  PRIVATE_ALERT_L2: 'private_alert_l2',
+  PRIVATE_ALERT_L3: 'private_alert_l3',
 } as const
 
 /** Feature flag identifier type */

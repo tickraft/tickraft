@@ -262,6 +262,24 @@ func (s *recordStore) List(ctx context.Context, page, size int, filter RecordFil
 	return models, total, nil
 }
 
+// FindByEventID returns all alert records sharing the dispatch-assigned
+// event ID, ordered by ascending ID. It is the lookup inbound card
+// callbacks use to resolve an IM interaction back onto the records born
+// from the same alert event. An empty eventID returns no rows.
+func (s *recordStore) FindByEventID(ctx context.Context, eventID string) ([]*Record, error) {
+	if eventID == "" {
+		return nil, nil
+	}
+	var models []*Record
+	if err := s.dbc.WithContext(ctx).
+		Where("event_id = ?", eventID).
+		Order("id ASC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("alert: find records by event: %w", db.MapError(err))
+	}
+	return models, nil
+}
+
 // Acknowledge transitions the alert record identified by id to the
 // "acknowledged" status and sets acknowledged_at to the current time. It
 // returns the updated record. Returns errdefs.ErrNotFound when no record

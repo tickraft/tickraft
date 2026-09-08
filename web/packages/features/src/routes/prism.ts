@@ -65,6 +65,24 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'prism.channel.list.title' },
       },
       {
+        path: 'channel/form',
+        name: 'PrismChannelCreate',
+        component: () => import('../views/prism/channel/form/Form.vue'),
+        meta: { title: 'prism.channel.form.create', hidden: true },
+      },
+      {
+        path: 'channel/form/:id',
+        name: 'PrismChannelEdit',
+        component: () => import('../views/prism/channel/form/Form.vue'),
+        meta: { title: 'prism.channel.form.edit', hidden: true },
+      },
+      {
+        path: 'channel/delivery/:id',
+        name: 'PrismChannelDelivery',
+        component: () => import('../views/prism/channel/delivery/Delivery.vue'),
+        meta: { title: 'prism.channel.delivery.title', hidden: true },
+      },
+      {
         path: 'rule/edit',
         name: 'PrismRuleCreate',
         component: () => import('../views/prism/rule/edit/Edit.vue'),

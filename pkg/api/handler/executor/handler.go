@@ -35,11 +35,12 @@ type Type struct {
 // Types registered without a catalog entry (plugins, professional edition)
 // fall back to the raw executor name.
 var displayCatalog = map[string]Type{
-	"icmp":    {Type: "icmp", Name: "ICMP Ping", Description: "Probe host reachability via ICMP echo requests"},
-	"tcp":     {Type: "tcp", Name: "TCP Port", Description: "Probe TCP port connectivity and response time"},
-	"http":    {Type: "http", Name: "HTTP", Description: "Probe HTTP endpoint availability and status code"},
-	"local":   {Type: "local", Name: "Local Script", Description: "Execute local scripts or shell commands"},
-	"webhook": {Type: "webhook", Name: "Webhook", Description: "Deliver event payloads to external HTTP endpoints"},
+	"icmp":       {Type: "icmp", Name: "ICMP Ping", Description: "Probe host reachability via ICMP echo requests"},
+	"tcp":        {Type: "tcp", Name: "TCP Port", Description: "Probe TCP port connectivity and response time"},
+	"mqtt_probe": {Type: "mqtt_probe", Name: "MQTT", Description: "Connect to an MQTT server and await a message"},
+	"http":       {Type: "http", Name: "HTTP", Description: "Probe HTTP endpoint availability and status code"},
+	"local":      {Type: "local", Name: "Local Script", Description: "Execute local scripts or shell commands"},
+	"webhook":    {Type: "webhook", Name: "Webhook", Description: "Deliver event payloads to external HTTP endpoints"},
 }
 
 // Describe returns the display metadata for an executor type, falling back

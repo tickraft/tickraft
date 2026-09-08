@@ -295,6 +295,14 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 			return
 		}
 
+		// Prometheus text exposition pushes branch here: the body is the
+		// exposition text format rather than JSON, and asset identity
+		// arrives via the query string.
+		if isExpositionContentType(r.Header.Get("Content-Type")) {
+			h.handleExposition(w, r, body, sigOwner, ingest)
+			return
+		}
+
 		req, errMsg, status := decodeTelemetry(body)
 		if req == nil {
 			nethttp.Error(w, errMsg, status)
@@ -333,10 +341,7 @@ func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) n
 			return
 		}
 
-		if ingest != nil {
-			ingest(r.Context(), report)
-		}
-		w.WriteHeader(nethttp.StatusAccepted)
+		h.accept(r.Context(), w, report, ingest)
 	}
 }
 

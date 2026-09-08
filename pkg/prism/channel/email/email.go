@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 
 	"github.com/tickraft/tickraft/pkg/circuitbreaker"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
@@ -42,6 +43,9 @@ type Channel struct {
 	retry  *retry.Retry
 	logger *zap.Logger
 	tls    *tls.Config
+	// proxyDialer connects through the configured SOCKS5 proxy when
+	// non-nil; a nil dialer connects directly.
+	proxyDialer proxy.Dialer
 }
 
 // Compile-time assertion that Channel implements alert.Channel.
@@ -208,7 +212,12 @@ func (c *Channel) deliver(client *smtp.Client, msg []byte) error {
 // dial establishes a connection to the SMTP server according to the
 // configured TLS mode. The provided context is respected during dial so
 // that cancellation or deadline expiry interrupts an in-progress dial.
+// When a SOCKS5 proxy is configured the connection is established through
+// it first.
 func (c *Channel) dial(ctx context.Context, addr string) (net.Conn, error) {
+	if c.proxyDialer != nil {
+		return c.dialViaProxy(ctx, addr)
+	}
 	switch c.config.TLSMode {
 	case TLSModeImplicit:
 		tlsCfg := c.tls
@@ -231,6 +240,34 @@ func (c *Channel) dial(ctx context.Context, addr string) (net.Conn, error) {
 	default:
 		return nil, fmt.Errorf("email: unsupported TLS mode %s", c.config.TLSMode)
 	}
+}
+
+// dialViaProxy connects to the SMTP server through the configured SOCKS5
+// proxy. Implicit-TLS mode upgrades the raw proxied connection with a
+// client-side TLS handshake because tls.Dialer cannot carry a custom
+// dialer.
+func (c *Channel) dialViaProxy(ctx context.Context, addr string) (net.Conn, error) {
+	d, ok := c.proxyDialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, fmt.Errorf("email: proxy dialer does not support dial contexts")
+	}
+	raw, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("email: socks5 dial %s: %w", addr, err)
+	}
+	if c.config.TLSMode != TLSModeImplicit {
+		return raw, nil
+	}
+	tlsCfg := c.tls
+	if tlsCfg == nil {
+		tlsCfg = &tls.Config{ServerName: c.config.Host}
+	}
+	conn := tls.Client(raw, tlsCfg)
+	if err := conn.HandshakeContext(ctx); err != nil {
+		_ = raw.Close()
+		return nil, fmt.Errorf("email: tls handshake %s: %w", addr, err)
+	}
+	return conn, nil
 }
 
 // startTLS upgrades the client connection to TLS.

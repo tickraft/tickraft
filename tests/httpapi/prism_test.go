@@ -6,15 +6,21 @@ package httpapi
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	prismalert "github.com/tickraft/tickraft/pkg/prism/alert"
+	"github.com/tickraft/tickraft/pkg/prism/channel"
+	"github.com/tickraft/tickraft/pkg/prism/channel/tracking"
 )
 
 // TestAlertRulesCRUD covers alert rule create/get/update/delete/list.
@@ -167,36 +173,122 @@ func TestAlertRecordsFlow(t *testing.T) {
 	_ = idResolved
 }
 
-// TestChannelsCRUDAndWebhookTest covers notification channel CRUD and the
-// webhook test endpoint against a local httptest receiver.
-func TestChannelsCRUDAndWebhookTest(t *testing.T) {
+// TestAlertRecordsExport covers the streaming CSV export: headers,
+// severity filtering, and the CSV column layout with RFC3339 timestamps.
+func TestAlertRecordsExport(t *testing.T) {
+	hs := newHarness(t)
+	token := hs.login(adminUsername, adminPassword)
+
+	now := time.Now().UTC()
+	ruleName := "httpapi-export-rule"
+	idCritical := seedAlertRecord(hs, 1, seedAlertRecordParams{
+		ruleName:    ruleName,
+		severity:    "critical",
+		status:      "firing",
+		triggeredAt: now,
+	})
+	seedAlertRecord(hs, 1, seedAlertRecordParams{
+		ruleName:    ruleName,
+		severity:    "warning",
+		status:      "firing",
+		triggeredAt: now,
+	})
+
+	req, err := http.NewRequestWithContext(hs.t.Context(), http.MethodGet,
+		hs.baseURL+"/api/v1/prism/alert/records/export?severity=critical", http.NoBody)
+	if err != nil {
+		t.Fatalf("build export request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := hs.client.Do(req)
+	if err != nil {
+		t.Fatalf("perform export: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("export: expected 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/csv; charset=utf-8" {
+		t.Fatalf("export: content-type %q, expected text/csv", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "alert_records.csv") {
+		t.Fatalf("export: content-disposition %q missing filename", cd)
+	}
+
+	rows, err := csv.NewReader(resp.Body).ReadAll()
+	if err != nil {
+		t.Fatalf("export: parse csv: %v", err)
+	}
+	if len(rows) < 2 {
+		t.Fatalf("export: expected header plus at least one row, got %d rows", len(rows))
+	}
+	wantHeader := []string{
+		"id", "rule_id", "rule_name", "severity", "value", "message",
+		"event_id", "status", "triggered_at", "acknowledged_at", "resolved_at", "created_at",
+	}
+	if !reflect.DeepEqual(rows[0], wantHeader) {
+		t.Fatalf("export: header %v, expected %v", rows[0], wantHeader)
+	}
+
+	foundCritical := false
+	for _, row := range rows[1:] {
+		if len(row) < 4 {
+			t.Fatalf("export: short row %v", row)
+		}
+		if row[2] != ruleName {
+			continue
+		}
+		if row[3] != "critical" {
+			t.Fatalf("export: severity filter leaked row %v", row)
+		}
+		if id, err := strconv.ParseInt(row[0], 10, 64); err == nil && id == idCritical {
+			foundCritical = true
+			// triggered_at is RFC3339-parseable.
+			if _, err := time.Parse(time.RFC3339, row[8]); err != nil {
+				t.Fatalf("export: triggered_at %q not RFC3339: %v", row[8], err)
+			}
+		}
+	}
+	if !foundCritical {
+		t.Fatalf("export: seeded critical record %d not present", idCritical)
+	}
+}
+
+// TestChannelsCRUDTestOptionsAndDeliveries covers the notification channel
+// endpoints: create/update/delete with config objects, sensitive-field
+// masking (and masked-secret updates that keep the stored plaintext), the
+// test dispatch by id and inline config, the compact options projection,
+// and the delivery record list + retry flow.
+func TestChannelsCRUDTestOptionsAndDeliveries(t *testing.T) {
 	hs := newHarness(t)
 	token := hs.login(adminUsername, adminPassword)
 
 	var hits atomic.Int64
-	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// The receiver answers with a Telegram-style success body; the webhook
+	// adapter ignores response bodies, so one shape serves both.
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
 	}))
 	defer receiver.Close()
 
-	config, err := json.Marshal(map[string]any{
-		"type":    "webhook",
-		"url":     receiver.URL,
-		"timeout": "5s",
-	})
-	if err != nil {
-		t.Fatalf("marshal channel config: %v", err)
-	}
-
+	// -- Create a webhook channel (config is a JSON object on the wire) --
 	status, env := hs.do("POST", "/api/v1/prism/channels", map[string]any{
-		"name":    "httpapi-webhook",
-		"type":    "webhook",
-		"config":  string(config),
+		"name": "httpapi-webhook",
+		"type": "webhook",
+		"config": map[string]any{
+			"url":     receiver.URL,
+			"timeout": "5s",
+			"headers": map[string]string{"X-Tickraft": "httpapi"},
+		},
 		"enabled": true,
 	}, token)
 	var created struct {
-		ID int64 `json:"id"`
+		ID     int64  `json:"id"`
+		Type   string `json:"type"`
+		Config string `json:"config"`
 	}
 	hs.mustOK(status, env, "create channel", &created)
 	if created.ID == 0 {
@@ -205,28 +297,202 @@ func TestChannelsCRUDAndWebhookTest(t *testing.T) {
 	defer func() {
 		_, _ = hs.do("DELETE", "/api/v1/prism/channels/"+jsonInt64(created.ID), nil, token)
 	}()
+	if !strings.Contains(created.Config, receiver.URL) {
+		t.Fatalf("create channel: config does not carry the receiver url: %s", created.Config)
+	}
 
-	// Test delivers a real webhook to the local receiver.
-	status, env = hs.do("POST", "/api/v1/prism/channels/"+jsonInt64(created.ID)+"/test", nil, token)
-	if status != http.StatusOK {
-		t.Fatalf("test channel: expected 200, got %d code=%d (%s)", status, env.Code, env.Message)
+	// -- Create a telegram channel; reads come back with masked secrets --
+	status, env = hs.do("POST", "/api/v1/prism/channels", map[string]any{
+		"name": "httpapi-telegram",
+		"type": "telegram",
+		"config": map[string]any{
+			"bot_token": "123456:tg-secret-1234",
+			"chat_id":   "-1001234567890",
+			"api_base":  receiver.URL,
+		},
+		"enabled": true,
+	}, token)
+	var ding struct {
+		ID     int64  `json:"id"`
+		Config string `json:"config"`
+	}
+	hs.mustOK(status, env, "create telegram channel", &ding)
+	if ding.ID == 0 {
+		t.Fatal("create telegram channel: no id returned")
+	}
+	defer func() {
+		_, _ = hs.do("DELETE", "/api/v1/prism/channels/"+jsonInt64(ding.ID), nil, token)
+	}()
+
+	var dingCfg map[string]any
+	if err := json.Unmarshal([]byte(ding.Config), &dingCfg); err != nil {
+		t.Fatalf("decode telegram config: %v", err)
+	}
+	maskedSecret, _ := dingCfg["bot_token"].(string)
+	if !strings.HasPrefix(maskedSecret, "****") {
+		t.Fatalf("telegram config bot token is not masked: %q", maskedSecret)
+	}
+
+	// -- Update with the masked secret keeps the stored plaintext --
+	status, env = hs.do("PUT", "/api/v1/prism/channels/"+jsonInt64(ding.ID), map[string]any{
+		"name": "httpapi-telegram-v2",
+		"config": map[string]any{
+			"bot_token": maskedSecret,
+			"chat_id":   "-1001234567890",
+			"api_base":  receiver.URL,
+		},
+	}, token)
+	var updated struct {
+		Name   string `json:"name"`
+		Config string `json:"config"`
+	}
+	hs.mustOK(status, env, "update telegram channel", &updated)
+	if updated.Name != "httpapi-telegram-v2" {
+		t.Fatalf("update telegram channel: name=%q", updated.Name)
+	}
+	if !strings.Contains(updated.Config, "****") {
+		t.Fatalf("update telegram channel: bot token no longer masked: %s", updated.Config)
+	}
+
+	// -- List returns every channel under items (unpaginated) --
+	status, env = hs.do("GET", "/api/v1/prism/channels", nil, token)
+	var list struct {
+		Items []struct {
+			ID   int64  `json:"id"`
+			Type string `json:"type"`
+		} `json:"items"`
+	}
+	hs.mustOK(status, env, "list channels", &list)
+	if len(list.Items) < 2 {
+		t.Fatalf("list channels: expected >=2 items, got %d", len(list.Items))
+	}
+
+	// -- Test dispatch: by saved id and with an inline config --
+	status, env = hs.do("POST", "/api/v1/prism/channels/test", map[string]any{"id": ding.ID}, token)
+	var testOut struct {
+		Status string `json:"status"`
+	}
+	hs.mustOK(status, env, "test channel by id", &testOut)
+	if testOut.Status != "success" {
+		t.Fatalf("test channel by id: status=%q", testOut.Status)
 	}
 	if hits.Load() == 0 {
-		t.Fatal("test channel: webhook receiver was not called")
+		t.Fatal("test channel by id: receiver was not called")
+	}
+	status, env = hs.do("POST", "/api/v1/prism/channels/test", map[string]any{
+		"type":   "webhook",
+		"config": map[string]any{"url": receiver.URL},
+	}, token)
+	hs.mustOK(status, env, "test channel inline", &testOut)
+	if testOut.Status != "success" {
+		t.Fatalf("test channel inline: status=%q", testOut.Status)
 	}
 
-	// Update + list.
-	status, env = hs.do("PUT", "/api/v1/prism/channels/"+jsonInt64(created.ID), map[string]any{
-		"name":    "httpapi-webhook-v2",
-		"type":    "webhook",
-		"config":  string(config),
-		"enabled": false,
-	}, token)
-	if status != http.StatusOK {
-		t.Fatalf("update channel: expected 200, got %d code=%d", status, env.Code)
+	// -- Options projection --
+	status, env = hs.do("GET", "/api/v1/prism/channels/options", nil, token)
+	var options struct {
+		Items []struct {
+			ID   int64  `json:"id"`
+			Type string `json:"type"`
+		} `json:"items"`
 	}
-	pd := hs.listPage(token, "/api/v1/prism/channels?page=1&size=20")
-	if pd.Total < 1 {
-		t.Fatalf("list channels: expected >=1, got %d", pd.Total)
+	hs.mustOK(status, env, "list channel options", &options)
+	found := false
+	for _, opt := range options.Items {
+		if opt.ID == ding.ID {
+			found = opt.Type == "telegram"
+		}
+	}
+	if !found {
+		t.Fatalf("list channel options: telegram channel %d missing", ding.ID)
+	}
+
+	// -- Deliveries: empty before any engine dispatch --
+	if pd := hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10"); pd.Total != 0 {
+		t.Fatalf("list deliveries: expected 0, got %d", pd.Total)
+	}
+
+	// -- Seed a failed delivery and retry it through the live channel --
+	evt := prismalert.Event{
+		Type:      prismalert.TypeLog,
+		Timestamp: time.Now(),
+		Violations: []prismalert.Violation{{
+			Kind:     prismalert.ViolationKindLog,
+			Severity: "warning",
+			Log: &prismalert.LogContext{
+				Keyword: "[httpapi]",
+				Content: "seeded delivery for the retry endpoint",
+			},
+		}},
+	}
+	deliveries := channel.NewDeliveryStore(hs.dbc)
+	if err := deliveries.Record(context.Background(), tracking.DeliveryRecord{
+		Identity: tracking.Identity{
+			ChannelID:   ding.ID,
+			ChannelName: "httpapi-telegram-v2",
+			ChannelType: "telegram",
+		},
+		AlertType:    "log",
+		AlertTitle:   "httpapi retry probe",
+		EventID:      "evt-httpapi-retry-1",
+		Status:       tracking.StatusFailed,
+		Error:        "http 500",
+		ResponseCode: http.StatusInternalServerError,
+		DurationMs:   12,
+		Event:        evt,
+		SentAt:       time.Now(),
+	}); err != nil {
+		t.Fatalf("seed delivery record: %v", err)
+	}
+
+	pd := hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10")
+	if pd.Total != 1 || len(pd.Items) != 1 {
+		t.Fatalf("list deliveries: expected 1 record, got total=%d items=%d", pd.Total, len(pd.Items))
+	}
+	if pd.Items[0]["status"] != "failed" {
+		t.Fatalf("list deliveries: expected failed status, got %v", pd.Items[0]["status"])
+	}
+	deliveryID, _ := pd.Items[0]["id"].(float64)
+	if deliveryID == 0 {
+		t.Fatalf("list deliveries: no id on record: %v", pd.Items[0])
+	}
+
+	status, env = hs.do("POST",
+		"/api/v1/prism/channels/deliveries/"+jsonInt64(int64(deliveryID))+"/retry", nil, token)
+	var retried struct {
+		Status   string `json:"status"`
+		Attempts []struct {
+			N int `json:"n"`
+		} `json:"attempts"`
+	}
+	hs.mustOK(status, env, "retry delivery", &retried)
+	if retried.Status != "success" {
+		t.Fatalf("retry delivery: status=%q", retried.Status)
+	}
+	if len(retried.Attempts) != 2 {
+		t.Fatalf("retry delivery: expected 2 attempts, got %d", len(retried.Attempts))
+	}
+
+	// The per-channel view reflects the retried record.
+	pd = hs.listPage(token, "/api/v1/prism/channels/"+jsonInt64(ding.ID)+"/deliveries?page=1&size=10")
+	if pd.Total != 1 || pd.Items[0]["status"] != "success" {
+		t.Fatalf("channel deliveries: expected 1 success, got total=%d item=%v", pd.Total, pd.Items)
+	}
+
+	// Retrying a successful delivery is refused with a validation error.
+	status, _ = hs.do("POST",
+		"/api/v1/prism/channels/deliveries/"+jsonInt64(int64(deliveryID))+"/retry", nil, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("retry succeeded delivery: expected 400, got %d", status)
+	}
+
+	// -- Delete: gone afterwards --
+	status, _ = hs.do("DELETE", "/api/v1/prism/channels/"+jsonInt64(ding.ID), nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("delete telegram channel: expected 200, got %d", status)
+	}
+	status, _ = hs.do("GET", "/api/v1/prism/channels/"+jsonInt64(ding.ID), nil, token)
+	if status != http.StatusNotFound {
+		t.Fatalf("get deleted channel: expected 404, got %d", status)
 	}
 }

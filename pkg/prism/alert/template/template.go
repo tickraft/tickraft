@@ -40,6 +40,20 @@ const (
 	StyleTechnical = string(i18n.StyleTechnical)
 )
 
+// Network scope constants constrain which network environment a Template
+// serves in private deployments: an intranet template renders the full form
+// (complete fields, detail links) while an extranet template renders the
+// lightweight form for public channels. ScopeBoth — and the empty string —
+// serve every environment.
+const (
+	// ScopeIntranet marks a template for intranet channels.
+	ScopeIntranet = "intranet"
+	// ScopeExtranet marks a template for extranet channels.
+	ScopeExtranet = "extranet"
+	// ScopeBoth marks a template valid for both network scopes.
+	ScopeBoth = "both"
+)
+
 // validAlertTypes is the set of AlertType values a Template may declare.
 var validAlertTypes = map[string]bool{
 	AlertTypeMetric:  true,
@@ -52,6 +66,15 @@ var validStyles = map[string]bool{
 	StyleConcise:   true,
 	StyleDetailed:  true,
 	StyleTechnical: true,
+}
+
+// validNetworkScopes is the set of NetworkScope values a Template may
+// declare. The empty string is accepted and means the same as ScopeBoth.
+var validNetworkScopes = map[string]bool{
+	"":            true,
+	ScopeIntranet: true,
+	ScopeExtranet: true,
+	ScopeBoth:     true,
 }
 
 // Template is a self-contained alert rendering definition. A Template is
@@ -84,6 +107,12 @@ type Template struct {
 	// ChannelHints lists the channels (email/sms/im) the template is
 	// optimized for. This is advisory only; channels may use any template.
 	ChannelHints []string
+	// NetworkScope constrains which network environment the template
+	// serves: ScopeIntranet, ScopeExtranet, or ScopeBoth. The empty string
+	// behaves as ScopeBoth. When a Renderer renders for a specific scope,
+	// a template whose scope does not include it is skipped in favor of the
+	// scoped sibling variant (see ScopedTemplateID).
+	NetworkScope string
 }
 
 // RenderOptions controls how a Renderer renders an [alert.Event].
@@ -98,6 +127,10 @@ type RenderOptions struct {
 	// FrontendBaseURL is the base URL for constructing resource links.
 	// When empty, FormattedMessage.AssetLink is an empty string.
 	FrontendBaseURL string
+	// NetworkScope is the network environment the rendered message targets:
+	// ScopeIntranet, ScopeExtranet, or empty (no scope policy — every
+	// template is eligible and no variant switching happens).
+	NetworkScope string
 }
 
 // Renderer renders an [alert.Event] into an
@@ -120,4 +153,10 @@ func IsValidAlertType(t string) bool {
 // IsValidStyle reports whether s is a recognized Style.
 func IsValidStyle(s string) bool {
 	return validStyles[s]
+}
+
+// IsValidNetworkScope reports whether s is a recognized NetworkScope. The
+// empty string is valid and equivalent to ScopeBoth.
+func IsValidNetworkScope(s string) bool {
+	return validNetworkScopes[s]
 }

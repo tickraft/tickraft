@@ -17,6 +17,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	"github.com/tickraft/tickraft/pkg/api/handler/remediation"
+	statusapi "github.com/tickraft/tickraft/pkg/api/handler/status"
 	systemhandler "github.com/tickraft/tickraft/pkg/api/handler/system"
 	"github.com/tickraft/tickraft/pkg/api/handler/task"
 	"github.com/tickraft/tickraft/pkg/api/handler/telemetry"
@@ -69,6 +70,7 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	registerSystemRoutes(server, cfg, systemH)
 	registerAssetRoutes(server, cfg)
 	registerTelemetryRoutes(server, cfg, telemetryH, executorH)
+	registerStatusRoutes(server, cfg)
 
 	// --- WebSocket realtime push (query-token auth) ---
 	if cfg.wsHandler != nil {
@@ -141,6 +143,28 @@ func registerHealthRoutes(server *api.Server, cfg *routeConfig) {
 	} else {
 		root.GET("/readyz", readyz.DefaultReady)
 	}
+}
+
+// registerStatusRoutes registers the status page routes: the public
+// aggregated view (no auth, 404 when the page is disabled) and the
+// JWT-protected configuration management endpoints. When no status
+// service is injected the group is not registered at all, so deployments
+// without the status page expose neither surface.
+func registerStatusRoutes(server *api.Server, cfg *routeConfig) {
+	if cfg.statusSvc == nil {
+		return
+	}
+	statusH := statusapi.NewHandler(cfg.statusSvc)
+
+	// --- Public status page (no auth) ---
+	root := server.Group("")
+	root.GET("/api/v1/status", statusH.Public)
+
+	// --- Status configuration (JWT required) ---
+	statusGroup := server.Group("/api/v1/status")
+	statusGroup.Use(cfg.jwtMiddleware)
+	statusGroup.GET("/config", middleware.RequirePermission(middleware.ActionRead, "*"), statusH.GetConfig)
+	statusGroup.PUT("/config", middleware.RequirePermission(middleware.ActionWrite, "*"), statusH.UpdateConfig)
 }
 
 // registerAuthRoutes registers the auth module routes: the public login and
@@ -217,6 +241,8 @@ func registerPrismRoutes(server *api.Server, cfg *routeConfig,
 	alertRecordGroup := server.Group("/api/v1/prism/alert/records")
 	alertRecordGroup.Use(cfg.jwtMiddleware)
 	alertRecordGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.ListAlertRecords)
+	alertRecordGroup.GET("/export", middleware.RequirePermission(middleware.ActionRead, "alert"),
+		alertH.ExportAlertRecords)
 	alertRecordGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "alert"), alertH.GetAlertRecord)
 	alertRecordGroup.PUT("/:id/acknowledge", middleware.RequirePermission(middleware.ActionWrite, "alert"),
 		alertH.AcknowledgeAlertRecord)
@@ -236,7 +262,15 @@ func registerPrismRoutes(server *api.Server, cfg *routeConfig,
 		channelGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.CreateChannel)
 		channelGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.UpdateChannel)
 		channelGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), channelH.DeleteChannel)
-		channelGroup.POST("/:id/test", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.TestChannel)
+		channelGroup.POST("/test", middleware.RequirePermission(middleware.ActionWrite, "*"), channelH.TestChannel)
+		channelGroup.GET("/options", middleware.RequirePermission(middleware.ActionRead, "*"),
+			channelH.ListChannelOptions)
+		channelGroup.GET("/deliveries", middleware.RequirePermission(middleware.ActionRead, "*"),
+			channelH.ListAllDeliveries)
+		channelGroup.POST("/deliveries/:id/retry", middleware.RequirePermission(middleware.ActionWrite, "*"),
+			channelH.RetryDelivery)
+		channelGroup.GET("/:id/deliveries", middleware.RequirePermission(middleware.ActionRead, "*"),
+			channelH.ListChannelDeliveries)
 	}
 
 	// --- Remediation rule module (JWT required) ---

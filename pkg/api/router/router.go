@@ -35,6 +35,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/status"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -74,6 +75,7 @@ type registerConfig struct {
 	i18nHandler            *i18n.Handler
 	wsHandler              *wsapi.Handler
 	executorRegistry       *executor.Registry
+	statusService          status.Service
 
 	// apiKeyAuth enables API-key bearer auth alongside JWT. The key lookup
 	// is derived from the auth service with a short-TTL cache.
@@ -183,6 +185,21 @@ func (o executorRegistryOption) apply(c *registerConfig) { c.executorRegistry = 
 // the enumeration endpoints return empty lists.
 func WithExecutorRegistry(reg *executor.Registry) RegisterOption {
 	return executorRegistryOption{reg: reg}
+}
+
+// statusServiceOption provides the status.Service implementation for the
+// status page endpoints.
+type statusServiceOption struct {
+	svc status.Service
+}
+
+func (o statusServiceOption) apply(c *registerConfig) { c.statusService = o.svc }
+
+// WithStatusService provides the status.Service implementation for the
+// public status page and its configuration management endpoints. When
+// omitted, the status route group is not registered.
+func WithStatusService(svc status.Service) RegisterOption {
+	return statusServiceOption{svc: svc}
 }
 
 // telemetryServiceOption provides the telemetry.Service implementation
@@ -462,6 +479,7 @@ func (rc *registerConfig) handlerOptions(
 	appendIf(handler.WithTelemetryProbeRecords(rc.telemetryProbeRecords), rc.telemetryProbeRecords != nil)
 	appendIf(handler.WithAssetHandler(rc.assetHandler), rc.assetHandler != nil)
 	appendIf(handler.WithExecutorRegistry(rc.executorRegistry), rc.executorRegistry != nil)
+	appendIf(handler.WithStatusService(rc.statusService), rc.statusService != nil)
 	appendIf(handler.WithHealthzHandler(rc.healthzHandler), rc.healthzHandler != nil)
 	appendIf(handler.WithReadyHandler(rc.readyzHandler), rc.readyzHandler != nil)
 	appendIf(handler.WithCertificateHandler(rc.certificateHandler), rc.certificateHandler != nil)

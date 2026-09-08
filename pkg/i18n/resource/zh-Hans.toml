@@ -27,6 +27,9 @@
 
 "time.format" = "2006-01-02 15:04:05"
 
+# L0 plain-notification annotation appended next to intranet resource links.
+"notify.link_intranet_hint" = "内网地址"
+
 [alert.metric.title]
 concise = "告警：{{.metric_name}}"
 detailed = "告警：资产 {{.asset_name}} 的 {{.metric_name}} 超过阈值"

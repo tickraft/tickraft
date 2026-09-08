@@ -38,6 +38,9 @@ type RecordStore interface {
 	// GetByID retrieves an alert record by its ID. Returns errdefs.ErrNotFound
 	// when no record with the given ID exists.
 	GetByID(ctx context.Context, id int64) (*Record, error)
+	// FindByEventID returns all alert records sharing the dispatch-assigned
+	// event ID, ordered by ascending ID. An empty eventID returns no rows.
+	FindByEventID(ctx context.Context, eventID string) ([]*Record, error)
 	// List returns a page of alert records matching the filter, ordered by
 	// descending ID, plus the total count. page starts at 1; size is the
 	// maximum number of items. A zero-value filter returns all records.

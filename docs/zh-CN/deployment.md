@@ -109,6 +109,30 @@ services:
 
 全局中间件（RequestID → AccessLog → Recovery → CORS → TrustedProxy）在每条路径上都会执行；路由组中间件则按前缀分别挂载。
 
+## 摄取 Prometheus exposition 格式
+
+`POST /api/v1/telemetry` 同时接受 Prometheus 文本 exposition 格式（Content-Type `text/plain; version=0.0.4; charset=utf-8`），任何能产出 `.prom` 文件的程序都无需 JSON 包装即可上报指标。鉴权与身份沿用与 JSON 上报相同的模型：
+
+- **签名**（推荐）：`X-Tickraft-Signature` 携带原始请求体的十六进制 HMAC-SHA256，使用全局密钥或按监控点密钥签名；按点密钥匹配时报告同时绑定到该点所属资产。
+- **查询串携带资产身份**：`?asset_id=<id>` 或 `?asset_key=<key>&tenant_id=<id>`，在无签名凭据时使用。
+
+序列会拍平进指标映射：标签折叠进键名（`http_requests_total{code="200",method="get"}`），直方图/摘要展开为 `_sum`、`_count`、`_bucket{le="..."}` 与 `{quantile="..."}` 序列。每次推送按一个事件计入每日配额，单次上限 64 KiB。
+
+```bash
+curl -X POST "http://localhost:6153/api/v1/telemetry?asset_id=1" \
+  -H 'Content-Type: text/plain; version=0.0.4; charset=utf-8' \
+  -H "X-Tickraft-Signature: $(openssl dgst -sha256 -hmac "$SECRET" -hex < metrics.prom | cut -d' ' -f2)" \
+  --data-binary @metrics.prom
+```
+
+### node_exporter textfile 桥接
+
+一行 cron 即可转发 node_exporter textfile 采集目录中的全部文件：
+
+```cron
+* * * * * cat /var/lib/node_exporter/textfile_collector/*.prom > /tmp/all.prom && curl -s -X POST "http://tickraft:6153/api/v1/telemetry?asset_id=1" -H 'Content-Type: text/plain; version=0.0.4' -H "X-Tickraft-Signature: $(openssl dgst -sha256 -hmac \"$SECRET\" -hex < /tmp/all.prom | cut -d' ' -f2)" --data-binary @/tmp/all.prom
+```
+
 ## 系统要求
 
 - **操作系统**：Linux、macOS 或 Windows。

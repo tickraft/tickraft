@@ -22,6 +22,10 @@ const (
 	// ExecutorTCP identifies the executor that probes TCP port
 	// connectivity and measures connection latency.
 	ExecutorTCP ExecutorType = "tcp"
+	// ExecutorMQTTProbe identifies the executor that connects to an MQTT
+	// server, subscribes to a topic, and waits for a message within a
+	// configurable window, optionally matching the payload.
+	ExecutorMQTTProbe ExecutorType = "mqtt_probe"
 	// ExecutorICMP identifies the executor that sends ICMP echo requests
 	// to measure reachability and round-trip time.
 	ExecutorICMP ExecutorType = "icmp"

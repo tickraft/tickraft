@@ -1,0 +1,39 @@
+{
+  "public": {
+    "title": "服务状态",
+    "loading": "正在加载状态…",
+    "unavailableTitle": "状态页暂不可用",
+    "unavailableDesc": "状态页未发布或暂时无法访问。",
+    "lastChecked": "最后检查：{time}",
+    "updatedAt": "更新于 {time}",
+    "neverChecked": "暂无数据"
+  },
+  "level": {
+    "operational": "运行正常",
+    "degraded": "性能降级",
+    "partial_outage": "部分中断",
+    "major_outage": "严重故障",
+    "unknown": "未知"
+  },
+  "settings": {
+    "title": "状态页设置",
+    "viewPublic": "查看公开页",
+    "fieldTitle": "页面标题",
+    "fieldTitlePlaceholder": "例如：XX 服务状态",
+    "fieldDescription": "页面描述",
+    "fieldDescriptionPlaceholder": "展示在标题下方的说明文字（可选）",
+    "fieldEnabled": "发布状态页",
+    "fieldEnabledHelp": "开启后，未登录访客可通过 /status 查看聚合状态。",
+    "components": "组件映射",
+    "componentsHelp": "将监控点聚合为公开的组件条目；留空则自动为每个启用的监控点生成一个组件。监控点 ID 可在监测中心的监控点列表中查看。",
+    "addComponent": "添加组件",
+    "removeComponent": "删除组件",
+    "componentName": "组件名称",
+    "componentDescription": "组件描述（可选）",
+    "componentPoints": "监控点 ID，逗号分隔",
+    "noComponents": "暂无组件，保存后将自动按监控点生成",
+    "saved": "状态页配置已保存",
+    "saveFailed": "保存失败",
+    "loadFailed": "加载配置失败"
+  }
+}

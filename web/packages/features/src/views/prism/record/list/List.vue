@@ -13,6 +13,7 @@ import {
   getAlertRecords,
   acknowledgeAlertRecord,
   resolveAlertRecord,
+  exportAlertRecords,
 } from '../../../../api/prism'
 import type { AlertRecord, AlertSeverity } from '../../../../api/prism'
 import { SEVERITY_TAG_TYPE, parseDate } from '../../constants'
@@ -23,6 +24,9 @@ const { t } = useI18n()
 
 /** Track which record is being acknowledged/resolved (for button loading state) */
 const actionLoadingId = ref<number | null>(null)
+
+/** CSV export in flight */
+const exporting = ref(false)
 
 /** Safely resolve the el-tag type for a severity string */
 function severityTagType(severity: string | undefined): 'danger' | 'warning' | 'info' {
@@ -182,9 +186,26 @@ function handleRefresh(): void {
   ElMessage.success(t('prism.record.list.refreshed'))
 }
 
-/** Export (placeholder) */
-function handleExport(): void {
-  ElMessage.info(t('prism.record.list.exportTip'))
+/** Export the filtered records as CSV (server-side streaming download) */
+async function handleExport(): Promise<void> {
+  exporting.value = true
+  try {
+    const blob = await exportAlertRecords({
+      severity: (searchModel.severity as string) || undefined,
+      status: (searchModel.status as string) || undefined,
+    })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `alert-records-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(t('prism.record.list.exported'))
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    exporting.value = false
+  }
 }
 
 /** Click search: trigger query with current filters */
@@ -219,7 +240,10 @@ onMounted(() => {
         <el-button @click="handleRefresh">
           {{ t('prism.record.list.refresh') }}
         </el-button>
-        <el-button @click="handleExport">
+        <el-button
+          :loading="exporting"
+          @click="handleExport"
+        >
           {{ t('prism.record.list.export') }}
         </el-button>
       </template>

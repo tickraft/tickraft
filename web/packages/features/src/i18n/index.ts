@@ -14,6 +14,7 @@ import zhHansSystem from './locales/zh-Hans/system.json'
 import zhHansMenu from './locales/zh-Hans/menu.json'
 import zhHansDashboard from './locales/zh-Hans/dashboard.json'
 import zhHansAsset from './locales/zh-Hans/asset.json'
+import zhHansStatus from './locales/zh-Hans/status.json'
 
 // en-US business locale packs
 import enUSAuth from './locales/en-US/auth.json'
@@ -24,6 +25,7 @@ import enUSSystem from './locales/en-US/system.json'
 import enUSMenu from './locales/en-US/menu.json'
 import enUSDashboard from './locales/en-US/dashboard.json'
 import enUSAsset from './locales/en-US/asset.json'
+import enUSStatus from './locales/en-US/status.json'
 
 /**
  * Open-source base locale packs.
@@ -43,6 +45,7 @@ export const baseMessages = {
     system: zhHansSystem,
     menu: zhHansMenu,
     dashboard: zhHansDashboard,
+    status: zhHansStatus,
   },
   'en-US': {
     common: common['en-US'],
@@ -54,5 +57,6 @@ export const baseMessages = {
     system: enUSSystem,
     menu: enUSMenu,
     dashboard: enUSDashboard,
+    status: enUSStatus,
   },
 } as Messages

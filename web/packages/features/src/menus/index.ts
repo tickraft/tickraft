@@ -68,6 +68,7 @@ export const baseMenus: readonly MenuItem[] = [
     icon: 'Setting',
     children: [
       { path: '/system/settings/general', title: 'menu.system.basic' },
+      { path: '/system/status', title: 'menu.system.status' },
       { path: '/system/api-keys/list', title: 'system.apiKeys.title' },
       { path: '/system/info/overview', title: 'menu.system.info' },
     ],

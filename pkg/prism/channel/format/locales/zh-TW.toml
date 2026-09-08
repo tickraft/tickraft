@@ -1,0 +1,43 @@
+# Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Dual-licensed — see LICENSE for details.
+
+# Pro channel-specific i18n keys for Traditional Chinese.
+
+[feishu]
+card_footer = "Tickraft 告警系統"
+card_header_template = "告警通知"
+button_view_detail = "查看詳情"
+button_acknowledge = "確認告警"
+
+[discord]
+embed_footer = "由 Tickraft 驅動"
+embed_color_warning = "F39C12"
+embed_color_critical = "E74C3C"
+embed_color_info = "3498DB"
+
+[telegram]
+bold_marker = "*"
+code_marker = "`"
+link_template = "[{{.text}}]({{.url}})"
+
+[slack]
+section_field_label = "告警詳情"
+header_text = "告警通知"
+footer_text = "Tickraft 告警系統"
+
+[teams]
+summary = "Tickraft 告警通知"
+title = "告警"
+
+[dingtalk]
+title = "告警通知"
+footer = "Tickraft 告警系統"
+
+[wecom]
+title = "告警通知"
+emphasis_content_label = "數值"
+
+[sms]
+prefix = "[Tickraft]"
+suffix = "回覆 STOP 退訂"
