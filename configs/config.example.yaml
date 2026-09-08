@@ -44,6 +44,43 @@ server:
   # token blacklist entries).
   maintenance_interval: "5m"
 
+  # TLS termination. When tls_enabled is true the server serves HTTPS on
+  # addr. Certificates come either from static PEM files below or from the
+  # ACME manager. The certificate is hot-reloaded when the files change on
+  # disk; no restart is required.
+  tls_enabled: false
+  # PEM-encoded server certificate and private key. Required when
+  # tls_enabled is true and ACME is disabled.
+  # tls_cert_file: "/etc/tickraft/tls/server.crt"
+  # tls_key_file: "/etc/tickraft/tls/server.key"
+  # Minimum TLS version: "1.2" (default) or "1.3".
+  tls_min_version: "1.2"
+  # Cipher-suite whitelist. Empty applies the built-in default whitelist.
+  # tls_cipher_suites: []
+  # Mutual TLS: PEM-encoded client CA certificate. Empty disables client
+  # certificate verification.
+  # tls_client_ca_file: "/etc/tickraft/tls/client-ca.crt"
+  # Client authentication mode: "", "request", "require", "verify-if-given",
+  # or "require-verify".
+  tls_client_auth: ""
+
+  # ACME automatic certificate issuance and renewal (e.g. Let's Encrypt).
+  # When enabled, certificates are obtained for the listed domains instead
+  # of reading tls_cert_file/tls_key_file. The open-source edition serves
+  # the HTTP-01 challenge on the same single port as the API.
+  acme:
+    enabled: false
+    # ACME directory URL. Empty defaults to the Let's Encrypt production
+    # endpoint; use a staging URL while testing issuance.
+    # directory_url: "https://acme-v02.api.letsencrypt.org/directory"
+    # Registration email. Required when enabled.
+    # email: "ops@example.com"
+    # Challenge type: "http-01" (default) or "dns-01" (extended edition).
+    challenge_type: "http-01"
+    # Domains to obtain certificates for. At least one when enabled.
+    # domains:
+    #   - "status.example.com"
+
 # ---------------------------------------------------------------------------
 # Worker: worker process runtime parameters.
 # ---------------------------------------------------------------------------

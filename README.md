@@ -39,11 +39,11 @@ This repository is the open-source edition of Tickraft, licensed under an AGPLv3
 
 - **Local** — run shell commands or scripts
 - **Webhook** — call external HTTP endpoints
-- **HTTP / TCP / ICMP probers** — availability and latency checks
+- **HTTP / TCP / ICMP / MQTT probers** — availability and latency checks (HTTP is dual-mode: probe endpoints or run as a task action)
 
 ### 📡 Active & passive monitoring
 
-- Active probing (ICMP ping, TCP port, HTTP) on any schedule, with built-in templates (`icmp-ping`, `http-homepage`, `https-api`, `tcp-database`)
+- Active probing (ICMP ping, TCP port, HTTP, MQTT CONNECT) on any schedule, with built-in templates (`icmp-ping`, `http-homepage`, `https-api`, `tcp-database`)
 - Passive ingestion endpoint `POST /api/v1/telemetry` for agents and scripts, authenticated by HMAC-SHA256 signature or asset key
 - Tumbling-window aggregation (avg / max / min / count / sum) before persistence; metrics, logs, and heartbeats all supported
 - Monitor-point status history and trend charts in the UI
@@ -70,7 +70,7 @@ This repository is the open-source edition of Tickraft, licensed under an AGPLv3
 ### 🔐 Security
 
 - JWT access/refresh tokens with revocation, API keys (hashed, revocable, cached)
-- TOTP multi-factor authentication, must-change-password flow
+- Must-change-password flow for first login; TOTP multi-factor authentication is an extended-edition capability (the kernel ships the `pkg/auth/totp` building block)
 - Role-based access control: Admin / Developer / Visitor
 - TLS with hot reload, plus ACME (Let's Encrypt) HTTP-01 automation and a `cert selfsign` command
 
@@ -78,7 +78,7 @@ This repository is the open-source edition of Tickraft, licensed under an AGPLv3
 
 - WebSocket endpoint streaming system events in real time
 - ~80 REST endpoints under `/api/v1`, with an OpenAPI description in [docs/api/openapi.yaml](docs/api/openapi.yaml)
-- Strongly typed in-process event bus (20+ event types) with failed-event persistence for replay
+- Strongly typed in-process event bus (20+ event types) with failed-event persistence for post-mortem inspection
 - i18n API serving the embedded locale bundles
 - Written in Go 1.26 (Hertz, GORM, expr-lang, cobra, zap) with a Vue 3 + TypeScript + Element Plus + ECharts frontend
 

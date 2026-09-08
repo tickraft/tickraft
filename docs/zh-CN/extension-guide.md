@@ -33,14 +33,13 @@ Tickraft 采用"开源内核 + 下游扩展"的布局：
 
 ## SPI 全景
 
-| # | Extension point | Kernel package   | Registration entry                              | Purpose                                        |
-|---|-----------------|------------------|-------------------------------------------------|------------------------------------------------|
-| 1 | Executor        | `pkg/executor`   | `Registry.Register`                             | 自定义任务 executor（例如 SSH、MySQL）。       |
-| 2 | Channel         | `pkg/prism/channel` | `channel.Register`                           | 自定义告警通知渠道。                            |
-| 3 | Telemetry       | `pkg/telemetry`  | `ListenerRegistry.Register` / `ProcessorRegistry.Register` | 被动 listener 与数据 processor。 |
-| 4 | API plugin      | `pkg/api`        | `Server.RegisterPlugin`                         | 自定义路由、中间件、生命周期钩子。              |
-| 5 | CLI subcommand  | `pkg/cli`        | `cli.RegisterCmd`                               | 自定义 CLI 子命令。                             |
-| 6 | Storage driver  | `pkg/db`         | `db.Register`                                   | 自定义数据库驱动。                              |
+| # | Extension point | Kernel package | Registration entry | Purpose |
+|---|-----------------|---------------------|-----------------------------------------------|------------------------------------------------------|
+| 1 | Executor        | `pkg/executor`      | `Registry.Register`                           | 自定义任务 executor 与探测器。                      |
+| 2 | Channel type    | `pkg/prism/channel` | `channel.RegisterType`                        | 自定义告警通知渠道类型。                            |
+| 3 | Telemetry       | `pkg/telemetry`     | `ListenerRegistry.RegisterProtocol` / `ProcessorRegistry.Register` | 被动协议 listener 与数据 processor。 |
+| 4 | API plugin      | `pkg/api`           | `Server.RegisterPlugin`                       | 自定义路由、中间件、生命周期钩子。         |
+| 5 | Storage driver  | `pkg/db`            | `db.Register`                                 | 自定义数据库驱动。                            |
 
 > 鉴权扩展（SSO provider、权限校验器、租户解析器）同样作为 SPI 暴露在 `pkg/auth` 中，供需要多租户或 SSO 能力的下游仓库使用。开源版默认提供单租户、单管理员实现。
 
@@ -48,27 +47,29 @@ Tickraft 采用"开源内核 + 下游扩展"的布局：
 
 ## Executor 扩展
 
-注入自定义任务 executor，使 scheduler 能够触发扩展的任务类型。开源版内置 `local`、`webhook`、`http`、`tcp`、`icmp`、`udp` 与 `dns` executor。
+注入自定义任务 executor，使 scheduler 能够触发扩展的任务类型。开源版内置 `local`、`webhook`、`http`、`tcp`、`icmp` 与 `mqtt_probe` executor。
 
 **内核包**：`pkg/executor` · **注册方式**：`Registry.Register(&MyExecutor{})`
 
-实现 `Executor` 接口（`Type()`、`Category()`、`Role()`、`Execute()`），并在 runner 启动前注册。当 `Type()` 重复时，`Registry.Register` 会返回错误。
+实现 `Executor` 接口 —— `Name()`（唯一的类型标识）、`Capabilities()`（`CapProbe`/`CapExec` 能力位掩码；创建任务时会拒绝无写能力的类型，创建主动探测点会拒绝无探测能力的类型）、`Execute(ctx, ExecutionRequest)`。当 `Name()` 重复时，`Registry.Register` 会返回错误。
 
 ```go
 package myssh
 
 type Executor struct{}
 
-func (e *Executor) Type() string                { return "ssh" }
-func (e *Executor) Role() executor.Role         { return executor.RoleActuator }
+func (e *Executor) Name() string { return "ssh" }
+func (e *Executor) Capabilities() executor.Capability {
+    return executor.CapProbe | executor.CapExec
+}
 func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (*executor.Result, error) {
     // parse req.ExecutorConfig, run the SSH command, return the result
-    return &executor.Result{Status: 0, Body: output}, nil
+    return &executor.Result{ /* ... */ }, nil
 }
 ```
 
 ```go
-// in main()
+// in main(), before the runner starts
 execRegistry.Register(&myssh.Executor{})
 ```
 
@@ -76,45 +77,59 @@ execRegistry.Register(&myssh.Executor{})
 
 ## Channel 扩展
 
-注入自定义告警通知 channel。开源版内置 `webhook` channel。
+注入自定义告警通知渠道类型。渠道实例是 `sys_prism_channel` 表中的行；你的类型定义该行 config JSON 到运行时发送器的构造方式。
 
-**内核包**：`pkg/prism/channel` · **注册方式**：`channel.Register("slack", factory)`
+**内核包**：`pkg/prism/channel` · **注册方式**：`channel.RegisterType("sms", info)`
 
-实现一个 `ChannelFactory`，读取 `channel.Config` 并返回 `alert.Channel`（`Name()`、`Send()`）。类型名不区分大小写；后注册的会覆盖先注册的，因此下游仓库可以替换内置的 `webhook`。需在 `LoadChannels` 调用前注册。
+提供 `TypeInfo`：`Build` 将行内 config JSON 加 `BuildOptions` 构造为 `alert.Channel`（`Name()`、`Send(ctx, Event)`）；`Validate`（可选）在 API 边界校验 config JSON；`SensitiveKeys` 声明类型专属的需静态加密并在响应中掩码的配置键；`TypeGuard`（可选）按请求上下文对类型鉴权（授权/特性钩子）。类型名不区分大小写；后注册的会覆盖先注册的，因此下游仓库可以替换内置类型。开源版装配根注册 `webhook`、`email` 与七个 IM 渠道（`dingtalk`、`discord`、`feishu`、`slack`、`teams`、`telegram`、`wecom`）。
 
 ```go
-func factory(cfg channel.Config) (alert.Channel, error) {
-    return &SlackChannel{webhookURL: cfg.URL}, nil
+func build(configJSON string, opts channel.BuildOptions) (alert.Channel, error) {
+    var cfg smsConfig
+    if err := sonic.UnmarshalString(configJSON, &cfg); err != nil {
+        return nil, err
+    }
+    return &SMSChannel{cfg: cfg}, nil
 }
-```
 
-```go
-// in main(), before LoadChannels
-channel.Register("slack", factory)
+func validate(configJSON string) error {
+    var cfg smsConfig
+    return sonic.UnmarshalString(configJSON, &cfg) // plus field checks
+}
+
+// in main(), before the channel service loads rows
+channel.RegisterType("sms", channel.TypeInfo{
+    Build:         build,
+    Validate:      validate,
+    SensitiveKeys: []string{"apikey"},
+})
 ```
 
 ---
 
 ## Telemetry 扩展
 
-注入被动 listener（例如 Syslog、SNMP trap、MQTT）与数据 processor。开源版内置 HTTP listener 与设备/任务 processor。
+注入被动协议 listener（例如 Syslog、SNMP、MQTT）与数据 processor。开源版不内置任何 `ProtocolListener` 实现 —— 其被动接收走 HTTP 上报端点 —— 并内置 `device` 与 `task` 两个 processor。
 
-**内核包**：`pkg/telemetry` · **注册方式**：`ListenerRegistry.Register` / `ProcessorRegistry.Register`
+**内核包**：`pkg/telemetry` · **注册方式**：`listenerRegistry.RegisterProtocol(l)` / `processorRegistry.Register(p)`
 
-`Listener`（`Type()`、`Start()`、`Stop()`）接收外部数据并转发给接收回调。`Processor`（`Type()`、`Process()`、`OnTimeout()`）处理特定的资产类型。`Type()` 重复注册会返回错误。registry 由 telemetry manager 构造并注入到下游仓库。
+`ProtocolListener`（`Type()`、`Start(ctx, ingest)`、`Stop(ctx)`）自建协议 socket 并对每条收到的消息调用 ingest 回调；`Type` 与该 listener 匹配的被动监控点承载其配置。`Processor`（`Type() types.AssetType`、`Process(ctx, *Telemetry)`、`OnTimeout(ctx, assetID)`）处理一种资产类型的接收生命周期。两个 registry 都拒绝 `Type()` 重复注册。registry 由装配层构造并传入 telemetry 引擎；下游仓库经自己的接线获得它们。
 
 ```go
 type SyslogListener struct{}
+
 func (l *SyslogListener) Type() string { return "syslog" }
 func (l *SyslogListener) Start(ctx context.Context, ingest func(context.Context, *telemetry.Telemetry)) error {
-    // start syslog server, call ingest(ctx, &report) for each message
+    // bind the syslog socket; for each received message call
+    // ingest(ctx, &telemetry.Telemetry{ /* ... */ })
     return nil
 }
+func (l *SyslogListener) Stop(ctx context.Context) error { return nil }
 ```
 
 ```go
-// in main()
-listenerRegistry.Register(&SyslogListener{})
+// in main(), before the telemetry engine starts
+listenerRegistry.RegisterProtocol(&SyslogListener{})
 ```
 
 ---
@@ -129,11 +144,15 @@ listenerRegistry.Register(&SyslogListener{})
 
 ```go
 type Plugin struct{}
+
 func (p *Plugin) Name() string { return "my-plugin" }
-func (p *Plugin) RegisterRoutes(root *pkgapi.RouterGroup) {
+func (p *Plugin) RegisterRoutes(root *api.RouterGroup) {
     g := root.Group("/api/v1/my")
     g.GET("/status", p.status)
 }
+func (p *Plugin) Middlewares() []app.HandlerFunc { return nil }
+func (p *Plugin) OnStart(ctx context.Context) error { return nil }
+func (p *Plugin) OnStop(ctx context.Context) error  { return nil }
 ```
 
 ```go
@@ -143,35 +162,9 @@ server.RegisterPlugin(&Plugin{})
 
 ---
 
-## CLI 子命令扩展
-
-注入自定义 CLI 子命令，使下游二进制可在开源子命令旁挂载扩展命令。
-
-**内核包**：`pkg/cli` · **注册方式**：`cli.RegisterCmd(cmd)`
-
-构建一个 `*cobra.Command`，并在根命令构造之前注册。内核根命令会调用 `cli.GetRegisteredCmds()` 聚合所有已注册的子命令。建议在 `main()` 中显式调用注册函数，而非依赖 `init()` 的副作用。
-
-```go
-func NewActivateCmd() *cobra.Command {
-    return &cobra.Command{
-        Use:   "activate <key>",
-        Short: "Activate a license key",
-        Args:  cobra.ExactArgs(1),
-        RunE: func(cmd *cobra.Command, args []string) error { /* ... */ return nil },
-    }
-}
-```
-
-```go
-// in main(), before root command construction
-cli.RegisterCmd(NewActivateCmd())
-```
-
----
-
 ## 存储驱动扩展
 
-注入自定义数据库驱动，使下游仓库可使用内核未提供的后端。开源版内置 SQLite 驱动。
+注入自定义数据库驱动，使下游仓库可使用内核未提供的后端。开源版内置 SQLite 驱动；下游版本通过同一入口注册 MySQL 与 PostgreSQL。
 
 **内核包**：`pkg/db` · **注册方式**：`db.Register("oracle", opener)`
 
@@ -196,13 +189,12 @@ db.Register("oracle", Opener)
 
 1. **存储驱动** — 使 `db.Open` 能够解析到该驱动。
 2. **鉴权扩展** — 使鉴权服务与权限中间件在 API 启动时能感知到下游 provider。
-3. **Channel factory** — 使 `LoadChannels` 在配置加载阶段能找到它们。
+3. **Channel 类型** — 使渠道服务加载 `sys_prism_channel` 行时能找到它们。
 4. **Executor** — 使 runner 能够调度扩展的任务类型。
-5. **Telemetry listener / processor** — 使 telemetry manager 能够启动它们。
-6. **CLI 子命令** — 在根命令构造之前。
-7. **API plugin** — 在 `Server.Start()` 之前，以便路由与钩子就位。
+5. **Telemetry listener / processor** — 使 telemetry 引擎能够启动它们。
+6. **API plugin** — 在 `Server.Start()` 之前，以便路由与钩子就位。
 
-> 内核的 `main.go` 是权威的组装示例；本指南仅概述顺序约束。
+> 内核的 `internal/service` 装配层是权威的组装示例；本指南仅概述顺序约束。
 
 ## 相关文档
 

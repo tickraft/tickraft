@@ -62,6 +62,8 @@ make docker
 
 ### Run a container
 
+Run the image you just built (same as the [README](../README.md) quick start):
+
 ```bash
 docker run -d \
   --name tickraft \
@@ -70,8 +72,10 @@ docker run -d \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -e TICKRAFT_JWT_SECRET="your-secret-key" \
   -e TICKRAFT_ADMIN_PASSWORD="your-admin-password" \
-  ghcr.io/tickraft/tickraft-ce:latest start --config /app/config.yaml
+  tickraft-ce:latest start --config /app/config.yaml
 ```
+
+Release builds are published to `ghcr.io/tickraft/tickraft-ce` by the release pipeline; substitute that image tag to run a published build instead of a local one.
 
 ### docker-compose
 
@@ -79,7 +83,7 @@ docker run -d \
 version: '3'
 services:
   tickraft:
-    image: ghcr.io/tickraft/tickraft-ce:latest
+    image: tickraft-ce:latest
     command: ["start", "--config", "/app/config.yaml"]
     ports:
       - "6153:6153"

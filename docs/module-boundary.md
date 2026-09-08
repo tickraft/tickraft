@@ -46,24 +46,24 @@ The telemetry module subscribes to no scheduler event, which guarantees it can r
 
 A downstream repository imports public types from `pkg/` and registers its implementations through the SPI registries documented in the [Extension guide](./extension-guide.md). It must not modify kernel source files. When the kernel does not find a registered implementation, it falls back to an open-source default so the kernel always runs standalone.
 
-## HTTP Handler 归属：分层双轨
+## HTTP handler ownership: a two-track layering
 
-全工作区 HTTP handler 归属遵循 Go `pkg/`（公共库）与 `internal/`（私有应用）的原生语义分层：
+HTTP handler ownership follows the native Go semantics of `pkg/` (public library) versus `internal/` (private application):
 
-### pkg/ 公共库层 → 集中式
+### `pkg/` public layer → centralised
 
-- 所有 HTTP handler 统一在 `pkg/api/handler/`；中间件统一在 `pkg/api/middleware/`；路由组合根统一在 `pkg/api/router`（`RegisterRoutes` + `RegisterOption` 选项集）。
-- 业务包（`pkg/auth`、`pkg/task`、`pkg/prism/*`、`pkg/asset`、`pkg/executor` 等）禁止 import `cloudwego/hertz`、`net/http`。
-- 豁免：仅引用 `net/http` 的 `http.Status*` 状态码常量（用于 `errdefs.ServiceError` 构造错误映射）不算传输层耦合，允许导入；除此之外的任何使用（`http.Request`/`http.ResponseWriter`/`http.Client` 等）仍被禁止。
-- 理由：`pkg/` 被跨仓导入（atlas / tickraft-x 均 import tickraft/pkg/*），必须传输层无关、可独立单测；状态码常量是纯量值，不引入对传输类型的依赖。
+- All shared HTTP handlers live under `pkg/api/handler/`, middleware under `pkg/api/middleware/`, and the routing composition root in `pkg/api/router` (`RegisterRoutes` plus the `RegisterOption` option set).
+- Business packages (`pkg/auth`, `pkg/task`, `pkg/prism/*`, `pkg/asset`, `pkg/executor`, …) must not import `cloudwego/hertz` or `net/http`.
+- Exemption: referencing only the `http.Status*` status-code constants of `net/http` (for the `errdefs.ServiceError` error mapping) is not transport coupling and is allowed; any other use (`http.Request`, `http.ResponseWriter`, `http.Client`, …) remains forbidden.
+- Rationale: `pkg/` is imported across repositories (downstream repositories import `tickraft/pkg/*`), so it must stay transport-agnostic and independently unit-testable; status-code constants are pure values that introduce no transport-type dependency.
 
-### internal/ 应用层 → 分布式 package-by-feature
+### `internal/` application layer → distributed package-by-feature
 
-- 每个业务包内 `handler.go` + `routes.go` 高内聚，handler 直接调用同包 Service。
-- 版次特有的路由（插件、许可等）留在各仓 `internal/`，通过 `RegisterOption` 注入共享组合根；本仓 `internal/` 只做装配（cli / service / quota / web），不设独立 router。
-- 理由：`internal/` 外部不可导入，高内聚 > 传输层解耦；这是 atlas / atrium / arcadia / axiom / tickraft-x 的既成惯例。
+- Each application package keeps `handler.go` + `routes.go` cohesive, with handlers calling the same package's service directly.
+- Edition-specific routes (plugins, licensing, …) stay in each repository's `internal/` tree and are injected into the shared composition root via `RegisterOption`; this repository's `internal/` only assembles (cli / service / quota / web) and defines no separate router.
+- Rationale: `internal/` cannot be imported externally, so cohesion outweighs transport decoupling.
 
-分层判定（两仓都用→pkg、仅单仓→internal、版次差异→注入缝）与新增包决策树、死代码处置流程见 [Architecture](./architecture.md)。
+For the layering decision rule (both repositories → `pkg/`, one repository → `internal/`, edition differences → an injection seam), the new-package decision tree, and the dead-code disposal flow, see [Architecture](./architecture.md).
 
 ## Related documents
 

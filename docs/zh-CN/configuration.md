@@ -54,6 +54,34 @@ auth:
 | `write_timeout`       | duration | `0s`      | 写入超时前的最长耗时。`0s` = 不超时；生产环境建议显式配置（如 `30s`）。   |
 | `maintenance_interval` | duration | `5m`      | 后台维护扫描之间的间隔（例如清理过期 token 黑名单条目）。          |
 
+#### TLS 终止
+
+`server.tls_enabled` 为 `true` 时，服务器在 `server.addr` 上提供 HTTPS。证书来源二选一：静态 PEM 文件，或 ACME 开启时由 ACME 管理器自动签发。静态证书支持热重载：文件在磁盘上变化后服务器无需重启即可加载新证书对，适合通过符号链接切换的证书轮换流程。
+
+| 字段                | 类型       | 默认值 | 说明                                                      |
+|----------------------|------------|---------|------------------------------------------------------------------|
+| `tls_enabled`        | bool       | `false` | 是否启用 TLS 终止。`false` 时提供明文 HTTP。                |
+| `tls_cert_file`      | string     | —       | PEM 编码的服务器证书。TLS 开启且 ACME 关闭时必填。 |
+| `tls_key_file`       | string     | —       | PEM 编码的服务器私钥。TLS 开启且 ACME 关闭时必填。 |
+| `tls_min_version`    | string     | `1.2`   | 最低 TLS 版本：`1.2` 或 `1.3`。                             |
+| `tls_cipher_suites`  | []string   | 内置白名单 | 密码套件白名单。留空使用内置默认集合。 |
+| `tls_client_ca_file` | string     | —       | 双向 TLS 用的 PEM 编码客户端 CA 证书。留空则不校验客户端证书。 |
+| `tls_client_auth`    | string     | `""`    | 客户端认证模式：`""`、`request`、`require`、`verify-if-given`、`require-verify`。 |
+
+#### ACME（自动证书）
+
+`server.acme` 配置通过 ACME 协议（如 Let's Encrypt）自动签发与续期证书，作为静态 PEM 文件的替代方案。开源版的 HTTP-01 挑战与 API 同端口提供；DNS-01 由扩展版经扩展接口提供。
+
+| 字段             | 类型     | 默认值 | 说明                                                      |
+|-------------------|----------|---------|------------------------------------------------------------------|
+| `enabled`         | bool     | `false` | 是否启用 ACME 签发。                                             |
+| `directory_url`   | string   | Let's Encrypt 生产端点 | ACME 目录 URL。测试签发时请指向 staging 目录。 |
+| `email`           | string   | —       | 注册邮箱。启用时必填。                        |
+| `challenge_type`  | string   | `http-01` | `http-01` 或 `dns-01`（扩展版）。                       |
+| `domains`         | []string | —       | 需要签发证书的域名。启用时至少一个。    |
+
+自签名证书替代 ACME 的方案见 `tickraft cert selfsign`（见部署指南）。
+
 ### `worker` —— worker 运行时
 
 worker 是一种统一的部署模式。它始终在进程内同时启动 scheduler、executor 和 telemetry；无需任何角色参数，也不会绑定额外端口。

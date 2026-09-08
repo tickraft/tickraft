@@ -49,6 +49,26 @@ telemetry 不订阅任何 scheduler 事件，这保证了它可以独立运行�
 
 下游仓库从 `pkg/` 导入公开类型，并通过 [扩展指南](./extension-guide.md) 中记录的 SPI 注册表注册其实现。它不得修改内核源文件。当内核找不到已注册的实现时，会回退到开源默认实现，因此内核始终可以独立运行。
 
+## HTTP Handler 归属：分层双轨
+
+全工作区 HTTP handler 归属遵循 Go `pkg/`（公共库）与 `internal/`（私有应用）的原生语义分层：
+
+### pkg/ 公共库层 → 集中式
+
+- 所有 HTTP handler 统一在 `pkg/api/handler/`；中间件统一在 `pkg/api/middleware/`；路由组合根统一在 `pkg/api/router`（`RegisterRoutes` + `RegisterOption` 选项集）。
+- 业务包（`pkg/auth`、`pkg/task`、`pkg/prism/*`、`pkg/asset`、`pkg/executor` 等）禁止 import `cloudwego/hertz`、`net/http`。
+- 豁免：仅引用 `net/http` 的 `http.Status*` 状态码常量（用于 `errdefs.ServiceError` 构造错误映射）不算传输层耦合，允许导入；除此之外的任何使用（`http.Request`/`http.ResponseWriter`/`http.Client` 等）仍被禁止。
+- 理由：`pkg/` 被跨仓导入（下游仓库均 import tickraft/pkg/*），必须传输层无关、可独立单测；状态码常量是纯量值，不引入对传输类型的依赖。
+
+### internal/ 应用层 → 分布式 package-by-feature
+
+- 每个业务包内 `handler.go` + `routes.go` 高内聚，handler 直接调用同包 Service。
+- 版次特有的路由（插件、许可等）留在各仓 `internal/`，通过 `RegisterOption` 注入共享组合根；本仓 `internal/` 只做装配（cli / service / quota / web），不设独立 router。
+- 理由：`internal/` 外部不可导入，高内聚 > 传输层解耦；这是各下游仓库的既成惯例。
+
+分层判定（两仓都用→pkg、仅单仓→internal、版次差异→注入缝）与新增包决策树、死代码处置流程见 [Architecture](./architecture.md)。
+
+
 ## 相关文档
 
 - [架构设计](./architecture.md) —— 分层架构与三模块设计。

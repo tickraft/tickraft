@@ -18,9 +18,12 @@ This guide walks through every screen in the Tickraft web UI. Each section expla
 - [Prism](#prism)
   - [Alert records](#alert-records)
   - [Alert rules](#alert-rules)
+  - [Notification channels](#notification-channels)
+  - [Message templates](#message-templates)
   - [Remediation](#remediation)
 - [System](#system)
   - [Settings](#settings)
+  - [Public status page](#public-status-page)
   - [API keys](#api-keys)
   - [System info](#system-info)
 - [Open-source edition limits](#open-source-edition-limits)
@@ -135,13 +138,13 @@ An asset is any monitored target — a host, a service, a network device. Before
 
 ### Probers
 
-A prober is a monitoring task that actively probes a target at a schedule. The open-source edition ships four prober types: `icmp`, `tcp`, `http`, and `udp`.
+A prober is a monitoring task that actively probes a target at a schedule. The open-source edition ships four active prober types: `icmp`, `tcp`, `http`, and `mqtt`.
 
 ![Prober list](./screenshots/telemetry-prober-list.png)
 
 The prober list shows every configured prober, its target asset, probe type, interval, current status, and last result.
 
-**Create a prober.** Choose a prober template (ICMP, TCP, HTTP, UDP), select the target asset, configure the probe parameters, and set the schedule.
+**Create a prober.** Choose a prober template (ICMP, TCP, HTTP, HTTPS), select the target asset, configure the probe parameters, and set the schedule.
 
 ![Create prober](./screenshots/telemetry-prober-create.png)
 
@@ -189,6 +192,20 @@ The alert rule list shows every configured rule. Each row displays the rule name
 
 ![Edit alert rule](./screenshots/prism-rule-edit.png)
 
+### Notification channels
+
+Notification channels are the destinations alert notifications are delivered to. A channel is a named configuration row: a type plus type-specific settings (for example a webhook URL, or SMTP parameters for email).
+
+**Built-in types.** The open-source edition ships nine: `webhook`, `email`, and the seven instant-messaging integrations `dingtalk`, `discord`, `feishu`, `slack`, `teams`, `telegram`, `wecom`. Sensitive config values (tokens, passwords, secrets) are encrypted at rest and masked in API responses.
+
+**Create or edit a channel.** Choose the type, fill in its settings, and save. Use **Test** to dispatch a synthetic alert through the saved channel — or through an unsaved inline configuration — and see the delivery outcome immediately.
+
+**Delivery records.** Every notification attempt is recorded: channel, alert title, outcome (`success` / `failed`), duration, and the error message when it failed. Filter the list by channel, status, alert title, or time range; open the per-channel view from a channel row. From a failed delivery you can open the detail drawer — it shows the exact payload that was sent — and click **Retry** to replay it through the channel's current configuration.
+
+### Message templates
+
+The message templates page documents the built-in alert message templates: one template per monitor type (`host`, `network`, `web`, `data`) and severity, defining how an alert is rendered for each channel family. The page is a catalog — templates are built in and cannot be edited; use the filter to preview a specific monitor type or severity, and the reset action to clear filters.
+
 ### Remediation
 
 ![Remediation list](./screenshots/prism-remediation-list.png)
@@ -209,6 +226,10 @@ The settings page exposes runtime configuration:
 - **Retention days** — how long to keep historical logs and telemetry before automatic cleanup.
 
 Changes take effect immediately for log level and language; retention is applied by the background maintenance sweep.
+
+### Public status page
+
+The public status page shows an at-a-glance, read-only view of overall service health at `/status`. It is unauthenticated — designed to be linked from your own documentation or shared with users during an incident — and renders the configured title, description, overall status level, and the per-service breakdown maintained on the settings page (`/system/status`).
 
 ### API keys
 

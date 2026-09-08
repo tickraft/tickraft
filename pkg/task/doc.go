@@ -17,9 +17,24 @@
 // subscribes to ExecutionCompleted to update its internal dependency tracker and
 // to StatusChange events to trigger event-driven tasks.
 //
+// The package deliberately exposes two entries, not one:
+//
+//   - Engine (NewEngine) is the runtime entry. It owns the scheduling
+//     wheel, dependency tracking, and event publishing; the worker
+//     assembles it at startup.
+//   - Service (NewTaskService) is the management entry. It is the CRUD /
+//     operations facade the HTTP handlers consume: list, create, update,
+//     delete, trigger, pause/resume, copy, and execution-history queries.
+//     It delegates scheduling effects to the Engine and persistence to the
+//     stores; it never touches the wheel directly.
+//
+// The split keeps the HTTP surface free of engine internals and lets the
+// x edition wrap the Service without re-implementing the Engine.
+//
 // Key abstractions:
 //   - TaskEngine: the task scheduling engine contract.
 //   - Engine: the core implementation, holding a scheduler.Engine.
+//   - Service / NewTaskService: the management facade over Engine + stores.
 //   - Task / Execution: the single dual-tag models (GORM + wire) for the
 //     sys_schedule_task and sys_schedule_execution tables.
 //   - Store / ExecutionStore: persistence SPIs for tasks and history.

@@ -38,7 +38,7 @@ executor 订阅 `TaskTriggered`，查找对应的 executor 实现，执行它，
 - **Worker 池** —— 有界信号量限制并发执行数（默认 100）；当饱和时，工作降级为内联执行，而不会无限制地创建 goroutine。
 - **重试** —— 从任务元数据中读取重试次数与间隔，并透明地应用。
 - **状态推断** —— 每次执行的结果被映射为资源状态（`Normal` / `Abnormal`）。
-- **Executor 注册表** —— executor 按名称注册并声明能力位掩码：写动作（`local` 命令、`webhook` 通知回调）、只读探测（`icmp`、`tcp`），以及双模式的 `http`（`CapProbe | CapExec`，既探测端点也可作为定时任务动作）。创建任务时会拒绝不具备写能力的类型，创建主动探测点时会拒绝不具备探测能力的类型，均直接返回 400。
+- **Executor 注册表** —— executor 按名称注册并声明能力位掩码：写动作（`local` 命令、`webhook` 通知回调）、只读探测（`icmp`、`tcp`、`mqtt_probe` MQTT CONNECT 检查），以及双模式的 `http`（`CapProbe | CapExec`，既探测端点也可作为定时任务动作）。创建任务时会拒绝不具备写能力的类型，创建主动探测点时会拒绝不具备探测能力的类型，均直接返回 400。
 - **操作类型与记录路由** —— 每次执行都携带操作类型（`probe` 或 `execute`）。执行完的记录交给装配层接线的路由存储：`execute` 记录落入任务执行日志（`sys_schedule_execution`），`probe` 记录落入 telemetry 探测记录表（`sys_probe_record`）。两个领域包互不感知对方的存储。
 
 ### telemetry —— 数据采集引擎
@@ -156,7 +156,7 @@ Store 消费默认使用具体 store 类型（`*Store`、`*ExecutionStore`……
 执行结果存放在两张领域自有的表中：`sys_schedule_execution` 保存任务执行（`execute` 操作），`sys_probe_record` 保存监控点探测（`probe` 操作）。被动采集数据保存在 `sys_probe_metric` 与 `sys_probe_log` 中。
 
 
-全部生产表遵循同一命名约定：`sys_` 前缀 + 单数名词（`sys_user`、`sys_asset`、`sys_monitor_point`……）。存储名与代码词表刻意解耦 —— telemetry 三套词表到存储的映射为：监控点词表（`MonitorPoint` 类型、points API）落 `sys_monitor_point`；主动探测执行记录（`ProbeRecord`）落 `sys_probe_record`；被动采集数据（collector 路径上的 `collect` 指标/日志词表）落 `sys_probe_metric` 与 `sys_probe_log`。规则行（告警、自愈）软删除并保留审计；高量记录与日志行走保留期硬删除。
+全部生产表遵循同一命名约定：`sys_` 前缀 + 单数名词（`sys_user`、`sys_asset`、`sys_monitor_point`……）。存储名与代码词表刻意解耦 —— telemetry 三套词表到存储的映射为：监控点词表（`MonitorPoint` 类型、points API）落 `sys_monitor_point`；主动探测执行记录（`ProbeRecord`）落 `sys_probe_record`；被动采集数据（被动采集路径上的 `collect` 指标/日志词表）落 `sys_probe_metric` 与 `sys_probe_log`。规则行（告警、自愈）软删除并保留审计；高量记录与日志行走保留期硬删除。
 
 ## 相关文档
 

@@ -5,9 +5,8 @@ CMD_DIR=cmd/tickraft
 VERSION ?= dev
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-BUILD_TAGS ?=
 BUILD_DIR=bin
-LDFLAGS=-X github.com/tickraft/tickraft/internal/cli.version=$(VERSION) -X github.com/tickraft/tickraft/internal/cli.gitCommit=$(GIT_COMMIT) -X github.com/tickraft/tickraft/internal/cli.buildTime=$(BUILD_TIME) -X github.com/tickraft/tickraft/internal/cli.buildTags=$(BUILD_TAGS)
+LDFLAGS=-X github.com/tickraft/tickraft/internal/cli.version=$(VERSION) -X github.com/tickraft/tickraft/internal/cli.gitCommit=$(GIT_COMMIT) -X github.com/tickraft/tickraft/internal/cli.buildTime=$(BUILD_TIME)
 
 build: web-build
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./$(CMD_DIR)
@@ -18,7 +17,7 @@ build: web-build
 # so pnpm and node are hard requirements for `make build`.
 web-build:
 	@echo "=== Building frontend assets ==="
-	@command -v node >/dev/null 2>&1 || { echo "ERROR: node not found in PATH; install Node.js (>= 18) before building the frontend"; exit 1; }
+	@command -v node >/dev/null 2>&1 || { echo "ERROR: node not found in PATH; install Node.js (>= 22) before building the frontend"; exit 1; }
 	@command -v pnpm >/dev/null 2>&1 || { echo "ERROR: pnpm not found in PATH; install pnpm (e.g. 'npm install -g pnpm') before building the frontend"; exit 1; }
 	cd web && pnpm install --frozen-lockfile && pnpm build
 	@test -d web/app/dist || { echo "ERROR: web/app/dist not produced by frontend build"; exit 1; }

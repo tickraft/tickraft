@@ -17,27 +17,25 @@
 // (alert.Engine) agnostic to where channels are declared, so channels may
 // live in this package without forcing a cyclic dependency on alert.
 //
-// # Built-in channels
+// # Channel types and registration
 //
-// The build ships webhook and email channels. The format
-// sub-package provides a convenience Formatter facade backed by the
-// built-in i18n bundle for use by channels that need localized rendering.
-// Extensions register additional channels via the extension SPI:
+// Channel instances are rows in the sys_prism_channel table; each row
+// carries a Type plus a type-specific config JSON. The mapping from a type
+// name to its runtime behavior is the type registry: [RegisterType] binds
+// a lowercased type name to a [TypeInfo] (Build, optional Validate,
+// SensitiveKeys, optional TypeGuard), and the channel service resolves
+// rows through it at load and send time. Registering an
+// already-registered name overwrites the entry, so an extension edition
+// may replace a built-in type by registering the same name.
 //
-//   - sms
-//   - wecom (WeChat Work)
-//   - dingtalk
-//   - slack
-//   - teams (Microsoft Teams)
-//
-// # Channel loading
-//
-// Channel configuration is parsed by the service layer
-// (internal/service.LoadChannels), which reads a JSON or YAML config file
-// or an HTTP URL and constructs alert.Channel instances. The Config struct
-// and Factory type defined in this package are used by the loader;
-// extension SPI factories are registered via Register and dispatched by
-// LookupFactory.
+// The composition root (pkg/prism/channel_builder.go) registers the
+// open-source type set: the two generic channels (webhook, email) and the
+// seven instant-messaging channels (dingtalk, discord, feishu, slack,
+// teams, telegram, wecom). Extension editions register additional types
+// (for example sms) through the same [RegisterType] entry point at
+// startup. The wire shape of the generic webhook/email config JSON is the
+// [Config] struct; every other type defines its own config shape inside
+// its Build/Validate pair.
 //
 // # Resilience
 //

@@ -51,6 +51,34 @@ The runtime runs in single-port mode: the REST API, the SPA, and the telemetry i
 | `write_timeout`        | duration | `0s`      | Maximum duration before timing out writes. `0s` = no timeout; set an explicit value in production (e.g. `30s`). |
 | `maintenance_interval` | duration | `5m`      | Interval between background maintenance sweeps (e.g. cleaning expired token blacklist entries). |
 
+#### TLS termination
+
+When `server.tls_enabled` is `true` the server serves HTTPS on `server.addr`. Certificates come either from static PEM files or — when ACME is enabled — from the ACME manager. Static certificates are hot-reloaded: when the files change on disk the server picks up the new pair without a restart, which suits certificate rotation behind a symlink flip.
+
+| Field                | Type       | Default | Description                                                      |
+|----------------------|------------|---------|------------------------------------------------------------------|
+| `tls_enabled`        | bool       | `false` | Toggle TLS termination. `false` serves plain HTTP.                |
+| `tls_cert_file`      | string     | —       | PEM-encoded server certificate. Required when TLS is on and ACME is off. |
+| `tls_key_file`       | string     | —       | PEM-encoded server private key. Required when TLS is on and ACME is off. |
+| `tls_min_version`    | string     | `1.2`   | Minimum TLS version: `1.2` or `1.3`.                             |
+| `tls_cipher_suites`  | []string   | built-in whitelist | Cipher-suite whitelist. Empty applies the built-in default set. |
+| `tls_client_ca_file` | string     | —       | PEM-encoded client CA certificate for mutual TLS. Empty disables client-certificate verification. |
+| `tls_client_auth`    | string     | `""`    | Client-authentication mode: `""`, `request`, `require`, `verify-if-given`, or `require-verify`. |
+
+#### ACME (automatic certificates)
+
+`server.acme` configures automatic issuance and renewal via the ACME protocol (e.g. Let's Encrypt) as an alternative to static PEM files. The open-source edition serves the HTTP-01 challenge on the same single port as the API; DNS-01 is provided by the extended edition through the extension interface.
+
+| Field             | Type     | Default | Description                                                      |
+|-------------------|----------|---------|------------------------------------------------------------------|
+| `enabled`         | bool     | `false` | Toggle ACME issuance.                                             |
+| `directory_url`   | string   | Let's Encrypt production | ACME directory URL. Point at a staging directory while testing issuance. |
+| `email`           | string   | —       | Registration email. Required when enabled.                        |
+| `challenge_type`  | string   | `http-01` | `http-01` or `dns-01` (extended edition).                       |
+| `domains`         | []string | —       | Domains to obtain certificates for. At least one when enabled.    |
+
+For a self-signed certificate instead of ACME, see `tickraft cert selfsign` (see the deployment guide).
+
 ### `worker` — worker runtime
 
 The worker is a unified deployment mode. It always starts the scheduler, the executor, and the telemetry together in-process; no role parameter is needed and no extra ports are bound.

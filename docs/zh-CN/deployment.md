@@ -65,6 +65,8 @@ make docker
 
 ### 运行容器
 
+运行刚构建的本地镜像（与 [README](../../README.md) 快速上手一致）：
+
 ```bash
 docker run -d \
   --name tickraft \
@@ -73,8 +75,10 @@ docker run -d \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -e TICKRAFT_JWT_SECRET="your-secret-key" \
   -e TICKRAFT_ADMIN_PASSWORD="your-admin-password" \
-  ghcr.io/tickraft/tickraft-ce:latest start --config /app/config.yaml
+  tickraft-ce:latest start --config /app/config.yaml
 ```
+
+发布构建由发布流水线推送至 `ghcr.io/tickraft/tickraft-ce`；将该镜像标签替换为发布镜像即可运行发布版而非本地构建。
 
 ### docker-compose
 
@@ -82,7 +86,7 @@ docker run -d \
 version: '3'
 services:
   tickraft:
-    image: ghcr.io/tickraft/tickraft-ce:latest
+    image: tickraft-ce:latest
     command: ["start", "--config", "/app/config.yaml"]
     ports:
       - "6153:6153"

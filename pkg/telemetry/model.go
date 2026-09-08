@@ -120,7 +120,7 @@ type MonitorPoint struct {
 	// (ModePassive).
 	Mode Mode `gorm:"size:16;not null;index" json:"mode"`
 	// Type identifies the prober or listener type. For ModeActive this is
-	// the executor type (icmp, tcp, http, udp). For ModePassive this is
+	// the executor type (icmp, tcp, http, mqtt_probe). For ModePassive this is
 	// the listener type (webhook).
 	Type string `gorm:"size:32;not null" json:"type"`
 	// Status is the derived runtime status of the monitoring point
@@ -189,7 +189,7 @@ type Mode string
 
 const (
 	// ModeActive means the point is actively probed by the ProberService.
-	// The Type field identifies the prober executor (icmp, tcp, http, udp).
+	// The Type field identifies the prober executor (icmp, tcp, http, mqtt_probe).
 	ModeActive Mode = "active"
 	// ModePassive means the point passively receives data via a listener.
 	// The Type field identifies the listener type (webhook).
@@ -286,7 +286,7 @@ type ProbeRecord struct {
 	PointID int64 `gorm:"column:point_id;not null;index" json:"point_id"`
 	// AssetID is the target asset, denormalized for asset-level queries.
 	AssetID int64 `gorm:"index;not null" json:"asset_id"`
-	// ExecutorType is the probe executor type (e.g. icmp, tcp, http, udp).
+	// ExecutorType is the probe executor type (e.g. icmp, tcp, http, mqtt_probe).
 	ExecutorType string `gorm:"size:32;not null" json:"executor_type"`
 	// Status is the probe result in the asset status vocabulary
 	// (normal, abnormal, offline, unknown).

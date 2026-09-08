@@ -2190,19 +2190,37 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /api/v1/prism/channels/{id}/test:
+  /api/v1/prism/channels/test:
     post:
       tags: [channel]
       summary: Send a test notification through a channel
       description: |
-        Dispatches a synthetic notification through the channel and reports
-        the delivery outcome, so operators can verify channel configuration
-        without wiring an alert rule.
+        Dispatches a synthetic notification and reports the delivery
+        outcome, so operators can verify channel configuration without
+        wiring an alert rule. The body either references a saved channel
+        by `id` or supplies an inline `type` + `config` pair.
       operationId: testChannel
       security:
         - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                  description: Saved channel id to test.
+                type:
+                  type: string
+                  description: Inline channel type (e.g. webhook, email).
+                config:
+                  type: object
+                  description: Inline channel config JSON for the given type.
+            example:
+              id: 3
       responses:
         '200':
           description: Test dispatch completed
@@ -2210,6 +2228,189 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/channels/options:
+    get:
+      tags: [channel]
+      summary: Compact channel projections for filter dropdowns
+      description: |
+        Returns the id/name/type/enabled projection of every notification
+        channel. Used by the deliveries page filter dropdown.
+      operationId: listChannelOptions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                  format: int64
+                                name:
+                                  type: string
+                                type:
+                                  type: string
+                                enabled:
+                                  type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/prism/channels/deliveries:
+    get:
+      tags: [channel]
+      summary: Paginated delivery records across all channels
+      description: |
+        Returns notification delivery records with optional channel_id,
+        status, alert_title, and time-range filters.
+      operationId: listAllChannelDeliveries
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+        - name: channel_id
+          in: query
+          schema: { type: integer, format: int64 }
+          description: Filter by channel configuration id.
+        - name: status
+          in: query
+          schema: { type: string, enum: [success, failed] }
+          description: Filter by delivery outcome.
+        - name: alert_title
+          in: query
+          schema: { type: string }
+          description: Substring filter on the rendered alert title.
+        - name: start_time
+          in: query
+          schema: { type: string, format: date-time }
+          description: RFC3339 lower bound on sent_at.
+        - name: end_time
+          in: query
+          schema: { type: string, format: date-time }
+          description: RFC3339 upper bound on sent_at.
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/ChannelDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/prism/channels/deliveries/{id}/retry:
+    post:
+      tags: [channel]
+      summary: Retry a failed delivery
+      description: |
+        Replays a failed delivery: the persisted alert event is re-sent
+        synchronously through the channel's current configuration and the
+        record's outcome is updated in place.
+      operationId: retryChannelDelivery
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Retry completed; the updated record is returned
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ChannelDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/prism/channels/{id}/deliveries:
+    get:
+      tags: [channel]
+      summary: Paginated delivery records of one channel
+      description: |
+        Returns the delivery records of the given channel with optional
+        status and time-range filters. An unknown channel id fails with 404.
+      operationId: listChannelDeliveries
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+        - name: status
+          in: query
+          schema: { type: string, enum: [success, failed] }
+          description: Filter by delivery outcome.
+        - name: start_time
+          in: query
+          schema: { type: string, format: date-time }
+          description: RFC3339 lower bound on sent_at.
+        - name: end_time
+          in: query
+          schema: { type: string, format: date-time }
+          description: RFC3339 upper bound on sent_at.
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/ChannelDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -3124,10 +3325,10 @@ components:
             Executor type, which determines the structure of config and the
             execution pipeline.
             Built-in values in the open-source edition: `http`, `tcp`, `local`,
-            `webhook`, `icmp`.
-            Extension values in the pro repository: `dns`, `udp`
+            `webhook`, `icmp`, `mqtt_probe`.
+            Extension values in the pro repository: `dns`, `mysql`, `redis`
             (included by default in pro builds, no build tags required).
-          enum: [http, tcp, local, webhook, icmp]
+          enum: [http, tcp, local, webhook, icmp, mqtt_probe]
           example: http
         config:
           type: object
@@ -3443,7 +3644,7 @@ components:
         type:
           type: string
           description: |
-            Prober executor type for `active` mode (icmp, tcp, http, udp)
+            Prober executor type for `active` mode (icmp, tcp, http, mqtt_probe)
             or listener type for `passive` mode (webhook).
           example: http
         schedule:
@@ -3974,6 +4175,53 @@ components:
           type: string
         alert_format_style:
           type: string
+
+    ChannelDelivery:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        channel_id:
+          type: integer
+          format: int64
+          description: sys_prism_channel row that attempted delivery; zero for environment-built channels.
+        channel_name:
+          type: string
+        channel_type:
+          type: string
+        alert_type:
+          type: string
+        alert_title:
+          type: string
+          description: Rendered alert headline at delivery time.
+        event_id:
+          type: string
+          description: Alert event tracking id correlating the delivery with the originating dispatch.
+        status:
+          type: string
+          enum: [success, failed]
+          description: Outcome of the latest attempt; a manual retry overwrites it.
+        error:
+          type: string
+          description: Error message from the channel on failure.
+        response_code:
+          type: integer
+          description: HTTP status code of the channel response when exposed; zero otherwise.
+        duration_ms:
+          type: integer
+          format: int64
+        request_payload:
+          type: string
+          description: Serialized alert event that was delivered; backs the detail drawer and the retry replay.
+        attempts:
+          type: array
+          description: Per-attempt history; the original send is entry 0.
+          items:
+            type: object
+        sent_at:
+          type: string
+          format: date-time
 
     Channel:
       type: object

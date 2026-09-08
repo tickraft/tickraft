@@ -19,11 +19,11 @@ import (
 const defaultCacheTTL = 30 * time.Second
 
 // Compile-time interface compliance check.
-var _ Service = (*statusService)(nil)
+var _ Service = (*StatusService)(nil)
 
-// statusService aggregates monitor points, their latest probe records,
+// StatusService aggregates monitor points, their latest probe records,
 // and the injected infrastructure probes into the public status view.
-type statusService struct {
+type StatusService struct {
 	store         *Store
 	monitors      MonitorLister
 	probes        ProbeReader
@@ -37,25 +37,25 @@ type statusService struct {
 }
 
 // Option customizes the status service.
-type Option func(*statusService)
+type Option func(*StatusService)
 
 // WithCacheTTL overrides the public view cache TTL. A non-positive value
 // disables caching.
 func WithCacheTTL(d time.Duration) Option {
-	return func(s *statusService) { s.cacheTTL = d }
+	return func(s *StatusService) { s.cacheTTL = d }
 }
 
 // WithSystemProbe appends an infrastructure health check rendered as an
 // extra component after the monitor-derived ones.
 func WithSystemProbe(p SystemProbe) Option {
-	return func(s *statusService) { s.systemProbes = append(s.systemProbes, p) }
+	return func(s *StatusService) { s.systemProbes = append(s.systemProbes, p) }
 }
 
 // NewService creates a status Service over the configuration store and
 // the aggregation data sources. monitors and probes may be nil, in which
 // case monitor-derived components render as unknown.
 func NewService(store *Store, monitors MonitorLister, probes ProbeReader, logger *zap.Logger, opts ...Option) Service {
-	s := &statusService{
+	s := &StatusService{
 		store:    store,
 		monitors: monitors,
 		probes:   probes,
@@ -69,14 +69,14 @@ func NewService(store *Store, monitors MonitorLister, probes ProbeReader, logger
 }
 
 // GetConfig returns the current status page configuration.
-func (s *statusService) GetConfig(ctx context.Context) (*Config, error) {
+func (s *StatusService) GetConfig(ctx context.Context) (*Config, error) {
 	return s.store.Get(ctx)
 }
 
 // UpdateConfig validates and persists the configuration and invalidates
 // the cached public view so the next render reflects the change
 // immediately.
-func (s *statusService) UpdateConfig(ctx context.Context, cfg *Config) (*Config, error) {
+func (s *StatusService) UpdateConfig(ctx context.Context, cfg *Config) (*Config, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func validateConfig(cfg *Config) error {
 
 // PublicView renders the aggregated page. Successful renders are cached
 // for the configured TTL; configuration updates invalidate the cache.
-func (s *statusService) PublicView(ctx context.Context) (*PublicView, error) {
+func (s *StatusService) PublicView(ctx context.Context) (*PublicView, error) {
 	cfg, err := s.store.Get(ctx)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (s *statusService) PublicView(ctx context.Context) (*PublicView, error) {
 
 // render aggregates the monitor topology into the public view via the
 // package-level RenderComponents seam.
-func (s *statusService) render(ctx context.Context, cfg *Config) (*PublicView, error) {
+func (s *StatusService) render(ctx context.Context, cfg *Config) (*PublicView, error) {
 	comps, err := RenderComponents(ctx, Sources{
 		Monitors: s.monitors,
 		Probes:   s.probes,
