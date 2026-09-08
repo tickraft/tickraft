@@ -10,6 +10,10 @@
 // default used by authenticator apps such as Google Authenticator and
 // Microsoft Authenticator. Validation allows a ±1 time-step drift to
 // tolerate minor clock skew between the client and the server.
+//
+// The CE kernel itself does not surface MFA flows; this package is kernel
+// base consumed by tickraft-x, whose auth service issues and verifies TOTP
+// secrets for MFA-enabled logins.
 package totp
 
 import (

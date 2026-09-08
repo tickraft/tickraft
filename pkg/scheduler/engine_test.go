@@ -5,7 +5,6 @@
 package scheduler
 
 import (
-	"context"
 	"testing"
 	"time"
 )
@@ -64,25 +63,3 @@ func TestNeverSchedule(t *testing.T) {
 	}
 }
 
-// --- NoopEngine Tests ---
-
-func TestNoopEngine(t *testing.T) {
-	eng, err := NewNoopEngine()
-	if err != nil {
-		t.Fatalf("NewNoopEngine() error = %v", err)
-	}
-
-	// All methods should be no-ops returning nil.
-	if err := eng.Add(1, NewNeverSchedule(), func(int64) {}); err != nil {
-		t.Errorf("NoopEngine.Add() error = %v, want nil", err)
-	}
-	if err := eng.Remove(1); err != nil {
-		t.Errorf("NoopEngine.Remove() error = %v, want nil", err)
-	}
-	if err := eng.Start(context.Background()); err != nil {
-		t.Errorf("NoopEngine.Start() error = %v, want nil", err)
-	}
-	if err := eng.Stop(context.Background()); err != nil {
-		t.Errorf("NoopEngine.Stop() error = %v, want nil", err)
-	}
-}

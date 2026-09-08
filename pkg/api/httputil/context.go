@@ -115,24 +115,6 @@ func GetClientIP(arc *app.RequestContext) string {
 	return arc.RemoteAddr().String()
 }
 
-// regionCtxKey is a context key for storing the resolved routing region.
-type regionCtxKey struct{}
-
-// SetRegion stores the resolved region in the request context.
-func SetRegion(ctx context.Context, region string) context.Context {
-	return context.WithValue(ctx, regionCtxKey{}, region)
-}
-
-// GetRegion retrieves the resolved region from the request context.
-// Returns an empty string if no region has been set.
-func GetRegion(ctx context.Context) string {
-	val := ctx.Value(regionCtxKey{})
-	if region, ok := val.(string); ok {
-		return region
-	}
-	return ""
-}
-
 // localeCtxKey is a context key for storing the request locale parsed from
 // the X-Tickraft-Locale header by the locale middleware.
 type localeCtxKey struct{}

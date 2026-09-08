@@ -22,14 +22,6 @@ const (
 	// tag, parsed by the Locale middleware.
 	HeaderLocale = "X-Tickraft-Locale"
 
-	// HeaderRegion is the request header that explicitly specifies the target
-	// routing region.
-	HeaderRegion = "X-Tickraft-Region"
-
-	// HeaderRouteRegion is the response header that records the resolved
-	// routing region for client-side inspection and debugging.
-	HeaderRouteRegion = "X-Tickraft-Route-Region"
-
 	// HeaderSignature is the webhook authentication header carrying the
 	// hex-encoded HMAC-SHA256 of the raw request body.
 	HeaderSignature = "X-Tickraft-Signature"

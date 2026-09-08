@@ -9,15 +9,15 @@ import (
 	"time"
 )
 
-// Cache is the context-aware caching contract implemented by LRUCache,
-// BboltCache and any extended (e.g. Redis) backends.
+// Cache is the context-aware caching contract implemented by LRUCache
+// and any extended (e.g. Redis) backends.
 //
 // Every method accepts a [context.Context] so that callers can cancel
 // in-flight work or attach deadlines. In-memory implementations
 // (*LRUCache) honor cancellation only opportunistically (the operation
-// is fast and non-blocking), while remote backends (*BboltCache,
-// Redis) propagate the context to the underlying store so that a
-// cancelled caller does not keep the backend busy.
+// is fast and non-blocking), while remote backends (Redis) propagate
+// the context to the underlying store so that a cancelled caller does
+// not keep the backend busy.
 //
 // All values are stored as []byte to ensure consistent behavior across
 // implementations. Use the GetJSON/SetJSON helpers for type-safe access
@@ -27,7 +27,7 @@ import (
 //
 // This interface is the canonical cache contract for the
 // kernel; the extended package re-exports it as a type alias so that
-// LRU, Bbolt and Redis implementations all satisfy a single contract.
+// LRU and Redis implementations all satisfy a single contract.
 type Cache interface {
 	// Get retrieves a cached value by key. Returns the value and true
 	// if found, or nil and false if not found or expired.
@@ -55,9 +55,6 @@ type Cache interface {
 	Close(ctx context.Context) error
 }
 
-// Compile-time assertions that the concrete implementations satisfy
+// Compile-time assertion that the concrete implementation satisfies
 // the context-aware Cache contract.
-var (
-	_ Cache = (*LRUCache)(nil)
-	_ Cache = (*BboltCache)(nil)
-)
+var _ Cache = (*LRUCache)(nil)

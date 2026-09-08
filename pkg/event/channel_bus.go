@@ -7,11 +7,8 @@ package event
 import (
 	"container/heap"
 	"context"
-	cryptorand "crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,12 +23,9 @@ var ErrBusClosed = errors.New("event: bus is closed")
 // It uses a map[Type]*typeQueue to manage the priority queue of each event type.
 // Each event type has an independent consumer goroutine that pops events from the heap by priority and dispatches them.
 type channelBus struct {
-	logger         *zap.Logger
-	bufferSize     int
-	defaultTimeout time.Duration
-	failedStore    FailedEventStore
-	instrumenter   Instrumenter
-	debug          bool
+	logger       *zap.Logger
+	failedStore  FailedEventStore
+	instrumenter Instrumenter
 
 	mu          sync.RWMutex
 	queues      map[Type]*typeQueue
@@ -62,9 +56,12 @@ type subscriber struct {
 type queueItem struct {
 	envelope *Envelope
 	seq      uint64
-	// ctx preserves the publisher's context so the consumer loop
-	// delivers the event with the publisher's deadline/cancellation
-	// rather than a detached context.Background().
+	// ctx carries the publisher's context values into the consumer loop.
+	// Cancellation and deadlines are stripped at enqueue time via
+	// context.WithoutCancel: the consumer delivers asynchronously, long
+	// after the publisher may have returned (HTTP handlers publish with
+	// their request context), and a completed request must not abort
+	// subscriber work mid-delivery.
 	ctx context.Context
 }
 
@@ -131,18 +128,20 @@ func releaseEnvelope(env *Envelope) {
 	envelopePool.Put(env)
 }
 
-// generateEventID generates a unique event identifier.
+// eventSeq is the process-wide counter behind generateEventID.
+var eventSeq atomic.Uint64
+
+// generateEventID generates a unique event identifier from a millisecond
+// timestamp and a process-wide counter. IDs key logs and the failed-event
+// store; they carry no secrecy, so a crypto/rand read per publish would be
+// pure overhead on the ingestion path.
 func generateEventID() string {
-	b := make([]byte, 16)
-	if _, err := cryptorand.Read(b); err != nil {
-		return fmt.Sprintf("evt-%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	return fmt.Sprintf("evt-%d-%d", time.Now().UnixMilli(), eventSeq.Add(1))
 }
 
-// Publish publishes an event to the bus.
-// The default mode is asynchronous: events are pushed onto the priority queue and dispatched by the consumer goroutine.
-// The WithSync option switches to synchronous mode, where the publisher blocks until all Handlers finish.
+// Publish publishes an event to the bus. Delivery is asynchronous: the
+// event is pushed onto the per-type priority queue and dispatched by that
+// type's consumer goroutine.
 func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, options ...PublishOption) error {
 	if b.closed.Load() {
 		return ErrBusClosed
@@ -158,33 +157,13 @@ func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, o
 	env.Payload = payload
 	env.Timestamp = time.Now()
 	env.Priority = cfg.priority
-	if cfg.eventID != "" {
-		env.EventID = cfg.eventID
-	} else {
-		env.EventID = generateEventID()
-	}
+	env.EventID = generateEventID()
 	env.TenantID = cfg.tenantID
 	env.Metadata = cfg.metadata
 
 	b.instrumenter.IncPublish(eventType, cfg.tenantID)
 
-	if b.debug {
-		b.logger.Debug("event published",
-			zap.String("event_type", string(eventType)),
-			zap.String("event_id", env.EventID),
-			zap.String("tenant_id", env.TenantID),
-			zap.Int("priority", env.Priority),
-			zap.Bool("sync", cfg.sync),
-		)
-	}
-
-	if cfg.sync {
-		b.dispatch(ctx, eventType, *env)
-		releaseEnvelope(env)
-		return nil
-	}
-
-	// Asynchronous mode: push onto the priority queue.
+	// Push onto the priority queue.
 	b.mu.RLock()
 	tq, exists := b.queues[eventType]
 	b.mu.RUnlock()
@@ -202,7 +181,7 @@ func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, o
 		releaseEnvelope(env)
 		return ErrBusClosed
 	}
-	if tq.pq.Len() >= b.bufferSize {
+	if tq.pq.Len() >= defaultBufferSize {
 		tq.mu.Unlock()
 		b.instrumenter.IncDrop(eventType, "channel_full")
 		b.logger.Warn("event queue full, dropping event",
@@ -215,16 +194,9 @@ func (b *channelBus) Publish(ctx context.Context, eventType Type, payload any, o
 	heap.Push(&tq.pq, &queueItem{
 		envelope: env,
 		seq:      b.seq.Add(1),
-		ctx:      ctx,
+		ctx:      context.WithoutCancel(ctx),
 	})
 	tq.mu.Unlock()
-
-	if b.debug {
-		b.logger.Debug("event enqueued",
-			zap.String("event_type", string(eventType)),
-			zap.String("event_id", env.EventID),
-		)
-	}
 
 	// Notify the consumer goroutine.
 	select {
@@ -258,7 +230,13 @@ func (b *channelBus) Subscribe(eventType Type, handler Handler, options ...Subsc
 		b.mu.Unlock()
 		return nil, ErrBusClosed
 	}
-	b.subscribers[eventType] = append(b.subscribers[eventType], sub)
+	// Copy-on-write: subscriber slices are published immutable under the
+	// write lock, so dispatch can iterate them without a per-event copy.
+	subs := b.subscribers[eventType]
+	next := make([]*subscriber, len(subs)+1)
+	copy(next, subs)
+	next[len(subs)] = sub
+	b.subscribers[eventType] = next
 
 	// Lazily start the consumer goroutine.
 	if _, exists := b.queues[eventType]; !exists {
@@ -286,23 +264,26 @@ func (b *channelBus) Subscribe(eventType Type, handler Handler, options ...Subsc
 			if !sub.canceled.CompareAndSwap(false, true) {
 				return
 			}
-			// Remove the subscriber from the slice under the write lock
+			// Remove the subscriber from the list under the write lock
 			// so short-lived subscriptions do not accumulate indefinitely.
-			// Without this prune the slice would grow without bound and
-			// hold references to handler closures, preventing GC. Swap with
-			// the last element and truncate to achieve O(1) removal.
+			// Without this prune the list would grow without bound and
+			// hold references to handler closures, preventing GC.
+			// Copy-on-write: build a fresh slice so concurrent dispatch
+			// loops iterating the previous snapshot stay safe.
+			//
+			// The per-type consumer goroutine is intentionally NOT shut
+			// down when the last subscriber cancels: subscriptions are
+			// static for the process lifetime (wired at startup), and a
+			// parked consumer on an empty queue costs nothing.
 			b.mu.Lock()
 			subs := b.subscribers[eventType]
-			for i, s := range subs {
+			next := make([]*subscriber, 0, len(subs))
+			for _, s := range subs {
 				if s != sub {
-					continue
+					next = append(next, s)
 				}
-				last := len(subs) - 1
-				subs[i] = subs[last]
-				subs[last] = nil
-				b.subscribers[eventType] = subs[:last]
-				break
 			}
+			b.subscribers[eventType] = next
 			if len(b.subscribers[eventType]) == 0 {
 				delete(b.subscribers, eventType)
 			}
@@ -357,26 +338,21 @@ func (b *channelBus) drainQueue(tq *typeQueue, eventType Type) {
 		item := heap.Pop(&tq.pq).(*queueItem) //nolint:errcheck // queue only stores *queueItem
 		tq.mu.Unlock()
 
-		env := item.envelope
-		if item.ctx != nil {
-			b.dispatch(item.ctx, eventType, *env)
-		} else {
-			b.dispatch(context.Background(), eventType, *env)
-		}
-		releaseEnvelope(env)
+		// item.ctx is always set at enqueue time (context.WithoutCancel);
+		// cancellation was stripped precisely so the consumer can deliver it
+		// here, long after the publisher returned.
+		b.dispatch(item.ctx, eventType, *item.envelope)
+		releaseEnvelope(item.envelope)
 	}
 }
 
 // dispatch delivers the event envelope to all active subscribers of the given event type.
 func (b *channelBus) dispatch(ctx context.Context, eventType Type, env Envelope) {
 	b.mu.RLock()
-	// Snapshot the subscriber slice under the read lock so a concurrent
-	// Cancel (or Subscribe) mutating the underlying array cannot race
-	// with iteration. The copy is shallow: only the slice header and
-	// pointer array are copied, not the subscriber structs themselves.
-	src := b.subscribers[eventType]
-	subs := make([]*subscriber, len(src))
-	copy(subs, src)
+	// Subscriber lists are copy-on-write (see Subscribe/Cancel): the slice
+	// stored in the map is never mutated after publication, so iterating it
+	// after releasing the read lock is safe with no per-event copy.
+	subs := b.subscribers[eventType]
 	b.mu.RUnlock()
 
 	for _, sub := range subs {
@@ -388,50 +364,28 @@ func (b *channelBus) dispatch(ctx context.Context, eventType Type, env Envelope)
 }
 
 // callHandler executes the Handler invocation chain for a single subscriber:
-// filter check -> timeout control -> exponential backoff retry -> panic recovery -> Handler execution.
+// timeout control -> exponential backoff retry -> panic recovery -> Handler execution.
 func (b *channelBus) callHandler(ctx context.Context, sub *subscriber, eventType Type, env Envelope) {
-	// Filter check.
-	if sub.config.filter != nil && !sub.config.filter(env) {
-		return
-	}
-
-	// Determine the timeout.
+	// Determine the timeout: the subscription's override, or the package default.
 	timeout := sub.config.timeout
 	if timeout == 0 {
-		timeout = b.defaultTimeout
+		timeout = defaultTimeout
 	}
 
 	// Retry config.
 	maxRetries := sub.config.maxRetries
 	baseBackoff := sub.config.baseBackoff
 
-	if b.debug {
-		b.logger.Debug("handler start",
-			zap.String("event_type", string(eventType)),
-			zap.String("event_id", env.EventID),
-			zap.String("handler_id", sub.id),
-		)
-	}
-
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			b.instrumenter.IncRetry(eventType, sub.id)
 			if baseBackoff > 0 {
-				exponential := baseBackoff * time.Duration(1<<uint(attempt-1))
-				backoff := exponential
-				if sub.config.jitter > 0 {
-					//nolint:gosec // jitter needs no crypto randomness
-					scale := 1.0 - sub.config.jitter + sub.config.jitter*rand.Float64()
-					backoff = time.Duration(float64(exponential) * scale)
-				}
-				select {
-				case <-time.After(backoff):
-				case <-ctx.Done():
-					lastErr = ctx.Err()
-					b.handleFailedEvent(eventType, env, lastErr)
-					return
-				}
+				// The dispatch context is never cancelled (enqueue strips
+				// publisher cancellation via context.WithoutCancel), so the
+				// backoff is a plain sleep; hung handlers are bounded by the
+				// per-attempt WithTimeout above.
+				time.Sleep(baseBackoff * time.Duration(1<<uint(attempt-1)))
 			}
 		}
 
@@ -441,20 +395,6 @@ func (b *channelBus) callHandler(ctx context.Context, sub *subscriber, eventType
 		cancel()
 		elapsed := time.Since(start)
 		b.instrumenter.ObserveHandlerDuration(eventType, sub.id, elapsed)
-
-		if b.debug {
-			level := "completed"
-			if err != nil {
-				level = "failed"
-			}
-			b.logger.Debug("handler "+level,
-				zap.String("event_type", string(eventType)),
-				zap.String("event_id", env.EventID),
-				zap.String("handler_id", sub.id),
-				zap.Float64("duration_ms", float64(elapsed.Microseconds())/1000.0),
-				zap.Int("attempt", attempt),
-			)
-		}
 
 		if err == nil {
 			return

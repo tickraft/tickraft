@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -91,6 +92,10 @@ func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
 	if opts.IDs != nil {
 		query = query.Where("id IN ?", opts.IDs)
 	}
+	if opts.NameLike != "" {
+		needle := likeEscape(strings.ToLower(opts.NameLike))
+		query = query.Where("LOWER(name) LIKE ? ESCAPE '\\'", "%"+needle+"%")
+	}
 	if err := query.Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("task: list: %w", db.MapError(err))
 	}
@@ -102,6 +107,23 @@ func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
 		filtered = append(filtered, t)
 	}
 	return filtered, nil
+}
+
+// likeEscape escapes LIKE wildcards so the pattern matches the caller's
+// substring literally; combined with ESCAPE '\' it reproduces Go-side
+// strings.Contains semantics in SQL.
+func likeEscape(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// Count returns the number of persisted (non-deleted) tasks.
+func (s *store) Count(ctx context.Context) (int64, error) {
+	var count int64
+	if err := s.dbc.WithContext(ctx).Model(&Task{}).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("task: count: %w", db.MapError(err))
+	}
+	return count, nil
 }
 
 // matchAnyTag reports whether the task's tags contain at least one of the

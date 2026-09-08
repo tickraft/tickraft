@@ -24,7 +24,7 @@
 //     handlers (auth, task, alert, system, asset, telemetry, certificates,
 //     healthz, i18n) and the in-memory service defaults. The middleware
 //     subpackage hosts the built-in middleware chain (recovery, request_id,
-//     access_log, cors, locale, jwt, apikey, asset_key, permission, region,
+//     access_log, cors, locale, jwt, apikey, asset_key, permission,
 //     tenant, trusted_proxy).
 //
 // # Extension Points

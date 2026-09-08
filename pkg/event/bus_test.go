@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func TestBusInterface(t *testing.T) {
@@ -294,12 +296,10 @@ func TestPublishWithOptions(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	customID := "custom-event-id"
 	customTenant := "tenant-custom"
 	customMeta := map[string]string{"source": "test"}
 
 	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithEventID(customID),
 		WithTenantID(customTenant),
 		WithMetadata(customMeta),
 		WithPriority(5),
@@ -309,8 +309,8 @@ func TestPublishWithOptions(t *testing.T) {
 
 	select {
 	case env := <-received:
-		if env.EventID != customID {
-			t.Errorf("event_id: got %q, want %q", env.EventID, customID)
+		if env.EventID == "" {
+			t.Error("event_id should be auto-generated and non-empty")
 		}
 		if env.TenantID != customTenant {
 			t.Errorf("tenant_id: got %q, want %q", env.TenantID, customTenant)
@@ -346,21 +346,37 @@ func TestNoopFailedEventStore(t *testing.T) {
 }
 
 func TestNewBusWithOptions(t *testing.T) {
+	store := &mockFailedEventStore{}
+	logger := zap.NewExample()
+	instr := countingInstrumenter{}
+
 	bus := NewBus(
-		WithBufferSize(512),
-		WithDefaultTimeout(5*time.Second),
-		WithDebug(true),
+		WithLogger(logger),
+		WithFailedEventStore(store),
+		WithInstrumenter(instr),
 	)
 	defer bus.Close()
 
 	cb := bus.(*channelBus)
-	if cb.bufferSize != 512 {
-		t.Errorf("bufferSize: got %d, want 512", cb.bufferSize)
+	if cb.logger != logger {
+		t.Error("logger option was not applied")
 	}
-	if cb.defaultTimeout != 5*time.Second {
-		t.Errorf("defaultTimeout: got %v, want 5s", cb.defaultTimeout)
+	if cb.failedStore != store {
+		t.Error("failedEventStore option was not applied")
 	}
-	if !cb.debug {
-		t.Error("debug should be true")
+	if _, ok := cb.instrumenter.(countingInstrumenter); !ok {
+		t.Error("instrumenter option was not applied")
 	}
 }
+
+// countingInstrumenter is a minimal Instrumenter double used to verify the
+// WithInstrumenter option.
+type countingInstrumenter struct{}
+
+func (countingInstrumenter) IncPublish(Type, string)                            {}
+func (countingInstrumenter) IncDrop(Type, string)                               {}
+func (countingInstrumenter) ObserveHandlerDuration(Type, string, time.Duration) {}
+func (countingInstrumenter) IncHandlerPanic(Type, string)                       {}
+func (countingInstrumenter) IncRetry(Type, string)                              {}
+func (countingInstrumenter) IncSubscriberCount(Type)                            {}
+func (countingInstrumenter) DecSubscriberCount(Type)                            {}

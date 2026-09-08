@@ -194,6 +194,10 @@ var (
 
 // Register registers a database driver opener under the given name.
 // Returns an error if a driver with the same name is already registered.
+//
+// Kernel base for extended editions: the CE binary registers only the
+// SQLite driver, while tickraft-x registers additional drivers (MySQL,
+// PostgreSQL) through this SPI at startup.
 func Register(name string, opener Opener) error {
 	driversMu.Lock()
 	defer driversMu.Unlock()

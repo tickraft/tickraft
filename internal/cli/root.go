@@ -19,13 +19,11 @@ import (
 
 // NewRootCmd creates and returns the root cobra command for the tickraft CLI.
 // It aggregates all subcommands (start, migrate, version, config) and
-// registers persistent flags shared across subcommands. In the standalone
-// runtime the "start" command runs exclusively in standalone mode (single
-// process, single HTTP port); subcommand-based startup is an optional
-// feature that replaces this command via replaceCommand.
+// registers persistent flags shared across subcommands. The "start" command
+// runs the standalone runtime (single process, single HTTP port).
 //
-// Subcommands are registered directly here. The callers builds
-// its own cobra root command if it needs to inject additional subcommands.
+// Subcommands are registered directly here; extended editions build on this
+// root command and add their own subcommands on top.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use: "tickraft [command]",

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,10 +67,21 @@ func (m *mockStore) List(_ context.Context, opts ListOptions) ([]*Task, error) {
 		if opts.IDs != nil && !containsID(opts.IDs, t.ID) {
 			continue
 		}
+		if opts.NameLike != "" &&
+			!strings.Contains(strings.ToLower(t.Name), strings.ToLower(opts.NameLike)) {
+			continue
+		}
 		cp := *t
 		result = append(result, &cp)
 	}
 	return result, nil
+}
+
+// Count reports the number of stored tasks.
+func (m *mockStore) Count(_ context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return int64(len(m.tasks)), nil
 }
 
 // containsID reports whether ids contains id.
@@ -1451,10 +1463,19 @@ func listTasks(e *Engine) []Task {
 	return result
 }
 
+// noopEngine satisfies scheduler.Engine without firing anything; it exists
+// only as an embeddable base for test doubles.
+type noopEngine struct{}
+
+func (noopEngine) Add(int64, scheduler.Schedule, scheduler.Callback) error { return nil }
+func (noopEngine) Remove(int64) error                                     { return nil }
+func (noopEngine) Start(context.Context) error                            { return nil }
+func (noopEngine) Stop(context.Context) error                             { return nil }
+
 // failAddEngine rejects every wheel registration, to exercise Register's
 // rollback path.
 type failAddEngine struct {
-	scheduler.NoopEngine
+	noopEngine
 }
 
 func (failAddEngine) Add(int64, scheduler.Schedule, scheduler.Callback) error {

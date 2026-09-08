@@ -14,7 +14,7 @@ import (
 // BenchmarkPublishSubscribe benchmarks publish/subscribe throughput in asynchronous mode.
 // Target: >= 10000 events/sec.
 func BenchmarkPublishSubscribe(b *testing.B) {
-	bus := NewBus(WithBufferSize(4096))
+	bus := NewBus()
 	defer bus.Close()
 
 	var count atomic.Int64
@@ -38,40 +38,19 @@ func BenchmarkPublishSubscribe(b *testing.B) {
 	}
 	b.StopTimer()
 
-	// Wait for all events to be processed.
-	time.Sleep(500 * time.Millisecond)
+	// Close drains the queue and waits for the consumer goroutine.
+	if err := bus.Close(); err != nil {
+		b.Fatalf("close: %v", err)
+	}
 	got := count.Load()
 	if got != int64(b.N) {
 		b.Logf("processed %d/%d events", got, b.N)
 	}
 }
 
-// BenchmarkSyncPublishSubscribe benchmarks publish/subscribe throughput in synchronous mode.
-func BenchmarkSyncPublishSubscribe(b *testing.B) {
-	bus := NewBus()
-	defer bus.Close()
-
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		return nil
-	})
-	if err != nil {
-		b.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	b.ResetTimer()
-	for range b.N {
-		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{
-			TaskID: "bench-task",
-		}, WithSync()); err != nil {
-			b.Fatalf("publish: %v", err)
-		}
-	}
-}
-
 // BenchmarkGenericPublishSubscribe benchmarks generic publish/subscribe throughput.
 func BenchmarkGenericPublishSubscribe(b *testing.B) {
-	bus := NewBus(WithBufferSize(4096))
+	bus := NewBus()
 	defer bus.Close()
 
 	var count atomic.Int64
@@ -96,12 +75,14 @@ func BenchmarkGenericPublishSubscribe(b *testing.B) {
 	}
 	b.StopTimer()
 
-	time.Sleep(500 * time.Millisecond)
+	if err := bus.Close(); err != nil {
+		b.Fatalf("close: %v", err)
+	}
 }
 
 // BenchmarkConcurrentPublish benchmarks concurrent publishing.
 func BenchmarkConcurrentPublish(b *testing.B) {
-	bus := NewBus(WithBufferSize(8192))
+	bus := NewBus()
 	defer bus.Close()
 
 	var count atomic.Int64
@@ -124,7 +105,9 @@ func BenchmarkConcurrentPublish(b *testing.B) {
 	})
 	b.StopTimer()
 
-	time.Sleep(500 * time.Millisecond)
+	if err := bus.Close(); err != nil {
+		b.Fatalf("close: %v", err)
+	}
 }
 
 // BenchmarkEnvelopePool benchmarks the Envelope memory pool.
@@ -161,7 +144,7 @@ func heapPop(pq *priorityQueue) *queueItem {
 
 // BenchmarkThroughput measures throughput (verifies >= 10000 events/sec).
 func BenchmarkThroughput(b *testing.B) {
-	bus := NewBus(WithBufferSize(8192))
+	bus := NewBus()
 	defer bus.Close()
 
 	var count atomic.Int64
@@ -184,7 +167,9 @@ func BenchmarkThroughput(b *testing.B) {
 	elapsed := time.Since(start)
 	b.StopTimer()
 
-	time.Sleep(500 * time.Millisecond)
+	if err := bus.Close(); err != nil {
+		b.Fatalf("close: %v", err)
+	}
 	got := count.Load()
 	eventsPerSec := float64(got) / elapsed.Seconds()
 	b.Logf("throughput: %.0f events/sec (%d events in %v)", eventsPerSec, got, elapsed)

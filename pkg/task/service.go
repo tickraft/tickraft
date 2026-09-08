@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -145,11 +144,11 @@ func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) 
 	// Enforce scheduled-task count quota before assigning an ID.
 	maxTasks := quota.Ceiling(quota.TypeScheduledTask)
 	if maxTasks > 0 {
-		existing, err := s.tasks.List(ctx, ListOptions{})
+		count, err := s.tasks.Count(ctx)
 		if err != nil {
 			return nil, mapError(err)
 		}
-		if len(existing) >= maxTasks {
+		if count >= int64(maxTasks) {
 			return nil, errdefs.NewServiceError(
 				http.StatusConflict, errdefs.CodeConflict,
 				fmt.Sprintf("scheduled task quota exceeded: maximum %d tasks", maxTasks),
@@ -319,7 +318,8 @@ func (s *TaskService) setEnabled(ctx context.Context, id int64, enabled bool) er
 
 // ListExecutions returns a page of executions matching the filter and the
 // total count. A taskID <= 0 lists executions across all tasks. Results are
-// enriched with the owning task's name, resolved from the task store.
+// enriched with the owning task's name, resolved from the task store for the
+// page's distinct task IDs only.
 func (s *TaskService) ListExecutions(
 	ctx context.Context,
 	taskID int64,
@@ -327,26 +327,20 @@ func (s *TaskService) ListExecutions(
 	filter ExecutionFilter,
 ) ([]*Execution, int64, error) {
 	var taskIDs []int64
-	nameOf := func(id int64) string { return "" }
-	if filter.TaskName != "" || taskID <= 0 {
-		all, err := s.tasks.List(ctx, ListOptions{})
+	if filter.TaskName != "" {
+		// Resolve the name filter to matching task IDs in SQL rather than
+		// loading every task row into memory.
+		matches, err := s.tasks.List(ctx, ListOptions{NameLike: filter.TaskName})
 		if err != nil {
 			return nil, 0, mapError(err)
 		}
-		names := make(map[int64]string, len(all))
-		needle := strings.ToLower(filter.TaskName)
-		taskIDs = make([]int64, 0, len(all))
-		for _, t := range all {
-			names[t.ID] = t.Name
-			if needle != "" && !strings.Contains(strings.ToLower(names[t.ID]), needle) {
-				continue
-			}
-			taskIDs = append(taskIDs, t.ID)
-		}
-		if needle != "" && len(taskIDs) == 0 {
+		if len(matches) == 0 {
 			return []*Execution{}, 0, nil
 		}
-		nameOf = func(id int64) string { return names[id] }
+		taskIDs = make([]int64, len(matches))
+		for i, t := range matches {
+			taskIDs[i] = t.ID
+		}
 	}
 
 	page, size = pagination.Clamp(page, size)
@@ -361,10 +355,37 @@ func (s *TaskService) ListExecutions(
 	if err != nil {
 		return nil, 0, mapError(err)
 	}
-	for _, e := range execs {
-		e.TaskName = nameOf(e.TaskID)
-	}
+	enrichTaskNames(ctx, s.tasks, execs)
 	return execs, total, nil
+}
+
+// enrichTaskNames fills each execution's TaskName with the owning task's
+// name, resolved by a single store query for the page's distinct task IDs.
+// Enrichment is best-effort: on lookup error (or for tasks deleted since
+// their execution was recorded) the name stays empty.
+func enrichTaskNames(ctx context.Context, tasks Store, execs []*Execution) {
+	ids := make(map[int64]struct{}, len(execs))
+	for _, e := range execs {
+		ids[e.TaskID] = struct{}{}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	idList := make([]int64, 0, len(ids))
+	for id := range ids {
+		idList = append(idList, id)
+	}
+	owners, err := tasks.List(ctx, ListOptions{IDs: idList})
+	if err != nil {
+		return
+	}
+	names := make(map[int64]string, len(owners))
+	for _, t := range owners {
+		names[t.ID] = t.Name
+	}
+	for _, e := range execs {
+		e.TaskName = names[e.TaskID]
+	}
 }
 
 // GetExecution returns a single execution record by ID. A positive taskID

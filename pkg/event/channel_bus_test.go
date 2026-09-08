@@ -99,7 +99,7 @@ func TestSamePriorityFIFO(t *testing.T) {
 
 	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
 		mu.Lock()
-		received = append(received, env.EventID)
+		received = append(received, env.Metadata["seq"])
 		if len(received) == 3 {
 			close(ready)
 		}
@@ -111,10 +111,11 @@ func TestSamePriorityFIFO(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	// Same priority, dispatched in publish order (FIFO).
+	// Same priority, dispatched in publish order (FIFO). The generated event
+	// IDs are opaque, so the publish order is tagged via metadata.
 	for _, id := range []string{"first", "second", "third"} {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-			WithEventID(id),
+			WithMetadata(map[string]string{"seq": id}),
 			WithPriority(5),
 		); err != nil {
 			t.Fatalf("publish: %v", err)
@@ -131,32 +132,6 @@ func TestSamePriorityFIFO(t *testing.T) {
 	defer mu.Unlock()
 	if received[0] != "first" || received[1] != "second" || received[2] != "third" {
 		t.Errorf("FIFO order: got %v, want [first second third]", received)
-	}
-}
-
-func TestSyncPublish(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	var called atomic.Bool
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		called.Store(true)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	// Publish in sync mode: the Handler must complete before Publish returns.
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	if !called.Load() {
-		t.Error("handler should have been called before Publish returned in sync mode")
 	}
 }
 
@@ -188,7 +163,7 @@ func TestPanicRecovery(t *testing.T) {
 	bus := NewBus()
 	defer bus.Close()
 
-	var normalCalled atomic.Bool
+	done := make(chan struct{}, 2)
 
 	sub1, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
 		panic("intentional panic")
@@ -199,7 +174,7 @@ func TestPanicRecovery(t *testing.T) {
 	defer sub1.Cancel()
 
 	sub2, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		normalCalled.Store(true)
+		done <- struct{}{}
 		return nil
 	})
 	if err != nil {
@@ -207,33 +182,35 @@ func TestPanicRecovery(t *testing.T) {
 	}
 	defer sub2.Cancel()
 
-	// Publish in sync mode; the panic should be recovered.
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	// The panic in the first handler should be recovered and the second
+	// handler still invoked for the same event.
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish should not fail after panic recovery: %v", err)
 	}
-
-	if !normalCalled.Load() {
-		t.Error("normal handler should still be called after panic in another handler")
-	}
+	waitForEvents(t, done, 1)
 
 	// Subsequent events should still be processed normally.
-	normalCalled.Store(false)
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish after panic: %v", err)
 	}
-	if !normalCalled.Load() {
-		t.Error("handler should still work after previous panic")
+	waitForEvents(t, done, 1)
+}
+
+// waitForEvents receives n delivery signals from done, failing the test on
+// timeout. It is the async replacement for the removed sync-publish mode.
+func waitForEvents(t *testing.T, done <-chan struct{}, n int) {
+	t.Helper()
+	for range n {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for event delivery")
+		}
 	}
 }
 
 func TestHandlerTimeout(t *testing.T) {
-	bus := NewBus(
-		WithDefaultTimeout(100 * time.Millisecond),
-	)
+	bus := NewBus()
 	defer bus.Close()
 
 	var completed atomic.Bool
@@ -252,17 +229,22 @@ func TestHandlerTimeout(t *testing.T) {
 	defer sub.Cancel()
 
 	start := time.Now()
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish: %v", err)
+	}
+	// Close drains the queue and waits for the consumer goroutine, so the
+	// timed-out handler invocation has fully finished once it returns.
+	if err := bus.Close(); err != nil {
+		t.Fatalf("close: %v", err)
 	}
 	elapsed := time.Since(start)
 
 	if completed.Load() {
 		t.Error("handler should have been timed out, not completed")
 	}
-	if elapsed > 500*time.Millisecond {
+	// The 100ms handler timeout fires long before the 2s handler body; the
+	// generous upper bound only guards against a lost timeout.
+	if elapsed > 1500*time.Millisecond {
 		t.Errorf("timeout took too long: %v", elapsed)
 	}
 }
@@ -272,11 +254,13 @@ func TestHandlerRetry(t *testing.T) {
 	defer bus.Close()
 
 	var attempts atomic.Int32
+	succeeded := make(chan struct{})
 	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
 		count := attempts.Add(1)
 		if count < 3 {
 			return errors.New("transient error")
 		}
+		close(succeeded)
 		return nil
 	}, WithRetry(3, 10*time.Millisecond))
 	if err != nil {
@@ -284,10 +268,14 @@ func TestHandlerRetry(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case <-succeeded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for retry success")
 	}
 
 	if attempts.Load() != 3 {
@@ -300,13 +288,14 @@ func TestHandlerRetryAllFail(t *testing.T) {
 	defer bus.Close()
 
 	var attempts atomic.Int32
-	var savedEnv atomic.Value
-	var savedErr atomic.Value
+	saved := make(chan struct{}, 1)
 
 	store := &mockFailedEventStore{
 		saveFunc: func(ctx context.Context, env Envelope, err error) error {
-			savedEnv.Store(env)
-			savedErr.Store(err)
+			select {
+			case saved <- struct{}{}:
+			default:
+			}
 			return nil
 		},
 	}
@@ -323,78 +312,19 @@ func TestHandlerRetryAllFail(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case <-saved:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for failed-event persistence")
 	}
 
 	// 1 initial + 2 retries = 3 attempts
 	if attempts.Load() != 3 {
 		t.Errorf("expected 3 attempts, got %d", attempts.Load())
-	}
-
-	if savedEnv.Load() == nil {
-		t.Error("failed event should have been saved")
-	}
-	if savedErr.Load() == nil {
-		t.Error("error should have been saved")
-	}
-}
-
-func TestHandlerFilter(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	var mu sync.Mutex
-	var received []string
-	ready := make(chan struct{})
-
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		mu.Lock()
-		received = append(received, env.TenantID)
-		if len(received) == 1 {
-			close(ready)
-		}
-		mu.Unlock()
-		return nil
-	}, WithFilter(func(env Envelope) bool {
-		return env.TenantID == "tenant-001"
-	}))
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	// Matching event.
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithTenantID("tenant-001"),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	// Non-matching event.
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithTenantID("tenant-002"),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	select {
-	case <-ready:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for event")
-	}
-
-	// Wait briefly to ensure the non-matching event does not arrive.
-	time.Sleep(200 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(received) != 1 {
-		t.Errorf("expected 1 event, got %d", len(received))
-	}
-	if len(received) > 0 && received[0] != "tenant-001" {
-		t.Errorf("expected tenant-001, got %s", received[0])
 	}
 }
 
@@ -404,6 +334,18 @@ func TestExponentialBackoff(t *testing.T) {
 
 	var timestamps []time.Time
 	var mu sync.Mutex
+	failed := make(chan struct{}, 1)
+
+	store := &mockFailedEventStore{
+		saveFunc: func(ctx context.Context, env Envelope, err error) error {
+			select {
+			case failed <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	}
+	bus.(*channelBus).failedStore = store
 
 	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
 		mu.Lock()
@@ -416,10 +358,16 @@ func TestExponentialBackoff(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
 		t.Fatalf("publish: %v", err)
+	}
+
+	// The failed-event store fires only after the final retry, so receiving
+	// here means all attempts have completed.
+	select {
+	case <-failed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for retry exhaustion")
 	}
 
 	mu.Lock()
@@ -502,8 +450,11 @@ func TestConcurrentPublish(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Wait for all events to be processed.
-	time.Sleep(1 * time.Second)
+	// Close drains the queues and waits for the consumer goroutine, so every
+	// published event has been dispatched once Close returns.
+	if err := bus.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 	got := count.Load()
 	if got != n {
 		t.Errorf("received %d events, want %d", got, n)
@@ -511,12 +462,17 @@ func TestConcurrentPublish(t *testing.T) {
 }
 
 func TestQueueFullDrop(t *testing.T) {
-	bus := NewBus(WithBufferSize(2))
+	bus := NewBus()
 	defer bus.Close()
 
-	// Use a slow handler to fill up the queue.
+	// Use a blocked handler so the default-capacity queue fills up.
 	processing := make(chan struct{})
+	started := make(chan struct{}, 1)
 	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
 		<-processing // Block until the test signals.
 		return nil
 	})
@@ -525,14 +481,25 @@ func TestQueueFullDrop(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	// Publish 2 events to fill the queue.
-	for i := range 2 {
+	// The first event is popped by the consumer and blocks in the handler;
+	// once started fires, exactly defaultBufferSize queued events fill the
+	// queue.
+	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
+		t.Fatalf("publish first: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for handler start")
+	}
+	for range defaultBufferSize {
 		if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{}); err != nil {
-			t.Fatalf("publish %d: %v", i, err)
+			t.Fatalf("publish fill: %v", err)
 		}
 	}
 
-	// The 3rd event should be dropped (queue full).
+	// The event beyond the queue capacity is dropped, not returned as an
+	// error: dropping is the bus's backpressure contract.
 	err = bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{})
 	if err != nil {
 		t.Errorf("publish when full should not return error, got %v", err)
@@ -540,31 +507,6 @@ func TestQueueFullDrop(t *testing.T) {
 
 	// Release the handler.
 	close(processing)
-}
-
-func TestWithSyncModeSubscriber(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	var called atomic.Bool
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		called.Store(true)
-		return nil
-	}, WithSyncMode())
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	if !called.Load() {
-		t.Error("sync mode subscriber should have been called")
-	}
 }
 
 func TestEnvelopePoolAcquireRelease(t *testing.T) {
@@ -621,159 +563,4 @@ func (m *mockFailedEventStore) Save(ctx context.Context, env Envelope, err error
 		return m.saveFunc(ctx, env, err)
 	}
 	return nil
-}
-
-func TestWithJitter_Clamp(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	tests := []struct {
-		input  float64
-		expect float64
-	}{
-		{-0.5, 0.0},
-		{0.0, 0.0},
-		{0.3, 0.3},
-		{0.5, 0.5},
-		{1.0, 1.0},
-		{1.5, 1.0},
-	}
-
-	for _, tt := range tests {
-		cfg := &subscribeConfig{}
-		WithJitter(tt.input).apply(cfg)
-		if cfg.jitter != tt.expect {
-			t.Errorf("WithJitter(%v): got %v, want %v", tt.input, cfg.jitter, tt.expect)
-		}
-	}
-}
-
-func TestJitteredBackoff(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	baseBackoff := 100 * time.Millisecond
-	jitterFactor := 0.5
-
-	var timestamps []time.Time
-	var mu sync.Mutex
-
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		mu.Lock()
-		timestamps = append(timestamps, time.Now())
-		mu.Unlock()
-		return errors.New("always fail")
-	}, WithRetry(3, baseBackoff), WithJitter(jitterFactor))
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(timestamps) != 4 {
-		t.Fatalf("expected 4 attempts, got %d", len(timestamps))
-	}
-
-	// Expected exponential backoffs: 100ms, 200ms, 400ms.
-	// With jitter=0.5, each backoff is in [0.5*exponential, exponential].
-	// Allow scheduling tolerance.
-	for i := 1; i < len(timestamps); i++ {
-		interval := timestamps[i].Sub(timestamps[i-1])
-		exponential := float64(baseBackoff) * float64(int64(1)<<uint(i-1))
-		minAllowed := time.Duration(exponential*0.5) - 30*time.Millisecond
-		maxAllowed := time.Duration(exponential) + 50*time.Millisecond
-
-		if interval < minAllowed {
-			t.Errorf("interval %d: got %v, want >= %v", i, interval, minAllowed)
-		}
-		if interval > maxAllowed {
-			t.Errorf("interval %d: got %v, want <= %v", i, interval, maxAllowed)
-		}
-	}
-}
-
-func TestJitterZero(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	var timestamps []time.Time
-	var mu sync.Mutex
-
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		mu.Lock()
-		timestamps = append(timestamps, time.Now())
-		mu.Unlock()
-		return errors.New("always fail")
-	}, WithRetry(3, 50*time.Millisecond), WithJitter(0.0))
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	if err := bus.Publish(context.Background(), TypeExecutionTriggered, ExecutionPayload{},
-		WithSync(),
-	); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(timestamps) != 4 {
-		t.Fatalf("expected 4 attempts, got %d", len(timestamps))
-	}
-
-	// With jitter=0.0, behavior must match pure exponential: 50ms, 100ms, 200ms.
-	interval1 := timestamps[1].Sub(timestamps[0])
-	interval2 := timestamps[2].Sub(timestamps[1])
-	interval3 := timestamps[3].Sub(timestamps[2])
-
-	if interval1 < 40*time.Millisecond || interval1 > 100*time.Millisecond {
-		t.Errorf("interval 1: got %v, want ~50ms", interval1)
-	}
-	if interval2 < 80*time.Millisecond || interval2 > 160*time.Millisecond {
-		t.Errorf("interval 2: got %v, want ~100ms", interval2)
-	}
-	if interval3 < 160*time.Millisecond || interval3 > 300*time.Millisecond {
-		t.Errorf("interval 3: got %v, want ~200ms", interval3)
-	}
-}
-
-func TestJitterWithContextCancel(t *testing.T) {
-	bus := NewBus()
-	defer bus.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	sub, err := bus.Subscribe(TypeExecutionTriggered, func(ctx context.Context, env Envelope) error {
-		return errors.New("always fail")
-	}, WithRetry(5, 1*time.Second), WithJitter(1.0))
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Cancel()
-
-	// Cancel the context shortly after publishing to interrupt the jittered backoff.
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-
-	start := time.Now()
-	// Publish synchronously; the handler will fail, enter jittered backoff,
-	// and the context cancellation should terminate it.
-	_ = bus.Publish(ctx, TypeExecutionTriggered, ExecutionPayload{}, WithSync())
-	elapsed := time.Since(start)
-
-	// The first attempt is immediate; the backoff before the second attempt
-	// is up to 1s. We cancel at 50ms, so total elapsed should be well under 1s.
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("context cancel did not interrupt backoff: elapsed %v", elapsed)
-	}
 }

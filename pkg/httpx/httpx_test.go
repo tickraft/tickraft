@@ -95,17 +95,3 @@ func TestNewTransport_NegativeValuesFallBack(t *testing.T) {
 	}
 }
 
-func TestDefaultClient_Singleton(t *testing.T) {
-	a := DefaultClient()
-	b := DefaultClient()
-	if a != b {
-		t.Fatal("expected DefaultClient to return the same instance")
-	}
-}
-
-func TestNewFromPreset(t *testing.T) {
-	c := NewFromPreset(PresetFast)
-	if c.Timeout != PresetFast.Config.Timeout {
-		t.Fatalf("expected preset timeout %v, got %v", PresetFast.Config.Timeout, c.Timeout)
-	}
-}

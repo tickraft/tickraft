@@ -16,8 +16,6 @@
 //     type matching at compile time.
 //   - Priority ordering: a heap-based priority queue replaces a FIFO channel;
 //     higher numeric values mean higher priority.
-//   - Event filtering: FilterFunc for precise filtering plus a Matcher interface
-//     for fuzzy (regex) matching.
 //   - Panic recovery: each Handler invocation is wrapped in defer recover() to
 //     isolate failures.
 //   - Timeout control: Handler execution timeout is configurable; the default is
@@ -79,27 +77,13 @@
 //	// priority; events with the same priority are dispatched in publish order
 //	// (FIFO).
 //
-// # Synchronous Dispatch
+// # Delivery Model
 //
-// The default mode is asynchronous; use WithSync to switch to synchronous mode:
-//
-//	err = bus.Publish(ctx, event.TypeExecutionTriggered, payload,
-//	    event.WithSync(),  // blocks until all Handlers finish
-//	)
-//
-// # Event Filtering
-//
-// Register a filter function via WithFilter; events are delivered only when it
-// returns true:
-//
-//	sub, err = event.Subscribe[event.ExecutionPayload](
-//	    bus,
-//	    event.TypeExecutionTriggered,
-//	    handler,
-//	    event.WithFilter(func(env event.Envelope) bool {
-//	        return env.TenantID == "tenant-001"
-//	    }),
-//	)
+// Delivery is always asynchronous: Publish enqueues onto the per-type priority
+// queue and returns without waiting for handlers. Publishers that need to
+// observe completion subscribe to a downstream (completion) event instead.
+// Context cancellation is stripped at enqueue time via context.WithoutCancel,
+// so a publisher returning early never aborts subscriber work mid-delivery.
 //
 // # Timeout and Retry
 //
@@ -111,13 +95,7 @@
 //	    handler,
 //	    event.WithTimeout(2*time.Second),
 //	    event.WithRetry(3, 100*time.Millisecond),  // at most 3 retries, backoff 100ms/200ms/400ms
-//	    event.WithJitter(0.5),                      // jitter factor 0.5: backoff randomized in [50%, 100%] of
-//	                                                 // exponential backoff
 //	)
-//
-// WithJitter randomizes the exponential backoff to avoid thundering herd.
-// factor=0.0 (default) preserves deterministic backoff; factor=1.0 applies
-// full jitter (backoff in [0, exponential]).
 //
 // # Failed Event Store
 //

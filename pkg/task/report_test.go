@@ -19,9 +19,9 @@ import (
 
 // newReportTestBus creates a bus and subscribes a capture for
 // TypeExecutionCompleted events, mirroring the engine's slot/dependency
-// subscribers. Reports are published with the sync option so the consumer
-// has fully applied by the time Publish returns; the completion event (the
-// consumer publishes it async) is awaited via the returned channel.
+// subscribers. Reports are delivered asynchronously; publishReport waits for
+// delivery via an ordering sentinel, and the completion event (the consumer
+// publishes it on the same bus) is awaited via the returned channel.
 func newReportTestBus(t *testing.T) (bus event.Bus, completions <-chan event.ExecutionPayload) {
 	t.Helper()
 	bus = event.NewBus()
@@ -49,13 +49,30 @@ func newReportTestConsumer(t *testing.T, bus event.Bus, dbc *gorm.DB) *ReportCon
 	return c
 }
 
-// publishReport publishes a report payload synchronously.
+// publishReport publishes a report payload and waits until the consumer
+// goroutine has dispatched it to every subscriber. Subscribe appends and
+// dispatch visits subscribers in order, so a sentinel subscribed here runs
+// after the report consumer's own handler for the same event.
 func publishReport(t *testing.T, bus event.Bus, p event.TaskReportPayload) {
 	t.Helper()
-	if err := event.Publish(context.Background(), bus, event.TypeTaskStatusReported, p,
-		event.WithSync()); err != nil {
+	done := make(chan struct{})
+	sentinel, err := bus.Subscribe(event.TypeTaskStatusReported,
+		func(context.Context, event.Envelope) error {
+			close(done)
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("subscribe sentinel: %v", err)
+	}
+	if err := event.Publish(context.Background(), bus, event.TypeTaskStatusReported, p); err != nil {
 		t.Fatalf("publish report: %v", err)
 	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for report delivery")
+	}
+	sentinel.Cancel()
 }
 
 // insertRunningExecution seeds a running dispatch row for taskID carrying

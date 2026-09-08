@@ -466,11 +466,11 @@ func newTemplateRouteOptions(
 ) ([]router.RegisterOption, error) {
 	// Telemetry template handler: backed by the GORM template store,
 	// seeded on every startup with the CE built-in template set
-	// (icmp/tcp/http(s); LoadBuiltinTemplates is idempotent and removes
-	// any pro-only rows). Template CRUD and the apply endpoint are CE
-	// capabilities (docs/architecture/api-routing.md); the pro edition
-	// extends the same surface by injecting its own handler with the full
-	// (core + pro) built-in set.
+	// (icmp/tcp/http(s); LoadBuiltinTemplates is idempotent). Template
+	// CRUD and the apply endpoint are CE capabilities
+	// (docs/architecture/api-routing.md); the pro edition extends the same
+	// surface by seeding the full (core + pro) built-in set via
+	// LoadAllBuiltinTemplates.
 	templateStore := telemetry.NewTemplateStore(rt.dbc)
 	if err := telemetry.LoadBuiltinTemplates(ctx, rt.dbc); err != nil {
 		return nil, fmt.Errorf("load builtin telemetry templates: %w", err)

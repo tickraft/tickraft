@@ -7,7 +7,6 @@ package event
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"time"
 
 	"go.uber.org/zap"
@@ -41,11 +40,11 @@ type Handler func(ctx context.Context, event Envelope) error
 // callers may inject a StreamBridge adapter for distributed extensions.
 type Bus interface {
 	// Publish publishes an event to the bus.
-	// Options configure priority, sync mode, event ID, tenant ID and metadata.
+	// Options configure priority, tenant ID and metadata.
 	Publish(ctx context.Context, eventType Type, payload any, opts ...PublishOption) error
 
 	// Subscribe registers a subscriber and returns a Subscription used to unsubscribe.
-	// Options configure filter function, timeout, retry strategy and sync mode.
+	// Options configure handler timeout and retry strategy.
 	Subscribe(eventType Type, handler Handler, opts ...SubscribeOption) (Subscription, error)
 
 	// Close gracefully shuts down the bus, waiting for all in-flight Handlers to finish.
@@ -120,8 +119,6 @@ type PublishOption interface {
 
 type publishConfig struct {
 	priority int
-	sync     bool
-	eventID  string
 	tenantID string
 	metadata map[string]string
 }
@@ -133,22 +130,6 @@ func (o priorityOption) apply(c *publishConfig) { c.priority = int(o) }
 
 // WithPriority sets the event priority; higher values mean higher priority.
 func WithPriority(priority int) PublishOption { return priorityOption(priority) }
-
-// syncOption enables synchronous dispatch mode.
-type syncOption bool
-
-func (o syncOption) apply(c *publishConfig) { c.sync = bool(o) }
-
-// WithSync enables synchronous dispatch mode: the publisher blocks until all Handlers finish.
-func WithSync() PublishOption { return syncOption(true) }
-
-// eventIDOption sets the event unique identifier.
-type eventIDOption string
-
-func (o eventIDOption) apply(c *publishConfig) { c.eventID = string(o) }
-
-// WithEventID sets the event unique identifier; when not set, the bus generates one automatically.
-func WithEventID(eventID string) PublishOption { return eventIDOption(eventID) }
 
 // tenantIDOption sets the tenant identifier.
 type tenantIDOption string
@@ -176,23 +157,10 @@ type SubscribeOption interface {
 }
 
 type subscribeConfig struct {
-	filter      FilterFunc
 	timeout     time.Duration
 	maxRetries  int
 	baseBackoff time.Duration
-	jitter      float64
-	syncMode    bool
 }
-
-// filterOption sets the event filter function.
-type filterOption struct {
-	filter FilterFunc
-}
-
-func (o filterOption) apply(c *subscribeConfig) { c.filter = o.filter }
-
-// WithFilter sets the event filter function; events are delivered only when it returns true.
-func WithFilter(filter FilterFunc) SubscribeOption { return filterOption{filter: filter} }
 
 // timeoutOption sets the Handler execution timeout.
 type timeoutOption time.Duration
@@ -220,53 +188,10 @@ func WithRetry(maxRetries int, baseBackoff time.Duration) SubscribeOption {
 	return retryOption{maxRetries: maxRetries, baseBackoff: baseBackoff}
 }
 
-// jitterOption sets the jitter factor applied to the exponential backoff.
-type jitterOption float64
-
-func (o jitterOption) apply(c *subscribeConfig) {
-	switch {
-	case float64(o) < 0.0:
-		c.jitter = 0.0
-	case float64(o) > 1.0:
-		c.jitter = 1.0
-	default:
-		c.jitter = float64(o)
-	}
-}
-
-// WithJitter configures the jitter factor applied to the exponential backoff.
-// factor must be in [0.0, 1.0]; values outside this range are clamped.
-// factor=0.0 (default) means no jitter, preserving deterministic backoff.
-// factor=1.0 means full jitter: backoff is randomized in [0, exponential_backoff].
-// factor=0.3 means partial jitter: backoff is randomized in [0.7*exponential, exponential].
-// The jittered backoff formula is: exponential * (1.0 - factor + factor * rand.Float64()).
-// WithJitter is only effective when combined with WithRetry.
-func WithJitter(factor float64) SubscribeOption { return jitterOption(factor) }
-
-// syncModeOption marks the subscriber as synchronous.
-type syncModeOption bool
-
-func (o syncModeOption) apply(c *subscribeConfig) { c.syncMode = bool(o) }
-
-// WithSyncMode marks the subscriber as synchronous: the Handler is invoked directly in the publisher goroutine.
-func WithSyncMode() SubscribeOption { return syncModeOption(true) }
-
 // Option configures Bus construction.
 type Option interface {
 	apply(*channelBus)
 }
-
-// bufferSizeOption sets the priority queue buffer size.
-type bufferSizeOption int
-
-func (o bufferSizeOption) apply(b *channelBus) {
-	if int(o) > 0 {
-		b.bufferSize = int(o)
-	}
-}
-
-// WithBufferSize sets the priority queue buffer size; the default is 1024.
-func WithBufferSize(size int) Option { return bufferSizeOption(size) }
 
 // loggerOption sets the zap logger.
 type loggerOption struct {
@@ -281,18 +206,6 @@ func (o loggerOption) apply(b *channelBus) {
 
 // WithLogger sets the zap logger; the default is no-op.
 func WithLogger(logger *zap.Logger) Option { return loggerOption{logger: logger} }
-
-// defaultTimeoutOption sets the default Handler execution timeout.
-type defaultTimeoutOption time.Duration
-
-func (o defaultTimeoutOption) apply(b *channelBus) {
-	if time.Duration(o) > 0 {
-		b.defaultTimeout = time.Duration(o)
-	}
-}
-
-// WithDefaultTimeout sets the default Handler execution timeout; the default is 3 seconds.
-func WithDefaultTimeout(timeout time.Duration) Option { return defaultTimeoutOption(timeout) }
 
 // failedEventStoreOption configures the persistent store for failed events.
 type failedEventStoreOption struct {
@@ -309,14 +222,6 @@ func (o failedEventStoreOption) apply(b *channelBus) {
 func WithFailedEventStore(store FailedEventStore) Option {
 	return failedEventStoreOption{store: store}
 }
-
-// debugOption enables event lifecycle tracing logs.
-type debugOption bool
-
-func (o debugOption) apply(b *channelBus) { b.debug = bool(o) }
-
-// WithDebug enables event lifecycle tracing logs.
-func WithDebug(enabled bool) Option { return debugOption(enabled) }
 
 // Instrumenter is the SPI extension point for event bus observability.
 // This package provides a no-op default; callers
@@ -368,13 +273,11 @@ func WithInstrumenter(i Instrumenter) Option { return instrumenterOption{i: i} }
 // NewBus creates a new event bus instance.
 func NewBus(options ...Option) Bus {
 	bus := &channelBus{
-		subscribers:    make(map[Type][]*subscriber),
-		queues:         make(map[Type]*typeQueue),
-		bufferSize:     defaultBufferSize,
-		logger:         zap.NewNop(),
-		defaultTimeout: defaultTimeout,
-		failedStore:    NoopFailedEventStore{},
-		instrumenter:   noopInstrumenter{},
+		subscribers:  make(map[Type][]*subscriber),
+		queues:       make(map[Type]*typeQueue),
+		logger:       zap.NewNop(),
+		failedStore:  NoopFailedEventStore{},
+		instrumenter: noopInstrumenter{},
 	}
 	for _, o := range options {
 		o.apply(bus)
@@ -382,45 +285,14 @@ func NewBus(options ...Option) Bus {
 	return bus
 }
 
-// FilterFunc is the event filter function; events are delivered to subscribers only when it returns true.
-type FilterFunc func(Envelope) bool
+// defaultBufferSize is the fixed per-type priority queue capacity. When the
+// queue is full, newly published events are dropped (counted via the
+// Instrumenter's IncDrop) rather than blocking the publisher.
+const defaultBufferSize = 1024
 
-// Matcher defines the event matching interface, used for fuzzy event type matching.
-type Matcher interface {
-	// Match reports whether the given envelope matches.
-	Match(env Envelope) bool
-}
-
-// ExactMatcher matches event types exactly.
-type ExactMatcher struct {
-	// Type is the event type to match.
-	Type Type
-}
-
-// Match reports whether the envelope's event type equals the target type.
-func (m ExactMatcher) Match(env Envelope) bool {
-	return env.Type == m.Type
-}
-
-// RegexMatcher matches event types based on a regular expression.
-type RegexMatcher struct {
-	// pattern is the compiled regular expression.
-	pattern *regexp.Regexp
-}
-
-// NewRegexMatcher creates a regex matcher; pattern is the event type regular expression.
-func NewRegexMatcher(pattern string) (*RegexMatcher, error) {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, fmt.Errorf("event: compile regex pattern %q: %w", pattern, err)
-	}
-	return &RegexMatcher{pattern: re}, nil
-}
-
-// Match reports whether the envelope's event type matches the regular expression.
-func (m *RegexMatcher) Match(env Envelope) bool {
-	return m.pattern.MatchString(string(env.Type))
-}
+// defaultTimeout is the default Handler execution timeout, applied when a
+// subscription does not override it via WithTimeout.
+const defaultTimeout = 3 * time.Second
 
 // FailedEventStore defines the persistent store interface for failed events.
 // When all Handler retries fail, the event envelope and error are saved to this store.
@@ -436,9 +308,3 @@ type NoopFailedEventStore struct{}
 func (NoopFailedEventStore) Save(context.Context, Envelope, error) error {
 	return nil
 }
-
-// defaultBufferSize is the default priority queue buffer size.
-const defaultBufferSize = 1024
-
-// defaultTimeout is the default Handler execution timeout.
-const defaultTimeout = 3 * time.Second

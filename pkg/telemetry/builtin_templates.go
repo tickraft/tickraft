@@ -8,8 +8,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"sort"
 
 	"github.com/bytedance/sonic"
 )
@@ -64,22 +62,4 @@ func readBuiltinTemplate(name string) (builtinTemplateFile, error) {
 		return builtinTemplateFile{}, fmt.Errorf("telemetry: parse builtin template %q: %w", name, err)
 	}
 	return t, nil
-}
-
-// ListEmbeddedTemplateFiles returns the names of the embedded template JSON
-// files, sorted alphabetically. It is primarily useful for diagnostics and
-// tests.
-func ListEmbeddedTemplateFiles() ([]string, error) {
-	entries, err := fs.ReadDir(builtinTemplateFS, "templates")
-	if err != nil {
-		return nil, fmt.Errorf("telemetry: read embedded template dir: %w", err)
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	return names, nil
 }

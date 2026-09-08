@@ -23,6 +23,9 @@ type ListOptions struct {
 	// Tags filters tasks to those having at least one of the specified tags.
 	// An empty or nil slice matches all tasks.
 	Tags []string
+	// NameLike filters tasks by a case-insensitive substring match on the
+	// task name, applied in SQL. An empty string matches all tasks.
+	NameLike string
 }
 
 // Store persists scheduler tasks across restarts.
@@ -36,6 +39,8 @@ type Store interface {
 	// List returns tasks matching the given options. A zero-value ListOptions
 	// returns all tasks with no filtering.
 	List(ctx context.Context, opts ListOptions) ([]*Task, error)
+	// Count returns the number of persisted (non-deleted) tasks.
+	Count(ctx context.Context) (int64, error)
 	// Delete removes a task by its ID.
 	Delete(ctx context.Context, id int64) error
 	// Migrate creates or updates the sys_schedule_task table schema.

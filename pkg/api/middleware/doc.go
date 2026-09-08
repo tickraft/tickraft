@@ -39,7 +39,6 @@
 // # Purity
 //
 // The middleware package depends only on the Go standard library, hertz,
-// and the tickraft packages (pkg/auth, pkg/i18n,
-// pkg/auth/region). It does not import any third-party observability, RPC,
-// or caching client libraries.
+// and the tickraft packages (pkg/auth, pkg/i18n). It does not import any
+// third-party observability, RPC, or caching client libraries.
 package middleware

@@ -36,7 +36,7 @@ func openProbeRecordDB(t *testing.T) *probeFixture {
 		t.Fatalf("migrate monitor points: %v", err)
 	}
 	store := NewProbeRecordStore(dbc)
-	if err := store.Migrate(); err != nil {
+	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate probe records: %v", err)
 	}
 	return &probeFixture{t: t, dbc: dbc, store: store}

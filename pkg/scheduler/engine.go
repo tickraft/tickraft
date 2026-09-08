@@ -43,30 +43,3 @@ type Engine interface {
 // passed to the callback is the same id provided to Add, allowing the
 // caller to look up the associated business entity (e.g., a task).
 type Callback func(id int64)
-
-// NoopEngine is a no-op Engine implementation that discards all
-// registrations and never fires callbacks. It is useful for testing and
-// for modules that optionally use scheduling but need to operate without
-// a real timing engine.
-//
-// All methods are no-ops and return nil. Add discards the schedule and
-// callback; Remove, Start, and Stop do nothing.
-type NoopEngine struct{}
-
-// NewNoopEngine creates a NoopEngine. It never returns an error.
-func NewNoopEngine() (Engine, error) { return NoopEngine{}, nil }
-
-// Add discards the registration and returns nil.
-func (NoopEngine) Add(int64, Schedule, Callback) error { return nil }
-
-// Remove does nothing and returns nil.
-func (NoopEngine) Remove(int64) error { return nil }
-
-// Start does nothing and returns nil.
-func (NoopEngine) Start(context.Context) error { return nil }
-
-// Stop does nothing and returns nil.
-func (NoopEngine) Stop(context.Context) error { return nil }
-
-// Compile-time assertion that NoopEngine implements Engine.
-var _ Engine = NoopEngine{}

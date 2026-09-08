@@ -23,7 +23,6 @@
 //
 // Key abstractions:
 //   - Engine: the pure timing-scheduling engine interface (Add/Remove/Start/Stop).
-//   - NoopEngine: a no-op Engine for testing or disabled scheduling.
 //   - Schedule: alias for cron.Schedule, determines the next fire time.
 //   - Callback: invoked by the Engine when a scheduled entry fires.
 //   - ShardManager: distributed entry ownership filtering across engine
