@@ -243,10 +243,23 @@ paths:
     get:
       tags: [auth]
       summary: List API keys
-      description: Return metadata for all API keys under the current user/tenant (without the raw key).
+      description: Return a page of API key metadata under the current user/tenant (without the raw key).
       operationId: listAPIKeys
       security:
         - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+          description: 1-based page number.
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: Page size (capped at 100).
+        - name: keyword
+          in: query
+          schema: { type: string }
+          description: Substring filter on the key name; omitted or empty matches all keys.
       responses:
         '200':
           description: List query successful

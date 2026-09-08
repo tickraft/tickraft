@@ -65,7 +65,7 @@ const EXECUTOR_LABELS = computed<Record<string, string>>(() => ({
   webhook: 'Webhook',
 }))
 
-const countText = computed(() => `${total.value} ${t('task.task.list.title').toUpperCase().includes('TASK') ? 'TASKS' : t('task.task.list.title')}`)
+const countText = computed(() => `${total.value} ${t('task.task.list.countUnit')}`)
 
 /** Format the schedule string for display */
 function formatSchedule(row: TaskModel): string {

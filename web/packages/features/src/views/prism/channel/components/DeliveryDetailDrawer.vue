@@ -89,7 +89,7 @@ function attemptClass(item: DeliveryAttempt): string {
     <div
       v-if="record"
       role="region"
-      aria-label="Delivery detail"
+      :aria-label="$t('prism.channel.delivery.drawerTitle')"
     >
       <!-- Basic info -->
       <div class="tk-delivery-drawer__section">
@@ -213,10 +213,7 @@ function attemptClass(item: DeliveryAttempt): string {
       </div>
     </div>
     <template #footer>
-      <el-button
-        aria-label="Close"
-        @click="close"
-      >
+      <el-button @click="close">
         {{ $t('common.app.cancel') }}
       </el-button>
       <el-button

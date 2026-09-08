@@ -23,7 +23,7 @@ const routes: RouteRecordRaw[] = [
         path: 'api-keys/list',
         name: 'ApiKeys',
         component: () => import('../views/system/api-keys/list/List.vue'),
-        meta: { title: 'system.apikey.title' },
+        meta: { title: 'system.apiKeys.title' },
       },
       {
         path: 'info/overview',

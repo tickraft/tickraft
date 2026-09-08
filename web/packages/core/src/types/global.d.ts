@@ -60,25 +60,6 @@ export interface SidebarState {
 }
 
 /**
- * Tab item
- */
-export interface TabItem {
-  path: string
-  title: string
-  closable: boolean
-  icon?: string
-}
-
-/**
- * Generic list query params
- */
-export interface ListQueryParams extends PageParams {
-  keyword?: string
-  sort_by?: string
-  sort_order?: 'asc' | 'desc'
-}
-
-/**
  * Asset status enum (aligned with backend asset.Status)
  *
  * Generic status enum, the core StatusTag component depends on this type;

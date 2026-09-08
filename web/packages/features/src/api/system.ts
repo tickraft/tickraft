@@ -16,13 +16,6 @@ export interface SystemSettings {
   retentionDays: number
 }
 
-/** Health check response (aligned with backend /healthz) */
-interface HealthCheck {
-  status: string
-  /** Dependency check results (present when a HealthzHandler is wired) */
-  checks?: Record<string, string>
-}
-
 /** Runtime info (aligned with backend SystemInfo) */
 export interface RuntimeInfo {
   version: string
@@ -121,19 +114,5 @@ export function updateProfile(params: UpdateProfileRequest): Promise<UserProfile
     url: '/system/profile',
     method: 'put',
     data: params,
-  })
-}
-
-/**
- * Health check
- *
- * The /healthz endpoint is registered at the root level (no /api/v1 prefix),
- * so baseURL is overridden to empty to bypass the default request baseURL.
- */
-export function healthCheck(): Promise<HealthCheck> {
-  return request<HealthCheck>({
-    url: '/healthz',
-    method: 'get',
-    baseURL: '',
   })
 }

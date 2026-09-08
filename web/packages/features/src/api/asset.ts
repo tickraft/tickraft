@@ -133,21 +133,3 @@ export function updateAssetStatus(id: number, status: AssetStatus): Promise<void
   })
 }
 
-/** Probe result (aligned with backend probeResult). */
-export interface ProbeResult {
-  assetId: number
-  status: AssetStatus
-}
-
-/**
- * Probe an asset to determine its current status.
- *
- * Aligned with backend POST /assets/:id/probe which loads the asset and
- * returns its current status as a probe result.
- */
-export function probeAsset(id: number): Promise<ProbeResult> {
-  return request<ProbeResult>({
-    url: `/assets/${id}/probe`,
-    method: 'post',
-  })
-}

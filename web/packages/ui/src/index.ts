@@ -20,7 +20,8 @@ export { default as Input } from './components/Input.vue'
 export { default as Dialog } from './components/Dialog.vue'
 export { default as Drawer } from './components/Drawer.vue'
 
-// Local composables
+// Composables: canonical implementations live in @tickraft/core (single
+// source of truth); useFocusRestore and useTheme are ui-local.
 export { useEventListener } from './composables/useEventListener'
 export type { UseEventListenerOptions } from './composables/useEventListener'
 export { useInterval } from './composables/useInterval'

@@ -46,7 +46,9 @@ type Service interface {
 	CreateAPIKey(ctx context.Context, name string, expiredAt *time.Time) (rawKey string, info *user.APIKey, err error)
 	// ListAPIKeys returns a page of API keys together with the total count.
 	// page is 1-based and size is the maximum number of keys returned.
-	ListAPIKeys(ctx context.Context, page, size int) ([]user.APIKey, int64, error)
+	// keyword restricts the result to keys whose name contains it; an empty
+	// keyword matches all keys.
+	ListAPIKeys(ctx context.Context, page, size int, keyword string) ([]user.APIKey, int64, error)
 	// RevokeAPIKey revokes an API key by ID.
 	RevokeAPIKey(ctx context.Context, id int64) error
 	// GetProfile returns the profile of the current user identified by userID.

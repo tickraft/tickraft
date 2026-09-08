@@ -12,6 +12,7 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import { mockServerPlugin } from './vite-plugins/mock-server.js'
+import { devPagesPlugin } from './vite-plugins/dev-pages.js'
 import path from 'path'
 
 export default defineConfig({
@@ -52,6 +53,9 @@ export default defineConfig({
       renderLegacyChunks: true,
       additionalLegacyPolyfills: ['core-js/stable'],
     }),
+    // Serves the dev-only helper pages in app/dev-pages during `vite dev`;
+    // they are intentionally outside public/ so they never reach dist/.
+    devPagesPlugin(),
   ],
   resolve: {
     // @tickraft/core 与 @tickraft/features 通过 pnpm workspace 符号链接自动解析，无需额外 alias

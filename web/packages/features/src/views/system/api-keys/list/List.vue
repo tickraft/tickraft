@@ -3,7 +3,7 @@
 // Dual-licensed — see LICENSE for details.
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { WarningFilled, Search, Refresh, Plus, Key, Check, Close, CopyDocument } from '@element-plus/icons-vue'
@@ -18,28 +18,18 @@ const loading = ref(false)
 const tableData = ref<ApiKey[]>([])
 const page = ref(1)
 const size = ref(10)
+const total = ref(0)
 const searchQuery = ref('')
 
-/** Filtered data by search query */
-const filteredData = computed(() => {
-  if (!searchQuery.value) return tableData.value
-  const q = searchQuery.value.toLowerCase()
-  return tableData.value.filter((item) => item.name.toLowerCase().includes(q))
-})
+/** Summary strip counts, fed by one unfiltered page (admin-created keys are
+ *  few; the endpoint caps size at 100, which covers the realistic range). */
+const summaryCounts = ref({ total: 0, active: 0, revoked: 0 })
 
-const total = computed(() => filteredData.value.length)
-const pageData = computed(() => {
-  const start = (page.value - 1) * size.value
-  return filteredData.value.slice(start, start + size.value)
-})
-
-/** Summary strip counts */
-const summary = computed(() => {
-  const totalKeys = tableData.value.length
-  const activeKeys = tableData.value.filter((k) => isApiKeyActive(k)).length
-  const revokedKeys = tableData.value.filter((k) => !isApiKeyActive(k)).length
-  return { totalKeys, activeKeys, revokedKeys }
-})
+const summary = computed(() => ({
+  totalKeys: summaryCounts.value.total,
+  activeKeys: summaryCounts.value.active,
+  revokedKeys: summaryCounts.value.revoked,
+}))
 
 /** Range text for footer */
 const rangeText = computed(() => {
@@ -85,24 +75,38 @@ const selectedKey = ref<ApiKey | null>(null)
 async function loadData(): Promise<void> {
   loading.value = true
   try {
-    // Fetch all keys in max-size pages so client-side search, the summary
-    // strip and pagination operate on the full dataset (the backend caps
-    // size at 100 and has no keyword filter).
-    const first = await getApiKeys({ page: 1, size: 100 })
-    const items = [...first.items]
-    const pages = Math.ceil(first.total / Math.max(first.size, 1))
-    for (let p = 2; p <= pages; p++) {
-      const res = await getApiKeys({ page: p, size: 100 })
-      items.push(...res.items)
-    }
-    tableData.value = items
-    page.value = 1
-    searchQuery.value = ''
+    const res = await getApiKeys({
+      page: page.value,
+      size: size.value,
+      keyword: searchQuery.value.trim() || undefined,
+    })
+    tableData.value = res.items || []
+    total.value = res.total || 0
   } catch {
+    tableData.value = []
+    total.value = 0
     ElMessage.error(t('system.apiKeys.loadFailed'))
   } finally {
     loading.value = false
   }
+}
+
+async function loadSummary(): Promise<void> {
+  try {
+    const res = await getApiKeys({ page: 1, size: 100 })
+    const items = res.items || []
+    summaryCounts.value = {
+      total: res.total || items.length,
+      active: items.filter((k) => isApiKeyActive(k)).length,
+      revoked: items.filter((k) => !isApiKeyActive(k)).length,
+    }
+  } catch {
+    // Summary is non-critical; leave the previous counts in place.
+  }
+}
+
+async function refreshAll(): Promise<void> {
+  await Promise.all([loadData(), loadSummary()])
 }
 
 function handleCreate(): void {
@@ -127,7 +131,7 @@ async function handleCreateConfirm(): Promise<void> {
     createVisible.value = false
     rawKeyResult.value = result
     rawKeyVisible.value = true
-    await loadData()
+    await refreshAll()
   } catch {
     ElMessage.error(t('system.apiKeys.createFailed'))
   } finally {
@@ -160,7 +164,7 @@ async function handleRevokeConfirm(): Promise<void> {
     await revokeApiKey(selectedKey.value.id)
     revokeVisible.value = false
     ElMessage.success(t('system.apiKeys.revokeSuccess'))
-    await loadData()
+    await refreshAll()
   } catch {
     ElMessage.error(t('system.apiKeys.revokeFailed'))
   } finally {
@@ -171,7 +175,18 @@ async function handleRevokeConfirm(): Promise<void> {
 function handlePageChange(payload: { page: number; size: number }): void {
   page.value = payload.page
   size.value = payload.size
+  void loadData()
 }
+
+/** Debounced server-side keyword search. */
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    void loadData()
+  }, 300)
+})
 
 /** Key prefix mask: tk_abc1 -> tk_abc1**** */
 function maskPrefix(prefix: string): string {
@@ -193,7 +208,7 @@ function statusLabelKey(key: ApiKey): 'active' | 'revoked' {
 }
 
 onMounted(() => {
-  void loadData()
+  void refreshAll()
 })
 </script>
 
@@ -246,11 +261,10 @@ onMounted(() => {
         :prefix-icon="Search"
         class="tk-apikey__search"
         clearable
-        @input="page = 1"
       />
       <el-button
         :icon="Refresh"
-        @click="loadData"
+        @click="refreshAll"
       >
         {{ t('common.app.refresh') }}
       </el-button>
@@ -267,7 +281,7 @@ onMounted(() => {
     <div class="tk-apikey__table-card">
       <DataTable
         table-id="api-keys-list"
-        :data="pageData"
+        :data="tableData"
         :columns="columns"
         :loading="loading"
         :total="total"

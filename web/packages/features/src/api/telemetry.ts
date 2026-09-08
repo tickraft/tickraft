@@ -223,16 +223,6 @@ export function getTelemetryTemplates(
 }
 
 /**
- * Get built-in telemetry templates only.
- */
-export function getBuiltinTemplates(): Promise<TelemetryTemplate[]> {
-  return request<TelemetryTemplate[]>({
-    url: '/telemetry/templates/builtin',
-    method: 'get',
-  })
-}
-
-/**
  * Delete a custom (non-builtin) telemetry template.
  */
 export function deleteTelemetryTemplate(id: number): Promise<void> {

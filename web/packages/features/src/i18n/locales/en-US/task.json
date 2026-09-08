@@ -3,6 +3,7 @@
     "list": {
       "title": "Task Management",
       "subtitle": "Unified management of scheduled and event-triggered automation tasks, covering HTTP / TCP / local script / SSH / database executors.",
+      "countUnit": "tasks",
       "create": "Create Task",
       "id": "ID",
       "name": "Task Name",
@@ -126,6 +127,7 @@
     },
     "detail": {
       "eyebrow": "Task #{id}",
+      "title": "Task Detail",
       "basicInfo": "Basic Info",
       "totalExec": "Total Executions",
       "totalExecSub": "Cumulative executions",
@@ -162,6 +164,7 @@
     "list": {
       "title": "Execution Logs",
       "subtitle": "Records every task scheduling execution trail, including output, duration, errors and retry info for traceability.",
+      "countUnit": "logs",
       "logId": "Log ID",
       "taskName": "Task Name",
       "taskNamePlaceholder": "Enter task name",
@@ -173,8 +176,8 @@
       "summaryTotal": "Total executions",
       "summarySuccess": "Success",
       "summaryFailed": "Failed",
-      "summaryRunning": "Running",
-      "summaryTimeout": "Timeout",
+      "summarySuccessRate": "Success Rate",
+      "summaryAvgDuration": "Avg Duration",
       "triggerCron": "Cron",
       "triggerManual": "Manual",
       "triggerEvent": "Event",
@@ -184,6 +187,7 @@
     },
     "detail": {
       "eyebrow": "Task · Log #{id}",
+      "title": "Execution Detail",
       "basicInfo": "Execution Detail",
       "output": "Output Log",
       "viewTask": "View Task",

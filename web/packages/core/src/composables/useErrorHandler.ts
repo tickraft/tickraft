@@ -5,48 +5,56 @@
 /**
  * useErrorHandler - standardized 3-layer error feedback for components.
  *
- * Establishes a consistent error-feedback model across all frontends:
+ * Implements Layer 2 (component-level) of the error feedback model:
+ * - Layer 1 (interceptor): HTTP interceptor catches network/HTTP errors and
+ *   shows generic toasts — already handled by each project's request module.
+ * - Layer 2 (component): this composable catches errors in async operations,
+ *   extracts a human-readable message, shows a contextual toast with i18n
+ *   fallback, and tracks error state for optional inline display.
+ * - Layer 3 (global): `app.config.errorHandler` catches uncaught Vue render
+ *   errors and unhandled promise rejections — set up in each project's main.ts.
  *
- * - **Form-level** (`reportFieldError` / `fieldErrors`): inline error messages
- *   rendered beneath the offending form field (red text). Use for validation
- *   failures bound to a specific field. Cleared by `clearFieldError` or
- *   `clear`.
- * - **Operation-level** (`notify`): short-lived transient feedback via
- *   `ElMessage` for user-initiated actions (save/delete/submit). Auto-dismisses.
- * - **Page-level** (`alert`): persistent notification via `ElNotification`
- *   for critical/blocking errors the user must acknowledge (e.g. data load
- *   failure that leaves the page unusable).
+ * Usage:
+ * ```ts
+ * const { handleError, guard, error, message } = useErrorHandler()
  *
- * The composable also tracks the latest error (`error`/`message`/`hasError`)
- * so callers can render an inline page-level error banner if desired.
+ * // Imperative: catch and handle manually
+ * try {
+ *   await fetchData()
+ * } catch (err) {
+ *   handleError(err, t('data.loadFailed'))
+ * }
  *
- * Element Plus is lazy-imported so the composable has no module-load side
- * effects and works in any Element Plus host project.
+ * // Declarative: wrap an async function
+ * const safeFetch = guard(fetchData)
+ * await safeFetch()
+ * ```
+ *
+ * Canonical implementation; `@tickraft/ui` re-exports it so consumers can
+ * import from either package.
  */
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 
-/** Severity levels for transient and persistent notifications. */
+/** Error severity levels mapped to toast types. */
 export type ErrorSeverity = 'error' | 'warning' | 'info'
-
-/** Layer at which an error is surfaced. */
-export type ErrorLayer = 'form' | 'operation' | 'page'
 
 export interface UseErrorHandlerOptions {
   /**
-   * Custom transient notifier (defaults to lazy ElMessage). Override to plug
-   * in a different toast library or i18n-aware notifier.
+   * Custom notifier. Defaults to a lazy import of ElMessage so the composable
+   * works in any Element Plus project without hard wiring at module load.
    */
   notifier?: (message: string, severity: ErrorSeverity) => void
   /**
-   * Custom persistent notifier (defaults to lazy ElNotification). Override for
-   * a different banner/region mechanism.
+   * Custom message extractor. Defaults to {@link extractErrorMessage}.
+   *
+   * Frontends with their own error types (e.g. a project-specific `ApiError`)
+   * or i18n fallback can pass an override so the canonical composable stays
+   * reusable without each project keeping a local copy.
    */
-  alerter?: (title: string, message: string, severity: ErrorSeverity) => void
-  /** Custom message extractor (defaults to {@link extractErrorMessage}). */
   extractor?: (err: unknown, fallback?: string) => string
-  /** Whether operation-level errors auto-notify via ElMessage (default `true`). */
-  autoNotify?: boolean
-  /** Whether to log every handled error to `console.error` (default `true`). */
+  /** Whether to show a toast notification on error (default `true`). */
+  showToast?: boolean
+  /** Whether to log the error to `console.error` (default `true`). */
   logToConsole?: boolean
 }
 
@@ -57,41 +65,22 @@ export interface UseErrorHandlerReturn {
   message: ComputedRef<string>
   /** Whether an error is currently active. */
   hasError: ComputedRef<boolean>
-  /** Form-field error map (field name -> message). Reactive. */
-  fieldErrors: Ref<Record<string, string>>
-  /** Whether any form-field error is present. */
-  hasFieldError: ComputedRef<boolean>
-
   /**
-   * Record an error and surface it at the chosen layer.
+   * Handle an error: extract message, optionally toast + log, and store.
    *
-   * @param err - the thrown value (Error / ApiError / unknown)
-   * @param fallbackMessage - i18n message shown when the error has no message
-   * @param layer - feedback layer (default `operation`)
+   * @param err - the thrown value (typically an Error/ApiError/unknown)
+   * @param fallbackMessage - i18n string shown when the error has no message
    */
-  handleError: (err: unknown, fallbackMessage?: string, layer?: ErrorLayer) => void
+  handleError: (err: unknown, fallbackMessage?: string) => void
   /**
-   * Set an inline error for a specific form field (form-level feedback).
+   * Wrap an async function so any thrown error is auto-handled.
    *
-   * @param field - form field key (must match the field's `prop`/`error` slot)
-   * @param message - inline error message (pass empty string to clear)
-   */
-  reportFieldError: (field: string, message: string) => void
-  /** Clear the inline error for a single form field. */
-  clearFieldError: (field: string) => void
-  /** Show an operation-level transient toast (ElMessage). */
-  notify: (message: string, severity?: ErrorSeverity) => void
-  /** Show a page-level persistent notification (ElNotification). */
-  alert: (title: string, message: string, severity?: ErrorSeverity) => void
-  /**
-   * Wrap an async function so any thrown error is auto-handled at the
-   * operation layer. Returns `undefined` on failure.
+   * Returns `undefined` on failure (the error is already toasted/logged).
    */
   guard: <TArgs extends unknown[], TResult>(
     fn: (...args: TArgs) => Promise<TResult>,
-    fallbackMessage?: string,
   ) => (...args: TArgs) => Promise<TResult | undefined>
-  /** Clear all error state (last error + form-field errors). */
+  /** Clear the last error state. */
   clear: () => void
 }
 
@@ -99,10 +88,8 @@ export interface UseErrorHandlerReturn {
  * Extract a human-readable message from a thrown value.
  *
  * Recognizes:
- * - `null`/`undefined` -> fallback
+ * - Objects with a `.message` string property (Error, ApiError, etc.)
  * - Plain strings
- * - `Error` instances (uses `.message`)
- * - Objects with a `.message` string property (ApiError, etc.)
  * - Everything else falls back to `String(value)` or the provided fallback
  */
 export function extractErrorMessage(err: unknown, fallback?: string): string {
@@ -118,7 +105,7 @@ export function extractErrorMessage(err: unknown, fallback?: string): string {
   return fallback ?? String(err)
 }
 
-/** Default operation-level notifier using ElMessage (lazy-loaded). */
+/** Default notifier using ElMessage (lazy-loaded to avoid side effects). */
 async function defaultNotifier(message: string, severity: ErrorSeverity): Promise<void> {
   const { ElMessage } = await import('element-plus')
   if (severity === 'warning') {
@@ -130,83 +117,26 @@ async function defaultNotifier(message: string, severity: ErrorSeverity): Promis
   }
 }
 
-/** Default page-level alerter using ElNotification (lazy-loaded). */
-async function defaultAlerter(
-  title: string,
-  message: string,
-  severity: ErrorSeverity,
-): Promise<void> {
-  const { ElNotification } = await import('element-plus')
-  const type: 'error' | 'warning' | 'info' =
-    severity === 'warning' ? 'warning' : severity === 'info' ? 'info' : 'error'
-  ElNotification({
-    title,
-    message,
-    type,
-    duration: 0,
-  })
-}
-
 /**
- * Create a standardized 3-layer error handler for component-level feedback.
+ * Create a standardized error handler for component-level error feedback.
  *
- * @param options - configuration for notification, logging, and extraction
+ * @param options - configuration for notification and logging behavior
  */
 export function useErrorHandler(
   options: UseErrorHandlerOptions = {},
 ): UseErrorHandlerReturn {
-  const {
-    notifier,
-    alerter,
-    extractor,
-    autoNotify = true,
-    logToConsole = true,
-  } = options
+  const { notifier, extractor, showToast = true, logToConsole = true } = options
   const resolveMessage = extractor ?? extractErrorMessage
 
   const error = ref<unknown>(null)
-  const fieldErrors = ref<Record<string, string>>({})
 
-  const message = computed(() => resolveMessage(error.value))
+  const message = computed(() =>
+    resolveMessage(error.value),
+  )
+
   const hasError = computed(() => error.value !== null)
-  const hasFieldError = computed(() => Object.keys(fieldErrors.value).length > 0)
 
-  function notify(msg: string, severity: ErrorSeverity = 'error'): void {
-    if (notifier) {
-      notifier(msg, severity)
-    } else {
-      void defaultNotifier(msg, severity)
-    }
-  }
-
-  function alert(title: string, msg: string, severity: ErrorSeverity = 'error'): void {
-    if (alerter) {
-      alerter(title, msg, severity)
-    } else {
-      void defaultAlerter(title, msg, severity)
-    }
-  }
-
-  function reportFieldError(field: string, msg: string): void {
-    if (msg === '') {
-      clearFieldError(field)
-      return
-    }
-    fieldErrors.value = { ...fieldErrors.value, [field]: msg }
-  }
-
-  function clearFieldError(field: string): void {
-    if (!(field in fieldErrors.value)) return
-    const next = { ...fieldErrors.value }
-    delete next[field]
-    fieldErrors.value = next
-  }
-
-  function handleError(
-    err: unknown,
-    fallbackMessage?: string,
-    layer: ErrorLayer = 'operation',
-  ): void {
+  function handleError(err: unknown, fallbackMessage?: string): void {
     error.value = err
     const msg = resolveMessage(err, fallbackMessage)
 
@@ -214,32 +144,23 @@ export function useErrorHandler(
       console.error('[useErrorHandler]', err)
     }
 
-    if (layer === 'form') {
-      // Form-level: caller must supply a field via reportFieldError; here we
-      // only store the error state and skip transient notification.
-      return
-    }
-
-    if (layer === 'page') {
-      alert(fallbackMessage ?? 'Error', msg)
-      return
-    }
-
-    // operation layer
-    if (autoNotify) {
-      notify(msg)
+    if (showToast) {
+      if (notifier) {
+        notifier(msg, 'error')
+      } else {
+        void defaultNotifier(msg, 'error')
+      }
     }
   }
 
   function guard<TArgs extends unknown[], TResult>(
     fn: (...args: TArgs) => Promise<TResult>,
-    fallbackMessage?: string,
   ): (...args: TArgs) => Promise<TResult | undefined> {
     return async (...args: TArgs): Promise<TResult | undefined> => {
       try {
         return await fn(...args)
       } catch (err) {
-        handleError(err, fallbackMessage)
+        handleError(err)
         return undefined
       }
     }
@@ -247,21 +168,7 @@ export function useErrorHandler(
 
   function clear(): void {
     error.value = null
-    fieldErrors.value = {}
   }
 
-  return {
-    error,
-    message,
-    hasError,
-    fieldErrors,
-    hasFieldError,
-    handleError,
-    reportFieldError,
-    clearFieldError,
-    notify,
-    alert,
-    guard,
-    clear,
-  }
+  return { error, message, hasError, handleError, guard, clear }
 }

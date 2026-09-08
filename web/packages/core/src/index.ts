@@ -10,8 +10,6 @@ export { default as ConfirmDialog } from './components/ConfirmDialog.vue'
 export { default as PageEmpty } from './components/PageEmpty.vue'
 export { default as FeatureGuard } from './components/FeatureGuard.vue'
 export { default as TrendChart } from './components/TrendChart.vue'
-export { default as AccessibleDialog } from './components/AccessibleDialog.vue'
-export { default as AccessibleDrawer } from './components/AccessibleDrawer.vue'
 export { default as LogoMark } from './components/LogoMark.vue'
 
 // ── Component types ──
@@ -29,7 +27,6 @@ export { default as App } from './App.vue'
 export { useTable } from './composables/useTable'
 export { useForm } from './composables/useForm'
 export { useChart } from './composables/useChart'
-export { useWebSocket } from './composables/useWebSocket'
 export { usePermission, registerFeatureProvider, FeatureConstants } from './composables/usePermission'
 export { loadWidths, saveWidth, saveWidths, clearWidths } from './composables/useColumnWidths'
 export { filterMenusByFeature } from './composables/useMenuFilter'
@@ -47,16 +44,14 @@ export {
 export type { UseTableOptions, UseTableReturn } from './composables/useTable'
 export type { UseFormOptions, UseFormReturn } from './composables/useForm'
 export type { UseChartReturn } from './composables/useChart'
-export type { UseWebSocketOptions, UseWebSocketReturn } from './composables/useWebSocket'
 export type { UsePermissionReturn, FeatureKey, FeatureProvider } from './composables/usePermission'
 export type { Breakpoint, UseResponsiveReturn } from './composables/useResponsive'
 export type { UseFormGuardOptions, UseFormGuardReturn } from './composables/useFormGuard'
 export type { UseEventListenerOptions } from './composables/useEventListener'
 export type { UseIntervalControls, UseIntervalOptions } from './composables/useInterval'
-export type { LoadingMode, UseLoadingOptions, UseLoadingReturn } from './composables/useLoading'
+export type { UseLoadingOptions, UseLoadingReturn } from './composables/useLoading'
 export type {
   ErrorSeverity,
-  ErrorLayer,
   UseErrorHandlerOptions,
   UseErrorHandlerReturn,
 } from './composables/useErrorHandler'
@@ -69,14 +64,13 @@ export { isValidCron, isValidUrl, isValidIp, isValidPort, isNonEmpty, isValidJso
 
 // ── Stores ──
 export { useAppStore } from './stores/app'
-export { useTabsStore } from './stores/tabs'
 export { useUserStore } from './stores/user'
 
 // ── Router factory ──
 export { createRouter } from './router'
 
 // ── i18n factory ──
-export { createI18n, mergeMessages, setI18nLocale, registerLocale, availableLocales } from './i18n'
+export { createI18n, mergeMessages, setI18nLocale, registerLocale, availableLocales, translate } from './i18n'
 export { common } from './i18n/common'
 export type { Messages, LocaleMeta } from './i18n'
 
@@ -94,7 +88,7 @@ export { vFeature } from './directives/feature'
 export { BASE_MENUS_KEY } from './symbols'
 
 // ── Types ──
-export type { ApiResponse, PageData, PageParams, LoginParams, LoginData, ApiKey } from './types/api'
+export type { ApiResponse, PageData, PageParams, LoginParams, LoginData } from './types/api'
 export type {
   ThemeMode,
   LocaleType,
@@ -103,8 +97,6 @@ export type {
   FeatureFlag,
   FeatureFlags,
   UserInfo,
-  TabItem,
-  ListQueryParams,
   AssetStatus,
   AlertStatus,
   TaskStatus,

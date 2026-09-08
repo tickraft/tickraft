@@ -59,17 +59,6 @@ export function login(params: LoginParams): Promise<LoginData> {
 }
 
 /**
- * Refresh token
- */
-export function refreshToken(refreshToken: string): Promise<LoginData> {
-  return request<LoginData>({
-    url: '/auth/refresh',
-    method: 'post',
-    data: { refreshToken },
-  })
-}
-
-/**
  * User logout
  */
 export function logout(): Promise<void> {
@@ -91,9 +80,10 @@ export function changePassword(params: { oldPassword: string; newPassword: strin
 }
 
 /**
- * Get API Key list (paginated, aligned with backend ListAPIKeys → PageData)
+ * Get API Key list (paginated, aligned with backend ListAPIKeys → PageData).
+ * keyword is a server-side substring filter on the key name.
  */
-export function getApiKeys(params: PageParams): Promise<PageData<ApiKey>> {
+export function getApiKeys(params: PageParams & { keyword?: string }): Promise<PageData<ApiKey>> {
   return request<PageData<ApiKey>>({
     url: '/auth/apikeys',
     method: 'get',

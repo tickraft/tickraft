@@ -184,16 +184,6 @@ describe('telemetry api', () => {
     expect(call.url).toBe('/telemetry/monitors/summary')
     expect(call.method).toBe('get')
   })
-
-  it('builtin templates endpoint precedes the :id route', async () => {
-    const telemetry = await import('./telemetry')
-    const fns = telemetry as unknown as Record<string, (...rest: unknown[]) => Promise<unknown>>
-    if (typeof fns.getBuiltinTemplates !== 'function') {
-      throw new Error('telemetry api: missing getBuiltinTemplates')
-    }
-    await fns.getBuiltinTemplates()
-    expect(calls.at(-1)?.url).toBe('/telemetry/templates/builtin')
-  })
 })
 
 describe('system api', () => {

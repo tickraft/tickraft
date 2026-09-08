@@ -19,6 +19,7 @@
  */
 import { computed } from 'vue'
 import { Lock } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import { usePermission } from '../composables/usePermission'
 
 /** Badge data injected by extension via prop; null on core side means no badge rendered */
@@ -50,6 +51,7 @@ const props = withDefaults(defineProps<FeatureGuardProps>(), {
 const emit = defineEmits<FeatureGuardEmits>()
 
 const { hasFeature } = usePermission()
+const { t } = useI18n()
 
 /** Whether in locked state: explicit prop takes priority, otherwise auto-determined from feature flag */
 const isLocked = computed(() => {
@@ -86,7 +88,7 @@ function handleUpgrade() {
         class="tk-feature-guard__overlay"
         role="button"
         tabindex="0"
-        aria-label="Upgrade to unlock"
+        :aria-label="t('common.feature.upgradeToUnlock')"
         @click="handleUpgrade"
         @keydown.enter.prevent="handleUpgrade"
         @keydown.space.prevent="handleUpgrade"
@@ -94,7 +96,7 @@ function handleUpgrade() {
         <el-icon class="tk-feature-guard__lock-icon">
           <Lock />
         </el-icon>
-        <span class="tk-feature-guard__lock-text">Upgrade to unlock</span>
+        <span class="tk-feature-guard__lock-text">{{ t('common.feature.upgradeToUnlock') }}</span>
       </div>
     </div>
   </div>

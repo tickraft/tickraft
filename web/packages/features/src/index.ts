@@ -14,10 +14,12 @@ export { baseMenus } from './menus'
 // ── API namespace ──
 export * as assetApi from './api/asset'
 export * as authApi from './api/auth'
+export * as channelApi from './api/channel'
+export * as prismApi from './api/prism'
+export * as statusApi from './api/status'
+export * as systemApi from './api/system'
 export * as taskApi from './api/task'
 export * as telemetryApi from './api/telemetry'
-export * as prismApi from './api/prism'
-export * as systemApi from './api/system'
 
 // ── Business types ──
 export type {
@@ -51,14 +53,3 @@ export type {
   TelemetryTemplate,
   ApplyTemplateParams,
 } from './types/telemetry'
-export type {
-  WSEventType,
-  WSEventPayload,
-  StatusChangePayload,
-  MetricAlertPayload,
-  LogAlertPayload,
-  TaskExecutionPayload,
-  TaskScheduledPayload,
-  TaskRetryPayload,
-  WSEvent,
-} from './types/event'

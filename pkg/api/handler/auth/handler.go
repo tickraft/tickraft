@@ -207,13 +207,14 @@ func (h *Handler) CreateAPIKey(ctx context.Context, c *app.RequestContext) {
 	})
 }
 
-// ListAPIKeys handles GET /api/v1/auth/apikeys.
+// ListAPIKeys handles GET /api/v1/auth/apikeys. Supported query parameters:
+// page, size and keyword (substring match on name).
 func (h *Handler) ListAPIKeys(ctx context.Context, c *app.RequestContext) {
 	page, size, ok := httputil.ParsePaging(c)
 	if !ok {
 		return
 	}
-	keys, total, err := h.svc.ListAPIKeys(ctx, page, size)
+	keys, total, err := h.svc.ListAPIKeys(ctx, page, size, c.Query("keyword"))
 	if err != nil {
 		httputil.Fail(c, err)
 		return

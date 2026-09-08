@@ -182,19 +182,25 @@ func (s *apiKeyStore) Create(ctx context.Context, name, keyPrefix, keyHash strin
 }
 
 // List returns a page of API keys ordered by ascending ID together with the
-// total count of rows. page is 1-based; size is normalized by
-// pagination.Clamp.
-func (s *apiKeyStore) List(ctx context.Context, page, size int) ([]APIKey, int64, error) {
+// total count of matching rows. page is 1-based; size is normalized by
+// pagination.Clamp. A non-empty keyword restricts both the count and the
+// page to keys whose name contains the keyword.
+func (s *apiKeyStore) List(ctx context.Context, page, size int, keyword string) ([]APIKey, int64, error) {
 	page, size = pagination.Clamp(page, size)
 	offset := (page - 1) * size
 
+	query := s.dbc.WithContext(ctx).Model(&APIKey{})
+	if keyword != "" {
+		query = query.Where("name LIKE ?", "%"+keyword+"%")
+	}
+
 	var total int64
-	if err := s.dbc.WithContext(ctx).Model(&APIKey{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, db.MapError(err)
 	}
 
 	var keys []APIKey
-	if err := s.dbc.WithContext(ctx).
+	if err := query.
 		Order("id").
 		Limit(size).
 		Offset(offset).

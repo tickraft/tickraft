@@ -45,6 +45,8 @@ interface I18nController {
   setLocale(locale: string): void
   /** Merge additional messages for a given locale into the i18n instance. */
   mergeLocaleMessage(code: string, messages: Record<string, unknown>): void
+  /** Translate a key with the global composer. */
+  t(key: string): string
 }
 
 /**
@@ -157,8 +159,21 @@ export function createI18n(messages: Messages) {
     mergeLocaleMessage: (code: string, msgs: Record<string, unknown>) => {
       instance.global.mergeLocaleMessage(code, msgs)
     },
+    t: (key: string) => instance.global.t(key),
   }
   return instance
+}
+
+/**
+ * Translate a message key with the global composer of the running i18n
+ * instance. Used outside component setup context (e.g. the router's
+ * document.title binding). Returns the key unchanged if `createI18n` has
+ * not been called yet.
+ *
+ * @param key - message key (e.g. `task.list.title`)
+ */
+export function translate(key: string): string {
+  return i18nController ? i18nController.t(key) : key
 }
 
 /**

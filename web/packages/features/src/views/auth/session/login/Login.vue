@@ -81,12 +81,20 @@ async function handleSubmit(): Promise<void> {
   loading.value = true
   try {
     const data = await loginApi({ username: form.username.trim(), password: form.password })
+
+    // MFA-verified sessions are an extended-edition capability; the kernel
+    // exposes no verification route, so the session cannot be established
+    // here. Stop before storing tokens instead of proceeding with a token
+    // that every subsequent request would reject.
+    if (data.mfaRequired) {
+      errorMsg.value = t('auth.login.mfaRequiredHint')
+      return
+    }
+
     setToken(data.accessToken)
     setRefreshToken(data.refreshToken)
 
     // Fetch the real user profile so role/id are accurate.
-    // Fall back to the entered username if the profile fetch fails (e.g. the
-    // token requires MFA verification first).
     let info: UserInfo
     try {
       const profile = await getProfile()
@@ -99,10 +107,12 @@ async function handleSubmit(): Promise<void> {
         features: {},
       }
     } catch {
+      // Profile fetch failed: assume the least-privileged role rather than
+      // escalating, so UI-gated actions stay hidden until the next profile load.
       info = {
         id: 0,
         username: form.username.trim(),
-        role: 'admin',
+        role: 'viewer',
         features: {},
       }
     }

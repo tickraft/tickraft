@@ -30,7 +30,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'templates',
-        name: 'prism-templates',
+        name: 'PrismTemplates',
         component: () => import('../views/prism/templates/list/List.vue'),
         meta: { title: 'prism.templates.title', feature: undefined },
       },

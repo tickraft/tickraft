@@ -48,7 +48,9 @@ type APIKeyStore interface {
 	Create(ctx context.Context, name, keyPrefix, keyHash string, expiredAt *time.Time) (int64, error)
 	// List returns a page of API keys ordered by ID together with the total
 	// count. page is 1-based and size is the maximum number of rows returned.
-	List(ctx context.Context, page, size int) ([]APIKey, int64, error)
+	// keyword restricts the result to keys whose name contains it; an empty
+	// keyword matches all keys.
+	List(ctx context.Context, page, size int, keyword string) ([]APIKey, int64, error)
 	// GetByHash retrieves an API key by its hash.
 	GetByHash(ctx context.Context, keyHash string) (*APIKey, error)
 	// Revoke marks an API key as revoked by setting revoked_at to the

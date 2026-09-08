@@ -163,7 +163,7 @@ onMounted(async () => {
     <div
       class="tk-delivery-search"
       role="search"
-      aria-label="Delivery record search"
+      :aria-label="$t('prism.channel.delivery.search')"
     >
       <div class="tk-delivery-search__row">
         <div class="tk-delivery-search__field">
@@ -267,7 +267,7 @@ onMounted(async () => {
       :page="page"
       :size="size"
       :size-options="[10, 20, 50]"
-      aria-label="Delivery record list"
+      :aria-label="$t('prism.channel.delivery.title')"
       @page-change="handlePageChange"
     >
       <template #sentAt="{ row }">
@@ -306,7 +306,6 @@ onMounted(async () => {
               link
               type="primary"
               size="small"
-              aria-label="View delivery detail"
               @click="openDrawer(row as DeliveryRecord)"
             >
               {{ $t('prism.channel.delivery.detail') }}
@@ -316,7 +315,6 @@ onMounted(async () => {
               link
               type="danger"
               size="small"
-              aria-label="Retry delivery"
               :loading="retryingId === (row as DeliveryRecord).id"
               @click="handleRetry(row as DeliveryRecord)"
             >

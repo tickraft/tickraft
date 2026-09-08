@@ -18,8 +18,11 @@
  * - automatic ECharts instance disposal on unmount (delegated to the canvas)
  */
 import { computed, defineAsyncComponent } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { EChartsCoreOption } from 'echarts/core'
 import PageEmpty from './PageEmpty.vue'
+
+const { t } = useI18n()
 
 // Lazy-load the canvas (which statically imports ECharts) so the ECharts
 // library (~300KB) is only fetched when a chart actually renders, not when
@@ -71,7 +74,7 @@ const heightStyle = computed(() => {
     class="tk-trend-chart"
     :style="{ height: heightStyle }"
     role="img"
-    :aria-label="title || 'Chart'"
+    :aria-label="title || t('common.app.chart')"
   >
     <TrendChartCanvas v-bind="$props" />
     <div

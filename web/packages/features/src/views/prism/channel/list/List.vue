@@ -107,7 +107,6 @@ onMounted(() => {
         </el-button>
         <el-button
           type="primary"
-          aria-label="Create notification channel"
           @click="handleCreate"
         >
           {{ $t('prism.channel.list.create') }}
@@ -152,7 +151,7 @@ onMounted(() => {
               </div>
               <el-switch
                 :model-value="ch.enabled"
-                aria-label="Channel enabled status"
+                :aria-label="`${ch.name} — ${$t('prism.channel.list.status')}`"
                 @change="handleToggle(ch)"
               />
             </div>
@@ -173,7 +172,6 @@ onMounted(() => {
               <el-button
                 link
                 size="small"
-                aria-label="Edit channel"
                 @click="handleEdit(ch)"
               >
                 {{ $t('prism.channel.list.edit') }}
@@ -182,7 +180,6 @@ onMounted(() => {
                 link
                 size="small"
                 type="primary"
-                aria-label="Test send"
                 :loading="testingId === ch.id"
                 @click="onTest(ch)"
               >
@@ -199,7 +196,6 @@ onMounted(() => {
                 link
                 size="small"
                 type="danger"
-                aria-label="Delete channel"
                 @click="handleDelete(ch)"
               >
                 {{ $t('prism.channel.list.delete') }}
@@ -219,7 +215,7 @@ onMounted(() => {
         :data="channels"
         :loading="loading"
         :columns="tableColumns"
-        aria-label="Notification channel list"
+        :aria-label="$t('prism.channel.list.title')"
       >
         <template #type="{ row }">
           <el-tag size="small">
@@ -251,7 +247,6 @@ onMounted(() => {
             link
             type="primary"
             size="small"
-            aria-label="Edit channel"
             @click="handleEdit(row as ChannelConfig)"
           >
             {{ $t('prism.channel.list.edit') }}
@@ -260,7 +255,6 @@ onMounted(() => {
             link
             type="primary"
             size="small"
-            aria-label="Test send"
             :loading="testingId === (row as ChannelConfig).id"
             @click="onTest(row as ChannelConfig)"
           >
@@ -277,7 +271,6 @@ onMounted(() => {
             link
             type="danger"
             size="small"
-            aria-label="Delete channel"
             @click="handleDelete(row as ChannelConfig)"
           >
             {{ $t('prism.channel.list.delete') }}

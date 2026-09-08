@@ -101,14 +101,3 @@ export interface LoginData {
   /** Short-lived ticket for MFA verification (present only when mfaRequired is true) */
   mfaTicket?: string
 }
-
-/**
- * API key model
- */
-export interface ApiKey {
-  id: number
-  name: string
-  key: string
-  createdAt: string
-  expiresAt?: string
-}

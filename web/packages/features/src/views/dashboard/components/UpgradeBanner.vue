@@ -40,7 +40,7 @@ const features = computed<UpgradeFeature[]>(() => [
   { icon: 'i-ep-connection', labelKey: 'dashboard.upgrade.featureSshExecutor' },
   { icon: 'i-ep-data-base', labelKey: 'dashboard.upgrade.featureDbExecutor' },
   { icon: 'i-ep-position', labelKey: 'dashboard.upgrade.featureAdvancedProber' },
-  { icon: 'i-user', labelKey: 'dashboard.upgrade.featureMultiUser' },
+  { icon: 'i-ep-user', labelKey: 'dashboard.upgrade.featureMultiUser' },
   { icon: 'i-ep-document', labelKey: 'dashboard.upgrade.featureAuditLog' },
   { icon: 'i-ep-bell', labelKey: 'dashboard.upgrade.featureMultiChannel' },
 ])

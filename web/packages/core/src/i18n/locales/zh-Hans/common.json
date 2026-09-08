@@ -36,7 +36,8 @@
     "resetConfirm": "确定要重置所有筛选条件吗？",
     "retry": "重试",
     "loadFailed": "数据加载失败",
-    "all": "全部"
+    "all": "全部",
+    "chart": "图表"
   },
   "unsavedChanges": "有未保存的更改，确定离开吗？",
   "pagination": {
@@ -155,7 +156,8 @@
     "switch": "切换语言"
   },
   "feature": {
-    "locked": "此功能未启用"
+    "locked": "此功能未启用",
+    "upgradeToUnlock": "升级以解锁"
   },
   "skipToMainContent": "跳到主内容",
   "layout": {

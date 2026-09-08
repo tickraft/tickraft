@@ -142,6 +142,7 @@
     },
     "detail": {
       "eyebrowId": "Monitor #{id}",
+      "title": "Monitor Detail",
       "probeNow": "Probe Now",
       "probeTriggered": "Probe triggered; results will refresh shortly",
       "copySuccess": "Copied to clipboard",
@@ -255,7 +256,18 @@
       "requestHeadersPlaceholder": "{'{'}\"Authorization\":\"Bearer xxx\"{'}'}",
       "requestHeadersHelp": "Optional, JSON format HTTP request headers",
       "urlRequired": "Please enter request URL",
-      "urlPattern": "URL must start with http:// or https://"
+      "urlPattern": "URL must start with http:// or https://",
+      "mqttAddress": "MQTT server address",
+      "mqttAddressPlaceholder": "tcp://127.0.0.1:1883",
+      "mqttAddressHelp": "tcp://, mqtt://, or mqtts:// (TLS) accepted; a bare host:port is treated as TCP",
+      "mqttTopic": "Subscribe topic",
+      "mqttTopicPlaceholder": "sensors/+/temperature",
+      "mqttUsername": "Username (optional)",
+      "mqttPassword": "Password (optional)",
+      "mqttExpectPayload": "Expected payload (optional)",
+      "mqttExpectPayloadPlaceholder": "Substring the received message must contain",
+      "mqttWaitSeconds": "Wait window (seconds)",
+      "mqttWaitSecondsHelp": "Time window to wait for a message after subscribing; timeout counts as abnormal"
     }
   },
   "listener": {

@@ -10,8 +10,8 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { DataTable } from '@tickraft/core'
 import { formatDuration, formatDate } from '@tickraft/core'
-import type { LogModel, ExecutorType, ExecutorTypeInfo } from '../../../../types/task'
-import { getLogs, getExecutors } from '../../../../api/task'
+import type { LogModel, ExecutorType, ExecutorTypeInfo, ExecutionStats } from '../../../../types/task'
+import { getLogs, getExecutors, getExecutionStats } from '../../../../api/task'
 
 const router = useRouter()
 const { t, te } = useI18n()
@@ -76,16 +76,13 @@ const EXECUTOR_LABELS = computed<Record<string, string>>(() => {
   return labels
 })
 
-const summary = computed(() => {
-  const items = tableData.value
-  return {
-    total: total.value,
-    success: items.filter((l) => l.status === 'success').length,
-    failed: items.filter((l) => l.status === 'failed').length,
-    running: items.filter((l) => l.status === 'running').length,
-    timeout: items.filter((l) => l.status === 'timeout').length,
-  }
-})
+const summary = computed(() => ({
+  total: stats.value?.totalExecutions ?? total.value,
+  success: stats.value?.successCount ?? 0,
+  failed: stats.value?.failureCount ?? 0,
+  successRate: stats.value ? `${stats.value.successRate.toFixed(1)}%` : '—',
+  avgDuration: stats.value ? formatDuration(stats.value.averageDurationMs) : '—',
+}))
 
 const maxDuration = computed(() => {
   if (tableData.value.length === 0) return 1
@@ -96,7 +93,7 @@ function durationPercent(duration: number): number {
   return Math.round(((duration || 0) / maxDuration.value) * 100)
 }
 
-const countText = computed(() => `${total.value} ${t('task.log.list.title').toUpperCase().includes('LOG') ? 'LOGS' : ''}`)
+const countText = computed(() => `${total.value} ${t('task.log.list.countUnit')}`)
 
 const executorOptions = computed(() =>
   executorInfos.value.map((info) => ({ label: executorLabel(info), value: info.type as ExecutorType })),
@@ -124,6 +121,10 @@ function triggerLabel(triggerType?: string): string {
   return triggerType || '—'
 }
 
+/** Server-side aggregate for the summary cards (the log endpoint itself is
+ * paginated, so counting statuses on the current page would be misleading). */
+const stats = ref<ExecutionStats | null>(null)
+
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
@@ -142,6 +143,14 @@ async function fetchData(): Promise<void> {
     total.value = 0
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchStats(): Promise<void> {
+  try {
+    stats.value = await getExecutionStats()
+  } catch {
+    stats.value = null
   }
 }
 
@@ -171,6 +180,7 @@ function handlePageChange(payload: { page: number; size: number }): void {
 
 function handleRefresh(): void {
   void fetchData()
+  void fetchStats()
   ElMessage.success(t('task.log.list.refreshSuccess'))
 }
 
@@ -178,7 +188,10 @@ function handleDetail(row: LogModel): void {
   router.push(`/task/log/detail/${row.taskId}/${row.id}`)
 }
 
-onMounted(() => { void fetchData() })
+onMounted(() => {
+  void fetchData()
+  void fetchStats()
+})
 </script>
 
 <template>
@@ -231,18 +244,18 @@ onMounted(() => { void fetchData() })
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--running">
         <div class="tk-log-summary__label">
-          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryRunning') }}
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summarySuccessRate') }}
         </div>
         <div class="tk-log-summary__value">
-          {{ summary.running }}
+          {{ summary.successRate }}
         </div>
       </div>
       <div class="tk-log-summary__card tk-log-summary__card--timeout">
         <div class="tk-log-summary__label">
-          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryTimeout') }}
+          <span class="tk-log-summary__dot" />{{ t('task.log.list.summaryAvgDuration') }}
         </div>
         <div class="tk-log-summary__value">
-          {{ summary.timeout }}
+          {{ summary.avgDuration }}
         </div>
       </div>
     </div>

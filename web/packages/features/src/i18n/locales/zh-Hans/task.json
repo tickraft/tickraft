@@ -3,6 +3,7 @@
     "list": {
       "title": "任务管理",
       "subtitle": "任务调度统一管理定时与事件触发的自动化任务，覆盖 HTTP / TCP / 本地脚本 / SSH / 数据库等执行器。",
+      "countUnit": "个任务",
       "create": "新建任务",
       "id": "ID",
       "name": "任务名称",
@@ -126,6 +127,7 @@
     },
     "detail": {
       "eyebrow": "任务调度 · 任务 #{id}",
+      "title": "任务详情",
       "basicInfo": "基本信息",
       "totalExec": "总执行次数",
       "totalExecSub": "累计执行次数",
@@ -162,6 +164,7 @@
     "list": {
       "title": "执行日志",
       "subtitle": "记录每一次任务调度的执行轨迹，包含输出、耗时、错误与重试信息，便于追溯与归因。",
+      "countUnit": "条记录",
       "logId": "日志 ID",
       "taskName": "任务名称",
       "taskNamePlaceholder": "请输入任务名称",
@@ -173,8 +176,8 @@
       "summaryTotal": "总执行次数",
       "summarySuccess": "成功",
       "summaryFailed": "失败",
-      "summaryRunning": "进行中",
-      "summaryTimeout": "超时",
+      "summarySuccessRate": "成功率",
+      "summaryAvgDuration": "平均耗时",
       "triggerCron": "定时",
       "triggerManual": "手动",
       "triggerEvent": "事件",
@@ -184,6 +187,7 @@
     },
     "detail": {
       "eyebrow": "任务调度 · 日志 #{id}",
+      "title": "执行详情",
       "basicInfo": "执行详情",
       "output": "输出日志",
       "viewTask": "查看任务",

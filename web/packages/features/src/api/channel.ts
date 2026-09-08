@@ -218,20 +218,3 @@ export function retryDelivery(deliveryId: number): Promise<DeliveryRecord> {
   })
 }
 
-/** Channel compact option (for alert rule multi-select) */
-export interface ChannelOption {
-  id: number
-  name: string
-  type: ChannelType
-  enabled: boolean
-}
-
-/**
- * Get channel options (compact, for alert config multi-select)
- */
-export function getChannelOptions(): Promise<{ items: ChannelOption[] }> {
-  return request<{ items: ChannelOption[] }>({
-    url: '/prism/channels/options',
-    method: 'get',
-  })
-}

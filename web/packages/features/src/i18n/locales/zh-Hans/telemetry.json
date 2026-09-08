@@ -128,8 +128,6 @@
       "portRequired": "端口范围 1 - 65535",
       "mqttAddressRequired": "请输入 MQTT 服务器地址",
       "mqttTopicRequired": "请输入订阅主题",
-      "mqttAddressRequired": "请输入 MQTT 服务器地址",
-      "mqttTopicRequired": "请输入订阅主题",
       "urlRequired": "请输入请求 URL",
       "urlPattern": "URL 需以 http:// 或 https:// 开头",
       "copySuccess": "已复制到剪贴板",
@@ -144,6 +142,7 @@
     },
     "detail": {
       "eyebrowId": "监测点 #{id}",
+      "title": "监测点详情",
       "probeNow": "立即探测",
       "probeTriggered": "探测已触发，结果稍后自动刷新",
       "copySuccess": "已复制到剪贴板",

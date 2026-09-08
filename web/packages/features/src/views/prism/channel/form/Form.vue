@@ -658,7 +658,7 @@ onMounted(async () => {
         <div
           class="tk-channel-type-picker"
           role="group"
-          aria-label="Channel type selection"
+          :aria-label="$t('prism.channel.form.type')"
         >
           <div
             v-for="opt in typeOptions"
@@ -689,7 +689,7 @@ onMounted(async () => {
         :rules="formRules"
         label-position="top"
         role="form"
-        aria-label="Notification channel form"
+        :aria-label="$t(isEdit ? 'prism.channel.form.edit' : 'prism.channel.form.create')"
         class="tk-channel-form__form"
       >
         <!-- Basic info -->
@@ -705,7 +705,7 @@ onMounted(async () => {
               v-model="formData.name"
               :placeholder="$t('prism.channel.form.namePlaceholder')"
               maxlength="32"
-              aria-label="Channel name"
+              :aria-label="$t('prism.channel.form.name')"
               aria-required="true"
             />
           </el-form-item>
@@ -1424,7 +1424,6 @@ onMounted(async () => {
           </el-button>
           <el-button
             type="primary"
-            aria-label="Submit"
             :loading="submitting"
             @click="handleSubmit"
           >

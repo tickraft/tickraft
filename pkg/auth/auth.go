@@ -355,8 +355,10 @@ func (s *Service) CreateAPIKey(
 
 // ListAPIKeys returns a page of API keys together with the total count.
 // page is 1-based and size is the maximum number of keys returned.
-func (s *Service) ListAPIKeys(ctx context.Context, page, size int) ([]user.APIKey, int64, error) {
-	return s.apiKeys.List(ctx, page, size)
+// keyword restricts the result to keys whose name contains it; an empty
+// keyword matches all keys.
+func (s *Service) ListAPIKeys(ctx context.Context, page, size int, keyword string) ([]user.APIKey, int64, error) {
+	return s.apiKeys.List(ctx, page, size, keyword)
 }
 
 // RevokeAPIKey revokes an API key by ID.

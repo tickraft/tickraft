@@ -231,7 +231,7 @@ onMounted(() => {
           :loading="saving"
           @click="save"
         >
-          {{ t('common.action.save') }}
+          {{ t('common.app.save') }}
         </el-button>
       </div>
     </el-card>

@@ -22,4 +22,7 @@ minimumReleaseAgeExclude:
   - '@typescript-eslint/utils@8.67.0'
   - '@typescript-eslint/visitor-keys@8.67.0'
   - typescript-eslint@8.67.0
-onlyBuiltDependencies: '@parcel/watcher,esbuild,vue-demi'
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - esbuild
+  - vue-demi

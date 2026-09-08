@@ -36,7 +36,8 @@
     "resetConfirm": "Reset all filter conditions?",
     "retry": "Retry",
     "loadFailed": "Failed to load data",
-    "all": "All"
+    "all": "All",
+    "chart": "Chart"
   },
   "unsavedChanges": "You have unsaved changes. Leave anyway?",
   "pagination": {
@@ -155,7 +156,8 @@
     "switch": "Switch Language"
   },
   "feature": {
-    "locked": "This feature is not enabled"
+    "locked": "This feature is not enabled",
+    "upgradeToUnlock": "Upgrade to unlock"
   },
   "skipToMainContent": "Skip to main content",
   "layout": {

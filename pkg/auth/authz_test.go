@@ -331,7 +331,7 @@ func TestListAPIKeys_Success(t *testing.T) {
 		t.Fatalf("CreateAPIKey() error = %v", err)
 	}
 
-	keys, total, err := svc.ListAPIKeys(context.Background(), 1, 20)
+	keys, total, err := svc.ListAPIKeys(context.Background(), 1, 20, "")
 	if err != nil {
 		t.Fatalf("ListAPIKeys() error = %v", err)
 	}
@@ -340,6 +340,23 @@ func TestListAPIKeys_Success(t *testing.T) {
 	}
 	if total != 2 {
 		t.Fatalf("ListAPIKeys() total = %d, want 2", total)
+	}
+
+	// Keyword filtering narrows both the page and the total to name matches.
+	keys, total, err = svc.ListAPIKeys(context.Background(), 1, 20, "key1")
+	if err != nil {
+		t.Fatalf("ListAPIKeys() keyword error = %v", err)
+	}
+	if len(keys) != 1 || total != 1 {
+		t.Fatalf("ListAPIKeys() keyword returned %d keys / total %d, want 1/1", len(keys), total)
+	}
+	// Substring match: "ey" hits both key1 and key2.
+	keys, total, err = svc.ListAPIKeys(context.Background(), 1, 20, "ey")
+	if err != nil {
+		t.Fatalf("ListAPIKeys() substring error = %v", err)
+	}
+	if len(keys) != 2 || total != 2 {
+		t.Fatalf("ListAPIKeys() substring returned %d keys / total %d, want 2/2", len(keys), total)
 	}
 }
 

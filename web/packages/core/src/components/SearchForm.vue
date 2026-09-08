@@ -19,7 +19,10 @@ export type { SearchFormField, SearchFormProps } from './search-form-types'
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import type { SearchFormProps, FieldType, SelectOption } from './search-form-types'
+
+const { t } = useI18n()
 
 interface SearchFormEmits {
   /** Triggered when the search button is clicked */
@@ -312,14 +315,14 @@ async function handleReset() {
                 type="primary"
                 class="tk-search-form__collapse-btn"
                 :aria-expanded="!isCollapsed"
-                :aria-label="isCollapsed ? 'Show more' : 'Collapse'"
+                :aria-label="isCollapsed ? t('common.app.expand') : t('common.app.collapse')"
                 @click="toggleCollapse"
               >
                 <el-icon class="tk-search-form__collapse-icon">
                   <ArrowDown v-if="isCollapsed" />
                   <ArrowUp v-else />
                 </el-icon>
-                <span>{{ isCollapsed ? 'Show more' : 'Collapse' }}</span>
+                <span>{{ isCollapsed ? t('common.app.expand') : t('common.app.collapse') }}</span>
               </el-button>
               <el-button
                 :loading="loading"
