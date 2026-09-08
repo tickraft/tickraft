@@ -185,7 +185,7 @@ func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]route
 	}
 	routeOpts = append(routeOpts, certOpts...)
 
-	templateOpts, err := newTemplateRouteOptions(rt, telemetrySvc)
+	templateOpts, err := newTemplateRouteOptions(ctx, rt, telemetrySvc)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +462,7 @@ func newCertificateRouteOptions(srv *api.Server, tlsEnabled bool) ([]router.Regi
 
 // newTemplateRouteOptions builds the telemetry template handler route option.
 func newTemplateRouteOptions(
-	rt *runtime, telemetrySvc *telemetry.TelemetryService,
+	ctx context.Context, rt *runtime, telemetrySvc *telemetry.TelemetryService,
 ) ([]router.RegisterOption, error) {
 	// Telemetry template handler: backed by the GORM template store,
 	// seeded on every startup with the CE built-in template set
@@ -472,7 +472,7 @@ func newTemplateRouteOptions(
 	// extends the same surface by injecting its own handler with the full
 	// (core + pro) built-in set.
 	templateStore := telemetry.NewTemplateStore(rt.dbc)
-	if err := telemetry.LoadBuiltinTemplates(rt.dbc); err != nil {
+	if err := telemetry.LoadBuiltinTemplates(ctx, rt.dbc); err != nil {
 		return nil, fmt.Errorf("load builtin telemetry templates: %w", err)
 	}
 	templateH := telemetryhandler.NewTemplateHandler(templateStore, telemetrySvc)
@@ -617,7 +617,7 @@ func startMaintenanceLoop(
 		maintenanceInterval = 5 * time.Minute
 	}
 
-	blacklistStore := auth.NewBlacklistStore(rt.dbc, rt.cache)
+	blacklistStore := rt.blacklistStore
 	// RetentionDays controls log file retention; Validate normalizes a
 	// non-positive value to the default of 30 before this line runs.
 	retentionDays := rt.cfg.Logger.RetentionDays

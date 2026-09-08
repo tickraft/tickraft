@@ -55,8 +55,17 @@ func (s *blacklistStore) Add(ctx context.Context, jti string, expiredAt time.Tim
 	return nil
 }
 
+// blacklistMissTTL bounds how long an authenticated request may be served
+// from a cached "not blacklisted" verdict after the JTI was found absent in
+// the database. Blacklist writes go through this store's Add, which
+// overwrites the same cache key, so a revocation takes effect within this
+// window at the latest.
+const blacklistMissTTL = 30 * time.Second
+
 // Exists checks whether a JTI exists in the blacklist.
-// It checks the cache first, then falls back to the database.
+// It checks the cache first, then falls back to the database. Both verdicts
+// are cached: without a negative entry, every authenticated request would
+// issue a COUNT query for the overwhelmingly common not-blacklisted case.
 func (s *blacklistStore) Exists(ctx context.Context, jti string) (bool, error) {
 	if err := user.ValidateJTI(jti); err != nil {
 		return false, err
@@ -75,13 +84,15 @@ func (s *blacklistStore) Exists(ctx context.Context, jti string) (bool, error) {
 		return false, db.MapError(err)
 	}
 
-	if count > 0 {
-		if s.cache != nil {
-			cache.SetJSON(ctx, s.cache, blacklistCacheKey(jti), true)
-		}
+	if s.cache == nil {
+		return count > 0, nil
 	}
-
-	return count > 0, nil
+	if count > 0 {
+		cache.SetJSON(ctx, s.cache, blacklistCacheKey(jti), true)
+		return true, nil
+	}
+	cache.SetJSONWithTTL(ctx, s.cache, blacklistCacheKey(jti), false, blacklistMissTTL)
+	return false, nil
 }
 
 // CleanExpired removes all blacklist entries whose expired_at is before now.

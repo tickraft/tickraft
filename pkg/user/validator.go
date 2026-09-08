@@ -35,6 +35,12 @@ var (
 	ErrInvalidKeyHash = fmt.Errorf("key hash must not be empty: %w", errdefs.ErrInvalidArgument)
 	// ErrInvalidJTI is returned when JTI is empty.
 	ErrInvalidJTI = fmt.Errorf("jti must not be empty: %w", errdefs.ErrInvalidArgument)
+	// ErrEmailExists is returned when creating a user with an email already
+	// in use. Uniqueness of the optional email column is enforced in the
+	// store layer, not by a unique index: empty emails must be allowed for
+	// any number of users, and partial unique indexes are not portable
+	// across the supported databases.
+	ErrEmailExists = fmt.Errorf("email already in use: %w", errdefs.ErrConflict)
 )
 
 var (

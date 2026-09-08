@@ -23,7 +23,7 @@ type User struct {
 	PasswordHash       string    `gorm:"size:255;not null" json:"-"`
 	Nickname           string    `gorm:"size:64" json:"nickname,omitempty"`
 	Role               int       `gorm:"not null;default:0" json:"role"` // 0=viewer 1=developer 2=admin
-	Email              string    `gorm:"size:128;uniqueIndex" json:"email,omitempty"`
+	Email              string    `gorm:"size:128" json:"email,omitempty"`
 	Status             int       `gorm:"not null;default:1" json:"status"` // 0=disabled 1=active
 	Language           string    `gorm:"size:16;not null;default:'zh-Hans'" json:"language"`
 	AlertFormatStyle   string    `gorm:"size:32;not null;default:'detailed'" json:"alert_format_style"`

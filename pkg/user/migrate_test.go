@@ -6,6 +6,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -90,10 +91,7 @@ func TestMigrate_Incremental(t *testing.T) {
 		t.Fatalf("first Migrate() error = %v", err)
 	}
 
-	// Insert data after the first migration. Email is set to a distinct
-	// non-empty value because the User model enforces a unique index on
-	// email; two empty strings would conflict on SQLite (empty string is a
-	// value, not NULL).
+	// Insert data after the first migration.
 	u := User{
 		Username:     "persist_user",
 		PasswordHash: "$2a$10$hash",
@@ -128,5 +126,31 @@ func TestMigrate_Incremental(t *testing.T) {
 	}
 	if err := dbc.Create(&newUser).Error; err != nil {
 		t.Fatalf("insert user after second migration: %v", err)
+	}
+}
+
+func TestStoreCreate_EmailUniqueness(t *testing.T) {
+	dbc := newMigrateTestDB(t)
+	if err := Migrate(context.Background(), dbc); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	s := NewStore(dbc)
+
+	// The optional email column carries no unique index: any number of
+	// users may have no email at all.
+	if _, err := s.Create(context.Background(), "alice", "$2a$10$hash", "", 1); err != nil {
+		t.Fatalf("create user without email: %v", err)
+	}
+	if _, err := s.Create(context.Background(), "bob", "$2a$10$hash", "", 1); err != nil {
+		t.Fatalf("create second user without email: %v", err)
+	}
+
+	// A non-empty email is enforced unique by the store layer.
+	if _, err := s.Create(context.Background(), "carol", "$2a$10$hash", "dup@example.com", 1); err != nil {
+		t.Fatalf("create user with email: %v", err)
+	}
+	_, err := s.Create(context.Background(), "dave", "$2a$10$hash", "dup@example.com", 1)
+	if !errors.Is(err, ErrEmailExists) {
+		t.Fatalf("duplicate email: got %v, want ErrEmailExists", err)
 	}
 }

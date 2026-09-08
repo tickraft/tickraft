@@ -185,7 +185,7 @@ func newHarness(t *testing.T) *harness {
 	// production routingRecordStore lives in internal/service (unexported);
 	// the harness is its own assembly and repeats the dispatch.
 	probeStore := telemetry.NewProbeRecordStore(dbc)
-	if err := probeStore.Migrate(); err != nil {
+	if err := probeStore.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate probe records: %v", err)
 	}
 	execRunner, err := executor.New(
@@ -247,7 +247,7 @@ func newHarness(t *testing.T) *harness {
 	if err := telemetry.Migrate(ctx, dbc); err != nil {
 		t.Fatalf("migrate telemetry: %v", err)
 	}
-	if err := telemetry.LoadBuiltinTemplates(dbc); err != nil {
+	if err := telemetry.LoadBuiltinTemplates(context.Background(), dbc); err != nil {
 		t.Fatalf("load builtin templates: %v", err)
 	}
 	monitorStore := telemetry.NewMonitorStore(dbc)

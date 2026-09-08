@@ -229,7 +229,7 @@ func TestRunMaintenanceSweep_ProbeRetention(t *testing.T) {
 		t.Fatalf("migrate monitor points: %v", err)
 	}
 	probeStore := telemetry.NewProbeRecordStore(dbc)
-	if err := probeStore.Migrate(); err != nil {
+	if err := probeStore.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

@@ -83,6 +83,11 @@ type runtime struct {
 	authz  *auth.Service
 	jwt    *jwtauth.JWT
 
+	// blacklistStore is the single token-blacklist store shared by the JWT
+	// checker (initAuth) and the maintenance loop's CleanExpired sweep, so
+	// both paths observe the same LRU verdicts.
+	blacklistStore auth.BlacklistStore
+
 	// assetStore is the asset persistence store, created once and
 	// shared between the telemetry manager, asset management API, and
 	// the asset-key middleware getter.
@@ -302,6 +307,7 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 		logger:          logger,
 		dbc:             dbc,
 		cache:           cacheInst,
+		blacklistStore:  auth.NewBlacklistStore(dbc, cacheInst),
 		assetStore:      assetStore,
 		i18nRegistry:    i18nRegistry,
 		implicitAccount: implicitAccount,
@@ -342,7 +348,7 @@ func initAuth(_ context.Context, rt *runtime) error {
 			"or TICKRAFT_JWT_SECRET env var): %w", errdefs.ErrInvalidArgument)
 	}
 
-	blacklistStore := auth.NewBlacklistStore(rt.dbc, rt.cache)
+	blacklistStore := rt.blacklistStore
 	blacklistChecker := func(jti string) (bool, error) {
 		return blacklistStore.Exists(context.Background(), jti)
 	}

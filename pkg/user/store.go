@@ -64,6 +64,18 @@ func (s *store) Create(ctx context.Context, username, passwordHash, email string
 	if err := ValidateEmail(email); err != nil {
 		return 0, err
 	}
+	if email != "" {
+		// Optional-column uniqueness lives here rather than in a unique
+		// index: multiple users may have no email at all.
+		var count int64
+		if err := s.dbc.WithContext(ctx).Model(&User{}).
+			Where("email = ?", email).Count(&count).Error; err != nil {
+			return 0, db.MapError(err)
+		}
+		if count > 0 {
+			return 0, ErrEmailExists
+		}
+	}
 
 	u := User{
 		Username:     username,

@@ -155,7 +155,7 @@ func startWorkerEngines(
 	// task adapter (sys_schedule_log), OpProbe records to the telemetry
 	// store keyed by monitor point.
 	probeStore := telemetry.NewProbeRecordStore(rt.dbc)
-	if err = probeStore.Migrate(); err != nil {
+	if err = probeStore.Migrate(ctx); err != nil {
 		stopWorkerEngines(ctx, rt.logger, collector, sched, runner)
 		return nil, fmt.Errorf("migrate probe record table: %w", err)
 	}
