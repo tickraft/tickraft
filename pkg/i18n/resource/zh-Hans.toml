@@ -50,6 +50,26 @@ concise = "关键词：{{.keyword}}，级别：{{.severity}}"
 detailed = "日志条目命中关键词 \"{{.keyword}}\"，级别 {{.severity}}。内容：{{.content}}。来源 IP：{{.source_ip}}。资产：{{.asset_name}}（ID：{{.asset_id}}）。"
 technical = "keyword={{.keyword}} level={{.severity}} content={{.content}} source_ip={{.source_ip}} asset_id={{.asset_id}} tenant_id={{.tenant_id}}"
 
+[alert.status.title]
+concise = "告警：资产状态变为 {{.curr_status}}"
+detailed = "告警：资产 {{.asset_name}} 状态从 {{.prev_status}} 变为 {{.curr_status}}"
+technical = "ALERT[status] prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}}"
+
+[alert.status.description]
+concise = "{{.prev_status}} → {{.curr_status}}"
+detailed = "资产 {{.asset_name}}（ID：{{.asset_id}}）状态从 {{.prev_status}} 迁移为 {{.curr_status}}。来源：{{.source_ip}}。"
+technical = "prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}} tenant_id={{.tenant_id}} source={{.source_ip}}"
+
+[alert.heartbeat.title]
+concise = "告警：心跳丢失"
+detailed = "告警：资产 {{.asset_name}} 心跳超时，状态从 {{.prev_status}} 变为 {{.curr_status}}"
+technical = "ALERT[heartbeat] prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}}"
+
+[alert.heartbeat.description]
+concise = "资产 {{.asset_name}} 心跳丢失"
+detailed = "资产 {{.asset_name}}（ID：{{.asset_id}}）心跳超时，状态从 {{.prev_status}} 迁移为 {{.curr_status}}。"
+technical = "prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}} tenant_id={{.tenant_id}}"
+
 [alert.generic.title]
 concise = "告警：{{.alert_type}}"
 detailed = "告警：资产 {{.asset_name}} 发生 {{.alert_type}}"

@@ -18,14 +18,27 @@ import (
 )
 
 // ProbeTaskIDOffset separates prober task IDs from regular scheduled task
-// IDs in the shared task.TaskEngine. Regular tasks use auto-increment IDs from
-// sys_schedule_task (starting at 1). Prober tasks use this offset plus the
-// monitor_point ID to avoid collision in the scheduling engine and task store.
-// ProbeRecordStore inverts the mapping (task ID − offset = point ID) to key
-// probe records by their originating monitor point.
+// IDs in the shared task.TaskEngine. Regular tasks use auto-increment IDs
+// from sys_schedule_task (positive, starting at 1). Prober tasks use the
+// negated offset plus the monitor_point ID. The sign matters: SQLite
+// allocates auto rowids above the largest existing rowid, so a probe task
+// persisted with a positive synthetic ID (the legacy scheme) pushed the
+// counter into the probe range and every regular task created afterwards
+// collided with it. Negative IDs can never lift the counter nor collide
+// with a future regular ID.
+// ProbeRecordStore inverts the mapping (−task ID − offset = point ID) to
+// key probe records by their originating monitor point.
 const ProbeTaskIDOffset int64 = 1 << 40
 
 func proberTaskID(pointID int64) int64 {
+	return -(ProbeTaskIDOffset + pointID)
+}
+
+// legacyProberTaskID returns the probe task ID under the pre-negative
+// scheme. Upgraded deployments still carry such rows in sys_schedule_task;
+// UnregisterPoint and Start unschedule them so a point is never probed
+// twice (legacy row plus the current negative-ID row).
+func legacyProberTaskID(pointID int64) int64 {
 	return ProbeTaskIDOffset + pointID
 }
 
@@ -121,7 +134,9 @@ func (s *ProberService) RegisterPoint(ctx context.Context, point MonitorPoint) e
 }
 
 // UnregisterPoint removes an active monitoring point from the scheduling
-// engine and the task store.
+// engine and the task store. The legacy-scheme row (positive synthetic ID
+// persisted by earlier versions) is unscheduled too so upgrades never
+// leave a point scheduled twice; Unschedule on an absent ID is a no-op.
 func (s *ProberService) UnregisterPoint(ctx context.Context, pointID int64) error {
 	if s.sched == nil {
 		return nil
@@ -129,6 +144,9 @@ func (s *ProberService) UnregisterPoint(ctx context.Context, pointID int64) erro
 	taskID := proberTaskID(pointID)
 	if err := s.sched.Unschedule(ctx, taskID); err != nil {
 		return fmt.Errorf("unregister prober point %d: %w", pointID, err)
+	}
+	if err := s.sched.Unschedule(ctx, legacyProberTaskID(pointID)); err != nil {
+		return fmt.Errorf("unregister legacy prober point %d: %w", pointID, err)
 	}
 	s.logger.Info("prober point unregistered", zap.Int64("point_id", pointID))
 	return nil
@@ -186,6 +204,17 @@ func (s *ProberService) Start(ctx context.Context) error {
 	points, err := s.store.ListActive(ctx)
 	if err != nil {
 		return fmt.Errorf("prober start: load active points: %w", err)
+	}
+	// Sweep legacy-scheme probe rows before registering: Restore already
+	// put them on the wheel, and each point registered below with its new
+	// negative ID would otherwise leave the legacy row probing in parallel.
+	for i := range points {
+		if err := s.sched.Unschedule(ctx, legacyProberTaskID(points[i].ID)); err != nil {
+			s.logger.Warn("prober start: unschedule legacy probe task",
+				zap.Int64("point_id", points[i].ID),
+				zap.Error(err),
+			)
+		}
 	}
 	registered := 0
 	for i := range points {

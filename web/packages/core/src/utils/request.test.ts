@@ -99,6 +99,9 @@ afterEach(() => {
 describe('request naming interceptors', () => {
   it('snake_cases request body and query params, and injects auth/trace headers', async () => {
     mod.setToken('token-abc')
+    // Locale header follows the stored preference; seed it so the assertion is
+    // independent of navigator.languages in the test environment.
+    window.localStorage.setItem('tk-locale', JSON.stringify('zh-Hans'))
     apiScript.push({ status: 200, body: { code: 0, message: 'ok', data: { ok: true } } })
 
     await mod.request({ url: '/assets', method: 'post', params: { size: 20, assetType: 'host' }, data: { assetKey: 'k', createdAt: 'now' } })

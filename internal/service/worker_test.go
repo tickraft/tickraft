@@ -31,7 +31,7 @@ func TestRoutingRecordStoreDispatchesByOperation(t *testing.T) {
 	probes := &captureRecordStore{}
 	router := routingRecordStore{tasks: tasks, probes: probes}
 
-	probeRec := executor.ExecutionRecord{TaskID: telemetry.ProbeTaskIDOffset + 7, Operation: executor.OpProbe}
+	probeRec := executor.ExecutionRecord{TaskID: -(telemetry.ProbeTaskIDOffset + 7), Operation: executor.OpProbe}
 	if err := router.Save(context.Background(), probeRec); err != nil {
 		t.Fatalf("route probe record: %v", err)
 	}

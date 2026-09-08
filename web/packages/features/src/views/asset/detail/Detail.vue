@@ -7,7 +7,8 @@
  * Asset detail page.
  *
  * Read-only view of a single asset record with basic info, runtime info,
- * and a placeholder section for related monitor points / tasks.
+ * and related monitor points / tasks (both filtered server-side by
+ * asset_id).
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,7 +16,11 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { StatusTag, usePermission } from '@tickraft/core'
 import { getAsset, deleteAsset, parseMetadata } from '../../../api/asset'
+import { getMonitors } from '../../../api/telemetry'
+import { getTasks } from '../../../api/task'
 import type { Asset, AssetMetadata } from '../../../types/asset'
+import type { MonitorPoint } from '../../../types/telemetry'
+import type { TaskModel } from '../../../types/task'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +30,8 @@ const { canDelete } = usePermission()
 const loading = ref(false)
 const deleting = ref(false)
 const record = ref<Asset | undefined>()
+const relatedMonitors = ref<MonitorPoint[]>([])
+const relatedTasks = ref<TaskModel[]>([])
 
 const assetId = computed(() => {
   const raw = route.params.id
@@ -78,6 +85,24 @@ function handleBack(): void {
   router.push('/asset/list')
 }
 
+/** Load the monitor points and tasks bound to this asset. Relation
+ * failures do not block the page — the panels fall back to empty. */
+async function loadRelations(): Promise<void> {
+  if (!assetId.value) return
+  try {
+    const res = await getMonitors({ page: 1, size: 20, assetId: assetId.value })
+    relatedMonitors.value = res.items
+  } catch {
+    relatedMonitors.value = []
+  }
+  try {
+    const res = await getTasks({ page: 1, size: 20, assetId: assetId.value })
+    relatedTasks.value = res.items
+  } catch {
+    relatedTasks.value = []
+  }
+}
+
 /** Format ISO timestamp to a readable local string */
 function formatTime(iso: string): string {
   if (!iso) return '-'
@@ -88,6 +113,7 @@ function formatTime(iso: string): string {
 
 onMounted(() => {
   void loadAsset()
+  void loadRelations()
 })
 </script>
 
@@ -233,17 +259,56 @@ onMounted(() => {
             <div class="tk-asset-detail-relation__title">
               {{ t('asset.detail.relatedMonitors') }}
             </div>
-            <div class="tk-asset-detail-relation__empty">
+            <div
+              v-if="relatedMonitors.length === 0"
+              class="tk-asset-detail-relation__empty"
+            >
               {{ t('asset.detail.noRelations') }}
             </div>
+            <ul
+              v-else
+              class="tk-asset-detail-relation__list"
+            >
+              <li
+                v-for="m in relatedMonitors"
+                :key="m.id"
+              >
+                <router-link :to="`/telemetry/monitor/detail/${m.id}`">
+                  {{ m.name }}
+                </router-link>
+                <span class="tk-asset-detail-relation__meta">
+                  {{ m.mode === 'active' ? t('telemetry.monitor.create.modeActive') : t('telemetry.monitor.create.modePassive') }}
+                  · {{ t(`telemetry.monitor.type.${m.type}`) }}
+                </span>
+              </li>
+            </ul>
           </div>
           <div class="tk-asset-detail-relation">
             <div class="tk-asset-detail-relation__title">
               {{ t('asset.detail.relatedTasks') }}
             </div>
-            <div class="tk-asset-detail-relation__empty">
+            <div
+              v-if="relatedTasks.length === 0"
+              class="tk-asset-detail-relation__empty"
+            >
               {{ t('asset.detail.noRelations') }}
             </div>
+            <ul
+              v-else
+              class="tk-asset-detail-relation__list"
+            >
+              <li
+                v-for="task in relatedTasks"
+                :key="task.id"
+              >
+                <router-link :to="`/task/detail/${task.id}`">
+                  {{ task.name }}
+                </router-link>
+                <span class="tk-asset-detail-relation__meta">
+                  {{ task.executorType }} · {{ task.schedule }}
+                </span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -370,6 +435,37 @@ onMounted(() => {
   &__empty {
     font-size: var(--tk-font-size-xs);
     color: var(--tk-text-placeholder);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tk-spacing-xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      gap: var(--tk-spacing-sm);
+      align-items: baseline;
+      font-size: var(--tk-font-size-sm);
+    }
+
+    a {
+      color: var(--tk-primary-color);
+      text-decoration: none;
+
+      &:hover {
+        color: var(--tk-primary-color-hover);
+        text-decoration: underline;
+      }
+    }
+  }
+
+  &__meta {
+    font-size: var(--tk-font-size-xs);
+    color: var(--tk-text-secondary);
   }
 }
 

@@ -343,9 +343,10 @@ function parseEmails(raw: string): string[] {
 }
 
 /**
- * Build the config object. Keys are camelCase here; the request layer
- * snakeizes them recursively, so the backend receives snake_case keys
- * matching its Config json tags. Omitted optional fields are left out.
+ * Build the config object with snake_case wire keys matching the backend
+ * channel Config json tags. The request layer only converts top-level body
+ * keys, so nested config keys must already be wire-format here. Omitted
+ * optional fields are left out.
  */
 function buildConfig(): Record<string, unknown> {
   if (formData.type === 'webhook') {
@@ -361,9 +362,9 @@ function buildConfig(): Record<string, unknown> {
       port: formData.port,
       from: formData.fromAddr,
       to: parseEmails(formData.toAddrs),
-      tlsMode: formData.tlsMode,
-      authType: formData.authType,
-      htmlMode: formData.htmlMode,
+      tls_mode: formData.tlsMode,
+      auth_type: formData.authType,
+      html_mode: formData.htmlMode,
     }
     // Credentials are a pair: send both only when a username is set.
     if (formData.smtpUsername) {
@@ -372,82 +373,82 @@ function buildConfig(): Record<string, unknown> {
     }
     return cfg
   }
-  const cfg: Record<string, unknown> = { frontendBaseUrl: formData.frontendBaseUrl }
+  const cfg: Record<string, unknown> = { frontend_base_url: formData.frontendBaseUrl }
   if (proxyRegionTypes.has(formData.type)) {
-    cfg.proxyUrl = formData.proxyUrl
+    cfg.proxy_url = formData.proxyUrl
     if (formData.region) cfg.region = formData.region
   }
   if (webhookTypes.has(formData.type) && !(formData.type === 'feishu' && formData.mode === 'app')) {
-    cfg.webhookUrl = formData.webhookUrl
+    cfg.webhook_url = formData.webhookUrl
   }
   switch (formData.type) {
     case 'feishu':
       cfg.mode = formData.mode
       if (formData.mode === 'app') {
-        cfg.appId = formData.appId
-        cfg.appSecret = formData.appSecret
-        cfg.chatId = formData.chatId
-        if (formData.baseUrl) cfg.baseUrl = formData.baseUrl
+        cfg.app_id = formData.appId
+        cfg.app_secret = formData.appSecret
+        cfg.chat_id = formData.chatId
+        if (formData.baseUrl) cfg.base_url = formData.baseUrl
       } else {
         cfg.secret = formData.secret
       }
-      if (formData.messageType) cfg.messageType = formData.messageType
+      if (formData.messageType) cfg.message_type = formData.messageType
       break
     case 'dingtalk':
       cfg.secret = formData.secret
       cfg.keyword = formData.keyword
       // Stream-mode credentials are optional: present only when configured,
       // so an edit that leaves them masked re-submits the mask untouched.
-      if (formData.appKey) cfg.appKey = formData.appKey
-      if (formData.appSecret) cfg.appSecret = formData.appSecret
-      if (formData.baseUrl) cfg.baseUrl = formData.baseUrl
-      if (formData.messageType) cfg.messageType = formData.messageType
+      if (formData.appKey) cfg.app_key = formData.appKey
+      if (formData.appSecret) cfg.app_secret = formData.appSecret
+      if (formData.baseUrl) cfg.base_url = formData.baseUrl
+      if (formData.messageType) cfg.message_type = formData.messageType
       break
     case 'slack':
       cfg.channel = formData.channel
       break
     case 'discord':
       cfg.username = formData.username
-      cfg.avatarUrl = formData.avatarUrl
+      cfg.avatar_url = formData.avatarUrl
       break
     case 'teams':
       break
     case 'wecom':
       cfg.mode = formData.mode
-      cfg.messageType = formData.messageType || 'text'
+      cfg.message_type = formData.messageType || 'text'
       if (formData.mode === 'robot') {
-        cfg.robotWebhookUrl = formData.robotWebhookUrl
+        cfg.robot_webhook_url = formData.robotWebhookUrl
       } else {
-        cfg.corpId = formData.corpId
-        cfg.agentId = formData.agentId
+        cfg.corp_id = formData.corpId
+        cfg.agent_id = formData.agentId
         cfg.secret = formData.secret
-        cfg.toUser = formData.toUser
-        if (formData.baseUrl) cfg.baseUrl = formData.baseUrl
+        cfg.to_user = formData.toUser
+        if (formData.baseUrl) cfg.base_url = formData.baseUrl
         // Callback credentials are optional: present only when configured,
         // so an edit that leaves them masked re-submits the mask untouched.
-        if (formData.callbackToken) cfg.callbackToken = formData.callbackToken
-        if (formData.encodingAesKey) cfg.encodingAesKey = formData.encodingAesKey
+        if (formData.callbackToken) cfg.callback_token = formData.callbackToken
+        if (formData.encodingAesKey) cfg.encoding_aes_key = formData.encodingAesKey
       }
       break
     case 'telegram':
-      cfg.botToken = formData.botToken
-      cfg.chatId = formData.chatId
-      if (formData.apiBase) cfg.apiBase = formData.apiBase
+      cfg.bot_token = formData.botToken
+      cfg.chat_id = formData.chatId
+      if (formData.apiBase) cfg.api_base = formData.apiBase
       break
     case 'sms':
       cfg.provider = formData.provider
       if (formData.provider === 'custom') {
         cfg.endpoint = formData.endpoint
-        cfg.bodyTemplate = formData.bodyTemplate
+        cfg.body_template = formData.bodyTemplate
         if (formData.method && formData.method !== 'POST') cfg.method = formData.method
         const headers = buildHeaders()
         if (headers) cfg.headers = headers
       } else {
-        cfg.apiKey = formData.apiKey
-        cfg.apiSecret = formData.apiSecret
-        cfg.signName = formData.signName
+        cfg.api_key = formData.apiKey
+        cfg.api_secret = formData.apiSecret
+        cfg.sign_name = formData.signName
         if (smsUsesTemplate.value) {
-          cfg.templateCode = formData.templateCode
+          cfg.template_code = formData.templateCode
           cfg.region = formData.smsRegion
         }
       }

@@ -6,7 +6,12 @@ import { request } from '@tickraft/core'
 import type { PageData, PageParams, AlertStatus } from '@tickraft/core'
 
 /** Alert severity level (aligned with backend alert.Severity) */
-export type AlertSeverity = 'critical' | 'warning' | 'info'
+/**
+ * Alert severity domain. Records carry the triggering event's level, whose
+ * ranking on the backend is critical > error > warning > info > debug;
+ * rules/templates only offer the critical/warning/info subset.
+ */
+export type AlertSeverity = 'critical' | 'error' | 'warning' | 'info' | 'debug'
 
 /** Alert trigger condition operator (aligned with backend alert.Condition) */
 export type AlertCondition = 'gt' | 'lt' | 'eq' | 'gte' | 'lte'

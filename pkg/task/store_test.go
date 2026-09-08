@@ -223,3 +223,111 @@ func TestExecutionRecordStoreTimedOutOverridesStatus(t *testing.T) {
 		t.Errorf("status = %q, want %q", items[0].Status, StatusTimeout)
 	}
 }
+
+// TestExecutionStatsFilterAcrossTimezones is a regression test for the
+// offset-mixing trap: created_at rows are stored as offset-carrying TEXT and
+// SQLite compares TEXT lexicographically, so naive bound comparisons only
+// work when the query bound carries the same offset as the stored rows.
+// Stats and StatsByDay must resolve both sides to instants via datetime().
+func TestExecutionStatsFilterAcrossTimezones(t *testing.T) {
+	dbc := openTaskStoreDB(t)
+	store := NewExecutionStore(dbc)
+	ctx := context.Background()
+
+	cst := time.FixedZone("CST", 8*3600)
+	rowTime := time.Date(2026, 9, 8, 20, 19, 15, 0, cst) // +08:00 evening row
+	rows := []Execution{
+		{
+			TaskID: 1, AssetID: 1, ExecutorType: "http", Status: StatusSuccess,
+			Duration: 100, StartedAt: rowTime, CreatedAt: rowTime,
+		},
+		{
+			TaskID: 1, AssetID: 1, ExecutorType: "http", Status: StatusFailed,
+			Duration: 200, StartedAt: rowTime.Add(time.Minute), CreatedAt: rowTime.Add(time.Minute),
+		},
+	}
+	for i := range rows {
+		if err := dbc.WithContext(ctx).Create(&rows[i]).Error; err != nil {
+			t.Fatalf("seed execution %d: %v", i, err)
+		}
+	}
+
+	// Same day expressed with UTC bounds. The end bound's hour ("13")
+	// sorts before the rows' hour ("20"), so a naive lexicographic
+	// comparison excludes the rows even though 13:00Z is 21:00+08 —
+	// instant-wise after them. This is the exact shape that zeroed the
+	// dashboard's today-executions card.
+	from := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+
+	stats, err := store.Stats(ctx, from, to, 0)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.TotalExecutions != 2 || stats.SuccessCount != 1 || stats.FailureCount != 1 {
+		t.Errorf("stats = total %d / success %d / failure %d, want 2/1/1 (offset-mixing regression)",
+			stats.TotalExecutions, stats.SuccessCount, stats.FailureCount)
+	}
+
+	byDay, err := store.StatsByDay(ctx, from, to, 0)
+	if err != nil {
+		t.Fatalf("stats by day: %v", err)
+	}
+	if len(byDay) != 1 || byDay[0].Total != 2 || byDay[0].Success != 1 || byDay[0].Failed != 1 {
+		t.Errorf("stats by day = %+v, want one day with total 2 / success 1 / failed 1", byDay)
+	}
+
+	// A UTC window that ends before the rows' instant must exclude them.
+	earlyTo := time.Date(2026, 9, 8, 11, 0, 0, 0, time.UTC)
+	stats, err = store.Stats(ctx, from, earlyTo, 0)
+	if err != nil {
+		t.Fatalf("stats early window: %v", err)
+	}
+	if stats.TotalExecutions != 0 {
+		t.Errorf("early-window stats total = %d, want 0", stats.TotalExecutions)
+	}
+}
+
+// TestStoreListExcludeSynthetic is a regression test for the user-facing task
+// list leaking telemetry probe rows: synthetic rows persisted with negative
+// IDs by other domains must be dropped when ExcludeSynthetic is set and must
+// stay invisible to Count (quota), while internal callers still see them.
+func TestStoreListExcludeSynthetic(t *testing.T) {
+	dbc := openTaskStoreDB(t)
+	store := NewStore(dbc)
+	ctx := context.Background()
+
+	rows := []*Task{
+		{ID: 3, Name: "user-task", ExecutorType: "local", Schedule: "@every 1h", Enabled: true},
+		{ID: -(1 << 40), Name: "prober-synthetic", ExecutorType: "http", Schedule: "@every 1m", Enabled: true},
+	}
+	for _, r := range rows {
+		if err := store.Save(ctx, r); err != nil {
+			t.Fatalf("save %+v: %v", r, err)
+		}
+	}
+
+	all, err := store.List(ctx, ListOptions{})
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("internal list returned %d rows, want 2", len(all))
+	}
+
+	userRows, err := store.List(ctx, ListOptions{ExcludeSynthetic: true})
+	if err != nil {
+		t.Fatalf("list exclude synthetic: %v", err)
+	}
+	if len(userRows) != 1 || userRows[0].ID != 3 {
+		t.Errorf("ExcludeSynthetic list = %+v, want only user task id 3", userRows)
+	}
+
+	count, err := store.Count(ctx)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1 (synthetic rows must not consume quota)", count)
+	}
+}

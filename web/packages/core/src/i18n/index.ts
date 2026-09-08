@@ -124,8 +124,15 @@ function detectBrowserLocale(): string {
   return DEFAULT_LOCALE
 }
 
-/** Return the stored locale, browser-detected locale, or default locale. */
-function getLocale(): string {
+/**
+ * Return the stored locale, browser-detected locale, or default locale.
+ *
+ * Single source of truth for locale resolution: the i18n instance, the
+ * `X-Tickraft-Locale` request header, and backend-error localization all
+ * resolve through this so the UI language and error language can never
+ * diverge (e.g. browser-detected en-US UI receiving zh-Hans error text).
+ */
+export function getLocale(): string {
   return getStorage<string>('tk-locale') || detectBrowserLocale()
 }
 

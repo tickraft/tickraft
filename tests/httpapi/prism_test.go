@@ -407,9 +407,15 @@ func TestChannelsCRUDTestOptionsAndDeliveries(t *testing.T) {
 		t.Fatalf("list channel options: telegram channel %d missing", ding.ID)
 	}
 
-	// -- Deliveries: empty before any engine dispatch --
-	if pd := hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10"); pd.Total != 0 {
-		t.Fatalf("list deliveries: expected 0, got %d", pd.Total)
+	// -- Test dispatches are recorded as delivery rows --
+	pd := hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10")
+	if pd.Total != 2 || len(pd.Items) != 2 {
+		t.Fatalf("list deliveries: expected the 2 test-dispatch rows, got total=%d items=%d", pd.Total, len(pd.Items))
+	}
+	for _, item := range pd.Items {
+		if item["status"] != "success" {
+			t.Fatalf("test-dispatch delivery row: status=%v, want success", item["status"])
+		}
 	}
 
 	// -- Seed a failed delivery and retry it through the live channel --
@@ -445,16 +451,20 @@ func TestChannelsCRUDTestOptionsAndDeliveries(t *testing.T) {
 		t.Fatalf("seed delivery record: %v", err)
 	}
 
-	pd := hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10")
-	if pd.Total != 1 || len(pd.Items) != 1 {
-		t.Fatalf("list deliveries: expected 1 record, got total=%d items=%d", pd.Total, len(pd.Items))
+	pd = hs.listPage(token, "/api/v1/prism/channels/deliveries?page=1&size=10")
+	if pd.Total != 3 || len(pd.Items) != 3 {
+		t.Fatalf("list deliveries: expected 3 records after seeding, got total=%d items=%d", pd.Total, len(pd.Items))
 	}
-	if pd.Items[0]["status"] != "failed" {
-		t.Fatalf("list deliveries: expected failed status, got %v", pd.Items[0]["status"])
+	var deliveryID float64
+	failed := 0
+	for _, item := range pd.Items {
+		if item["status"] == "failed" {
+			failed++
+			deliveryID, _ = item["id"].(float64)
+		}
 	}
-	deliveryID, _ := pd.Items[0]["id"].(float64)
-	if deliveryID == 0 {
-		t.Fatalf("list deliveries: no id on record: %v", pd.Items[0])
+	if failed != 1 || deliveryID == 0 {
+		t.Fatalf("list deliveries: expected exactly 1 failed record, got %d (id=%v)", failed, deliveryID)
 	}
 
 	status, env = hs.do("POST",
@@ -473,10 +483,16 @@ func TestChannelsCRUDTestOptionsAndDeliveries(t *testing.T) {
 		t.Fatalf("retry delivery: expected 2 attempts, got %d", len(retried.Attempts))
 	}
 
-	// The per-channel view reflects the retried record.
+	// The per-channel view reflects the retried record plus ding's own
+	// test-dispatch row, all successful.
 	pd = hs.listPage(token, "/api/v1/prism/channels/"+jsonInt64(ding.ID)+"/deliveries?page=1&size=10")
-	if pd.Total != 1 || pd.Items[0]["status"] != "success" {
-		t.Fatalf("channel deliveries: expected 1 success, got total=%d item=%v", pd.Total, pd.Items)
+	if pd.Total != 2 {
+		t.Fatalf("channel deliveries: expected 2 records, got total=%d", pd.Total)
+	}
+	for _, item := range pd.Items {
+		if item["status"] != "success" {
+			t.Fatalf("channel deliveries: status=%v, want success", item["status"])
+		}
 	}
 
 	// Retrying a successful delivery is refused with a validation error.

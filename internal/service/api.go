@@ -276,7 +276,8 @@ func newPrismRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 		return nil, fmt.Errorf(
 			"start api server: prism channel/delivery stores are nil; prism engine may not have started")
 	}
-	channelSvc := channel.NewChannelService(engine.ChannelStore(), engine.DeliveryStore(), engine)
+	channelSvc := channel.NewChannelService(engine.ChannelStore(), engine.DeliveryStore(), engine,
+		channel.WithLogger(rt.logger))
 
 	// Remediation rule service: backed by the persistent remediation rule
 	// store accessed via the prism engine.

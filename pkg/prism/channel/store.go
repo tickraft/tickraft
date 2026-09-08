@@ -240,6 +240,32 @@ func (s *Store) Update(ctx context.Context, ch *Channel) error {
 	return nil
 }
 
+// TouchTest stamps the channel row with the outcome and time of a test
+// dispatch so the channel list can surface the last test state. The
+// result string follows the tracking delivery statuses ("success" /
+// "failed").
+func (s *Store) TouchTest(ctx context.Context, id int64, outcome string) error {
+	q := s.dbc.WithContext(ctx).Model(&Channel{}).Where("id = ?", id)
+	if s.tenant != nil {
+		tenantID, err := requiredTenant(ctx, s.tenant)
+		if err != nil {
+			return err
+		}
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	res := q.Updates(map[string]any{
+		"last_test_at":     time.Now(),
+		"last_test_result": outcome,
+	})
+	if res.Error != nil {
+		return db.MapError(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrChannelNotFound
+	}
+	return nil
+}
+
 // Delete removes the channel configuration with the given id.
 func (s *Store) Delete(ctx context.Context, id int64) error {
 	q, err := s.queryScope(ctx)

@@ -62,6 +62,14 @@ func (h *Handler) ListTasks(ctx context.Context, arc *app.RequestContext) {
 			}
 		}
 	}
+	if raw := arc.Query("asset_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 0 {
+			httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid asset_id")
+			return
+		}
+		filter.AssetID = id
+	}
 	items, total, err := h.svc.ListTasks(ctx, page, size, filter)
 	if err != nil {
 		httputil.Fail(arc, err)

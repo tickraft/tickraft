@@ -61,19 +61,29 @@ const form = reactive<TaskFormData>(props.initialData ?? {
 
 watch(form, () => emit('change'), { deep: true })
 
+/** Headers are edited as "key: value" lines but travel as a JSON object,
+ * matching the executors' config contract (headers is a map, not a string).
+ * Local args are edited as one line and travel as a string array.
+ * Declared before the immediate initialData watcher below: that callback
+ * runs during setup, so a later declaration would still be uninitialized
+ * (TDZ) and the header/args echo would be silently dropped. */
+const headersText = ref('')
+
+// Watch the reference, not the contents: both parents hand us a fresh
+// object when data changes (Create passes one reactive default, Edit
+// rebuilds initialData per fetch). A deep watch here would observe the
+// very mutations the form makes (form shares the initialData proxy),
+// and its syncConfigText callback would then wipe argsText/headersText
+// after every keystroke — making local task arguments and HTTP headers
+// impossible to type.
 watch(() => props.initialData, (val) => {
   if (val) Object.assign(form, val)
   syncConfigText()
-}, { deep: true, immediate: true })
+}, { immediate: true })
 
 watch(() => form.executorType, () => {
   syncConfigText()
 })
-
-/** Headers are edited as "key: value" lines but travel as a JSON object,
- * matching the executors' config contract (headers is a map, not a string).
- * Local args are edited as one line and travel as a string array. */
-const headersText = ref('')
 
 function syncConfigText(): void {
   headersText.value = formatHeaders(form.config?.headers)

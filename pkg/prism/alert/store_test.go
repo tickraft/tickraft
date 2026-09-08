@@ -262,3 +262,55 @@ func TestStoreListPagination(t *testing.T) {
 		t.Errorf("out-of-range page returned %d rules, want 0", len(rules))
 	}
 }
+
+// TestRecordStoreListFilterAcrossTimezones pins the instant-correct
+// triggered_at range comparison: a record stored with a +08:00 offset must
+// match bounds expressed as UTC instants. A naive SQLite TEXT comparison
+// would compare "20:19:15+08:00" against "15:59:59+00:00" and wrongly
+// exclude the row.
+func TestRecordStoreListFilterAcrossTimezones(t *testing.T) {
+	ctx := context.Background()
+	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, e := gdb.DB(); e == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := Migrate(ctx, gdb); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	s := NewRecordStore(gdb)
+
+	cst := time.FixedZone("CST", 8*3600)
+	if err := s.Create(ctx, &Record{
+		RuleName:    "it-rule",
+		Severity:    "warning",
+		Status:      "firing",
+		TriggeredAt: time.Date(2026, 9, 8, 20, 19, 15, 0, cst),
+	}); err != nil {
+		t.Fatalf("create record: %v", err)
+	}
+
+	// 2026-09-08 (+08) as UTC instants.
+	from := time.Date(2026, 9, 7, 16, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 9, 8, 15, 59, 59, 0, time.UTC)
+	_, total, err := s.List(ctx, 1, 10, RecordFilter{From: from, To: to})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1 for UTC bounds covering the +08:00 row, got %d", total)
+	}
+
+	earlyTo := time.Date(2026, 9, 8, 11, 0, 0, 0, time.UTC)
+	_, total, err = s.List(ctx, 1, 10, RecordFilter{From: from, To: earlyTo})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("expected total 0 for UTC window before the +08:00 row, got %d", total)
+	}
+}

@@ -150,11 +150,17 @@ async function handleApply(row: TelemetryTemplate): Promise<void> {
       t('common.app.confirm'),
       { type: 'info' },
     )
+  } catch {
+    return // user cancelled
+  }
+  try {
     await applyTemplate(row.id)
     ElMessage.success(t('telemetry.monitor.templates.applySuccess'))
     router.push('/telemetry/monitor/list')
-  } catch {
-    // user cancelled or apply failed
+  } catch (err) {
+    // The interceptor only rejects with a localized Error; surface it
+    // instead of failing silently.
+    ElMessage.error(err instanceof Error ? err.message : t('telemetry.monitor.templates.applyFailed'))
   }
 }
 
@@ -166,11 +172,15 @@ async function handleDelete(row: TelemetryTemplate): Promise<void> {
       t('common.app.confirm'),
       { type: 'warning' },
     )
+  } catch {
+    return // user cancelled
+  }
+  try {
     await deleteTelemetryTemplate(row.id)
     ElMessage.success(t('telemetry.monitor.templates.deleteSuccess'))
     fetchData()
-  } catch {
-    // user cancelled or delete failed
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : t('telemetry.monitor.templates.deleteFailed'))
   }
 }
 

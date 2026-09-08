@@ -54,6 +54,12 @@ func TestPointToProbeTaskBaseline(t *testing.T) {
 	if task.ID != proberTaskID(3) {
 		t.Errorf("task ID = %d, want %d", task.ID, proberTaskID(3))
 	}
+	// Probe task IDs live in the negative synthetic range so persisting them
+	// can never push sys_schedule_task's auto-increment counter into the
+	// probe range (the legacy positive-scheme poisoning).
+	if task.ID >= 0 {
+		t.Errorf("task ID = %d, want negative synthetic ID", task.ID)
+	}
 	if task.ExecutorType != "icmp" {
 		t.Errorf("task ExecutorType = %q, want icmp", task.ExecutorType)
 	}

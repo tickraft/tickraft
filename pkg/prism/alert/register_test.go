@@ -70,9 +70,9 @@ func TestRegisterStaticRules(t *testing.T) {
 	if len(matched) != 2 {
 		t.Fatalf("Evaluate matched %v, want both static rules", matched)
 	}
-	for _, id := range matched {
-		if id >= 0 {
-			t.Errorf("static rule id = %d, want negative", id)
+	for _, rule := range matched {
+		if rule.ID >= 0 {
+			t.Errorf("static rule id = %d, want negative", rule.ID)
 		}
 	}
 
@@ -129,7 +129,7 @@ func TestRegisterWithStore(t *testing.T) {
 	// The initial Reload replaced the (empty) static set with the
 	// store's rule.
 	matched, _ := engine.Evaluate(context.Background(), 1, testEnv(map[string]float64{"mem": 85}))
-	if len(matched) != 1 || matched[0] != 11 {
+	if len(matched) != 1 || matched[0].ID != 11 {
 		t.Fatalf("Evaluate after initial reload = %v, want [11]", matched)
 	}
 
@@ -144,7 +144,7 @@ func TestRegisterWithStore(t *testing.T) {
 		t.Fatalf("reloadFn: %v", err)
 	}
 	matched, _ = engine.Evaluate(context.Background(), 1, testEnv(map[string]float64{"mem": 60}))
-	if len(matched) != 1 || matched[0] != 12 {
+	if len(matched) != 1 || matched[0].ID != 12 {
 		t.Fatalf("Evaluate after subscriber reload = %v, want [12]", matched)
 	}
 }

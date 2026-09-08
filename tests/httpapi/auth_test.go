@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
+	"github.com/tickraft/tickraft/pkg/errdefs"
 )
 
 // TestAuthLogin verifies login success and failure paths.
@@ -147,18 +148,21 @@ func TestChangePassword(t *testing.T) {
 	token := hs.login(adminUsername, adminPassword)
 	newPwd := "Rotated-Password-456"
 
-	status, _ := hs.do("PUT", "/api/v1/auth/password", map[string]string{
+	status, env := hs.do("PUT", "/api/v1/auth/password", map[string]string{
 		"old_password": "wrong-old-password",
 		"new_password": newPwd,
 	}, token)
-	if status == http.StatusBadRequest {
-		t.Fatalf("change password with wrong old password: expected non-400 rejection, got %d", status)
+	// A wrong current password is deliberately 400 + CodeOldPassword, not
+	// 401: the session itself is valid, and 401 would make clients treat it
+	// as session expiry and drop the user to the login page.
+	if status != http.StatusBadRequest {
+		t.Fatalf("change password with wrong old password: expected 400, got %d code=%d", status, env.Code)
 	}
-	if status == http.StatusOK {
-		t.Fatalf("change password with wrong old password: expected failure, got 200")
+	if env.Code != errdefs.CodeOldPassword {
+		t.Fatalf("change password with wrong old password: code = %d, want %d", env.Code, errdefs.CodeOldPassword)
 	}
 
-	status, env := hs.do("PUT", "/api/v1/auth/password", map[string]string{
+	status, env = hs.do("PUT", "/api/v1/auth/password", map[string]string{
 		"old_password": adminPassword,
 		"new_password": newPwd,
 	}, token)

@@ -44,6 +44,12 @@ func (r *probeRuntime) BuildChannel(ch *Channel) (alert.Channel, error) {
 	return &probeSender{name: ch.Name}, nil
 }
 
+// BuildTrackedChannel mirrors the real engine seam: the fake runtime has
+// no delivery store, so the tracked build degenerates to the plain one.
+func (r *probeRuntime) BuildTrackedChannel(ch *Channel) (alert.Channel, error) {
+	return r.BuildChannel(ch)
+}
+
 // TestChannelServiceTestAllChannels verifies the batch connectivity probe:
 // every enabled channel gets one result (disabled ones are skipped), build
 // failures surface as OK=false with the error, and successful sends report
@@ -138,5 +144,68 @@ func TestChannelServiceTestAllChannelsNoRuntime(t *testing.T) {
 
 	if _, err := svc.TestAllChannels(context.Background()); err == nil {
 		t.Fatal("expected error when runtime is nil")
+	}
+}
+
+// TestChannelServiceTestChannelStampsOutcome verifies that a test
+// dispatch against a saved channel persists the last-test state on the
+// channel row for both send outcomes, so the channel list can surface
+// when the channel was last tested and whether it succeeded.
+func TestChannelServiceTestChannelStampsOutcome(t *testing.T) {
+	gdb := newStoreTestDB(t)
+	rt := &probeRuntime{
+		buildErrs: map[int64]error{},
+		senders:   map[int64]*probeSender{},
+	}
+	svc := NewChannelService(NewStore(gdb, nil), NewDeliveryStore(gdb), rt)
+	ctx := context.Background()
+
+	okCh, err := svc.CreateChannel(ctx, &CreateRequest{
+		Name:    "ok-hook",
+		Type:    "feishu",
+		Config:  json.RawMessage(`{"webhook_url":"https://hook.example/ok"}`),
+		Enabled: boolPtr(true),
+	})
+	if err != nil {
+		t.Fatalf("create ok channel: %v", err)
+	}
+	rt.senders[okCh.ID] = &probeSender{name: "ok-hook"}
+
+	deadCh, err := svc.CreateChannel(ctx, &CreateRequest{
+		Name:    "dead-hook",
+		Type:    "feishu",
+		Config:  json.RawMessage(`{"webhook_url":"https://hook.example/dead"}`),
+		Enabled: boolPtr(true),
+	})
+	if err != nil {
+		t.Fatalf("create dead channel: %v", err)
+	}
+	rt.senders[deadCh.ID] = &probeSender{name: "dead-hook", err: errors.New("dial tcp: connection refused")}
+
+	okID, deadID := okCh.ID, deadCh.ID
+	if err := svc.TestChannel(ctx, &TestRequest{ID: &okID}); err != nil {
+		t.Fatalf("test ok channel: %v", err)
+	}
+	if err := svc.TestChannel(ctx, &TestRequest{ID: &deadID}); err == nil {
+		t.Fatal("expected send error from dead channel test")
+	}
+
+	for _, tc := range []struct {
+		id     int64
+		result string
+	}{
+		{id: okID, result: "success"},
+		{id: deadID, result: "failed"},
+	} {
+		ch, err := svc.GetChannel(ctx, tc.id)
+		if err != nil {
+			t.Fatalf("get channel %d: %v", tc.id, err)
+		}
+		if ch.LastTestAt == nil {
+			t.Errorf("channel %d: LastTestAt not stamped", tc.id)
+		}
+		if ch.LastTestResult != tc.result {
+			t.Errorf("channel %d: LastTestResult = %q, want %q", tc.id, ch.LastTestResult, tc.result)
+		}
 	}
 }

@@ -52,7 +52,7 @@ func TestEngineEvaluate(t *testing.T) {
 	)
 
 	matched, violations := engine.Evaluate(context.Background(), 1, testEnv(map[string]float64{"cpu": 95}))
-	if len(matched) != 1 || matched[0] != 1 {
+	if len(matched) != 1 || matched[0].ID != 1 {
 		t.Errorf("Evaluate(cpu=95) matched %v, want [1]", matched)
 	}
 	if len(violations) != 1 {
@@ -69,7 +69,7 @@ func TestEngineEvaluate(t *testing.T) {
 
 	logEnv := AlertEnv{Type: "log", Keyword: "fatal", Metrics: map[string]float64{}}
 	matched, _ = engine.Evaluate(context.Background(), 1, logEnv)
-	if len(matched) != 1 || matched[0] != 2 {
+	if len(matched) != 1 || matched[0].ID != 2 {
 		t.Errorf("Evaluate(log fatal) matched %v, want [2]", matched)
 	}
 }
@@ -105,7 +105,7 @@ func TestEngineTenantFilter(t *testing.T) {
 
 	// Tenant 7 sees only the global rule.
 	matched, _ = engine.Evaluate(context.Background(), 7, testEnv(nil))
-	if len(matched) != 1 || matched[0] != 1 {
+	if len(matched) != 1 || matched[0].ID != 1 {
 		t.Errorf("tenant 7: matched %v, want [1] (global only)", matched)
 	}
 }
@@ -123,7 +123,7 @@ func TestEngineBadRuleSkipped(t *testing.T) {
 		t.Fatal("HasRules = false, want true (valid rule loaded)")
 	}
 	matched, _ := engine.Evaluate(context.Background(), 1, testEnv(map[string]float64{"cpu": 95}))
-	if len(matched) != 1 || matched[0] != 3 {
+	if len(matched) != 1 || matched[0].ID != 3 {
 		t.Errorf("Evaluate matched %v, want [3] (invalid rules skipped)", matched)
 	}
 }
@@ -268,7 +268,7 @@ func TestEngineReload(t *testing.T) {
 		t.Fatalf("Reload: %v", err)
 	}
 	matched, _ := engine.Evaluate(context.Background(), 1, testEnv(map[string]float64{"cpu": 95}))
-	if len(matched) != 1 || matched[0] != 11 {
+	if len(matched) != 1 || matched[0].ID != 11 {
 		t.Fatalf("after reload: matched %v, want [11]", matched)
 	}
 

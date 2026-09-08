@@ -42,9 +42,12 @@ const totalCount = computed(() => templates.length)
 
 /** Per-severity counts for the summary chips (full preset catalog) */
 const severityCounts = computed(() => {
-  const counts: Record<AlertSeverity, number> = { critical: 0, warning: 0, info: 0 }
+  // Templates only come in the critical/warning/info subset; the wider
+  // record-level severity domain keeps the other keys absent from the chips.
+  const counts: Partial<Record<AlertSeverity, number>> = { critical: 0, warning: 0, info: 0 }
   for (const tpl of templates) {
-    counts[tpl.severity] += 1
+    const current = counts[tpl.severity]
+    if (current !== undefined) counts[tpl.severity] = current + 1
   }
   return counts
 })

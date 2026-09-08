@@ -136,7 +136,7 @@ func (h *Handler) Refresh(ctx context.Context, c *app.RequestContext) {
 	httputil.Success(c, tokenPair)
 }
 
-// ChangePassword handles POST /api/v1/auth/password.
+// ChangePassword handles PUT /api/v1/auth/password.
 func (h *Handler) ChangePassword(ctx context.Context, c *app.RequestContext) {
 	claims, ok := httputil.GetUserClaims(c)
 	if !ok || claims == nil {

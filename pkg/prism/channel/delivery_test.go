@@ -764,3 +764,56 @@ func trackingEvent() alert.Event {
 		}},
 	}
 }
+
+// TestDeliveryStore_ListFilterAcrossTimezones reproduces the offset-mixing
+// trap: rows stored with a +08:00 offset must still match time-range bounds
+// expressed as UTC instants. A naive TEXT comparison of "2026-09-08
+// 20:19:15+08:00" against "2026-09-08 15:59:59+00:00" wrongly excludes the
+// row even though the row's instant is inside the range.
+func TestDeliveryStore_ListFilterAcrossTimezones(t *testing.T) {
+	db := newStoreTestDB(t)
+	s := NewDeliveryStore(db)
+	ctx := context.Background()
+
+	cst := time.FixedZone("CST", 8*3600)
+	storedAt := time.Date(2026, 9, 8, 20, 19, 15, 0, cst)
+	if err := s.Record(ctx, tracking.DeliveryRecord{
+		Identity: tracking.Identity{ChannelName: "ch"},
+		Status:   tracking.StatusSuccess,
+		SentAt:   storedAt,
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// The same calendar day expressed as UTC instants: 2026-09-08 local
+	// (+08) spans 2026-09-07T16:00Z .. 2026-09-08T15:59:59Z.
+	start := time.Date(2026, 9, 7, 16, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 9, 8, 15, 59, 59, 0, time.UTC)
+	_, total, err := s.List(ctx, DeliveryListParams{
+		StartTime: &start,
+		EndTime:   &end,
+		Page:      1,
+		Size:      10,
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1 for UTC bounds covering the +08:00 row, got %d", total)
+	}
+
+	// A UTC window strictly before the stored instant must exclude it.
+	earlyEnd := time.Date(2026, 9, 8, 11, 0, 0, 0, time.UTC)
+	_, total, err = s.List(ctx, DeliveryListParams{
+		StartTime: &start,
+		EndTime:   &earlyEnd,
+		Page:      1,
+		Size:      10,
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("expected total 0 for UTC window before the +08:00 row, got %d", total)
+	}
+}

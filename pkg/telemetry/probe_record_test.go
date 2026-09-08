@@ -77,7 +77,7 @@ func (f *probeFixture) saveRecord(rec executor.ExecutionRecord) {
 
 func probeRecordFor(pointID int64, status types.AssetStatus, startedAt time.Time) executor.ExecutionRecord {
 	return executor.ExecutionRecord{
-		TaskID:       ProbeTaskIDOffset + pointID,
+		TaskID:       proberTaskID(pointID),
 		AssetID:      42,
 		ExecutorName: "icmp",
 		Operation:    executor.OpProbe,
@@ -162,7 +162,7 @@ func TestProbeRecordSaveSyncsPointStatus(t *testing.T) {
 
 // TestProbeRecordSaveRejectsForeignRecords verifies the store refuses
 // records that do not belong to the telemetry domain: execute operations
-// and task IDs below the probe offset.
+// and task IDs outside the negative probe range.
 func TestProbeRecordSaveRejectsForeignRecords(t *testing.T) {
 	f := openProbeRecordDB(t)
 
@@ -172,10 +172,16 @@ func TestProbeRecordSaveRejectsForeignRecords(t *testing.T) {
 		t.Error("expected error for execute operation")
 	}
 
-	lowID := probeRecordFor(7, types.AssetStatusNormal, time.Now())
-	lowID.TaskID = ProbeTaskIDOffset - 1
-	if err := f.store.Save(context.Background(), lowID); err == nil {
-		t.Error("expected error for task ID below probe offset")
+	for _, taskID := range []int64{
+		12,                    // regular task ID
+		legacyProberTaskID(7), // legacy positive-scheme probe ID
+		-ProbeTaskIDOffset,    // decodes to point 0, which cannot exist
+	} {
+		rec := probeRecordFor(7, types.AssetStatusNormal, time.Now())
+		rec.TaskID = taskID
+		if err := f.store.Save(context.Background(), rec); err == nil {
+			t.Errorf("expected error for task ID %d", taskID)
+		}
 	}
 
 	recs, total, err := f.store.QueryByPoint(context.Background(), ProbeQuery{PointID: 7})

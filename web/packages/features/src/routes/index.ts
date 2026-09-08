@@ -29,4 +29,7 @@ export const baseRoutes: RouteRecordRaw[] = [
   ...prismRoutes,
   ...systemRoutes,
   ...statusRoutes,
+  // Catch-all: without it an unmatched URL renders an empty app shell (blank
+  // page). Send stray deep links and typos back to the overview instead.
+  { path: '/:pathMatch(.*)*', redirect: '/dashboard/overview' },
 ]

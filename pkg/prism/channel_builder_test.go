@@ -126,3 +126,15 @@ func TestFlatConfigProxyValidation(t *testing.T) {
 		t.Errorf("email http proxy_url = %v, want socks5-only error", err)
 	}
 }
+
+// TestEmailTypeRegistersSMTPPasswordSensitive verifies the email type
+// declares the SMTP password as sensitive, so channel configs persist it
+// encrypted at rest and mask it in API echoes. A regression here stores
+// mail credentials in plaintext.
+func TestEmailTypeRegistersSMTPPasswordSensitive(t *testing.T) {
+	RegisterBuiltinChannelTypes()
+	sensitive := channel.SensitiveKeys()
+	if _, ok := sensitive["password"]; !ok {
+		t.Error("SensitiveKeys union missing \"password\": SMTP credentials would be stored plaintext")
+	}
+}

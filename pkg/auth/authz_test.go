@@ -257,8 +257,8 @@ func TestChangePassword_WrongOldPassword(t *testing.T) {
 	u := seedUser(t, users, "admin", "OldPass1")
 
 	err := svc.ChangePassword(context.Background(), u.ID, "WrongOld1", "NewPass1", "")
-	if !errors.Is(err, auth.ErrUnauthorized) {
-		t.Fatalf("ChangePassword() error = %v, want ErrUnauthorized", err)
+	if !errors.Is(err, auth.ErrOldPassword) {
+		t.Fatalf("ChangePassword() error = %v, want ErrOldPassword", err)
 	}
 }
 

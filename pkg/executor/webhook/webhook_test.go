@@ -145,7 +145,7 @@ func TestExecuteWithHeaders(t *testing.T) {
 	cfg := config{
 		URL:     srv.URL,
 		Method:  http.MethodGet,
-		Headers: map[string][]string{"X-Custom": {"test-value"}},
+		Headers: map[string]string{"X-Custom": "test-value"},
 	}
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {

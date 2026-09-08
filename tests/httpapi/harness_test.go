@@ -25,11 +25,14 @@ import (
 	"gorm.io/gorm"
 
 	cequota "github.com/tickraft/tickraft/internal/quota"
+	"github.com/tickraft/tickraft/internal/web"
 	"github.com/tickraft/tickraft/pkg/api"
 	assethandler "github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
+	i18napi "github.com/tickraft/tickraft/pkg/api/handler/i18n"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
+	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/router"
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/auth"
@@ -43,6 +46,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/executor/local"
 	"github.com/tickraft/tickraft/pkg/executor/tcp"
 	"github.com/tickraft/tickraft/pkg/executor/webhook"
+	i18n "github.com/tickraft/tickraft/pkg/i18n"
 	"github.com/tickraft/tickraft/pkg/prism"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
@@ -81,6 +85,9 @@ type harness struct {
 	reportConsumer *task.ReportConsumer
 	assetStore     asset.Store
 	workerBus      event.Bus
+	// spaRegistered reports whether the embedded SPA dist was mounted; it
+	// stays false when the build output is absent so SPA tests can skip.
+	spaRegistered bool
 }
 
 var h *harness
@@ -256,6 +263,25 @@ func newHarness(t *testing.T) *harness {
 	proberSvc := telemetry.NewProberService(
 		schedEngine, logger, telemetry.WithProberMonitorStore(monitorStore))
 	telemetrySrv := telemetry.NewTelemetryService(monitorStore, logger,
+		// Point lifecycle hooks mirroring the production wiring in
+		// internal/service: active points register/unregister with the
+		// prober on create/update/delete. (Passive points only need the
+		// secret registry and observation sync, which the harness does not
+		// run.)
+		telemetry.WithPointHandlers(
+			func(ctx context.Context, point telemetry.MonitorPoint) error {
+				if point.Mode == telemetry.ModePassive {
+					return nil
+				}
+				return proberSvc.RegisterPoint(ctx, point)
+			},
+			func(ctx context.Context, point telemetry.MonitorPoint) error {
+				if point.Mode == telemetry.ModePassive {
+					return nil
+				}
+				return proberSvc.UnregisterPoint(ctx, point.ID)
+			},
+		),
 		telemetry.WithProbeTrigger(proberSvc.ProbeNow),
 		telemetry.WithExecutorValidator(
 			func(executorType string) error {
@@ -308,7 +334,8 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("migrate status tables: %v", err)
 	}
 
-	routeOpts := []router.RegisterOption{
+	routeOpts := make([]router.RegisterOption, 0, 18)
+	routeOpts = append(routeOpts,
 		router.WithTaskService(task.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
 		router.WithAlertService(alert.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
@@ -327,12 +354,34 @@ func newHarness(t *testing.T) *harness {
 		router.WithReadyzHandler(readyz.NewHandler(dbc, nil)),
 		router.WithStatusService(statussvc.NewService(statusStore, monitorStore, probeStore, logger)),
 		router.WithAPIKeyAuth(),
+		// WebSocket realtime push, mirroring the production api.go wiring
+		// (query-token auth against the same JWT manager).
+		router.WithWSHandler(wsapi.NewHandler(jwtMgr, workerBus, logger)),
+	)
+	// Locale listing endpoint backed by the embedded builtin bundles, as in
+	// production runtime.go. A load failure is non-fatal there; here it is
+	// fatal so the i18n test cannot silently pass against an empty registry.
+	i18nRegistry := i18n.NewRegistry(logger)
+	if err := i18n.NewLoader(logger).LoadToRegistry(i18n.EmbeddedFS(), i18nRegistry); err != nil {
+		t.Fatalf("load embedded i18n bundles: %v", err)
 	}
+	routeOpts = append(routeOpts, router.WithI18nHandler(i18napi.NewHandler(i18nRegistry)))
 	assetKeyGetter := func(ctx context.Context, key string) (bool, error) {
 		return assetStore.ExistsByKey(ctx, key)
 	}
 	if err := router.RegisterRoutes(srv, jwtMgr, authz, assetKeyGetter, routeOpts...); err != nil {
 		t.Fatalf("register routes: %v", err)
+	}
+
+	// Embedded SPA, mirroring the production single-binary wiring. The dist
+	// directory is a build artifact; when it has not been populated the
+	// mount is skipped (reported via harness.spaRegistered) so the SPA
+	// tests skip rather than fail.
+	spaRegistered := false
+	if distFS, err := web.DistFS(); err == nil {
+		if err := api.RegisterSPA(srv, distFS); err == nil {
+			spaRegistered = true
+		}
 	}
 
 	go func() { _ = srv.Start() }()
@@ -350,6 +399,7 @@ func newHarness(t *testing.T) *harness {
 		reportConsumer: reportConsumer,
 		assetStore:     assetStore,
 		workerBus:      workerBus,
+		spaRegistered:  spaRegistered,
 	}
 	waitHealthy(t, h.baseURL)
 	return h

@@ -122,7 +122,8 @@ var (
 
 // ListMonitors returns a page of monitoring points ordered by ascending ID,
 // plus the total count. When filter.Mode is non-empty, only points whose Mode
-// matches are returned.
+// matches are returned; a positive filter.AssetID narrows results to points
+// bound to that asset.
 func (s *TelemetryService) ListMonitors(
 	ctx context.Context,
 	page, size int,
@@ -131,7 +132,7 @@ func (s *TelemetryService) ListMonitors(
 	page, size = pagination.Clamp(page, size)
 
 	mode := Mode(filter.Mode)
-	points, total, err := s.store.ListPaged(ctx, mode, page, size)
+	points, total, err := s.store.ListPaged(ctx, mode, filter.AssetID, page, size)
 	if err != nil {
 		return nil, 0, mapError(err)
 	}

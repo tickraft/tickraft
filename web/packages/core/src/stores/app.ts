@@ -5,7 +5,7 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import { getStorage, setStorage } from '../utils/storage'
-import { setI18nLocale } from '../i18n'
+import { getLocale, setI18nLocale } from '../i18n'
 import type { ThemeMode, LocaleType, SidebarState } from '../types/global'
 
 /** Theme storage key */
@@ -44,7 +44,7 @@ export const useAppStore = defineStore('app', () => {
   const theme = ref<ThemeMode>(getStorage<ThemeMode>(THEME_KEY) || 'auto')
 
   /** Current locale */
-  const locale = ref<LocaleType>(getStorage<LocaleType>(LOCALE_KEY) || 'zh-Hans')
+  const locale = ref<LocaleType>(getLocale() as LocaleType)
 
   /** Sidebar state */
   const sidebar = ref<SidebarState>(getStorage<SidebarState>(SIDEBAR_KEY) || { collapsed: false })

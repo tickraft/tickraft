@@ -50,6 +50,26 @@ concise = "Keyword: {{.keyword}}, Level: {{.severity}}"
 detailed = "Log entry matched keyword \"{{.keyword}}\" with level {{.severity}}. Content: {{.content}}. Source IP: {{.source_ip}}. Asset: {{.asset_name}} (ID: {{.asset_id}})."
 technical = "keyword={{.keyword}} level={{.severity}} content={{.content}} source_ip={{.source_ip}} asset_id={{.asset_id}} tenant_id={{.tenant_id}}"
 
+[alert.status.title]
+concise = "Alert: asset status became {{.curr_status}}"
+detailed = "Alert: asset {{.asset_name}} transitioned from {{.prev_status}} to {{.curr_status}}"
+technical = "ALERT[status] prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}}"
+
+[alert.status.description]
+concise = "{{.prev_status}} -> {{.curr_status}}"
+detailed = "Asset {{.asset_name}} (ID: {{.asset_id}}) transitioned from {{.prev_status}} to {{.curr_status}}. Source: {{.source_ip}}."
+technical = "prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}} tenant_id={{.tenant_id}} source={{.source_ip}}"
+
+[alert.heartbeat.title]
+concise = "Alert: heartbeat lost"
+detailed = "Alert: heartbeat timeout on asset {{.asset_name}}, {{.prev_status}} to {{.curr_status}}"
+technical = "ALERT[heartbeat] prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}}"
+
+[alert.heartbeat.description]
+concise = "Heartbeat lost on asset {{.asset_name}}"
+detailed = "Asset {{.asset_name}} (ID: {{.asset_id}}) heartbeat timed out; status transitioned from {{.prev_status}} to {{.curr_status}}."
+technical = "prev={{.prev_status}} curr={{.curr_status}} asset_id={{.asset_id}} tenant_id={{.tenant_id}}"
+
 [alert.generic.title]
 concise = "Alert: {{.alert_type}}"
 detailed = "Alert: {{.alert_type}} on asset {{.asset_name}}"

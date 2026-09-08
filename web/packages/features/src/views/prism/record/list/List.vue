@@ -20,7 +20,7 @@ import { SEVERITY_TAG_TYPE, parseDate } from '../../constants'
 import PrismPageHeader from '../../components/PrismPageHeader.vue'
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 /** Track which record is being acknowledged/resolved (for button loading state) */
 const actionLoadingId = ref<number | null>(null)
@@ -30,16 +30,15 @@ const exporting = ref(false)
 
 /** Safely resolve the el-tag type for a severity string */
 function severityTagType(severity: string | undefined): 'danger' | 'warning' | 'info' {
-  if (severity === 'critical' || severity === 'warning' || severity === 'info') {
-    return SEVERITY_TAG_TYPE[severity as AlertSeverity]
-  }
-  return 'info'
+  return (severity && SEVERITY_TAG_TYPE[severity as AlertSeverity]) || 'info'
 }
 
-/** Safely resolve the i18n label for a severity string */
+/** Safely resolve the i18n label for a severity string; unknown levels
+ *  render their raw value instead of the missing translation key. */
 function severityLabel(severity: string | undefined): string {
   if (!severity) return '-'
-  return t(`prism.severity.${severity}`)
+  const key = `prism.severity.${severity}`
+  return te(key) ? t(key) : severity
 }
 
 /** Search form model (severity / status server-side filters) */
@@ -57,6 +56,7 @@ const searchFields = computed(() => [
     span: 8,
     options: [
       { label: t('prism.severity.critical'), value: 'critical' },
+      { label: t('prism.severity.error'), value: 'error' },
       { label: t('prism.severity.warning'), value: 'warning' },
       { label: t('prism.severity.info'), value: 'info' },
     ],

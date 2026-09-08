@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -86,13 +87,21 @@ func (h *Handler) SetProbeRecordStore(store ProbeRecordStore) {
 // of telemetry monitoring points ordered by ascending ID. The optional mode
 // query parameter filters by monitoring mode: "active" (probed by
 // ProberService), "passive" (receives via listener), or omitted/empty for
-// all modes.
+// all modes. The optional asset_id query parameter filters by asset binding.
 func (h *Handler) ListMonitors(ctx context.Context, arc *app.RequestContext) {
 	page, size, ok := httputil.ParsePaging(arc)
 	if !ok {
 		return
 	}
 	filter := telemetry.Filter{Mode: arc.Query("mode")}
+	if raw := arc.Query("asset_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 0 {
+			httputil.FailWithCode(arc, http.StatusBadRequest, errdefs.CodeBadRequest, "invalid asset_id")
+			return
+		}
+		filter.AssetID = id
+	}
 	items, total, err := h.svc.ListMonitors(ctx, page, size, filter)
 	if err != nil {
 		httputil.Fail(arc, err)

@@ -13,11 +13,13 @@ import type {
 } from '../types/task'
 import type { PageData, PageParams } from '@tickraft/core'
 
-/** Task list query parameters (backend reads group and tags) */
+/** Task list query parameters (backend reads group, tags and asset_id) */
 export interface TaskListParams extends PageParams {
   group?: string
   /** Comma-separated tag list, e.g. "critical,nightly" */
   tags?: string
+  /** Filter tasks bound to this asset */
+  assetId?: number
 }
 
 /** Execution log list query parameters (server-side filtering) */

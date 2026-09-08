@@ -384,7 +384,9 @@
   "severity": {
     "critical": "严重",
     "warning": "警告",
-    "info": "信息"
+    "info": "信息",
+    "error": "错误",
+    "debug": "调试"
   },
   "condition": {
     "gt": "大于",

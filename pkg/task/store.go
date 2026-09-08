@@ -96,6 +96,12 @@ func (s *store) List(ctx context.Context, opts ListOptions) ([]*Task, error) {
 		needle := likeEscape(strings.ToLower(opts.NameLike))
 		query = query.Where("LOWER(name) LIKE ? ESCAPE '\\'", "%"+needle+"%")
 	}
+	if opts.AssetID > 0 {
+		query = query.Where("asset_id = ?", opts.AssetID)
+	}
+	if opts.ExcludeSynthetic {
+		query = query.Where("id > 0")
+	}
 	if err := query.Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("task: list: %w", db.MapError(err))
 	}
@@ -117,10 +123,15 @@ func likeEscape(s string) string {
 	return r.Replace(s)
 }
 
-// Count returns the number of persisted (non-deleted) tasks.
+// Count returns the number of persisted user tasks (positive IDs). Rows with
+// synthetic negative IDs belong to other domains' recurring jobs and do not
+// count against the scheduled-task quota.
 func (s *store) Count(ctx context.Context) (int64, error) {
 	var count int64
-	if err := s.dbc.WithContext(ctx).Model(&Task{}).Count(&count).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).
+		Model(&Task{}).
+		Where("id > 0").
+		Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("task: count: %w", db.MapError(err))
 	}
 	return count, nil
@@ -300,7 +311,9 @@ func (s *executionStore) MarkTimeout(
 // scoped to a specific task or tenant) because the caller is expected to be a
 // system-level maintenance routine.
 func (s *executionStore) DeleteExecutionsOlderThan(ctx context.Context, before time.Time) error {
-	if err := s.dbc.WithContext(ctx).Where("created_at < ?", before).Delete(&Execution{}).Error; err != nil {
+	if err := s.dbc.WithContext(ctx).
+		Where("datetime(created_at) < datetime(?)", before).
+		Delete(&Execution{}).Error; err != nil {
 		return fmt.Errorf("task: delete old executions: %w", db.MapError(err))
 	}
 	return nil
@@ -335,7 +348,10 @@ func (s *executionStore) Stats(ctx context.Context, from, to time.Time, taskID i
 			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failure,
 			COALESCE(AVG(duration), 0) AS avg_duration
 		`, StatusSuccess, StatusFailed).
-		Where("created_at BETWEEN ? AND ?", from, to)
+		// created_at values are stored as offset-carrying TEXT, and SQLite
+		// compares TEXT lexicographically; datetime() normalizes both sides
+		// to instants so bounds in any offset match rows in any offset.
+		Where("datetime(created_at) BETWEEN datetime(?) AND datetime(?)", from, to)
 	if taskID > 0 {
 		query = query.Where("task_id = ?", taskID)
 	}
@@ -364,7 +380,9 @@ func (s *executionStore) Stats(ctx context.Context, from, to time.Time, taskID i
 // SQLite normalizes timestamp strings with a timezone offset to UTC before
 // DATE() evaluates, so the 'localtime' modifier is required to group by
 // the server-local day and stay consistent with the local-midnight window
-// the service layer computes.
+// the service layer computes. The range filter wraps both sides in
+// datetime() for the same reason: offsets must be resolved to instants
+// before comparison, not compared as raw TEXT.
 func (s *executionStore) StatsByDay(ctx context.Context, from, to time.Time, taskID int64) ([]DailyStat, error) {
 	var rows []struct {
 		Date    string
@@ -380,7 +398,7 @@ func (s *executionStore) StatsByDay(ctx context.Context, from, to time.Time, tas
 			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS success,
 			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failed
 		`, StatusSuccess, StatusFailed).
-		Where("created_at BETWEEN ? AND ?", from, to).
+		Where("datetime(created_at) BETWEEN datetime(?) AND datetime(?)", from, to).
 		Order("date")
 	if taskID > 0 {
 		query = query.Where("task_id = ?", taskID)

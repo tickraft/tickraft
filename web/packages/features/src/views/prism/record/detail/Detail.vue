@@ -24,7 +24,7 @@ import { SEVERITY_TAG_TYPE, parseDate } from '../../constants'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const loading = ref(true)
 const record = ref<AlertRecord | null>(null)
@@ -42,17 +42,16 @@ const isAcknowledged = computed(() => record.value?.status === 'acknowledged')
 /** Safely resolve the el-tag type for the record severity */
 const severityTagType = computed<'danger' | 'warning' | 'info'>(() => {
   const sev = record.value?.severity
-  if (sev === 'critical' || sev === 'warning' || sev === 'info') {
-    return SEVERITY_TAG_TYPE[sev as AlertSeverity]
-  }
-  return 'info'
+  return (sev && SEVERITY_TAG_TYPE[sev as AlertSeverity]) || 'info'
 })
 
-/** Safely resolve the i18n label for the record severity */
+/** Safely resolve the i18n label for the record severity; unknown levels
+ *  render their raw value instead of the missing translation key. */
 const severityText = computed(() => {
   const sev = record.value?.severity
   if (!sev) return '-'
-  return t(`prism.severity.${sev}`)
+  const key = `prism.severity.${sev}`
+  return te(key) ? t(key) : sev
 })
 
 /** Format a nullable time string */

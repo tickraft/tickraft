@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -43,16 +44,42 @@ type ChannelService struct {
 	channels *Store
 	delivery *DeliveryStore
 	runtime  Runtime
+	logger   *zap.Logger
 }
 
 var _ Service = (*ChannelService)(nil)
+
+// ServiceOption customizes a ChannelService at construction time.
+type ServiceOption func(*ChannelService)
+
+// WithLogger sets the logger the service uses to report non-fatal
+// outcomes (hot-reload failures, test-state stamping failures). An unset
+// or nil option keeps the no-op default.
+func WithLogger(logger *zap.Logger) ServiceOption {
+	return func(s *ChannelService) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
+}
 
 // NewChannelService creates a ChannelService backed by the given stores
 // and prism runtime. The runtime is used to hot-reload channels after
 // mutations and to build runtime channels for test dispatches and
 // delivery retries; a nil runtime disables both (useful for tests).
-func NewChannelService(channels *Store, delivery *DeliveryStore, runtime Runtime) *ChannelService {
-	return &ChannelService{channels: channels, delivery: delivery, runtime: runtime}
+func NewChannelService(
+	channels *Store, delivery *DeliveryStore, runtime Runtime, opts ...ServiceOption,
+) *ChannelService {
+	s := &ChannelService{
+		channels: channels,
+		delivery: delivery,
+		runtime:  runtime,
+		logger:   zap.NewNop(),
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // ListChannels returns all channel configurations with sensitive config
@@ -163,7 +190,10 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, id int64) error {
 }
 
 // TestChannel sends a synthetic alert notification, either through a
-// saved channel (req.ID) or an inline type+config pair.
+// saved channel (req.ID) or an inline type+config pair. The channel is
+// built through the tracked seam, so a test against a saved channel
+// records a sys_prism_delivery row (retriable from the delivery page) and
+// stamps the channel's last-test state for the list view.
 func (s *ChannelService) TestChannel(ctx context.Context, req *TestRequest) error {
 	if req == nil {
 		return errdefs.ErrInvalidRequest
@@ -173,17 +203,65 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *TestRequest) erro
 			"channel runtime not available")
 	}
 
-	chType, configJSON, err := s.resolveTestConfig(ctx, req)
+	ch, err := s.resolveTestChannel(ctx, req)
 	if err != nil {
 		return err
 	}
 
-	def := &Channel{Type: chType, Config: configJSON}
-	ch, err := s.runtime.BuildChannel(def)
+	built, err := s.runtime.BuildTrackedChannel(ch)
 	if err != nil {
 		return &ValidationError{Code: CodeConfigInvalid, Msg: err.Error()}
 	}
-	return ch.Send(ctx, buildTestAlert())
+	sendErr := built.Send(ctx, buildTestAlert())
+	s.recordTestOutcome(ctx, ch, sendErr)
+	return sendErr
+}
+
+// resolveTestChannel resolves the channel definition for a test request.
+// When an ID is supplied the full saved row is loaded (decrypted config,
+// identity fields included) so the delivery-tracking decorator stamps the
+// record with the real channel id and name; otherwise the inline type
+// and config are validated and returned as an anonymous definition.
+func (s *ChannelService) resolveTestChannel(
+	ctx context.Context,
+	req *TestRequest,
+) (*Channel, error) {
+	if req.ID != nil {
+		cfg, err := s.channels.Get(ctx, *req.ID)
+		if err != nil {
+			return nil, mapStoreError(err)
+		}
+		return cfg, nil
+	}
+
+	if req.Type == "" {
+		return nil, &ValidationError{Code: CodeTypeInvalid, Msg: "type is required for inline test"}
+	}
+	if err := AssertTypeAllowed(ctx, req.Type); err != nil {
+		return nil, toValidationError(err)
+	}
+	if len(req.Config) == 0 || isEmptyJSON(req.Config) {
+		return nil, &ValidationError{Code: CodeConfigInvalid, Msg: "config is required for inline test"}
+	}
+	return &Channel{Type: req.Type, Config: string(req.Config)}, nil
+}
+
+// recordTestOutcome stamps the channel row with the outcome and time of a
+// test dispatch. Inline tests carry no id and are skipped; stamping
+// failures are logged rather than returned so they never mask the send
+// result the caller is about to see.
+func (s *ChannelService) recordTestOutcome(ctx context.Context, ch *Channel, sendErr error) {
+	if ch.ID == 0 {
+		return
+	}
+	outcome := "success"
+	if sendErr != nil {
+		outcome = "failed"
+	}
+	if err := s.channels.TouchTest(ctx, ch.ID, outcome); err != nil {
+		s.logger.Warn("channel: failed to record test outcome",
+			zap.Int64("channel_id", ch.ID), zap.Error(err))
+	}
 }
 
 // TestAllChannels probes every enabled saved channel concurrently with a
@@ -448,33 +526,6 @@ func isEmptyJSON(raw json.RawMessage) bool {
 	return s == "" || s == "null" || s == "{}"
 }
 
-// resolveTestConfig resolves the channel type and config JSON for a test
-// request. When an ID is supplied the saved (decrypted) config is loaded;
-// otherwise the inline type and config are validated and used.
-func (s *ChannelService) resolveTestConfig(
-	ctx context.Context,
-	req *TestRequest,
-) (chType, chConfig string, verr error) {
-	if req.ID != nil {
-		cfg, err := s.channels.Get(ctx, *req.ID)
-		if err != nil {
-			return "", "", mapStoreError(err)
-		}
-		return cfg.Type, cfg.Config, nil
-	}
-
-	if req.Type == "" {
-		return "", "", &ValidationError{Code: CodeTypeInvalid, Msg: "type is required for inline test"}
-	}
-	if err := AssertTypeAllowed(ctx, req.Type); err != nil {
-		return "", "", toValidationError(err)
-	}
-	if len(req.Config) == 0 || isEmptyJSON(req.Config) {
-		return "", "", &ValidationError{Code: CodeConfigInvalid, Msg: "config is required for inline test"}
-	}
-	return req.Type, string(req.Config), nil
-}
-
 // retryRefusal returns a human-readable reason the delivery cannot be
 // retried, or an empty string when it can.
 func retryRefusal(rec *DeliveryRecord) string {
@@ -506,14 +557,16 @@ func buildTestAlert() alert.Event {
 	}
 }
 
-// reloadChannels triggers a hot-reload of the engine's channel list.
-// Errors are swallowed since a reload failure does not invalidate the
-// CRUD operation that triggered it.
+// reloadChannels triggers a hot-reload of the engine's channel list. A
+// reload failure does not invalidate the CRUD operation that triggered
+// it, but is logged so a silently stale channel list stays diagnosable.
 func (s *ChannelService) reloadChannels(ctx context.Context) {
 	if s.runtime == nil {
 		return
 	}
-	_ = s.runtime.ReloadChannels(ctx)
+	if err := s.runtime.ReloadChannels(ctx); err != nil {
+		s.logger.Warn("channel: engine hot-reload failed after mutation", zap.Error(err))
+	}
 }
 
 // toValidationError normalizes a type-registry error into a

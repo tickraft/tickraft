@@ -384,7 +384,9 @@
   "severity": {
     "critical": "Critical",
     "warning": "Warning",
-    "info": "Info"
+    "info": "Info",
+    "error": "Error",
+    "debug": "Debug"
   },
   "condition": {
     "gt": "Greater than",

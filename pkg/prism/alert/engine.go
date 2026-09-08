@@ -105,13 +105,13 @@ func (e *Engine) Reload(ctx context.Context, store Lister) error {
 }
 
 // Evaluate runs the loaded rules against env in a single pass and
-// returns both outcomes of that evaluation: the IDs of all matching
+// returns both outcomes of that evaluation: the identity of all matching
 // rules (for dispatch filtering and rule-hit attribution) and one
-// Violation for every matched comparison sub-condition across all
+// Violation for every matched metric-fact comparison across all
 // matching rules (for structured dispatch). A compound rule such as
 // `metrics["cpu"] > 90 && metrics["mem"] > 85` contributes two
-// Violations when both conditions hold; a non-comparison rule (for
-// example `keyword contains "fatal"`) matches without contributing
+// Violations when both conditions hold; a predicate-only rule (for
+// example `type == "status"`) matches without contributing
 // Violations. Both results are nil when no rule matches.
 //
 // Each rule's program runs exactly once per evaluation. When a rule
@@ -126,7 +126,7 @@ func (e *Engine) Reload(ctx context.Context, store Lister) error {
 // sibling rules (fail-closed per rule, never per batch).
 func (e *Engine) Evaluate(
 	ctx context.Context, tenantID int64, env AlertEnv,
-) (matchedIDs []int64, violations []Violation) {
+) (matched []MatchedRule, violations []Violation) {
 	e.mu.RLock()
 	rulesSnapshot := e.rules
 	extractor := e.extractor
@@ -140,17 +140,17 @@ func (e *Engine) Evaluate(
 		if cr.rule.TenantID != 0 && cr.rule.TenantID != tenantID {
 			continue
 		}
-		matched, err := expr.RunBool(cr.program, env)
+		ruleMatched, err := expr.RunBool(cr.program, env)
 		if err != nil {
 			e.logger.Warn("rule eval failed",
 				zap.Int64("rule_id", cr.rule.ID),
 				zap.Error(err))
 			continue
 		}
-		if !matched {
+		if !ruleMatched {
 			continue
 		}
-		matchedIDs = append(matchedIDs, cr.rule.ID)
+		matched = append(matched, MatchedRule{ID: cr.rule.ID, Name: cr.rule.Name})
 		if extractor != nil {
 			// Pass matched=true so the extractor can skip
 			// per-comparison re-evaluation for pure-conjunction rules
@@ -158,7 +158,7 @@ func (e *Engine) Evaluate(
 			violations = append(violations, extractor.Extract(ctx, cr.rule, env, true)...)
 		}
 	}
-	return matchedIDs, violations
+	return matched, violations
 }
 
 // HasRules reports whether any rule is currently loaded. It is used by

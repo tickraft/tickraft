@@ -50,7 +50,8 @@
     "updateSuccess": "资产已更新",
     "notFound": "资产不存在",
     "nameRequired": "请输入资产名称",
-    "endpointRequired": "请输入资产标识"
+    "endpointRequired": "请输入资产标识",
+    "submitFailed": "创建资产失败"
   },
   "detail": {
     "title": "资产详情",

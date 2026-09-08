@@ -11,8 +11,9 @@ import {
   setStorage,
   setSessionStorage,
 } from './storage'
-import { camelizeKeys, snakeizeKeys } from './naming'
+import { camelizeKeys, snakeizeKeys, snakeizeTopLevel } from './naming'
 import { localizeApiError, shouldLocalizeErrors } from './apiErrorMessages'
+import { getLocale } from '../i18n'
 
 /** Token storage key */
 const TOKEN_KEY = 'tk-token'
@@ -124,12 +125,15 @@ service.interceptors.request.use(
     config.headers['X-Tickraft-Request-Id'] = generateRequestId()
 
     // Inject locale header
-    const locale = getStorage<string>('tk-locale') || 'zh-Hans'
+    const locale = getLocale()
     config.headers['X-Tickraft-Locale'] = locale
 
-    // Convert request body keys to snake_case for backend
+    // Convert request body top-level keys to snake_case for the backend.
+    // Nested objects travel verbatim: their keys are either wire-format
+    // configs the callers build, or user-authored maps (HTTP headers, rule
+    // metadata) that a deep rewrite would corrupt.
     if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
-      config.data = snakeizeKeys(config.data)
+      config.data = snakeizeTopLevel(config.data)
     }
 
     // Convert query param keys to snake_case for backend
@@ -149,6 +153,10 @@ service.interceptors.request.use(
 let isRedirecting = false
 function redirectToLogin(): void {
   if (isRedirecting) return
+  // A failed login also arrives here (401/40100); the hard reload below would
+  // wipe the error message the login page just rendered, so let the rejection
+  // propagate to the caller instead of reloading an already-clean page.
+  if (window.location.pathname === '/login') return
   isRedirecting = true
   clearAuth()
   removeStorage('tk-user-info')

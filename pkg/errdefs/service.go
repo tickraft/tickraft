@@ -47,6 +47,11 @@ var (
 	ErrRemediationRuleNotFound = NewServiceError(http.StatusNotFound, CodeNotFound,
 		"remediation rule not found")
 	ErrInvalidRequest = NewServiceError(http.StatusBadRequest, CodeBadRequest, "invalid request")
+	// ErrOldPasswordMismatch reports a wrong current password on a
+	// change-password call. It is deliberately a 400-class error, not 401:
+	// the session itself is valid, and 401 would make clients treat it as
+	// session expiry and drop the user to the login page.
+	ErrOldPasswordMismatch = NewServiceError(http.StatusBadRequest, CodeOldPassword, "old password mismatch")
 )
 
 // InnermostMessage walks the wrap chain and returns the most informative

@@ -146,9 +146,11 @@ func (s *SystemService) GetInfo(_ context.Context) (*Info, error) {
 func (s *SystemService) GetGlobalStats(ctx context.Context) (*GlobalStats, error) {
 	stats := &GlobalStats{}
 
-	// Total tasks from the scheduler task store.
+	// Total tasks from the scheduler task store. Synthetic rows (negative
+	// IDs, other domains' recurring jobs such as probe tasks) are internal
+	// and excluded so the stat reflects user-created tasks only.
 	if s.taskStore != nil {
-		tasks, err := s.taskStore.List(ctx, task.ListOptions{})
+		tasks, err := s.taskStore.List(ctx, task.ListOptions{ExcludeSynthetic: true})
 		if err != nil {
 			s.logger.Warn("system stats: list tasks", zap.Error(err))
 		} else {

@@ -57,10 +57,14 @@ func RegisterBuiltinChannelTypes() {
 		Build:    buildWebhookType,
 		Validate: validateFlatConfig(validateWebhookFlat),
 	})
-	channel.RegisterType("email", channel.TypeInfo{
+	emailInfo := channel.TypeInfo{
 		Build:    buildEmailType,
 		Validate: validateFlatConfig(validateEmailFlat),
-	})
+	}
+	// The SMTP password is a credential: without this declaration it would
+	// neither be encrypted at rest nor masked in API echoes.
+	emailInfo.SensitiveKeys = []string{"password"}
+	channel.RegisterType("email", emailInfo)
 	dingtalkInfo := imTypeInfo(func(cfg dingtalk.Config, deps renderDeps) (alert.Channel, error) {
 		cfg.ProxyURL = deps.resolveProxy(cfg.ProxyURL)
 		cfg.ProxyBypass = deps.proxyBypass

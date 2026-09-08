@@ -26,14 +26,15 @@ import type { PageData, PageParams } from '@tickraft/core'
 /**
  * Get monitor point list with optional mode filter.
  *
- * Backend ListTelemetry only supports the `mode` query parameter for filtering
- * ("active", "passive", or omitted for all). Keyword and enabled filtering are
- * not supported by the backend.
+ * Backend ListTelemetry supports the `mode` query parameter for filtering
+ * ("active", "passive", or omitted for all) and `asset_id` to narrow results
+ * to points bound to one asset. Keyword and enabled filtering are not
+ * supported by the backend.
  *
- * @param params Pagination + optional mode filter
+ * @param params Pagination + optional mode/asset filters
  */
 export function getMonitors(
-  params: PageParams & { mode?: MonitorMode },
+  params: PageParams & { mode?: MonitorMode; assetId?: number },
 ): Promise<PageData<MonitorPoint>> {
   return request<PageData<MonitorPoint>>({
     url: '/telemetry/monitors',

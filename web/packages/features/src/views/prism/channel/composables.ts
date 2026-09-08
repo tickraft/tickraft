@@ -39,6 +39,21 @@ const TYPE_ORDER: ChannelType[] = [
 ]
 
 /**
+ * Convert a date-only string ("YYYY-MM-DD") to an RFC3339 timestamp the
+ * delivery API expects: local start of day, or local end of day when
+ * `endOfDay`. Returns undefined for empty input.
+ */
+function toRFC3339(date: string, endOfDay: boolean): string | undefined {
+  if (!date) return undefined
+  const [y, m, d] = date.split('-').map(Number)
+  if (!y || !m || !d) return undefined
+  const ts = endOfDay
+    ? new Date(y, m - 1, d, 23, 59, 59, 999)
+    : new Date(y, m - 1, d)
+  return ts.toISOString()
+}
+
+/**
  * Notification channel list data management: load, toggle, delete, test
  */
 export function useChannels() {
@@ -120,6 +135,9 @@ export function useChannels() {
       await loadChannels()
     } catch (e) {
       ElMessage.error((e as Error).message)
+      // A failed test still stamps the channel's last-test state
+      // server-side; reload so the card reflects the failed outcome.
+      await loadChannels()
     } finally {
       testingId.value = null
     }
@@ -176,8 +194,10 @@ export function useDeliveries() {
         size: size.value,
         status: filters.status || undefined,
         alertTitle: filters.alertTitle || undefined,
-        startTime: filters.startTime || undefined,
-        endTime: filters.endTime || undefined,
+        // The date pickers carry date-only strings; the API expects
+        // RFC3339 timestamps, so expand to local start/end of day.
+        startTime: toRFC3339(filters.startTime, false),
+        endTime: toRFC3339(filters.endTime, true),
       })
       records.value = result.items
       total.value = result.total

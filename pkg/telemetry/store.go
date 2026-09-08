@@ -97,8 +97,12 @@ func (s *metricStore) SaveMetricsBatch(ctx context.Context, metrics []*CollectMe
 func (s *metricStore) QueryMetrics(ctx context.Context, q MetricQuery) ([]CollectMetric, int64, error) {
 	// Model is set explicitly: Count cannot infer the table from a plain
 	// Where chain, and the mock-based unit tests never exercise SQL.
+	// timestamp values are stored as offset-carrying TEXT; datetime()
+	// normalizes both sides to instants so bounds in any offset (e.g. UTC
+	// from API clients vs. server-local rows) compare correctly.
 	query := s.dbc.WithContext(ctx).Model(&CollectMetric{}).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
+		Where("tenant_id = ? AND asset_id = ? AND "+
+			"datetime(timestamp) >= datetime(?) AND datetime(timestamp) <= datetime(?)",
 			q.TenantID, q.AssetID, q.Start, q.End)
 	if q.MetricName != "" {
 		query = query.Where("metric_name = ?", q.MetricName)
@@ -168,8 +172,11 @@ func (s *logStore) SaveLogsBatch(ctx context.Context, logs []*CollectLog) error 
 //
 //nolint:dupl // metric and log stores differ in model, filter and ordering
 func (s *logStore) QueryLogs(ctx context.Context, q LogQuery) ([]CollectLog, int64, error) {
+	// timestamp values are offset-carrying TEXT; datetime() on both sides
+	// keeps comparisons correct when row and bound offsets differ.
 	query := s.dbc.WithContext(ctx).Model(&CollectLog{}).
-		Where("tenant_id = ? AND asset_id = ? AND timestamp >= ? AND timestamp <= ?",
+		Where("tenant_id = ? AND asset_id = ? AND "+
+			"datetime(timestamp) >= datetime(?) AND datetime(timestamp) <= datetime(?)",
 			q.TenantID, q.AssetID, q.Start, q.End)
 
 	if q.Level != "" {
@@ -225,13 +232,20 @@ func (s *MonitorStore) List(ctx context.Context, mode Mode) ([]MonitorPoint, err
 	return points, nil
 }
 
-// ListPaged returns a page of monitoring points filtered by an optional mode,
-// together with the total count. When mode is empty, all points are included.
+// ListPaged returns a page of monitoring points filtered by an optional mode
+// and an optional asset binding, together with the total count. When mode is
+// empty, all points are included; when assetID is positive, only points bound
+// to that asset are returned.
 // page is 1-based; size is normalized by pagination.Clamp.
-func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, page, size int) ([]MonitorPoint, int64, error) {
+func (s *MonitorStore) ListPaged(ctx context.Context, mode Mode, assetID int64,
+	page, size int,
+) ([]MonitorPoint, int64, error) {
 	query := s.dbc.WithContext(ctx).Model(&MonitorPoint{})
 	if mode != "" {
 		query = query.Where("mode = ?", mode)
+	}
+	if assetID > 0 {
+		query = query.Where("asset_id = ?", assetID)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -470,7 +484,7 @@ func NewProbeRecordStore(dbc *gorm.DB) *ProbeRecordStore {
 // timed out can still persist its record.
 //
 // The synthetic prober task ID encodes the monitor point ID
-// (ProbeTaskIDOffset + point ID); records whose TaskID does not carry a
+// (−(ProbeTaskIDOffset + point ID)); records whose TaskID does not carry a
 // point ID are rejected instead of silently dropped.
 func (s *ProbeRecordStore) Save(ctx context.Context, record executor.ExecutionRecord) error {
 	if s == nil || s.dbc == nil {
@@ -480,10 +494,12 @@ func (s *ProbeRecordStore) Save(ctx context.Context, record executor.ExecutionRe
 		return fmt.Errorf("telemetry: probe record store received %s operation for task %d",
 			record.Operation, record.TaskID)
 	}
-	if record.TaskID < ProbeTaskIDOffset {
+	// Probe task IDs are negative and decode to point IDs >= 1; the offset
+	// itself decodes to point 0, which cannot exist, so it is rejected too.
+	if record.TaskID >= -ProbeTaskIDOffset {
 		return fmt.Errorf("telemetry: task id %d does not map to a monitor point", record.TaskID)
 	}
-	pointID := record.TaskID - ProbeTaskIDOffset
+	pointID := -record.TaskID - ProbeTaskIDOffset
 
 	rec := &ProbeRecord{
 		TenantID:     record.TenantID,
@@ -545,11 +561,13 @@ func (s *ProbeRecordStore) QueryByPoint(ctx context.Context, q ProbeQuery) ([]Pr
 	if q.TenantID > 0 {
 		query = query.Where("tenant_id = ?", q.TenantID)
 	}
+	// started_at is offset-carrying TEXT; datetime() normalizes both sides
+	// to instants before comparison.
 	if !q.Start.IsZero() {
-		query = query.Where("started_at >= ?", q.Start)
+		query = query.Where("datetime(started_at) >= datetime(?)", q.Start)
 	}
 	if !q.End.IsZero() {
-		query = query.Where("started_at <= ?", q.End)
+		query = query.Where("datetime(started_at) <= datetime(?)", q.End)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -591,7 +609,7 @@ func (s *ProbeRecordStore) DeleteOlderThan(ctx context.Context, before time.Time
 		return nil
 	}
 	err := s.dbc.WithContext(ctx).
-		Where("started_at < ?", before).
+		Where("datetime(started_at) < datetime(?)", before).
 		Delete(&ProbeRecord{}).Error
 	if err != nil {
 		return fmt.Errorf("telemetry: delete old probe records: %w", db.MapError(err))

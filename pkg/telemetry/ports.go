@@ -118,11 +118,15 @@ type PointSummary struct {
 
 // Filter holds optional filtering criteria for listing monitoring
 // points. A zero-value Filter matches all points. The Mode field
-// filters by monitoring point mode ("active", "passive", or "" for all).
+// filters by monitoring point mode ("active", "passive", or "" for all);
+// a positive AssetID narrows results to points bound to that asset.
 type Filter struct {
 	// Mode filters points by monitoring point mode. An empty string matches
 	// all modes. Valid values are "active" and "passive".
 	Mode string
+	// AssetID filters points bound to the given asset. Zero matches points
+	// regardless of asset binding.
+	AssetID int64
 }
 
 // Service defines the operations for managing monitoring points. The

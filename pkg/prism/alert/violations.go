@@ -27,9 +27,19 @@ var comparisonOperators = map[string]struct{}{
 	"!=": {},
 }
 
-// ViolationExtractor evaluates the comparison sub-conditions of a rule
-// expression against an AlertEnv and produces a Violation for
-// every condition that evaluates to true.
+// ViolationExtractor evaluates the metric-fact comparisons of a rule
+// expression against an AlertEnv and produces a Violation for every
+// comparison that holds. Each produced Violation is stamped with the
+// rule's ID and name so downstream records attribute to the rule.
+//
+// Only comparisons rooted at the metrics map are metric facts
+// (metrics["cpu"] > 90, metrics.mem >= 85). Comparisons over the env
+// scalars (type == "status", severity == "critical", ...) are event
+// predicates: they refine whether the rule matches, not what it
+// measured, and fabricating a metric violation from them would replace
+// the event's real payload violation (the status or log context carried
+// by the alert) with a meaningless one. Predicate-only rules therefore
+// yield no violations and the payload violations survive dispatch.
 //
 // A compound rule such as
 //
@@ -111,7 +121,15 @@ func (x *ViolationExtractor) Extract(_ context.Context, rule Rule, env AlertEnv,
 		return nil
 	}
 	comparisons := collectComparisons(tree.Node)
-	if len(comparisons) == 0 {
+	// Keep only the metric-fact comparisons; scalar predicates do not
+	// yield violations (see the type doc).
+	metricFacts := make([]comparison, 0, len(comparisons))
+	for _, c := range comparisons {
+		if _, ok := metricsKey(c.left); ok {
+			metricFacts = append(metricFacts, c)
+		}
+	}
+	if len(metricFacts) == 0 {
 		return nil
 	}
 
@@ -120,9 +138,9 @@ func (x *ViolationExtractor) Extract(_ context.Context, rule Rule, env AlertEnv,
 	// is implied true. Build Violations for all of them without
 	// re-evaluating each comparison.
 	if matched && isPureConjunction(tree.Node) {
-		violations := make([]Violation, 0, len(comparisons))
-		for _, c := range comparisons {
-			violations = append(violations, x.buildViolation(c, env))
+		violations := make([]Violation, 0, len(metricFacts))
+		for _, c := range metricFacts {
+			violations = append(violations, x.buildViolation(c, rule, env))
 		}
 		return violations
 	}
@@ -130,13 +148,13 @@ func (x *ViolationExtractor) Extract(_ context.Context, rule Rule, env AlertEnv,
 	// Slow path: evaluate each comparison individually to determine which
 	// sub-conditions actually hold. This is required for rules containing
 	// || (a matched || does not imply both branches matched).
-	violations := make([]Violation, 0, len(comparisons))
-	for _, c := range comparisons {
+	violations := make([]Violation, 0, len(metricFacts))
+	for _, c := range metricFacts {
 		matchedSub, ok := x.evalBool(c.source, env)
 		if !ok || !matchedSub {
 			continue
 		}
-		violations = append(violations, x.buildViolation(c, env))
+		violations = append(violations, x.buildViolation(c, rule, env))
 	}
 	if len(violations) == 0 {
 		return nil
@@ -250,17 +268,19 @@ func (v *comparisonVisitor) Visit(node *exprlangast.Node) {
 	})
 }
 
-// buildViolation constructs a Violation from a matched
+// buildViolation constructs a Violation from a matched metric-fact
 // comparison, resolving the observed value and threshold by evaluating
-// the operands against env. The metric name is derived from the left
-// operand shape (map index access or the operand's source text).
+// the operands against env. The violation is stamped with the producing
+// rule's id and name so persisted records attribute to the rule.
 //
 // The resulting Violation carries the env's Severity and Source so
 // downstream ranking and rendering keep the information (the env
 // projected them from the event's primary violation).
-func (x *ViolationExtractor) buildViolation(c comparison, env AlertEnv) Violation {
+func (x *ViolationExtractor) buildViolation(c comparison, rule Rule, env AlertEnv) Violation {
 	v := Violation{
 		Kind:     ViolationKindMetric,
+		RuleID:   rule.ID,
+		RuleName: rule.Name,
 		Severity: env.Severity,
 		Source:   env.Source,
 		Metric: &MetricContext{
@@ -339,38 +359,47 @@ func (x *ViolationExtractor) compileSub(source string) (*expr.Program, error) {
 	return prog, nil
 }
 
-// extractMetricName derives a human-readable metric name from the left
-// operand of a comparison. It handles the canonical shape
-// `metrics["cpu"]` (string-keyed map index over the top-level metrics
-// map) and falls back to the operand's source text, so the violation
-// always carries a non-empty, identifiable metric label.
+// extractMetricName derives the metric name from the left operand of a
+// metric-fact comparison. Extract filters comparisons to metrics-rooted
+// member accesses before calling this, so the name always resolves; the
+// source-text fallback is defensive for direct callers.
 func extractMetricName(node exprlangast.Node) string {
 	if node == nil {
 		return ""
 	}
-	if name, ok := mapIndexMetricName(node); ok {
+	if name, ok := metricsKey(node); ok {
 		return name
 	}
 	return node.String()
 }
 
-// mapIndexMetricName returns the string key when node is a member
-// access of the form `metrics["<key>"]` over the top-level metrics
-// map. The bool result is false for any other shape.
-func mapIndexMetricName(node exprlangast.Node) (string, bool) {
+// metricsKey returns the metric key when node is a member access rooted
+// at the top-level metrics map in either index or dot form
+// (`metrics["cpu"]` or `metrics.cpu`). The bool result is false for any
+// other shape; callers use it to distinguish metric facts from scalar
+// event predicates.
+func metricsKey(node exprlangast.Node) (string, bool) {
 	member, ok := node.(*exprlangast.MemberNode)
 	if !ok {
 		return "", false
 	}
-	key, ok := member.Property.(*exprlangast.StringNode)
-	if !ok || key.Value == "" {
+	var key string
+	switch prop := member.Property.(type) {
+	case *exprlangast.StringNode:
+		key = prop.Value
+	case *exprlangast.IdentifierNode:
+		key = prop.Value
+	default:
+		return "", false
+	}
+	if key == "" {
 		return "", false
 	}
 	root, ok := member.Node.(*exprlangast.IdentifierNode)
 	if !ok || root.Value != "metrics" {
 		return "", false
 	}
-	return key.Value, true
+	return key, true
 }
 
 // toFloat64 coerces an expr-lang operand result to float64. It reports

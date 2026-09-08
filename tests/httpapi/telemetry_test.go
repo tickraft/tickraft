@@ -447,7 +447,7 @@ func TestTelemetryProbeRecordFlow(t *testing.T) {
 	// event for the synthetic probe task. The runner executes it and the
 	// routing record store persists the result in the telemetry domain.
 	payload := event.ExecutionPayload{
-		ExecutionID:  strconv.FormatInt(telemetry.ProbeTaskIDOffset+created.ID, 10),
+		ExecutionID:  strconv.FormatInt(-(telemetry.ProbeTaskIDOffset + created.ID), 10),
 		ExecutorType: "tcp",
 		Operation:    "probe",
 		Action:       "triggered",
@@ -490,9 +490,9 @@ func TestTelemetryProbeRecordFlow(t *testing.T) {
 	// Probe rows must never appear in the task execution log.
 	var legacy int64
 	if err := hs.dbc.Model(&task.Execution{}).
-		Where("task_id >= ?", telemetry.ProbeTaskIDOffset).
+		Where("task_id <= ?", -telemetry.ProbeTaskIDOffset).
 		Count(&legacy).Error; err != nil {
-		t.Fatalf("count legacy probe rows: %v", err)
+		t.Fatalf("count probe rows: %v", err)
 	}
 	if legacy != 0 {
 		t.Fatalf("sys_schedule_log probe rows = %d, want 0", legacy)
@@ -591,9 +591,9 @@ func TestTelemetryProbeNowAccepted(t *testing.T) {
 	// On-demand probes must never land in the task execution log.
 	var legacy int64
 	if err := hs.dbc.Model(&task.Execution{}).
-		Where("task_id >= ?", telemetry.ProbeTaskIDOffset).
+		Where("task_id <= ?", -telemetry.ProbeTaskIDOffset).
 		Count(&legacy).Error; err != nil {
-		t.Fatalf("count legacy probe rows: %v", err)
+		t.Fatalf("count probe rows: %v", err)
 	}
 	if legacy != 0 {
 		t.Fatalf("sys_schedule_log probe rows = %d, want 0", legacy)

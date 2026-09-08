@@ -68,14 +68,16 @@ function buildPayload(): StatusConfig {
     .map((row) => ({
       name: row.name.trim(),
       description: row.description.trim() || undefined,
-      pointIds: parsePoints(row.points),
+      // Wire key: components travel nested in the body, where the request
+      // layer no longer rewrites keys — emit the backend tag directly.
+      point_ids: parsePoints(row.points),
     }))
   return {
     title: form.title,
     description: form.description,
     enabled: form.enabled,
     components,
-  }
+  } as StatusConfig
 }
 
 function addRow(): void {

@@ -98,6 +98,10 @@ const confirmError = computed<string>(() => {
   return ''
 })
 
+/** Submission error (e.g. wrong current password). Persistent inline copy —
+ * a transient toast would vanish before the user finishes reading it. */
+const submitError = ref('')
+
 /** Whether all conditions are met for submission */
 const canSubmit = computed<boolean>(() => {
   const r = rules.value
@@ -116,6 +120,7 @@ async function handleSubmit(): Promise<void> {
   if (!canSubmit.value || loading.value) return
   if (form.newPassword.length < PASSWORD_MIN_LENGTH || form.newPassword.length > PASSWORD_MAX_LENGTH) return
   loading.value = true
+  submitError.value = ''
   try {
     await changePasswordApi({
       oldPassword: form.oldPassword,
@@ -126,7 +131,7 @@ async function handleSubmit(): Promise<void> {
     userStore.clearUser()
     setTimeout(() => router.replace('/login'), REDIRECT_DELAY)
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : t('auth.changePassword.failed'))
+    submitError.value = err instanceof Error ? err.message : t('auth.changePassword.failed')
     loading.value = false
   }
 }
@@ -213,9 +218,12 @@ async function handleSubmit(): Promise<void> {
               id="tk-cp-current"
               v-model="form.oldPassword"
               class="tk-cp__input"
+              :class="{ 'tk-cp__input--error': submitError }"
               :type="showOldPassword ? 'text' : 'password'"
               :placeholder="t('auth.changePassword.oldPasswordPlaceholder')"
               autocomplete="current-password"
+              :aria-invalid="!!submitError"
+              aria-describedby="tk-cp-current-error"
             >
             <button
               class="tk-cp__toggle-pw"
@@ -252,7 +260,13 @@ async function handleSubmit(): Promise<void> {
               /></svg>
             </button>
           </div>
-          <div class="tk-cp__field-error" />
+          <div
+            id="tk-cp-current-error"
+            class="tk-cp__field-error"
+            role="alert"
+          >
+            {{ submitError }}
+          </div>
         </div>
 
         <div class="tk-cp__field">

@@ -100,7 +100,7 @@ func (s *TaskService) validateExecutorType(executorType string) error {
 // count. A zero-value Filter returns all tasks.
 func (s *TaskService) ListTasks(ctx context.Context, page, size int,
 	filter Filter) ([]*Task, int64, error) {
-	opts := ListOptions{Group: filter.Group, Tags: filter.Tags}
+	opts := ListOptions{Group: filter.Group, Tags: filter.Tags, AssetID: filter.AssetID, ExcludeSynthetic: true}
 	all, err := s.tasks.List(ctx, opts)
 	if err != nil {
 		return nil, 0, mapError(err)
@@ -330,7 +330,7 @@ func (s *TaskService) ListExecutions(
 	if filter.TaskName != "" {
 		// Resolve the name filter to matching task IDs in SQL rather than
 		// loading every task row into memory.
-		matches, err := s.tasks.List(ctx, ListOptions{NameLike: filter.TaskName})
+		matches, err := s.tasks.List(ctx, ListOptions{NameLike: filter.TaskName, ExcludeSynthetic: true})
 		if err != nil {
 			return nil, 0, mapError(err)
 		}

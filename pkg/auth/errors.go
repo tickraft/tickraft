@@ -24,6 +24,10 @@ var (
 	ErrForbidden = fmt.Errorf("auth: %w", errdefs.ErrForbidden)
 	// ErrUserExists is returned when attempting to register an existing user.
 	ErrUserExists = fmt.Errorf("auth: %w", errdefs.ErrConflict)
+	// ErrOldPassword is returned when change-password verification of the
+	// current password fails. 400-class by design so clients show an inline
+	// error instead of treating the valid session as expired.
+	ErrOldPassword = fmt.Errorf("auth: %w", errdefs.ErrOldPasswordMismatch)
 )
 
 // HTTP error code constants live in github.com/tickraft/tickraft/pkg/errdefs.

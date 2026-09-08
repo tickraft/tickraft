@@ -21,7 +21,8 @@
       "webhook": "Webhook",
       "dns": "DNS",
       "udp": "UDP",
-      "ssl": "SSL"
+      "ssl": "SSL",
+      "mqtt_probe": "MQTT Probe"
     },
     "list": {
       "title": "Monitor Points",
@@ -80,7 +81,8 @@
         "webhook": "Webhook: Receive data from external systems via HTTP POST",
         "dns": "DNS: Probe DNS resolution availability and response time",
         "udp": "UDP: Probe UDP port reachability and response",
-        "ssl": "SSL: Check SSL certificate validity and status"
+        "ssl": "SSL: Check SSL certificate validity and status",
+        "mqtt_probe": "MQTT: subscribe to a topic and verify broker reachability and message content"
       },
       "targetHost": "Target Host",
       "targetHostPlaceholder": "IP or hostname, e.g. {example}",
@@ -226,7 +228,9 @@
       "deleteSuccess": "Template deleted",
       "apply": "Apply",
       "applyConfirm": "Apply template \"{name}\"? A new monitor point will be created from it.",
-      "applySuccess": "Template applied, monitor created"
+      "applySuccess": "Template applied, monitor created",
+      "applyFailed": "Failed to apply template",
+      "deleteFailed": "Failed to delete template"
     }
   },
   "prober": {

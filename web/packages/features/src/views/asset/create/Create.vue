@@ -46,7 +46,9 @@ const subtitleKey = computed(() => (isEdit.value ? 'asset.create.editSubtitle' :
 
 const form = reactive<AssetFormData>({
   name: '',
-  assetType: 'host',
+  // CE quota gives host assets a ceiling of 0 (host monitoring belongs to the
+  // commercial edition), so defaulting to host would make the first save fail.
+  assetType: 'device',
   assetKey: '',
   endpoint: '',
   port: undefined,
@@ -125,8 +127,10 @@ async function handleSubmit(): Promise<void> {
       ElMessage.success(t('asset.create.submitSuccess'))
     }
     router.replace('/asset/list')
-  } catch {
-    // Errors are handled centrally by the interceptor
+  } catch (err) {
+    // The interceptor only rejects with a localized Error; surface it
+    // instead of failing silently.
+    ElMessage.error(err instanceof Error ? err.message : t('asset.create.submitFailed'))
   } finally {
     submitting.value = false
   }

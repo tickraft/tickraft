@@ -238,11 +238,16 @@ func (s *recordStore) List(ctx context.Context, page, size int, filter RecordFil
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)
 	}
+	// triggered_at values are stored as offset-carrying TEXT, and SQLite
+	// compares TEXT lexicographically, so a naive comparison would mix
+	// offsets when the bound instant serializes in a different zone than
+	// the stored rows (e.g. a UTC RFC3339 query against +08:00 rows).
+	// datetime() normalizes both sides to instants before comparing.
 	if !filter.From.IsZero() {
-		query = query.Where("triggered_at >= ?", filter.From)
+		query = query.Where("datetime(triggered_at) >= datetime(?)", filter.From)
 	}
 	if !filter.To.IsZero() {
-		query = query.Where("triggered_at <= ?", filter.To)
+		query = query.Where("datetime(triggered_at) <= datetime(?)", filter.To)
 	}
 
 	var total int64

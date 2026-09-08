@@ -153,11 +153,16 @@ func (s *DeliveryStore) listScope(ctx context.Context, params DeliveryListParams
 	if params.AlertTitle != "" {
 		q = q.Where("alert_title LIKE ?", "%"+params.AlertTitle+"%")
 	}
+	// sent_at values are stored as offset-carrying TEXT, and SQLite
+	// compares TEXT lexicographically, so a naive "sent_at >= ?" would mix
+	// offsets when the bound instant serializes in a different zone than
+	// the stored rows (e.g. a UTC RFC3339 query against +08:00 rows).
+	// datetime() normalizes both sides to instants before comparing.
 	if params.StartTime != nil {
-		q = q.Where("sent_at >= ?", *params.StartTime)
+		q = q.Where("datetime(sent_at) >= datetime(?)", *params.StartTime)
 	}
 	if params.EndTime != nil {
-		q = q.Where("sent_at <= ?", *params.EndTime)
+		q = q.Where("datetime(sent_at) <= datetime(?)", *params.EndTime)
 	}
 	return q, nil
 }
@@ -294,7 +299,7 @@ func (s *DeliveryStore) DeleteOlderThan(ctx context.Context, before time.Time) (
 		return 0, nil
 	}
 	res := s.dbc.WithContext(ctx).
-		Where("sent_at < ?", before).
+		Where("datetime(sent_at) < datetime(?)", before).
 		Delete(&DeliveryRecord{})
 	if res.Error != nil {
 		return 0, fmt.Errorf("channel: delete old delivery records: %w", db.MapError(res.Error))

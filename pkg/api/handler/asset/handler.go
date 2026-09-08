@@ -71,48 +71,9 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 		a.Status = types.AssetStatusUnknown
 	}
 
-	// Enforce device and host quotas before persisting. The check
-	// counts existing assets of the same type and rejects with 409
-	// Conflict when the ceiling (from quota.Ceiling, which delegates to
-	// the active Provider) is reached. A ceiling of 0 means the resource
-	// type is not allowed in the current plan.
-	//
-	// The runtime is single-tenant: the tenant ID passed to CountByType
-	// is fixed to 0.
-	var ceiling int
-	switch a.AssetType {
-	case types.AssetTypeDevice:
-		ceiling = quota.Ceiling(quota.TypeDevice)
-	case types.AssetTypeHost:
-		ceiling = quota.Ceiling(quota.TypeHost)
-	case types.AssetTypeTask, types.AssetTypePort, types.AssetTypeWebsite, types.AssetTypeService:
-		// No quota ceiling for these asset types.
-	}
-	if ceiling > 0 || a.AssetType == types.AssetTypeHost {
-		const tenantID = 0
-		count, err := h.assets.CountByType(ctx, tenantID, a.AssetType)
-		if err != nil {
-			h.logger.Error("asset create quota check failed",
-				zap.String("operation", "asset.create"),
-				zap.String("asset_key", a.AssetKey),
-				zap.String("asset_type", string(a.AssetType)),
-				zap.Error(err),
-			)
-			httputil.Fail(arc, err)
-			return
-		}
-		if count >= int64(ceiling) {
-			h.logger.Warn("asset create rejected: quota exceeded",
-				zap.String("operation", "asset.create"),
-				zap.String("outcome", "quota_exceeded"),
-				zap.String("asset_key", a.AssetKey),
-				zap.String("asset_type", string(a.AssetType)),
-				zap.Int64("current_count", count),
-				zap.Int("quota", ceiling),
-			)
-			httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, "quota exceeded")
-			return
-		}
+	// Enforce device and host quotas before persisting.
+	if !h.enforceCreateQuota(ctx, &a, arc) {
+		return
 	}
 
 	if err := h.assets.Create(ctx, &a); err != nil {
@@ -145,6 +106,61 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 		zap.String("name", a.Name),
 	)
 	httputil.Success(arc, a)
+}
+
+// enforceCreateQuota rejects the create when the asset type has reached its
+// plan ceiling. The check counts existing assets of the same type and
+// rejects with 409 Conflict when the ceiling (from quota.Ceiling, which
+// delegates to the active Provider) is reached. A ceiling of 0 means the
+// resource type is not allowed in the current plan.
+//
+// The runtime is single-tenant: the tenant ID passed to CountByType is
+// fixed to 0. It returns true when the create may proceed; false means a
+// failure response has already been written.
+func (h *Handler) enforceCreateQuota(ctx context.Context, a *asset.Asset, arc *app.RequestContext) bool {
+	var ceiling int
+	switch a.AssetType {
+	case types.AssetTypeDevice:
+		ceiling = quota.Ceiling(quota.TypeDevice)
+	case types.AssetTypeHost:
+		ceiling = quota.Ceiling(quota.TypeHost)
+	case types.AssetTypeTask, types.AssetTypePort, types.AssetTypeWebsite, types.AssetTypeService:
+		// No quota ceiling for these asset types.
+	}
+	if ceiling <= 0 && a.AssetType != types.AssetTypeHost {
+		return true
+	}
+	const tenantID = 0
+	count, err := h.assets.CountByType(ctx, tenantID, a.AssetType)
+	if err != nil {
+		h.logger.Error("asset create quota check failed",
+			zap.String("operation", "asset.create"),
+			zap.String("asset_key", a.AssetKey),
+			zap.String("asset_type", string(a.AssetType)),
+			zap.Error(err),
+		)
+		httputil.Fail(arc, err)
+		return false
+	}
+	if count >= int64(ceiling) {
+		// A ceiling of 0 means the type is unavailable in this edition,
+		// not that a limit was filled — say so instead of "quota exceeded".
+		msg := "quota exceeded"
+		if ceiling == 0 {
+			msg = "asset type not allowed in this edition"
+		}
+		h.logger.Warn("asset create rejected: quota exceeded",
+			zap.String("operation", "asset.create"),
+			zap.String("outcome", "quota_exceeded"),
+			zap.String("asset_key", a.AssetKey),
+			zap.String("asset_type", string(a.AssetType)),
+			zap.Int64("current_count", count),
+			zap.Int("quota", ceiling),
+		)
+		httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict, msg)
+		return false
+	}
+	return true
 }
 
 // ListAssets handles GET /api/v1/assets. Supported query parameters: page,

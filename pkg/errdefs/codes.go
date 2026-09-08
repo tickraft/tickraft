@@ -14,6 +14,7 @@ const (
 	CodeBadRequest       = 40000
 	CodeMissingParam     = 40001
 	CodeInvalidFormat    = 40002
+	CodeOldPassword      = 40003
 	CodeUnauthorized     = 40100
 	CodeTokenExpired     = 40101
 	CodeAssetKeyMissing  = 40102

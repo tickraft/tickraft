@@ -110,6 +110,20 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	// in place, so repeated calls are safe.
 	RegisterBuiltinChannelTypes()
 
+	// Wire the store and build-option fields onto the Engine BEFORE
+	// loading channels: loadEnabledChannels builds each runtime channel
+	// through BuildChannels with engine.deliveryStore and
+	// engine.channelBuildOpts, so assigning them afterwards would yield
+	// channels without the delivery-tracking decorator and without the
+	// render collaborators (formatter, template library) until an
+	// explicit reload.
+	engine.ruleStore = stores.rule
+	engine.recordStore = stores.record
+	engine.channelStore = stores.channel
+	engine.deliveryStore = stores.delivery
+	engine.channelBuildOpts = cfg.ChannelBuild
+	engine.remediationStore = stores.remediation
+
 	// Load enabled channels from the database into the dispatch engine.
 	if err := loadEnabledChannels(ctx, engine, stores.channel, logger); err != nil {
 		return nil, err
@@ -120,14 +134,6 @@ func NewFromConfig(ctx context.Context, cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prism: register rule engine: %w", err)
 	}
-
-	// Wire orchestration fields onto the Engine.
-	engine.ruleStore = stores.rule
-	engine.recordStore = stores.record
-	engine.channelStore = stores.channel
-	engine.deliveryStore = stores.delivery
-	engine.channelBuildOpts = cfg.ChannelBuild
-	engine.remediationStore = stores.remediation
 	engine.ruleEngine = ruleEng
 
 	// Create the remediation engine. It subscribes to the same telemetry

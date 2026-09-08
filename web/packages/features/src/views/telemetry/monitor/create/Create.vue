@@ -228,7 +228,8 @@ function buildConfig(): Record<string, unknown> {
     case 'webhook':
       return {
         secret: webhookConfig.secret || undefined,
-        authType: webhookConfig.authType,
+        // Wire key: the nested config no longer gets key-rewritten in flight.
+        auth_type: webhookConfig.authType,
       }
     default:
       return {}
@@ -318,8 +319,10 @@ async function handleSubmit(): Promise<void> {
   }
 
   // The optional judgment expression is validated against the
-  // execution env contract before anything is sent.
-  if (!(await judgmentRef.value?.validate())) {
+  // execution env contract before anything is sent. The editor only
+  // mounts for active probes (v-if), so passive submissions skip this —
+  // validating the missing ref would short-circuit to a silent return.
+  if (judgmentRef.value && !(await judgmentRef.value.validate())) {
     return
   }
 

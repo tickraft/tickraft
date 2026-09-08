@@ -119,6 +119,8 @@
     "viewConfig": "Config",
     "totalResources": "Total Assets",
     "severityCritical": "Critical",
+    "severityError": "Error",
+    "severityDebug": "Debug",
     "severityWarning": "Warning",
     "severityInfo": "Info",
     "times": "times",

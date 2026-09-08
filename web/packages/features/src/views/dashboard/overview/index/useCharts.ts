@@ -33,15 +33,18 @@ const TEXT_SECONDARY_FALLBACK = '#64748b'
 
 /** Severity series color mapping */
 type SeverityColor = {
-  key: 'critical' | 'warning' | 'info'
+  key: 'critical' | 'error' | 'warning' | 'info'
   cssVar: string
   fallback: string
   labelKey: string
 }
 
-/** Alert trend severity series definition */
+/** Alert trend severity series definition. Error shares the danger hue with
+ *  critical (the tag system maps both to danger); the legend label tells
+ *  them apart. */
 const TREND_SERIES: SeverityColor[] = [
   { key: 'critical', cssVar: '--tk-danger-color', fallback: DANGER_FALLBACK, labelKey: 'common.dashboard.severityCritical' },
+  { key: 'error', cssVar: '--tk-danger-color', fallback: DANGER_FALLBACK, labelKey: 'common.dashboard.severityError' },
   { key: 'warning', cssVar: '--tk-warning-color', fallback: WARNING_FALLBACK, labelKey: 'common.dashboard.severityWarning' },
   { key: 'info', cssVar: '--tk-info-color', fallback: INFO_FALLBACK, labelKey: 'common.dashboard.severityInfo' },
 ]
@@ -95,6 +98,7 @@ function buildTooltip(appStore: ReturnType<typeof useAppStore>): Record<string, 
 interface AlertTrendPoint {
   date: string
   critical: number
+  error: number
   warning: number
   info: number
 }

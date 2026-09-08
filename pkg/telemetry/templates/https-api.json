@@ -10,6 +10,6 @@
         "expected_body": "ok",
         "tls_verify": true,
         "timeout": 10,
-        "interval": 30
+        "interval": 60
     }
 }

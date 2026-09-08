@@ -48,16 +48,17 @@ const todayDate = new Date().toISOString().split('T')[0]
  * a dedicated trend endpoint, so we derive a lightweight chart from
  * the recent records page.
  */
-function buildAlertTrend(records: AlertRecord[]): { date: string; critical: number; warning: number; info: number }[] {
-  const byDate = new Map<string, { critical: number; warning: number; info: number }>()
+function buildAlertTrend(records: AlertRecord[]): { date: string; critical: number; error: number; warning: number; info: number }[] {
+  const byDate = new Map<string, { critical: number; error: number; warning: number; info: number }>()
   for (const r of records) {
     const d = r.triggeredAt ? new Date(r.triggeredAt) : null
     if (!d || isNaN(d.getTime())) continue
     const key = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    const entry = byDate.get(key) ?? { critical: 0, warning: 0, info: 0 }
-    const sev = (r.severity ?? 'info') as 'critical' | 'warning' | 'info'
-    if (sev in entry) entry[sev]++
-    else entry.info++
+    const entry = byDate.get(key) ?? { critical: 0, error: 0, warning: 0, info: 0 }
+    // Only the charted severities count; lower levels (debug) and unknown
+    // values are skipped rather than misfiled under info.
+    const sev = r.severity
+    if (sev === 'critical' || sev === 'error' || sev === 'warning' || sev === 'info') entry[sev]++
     byDate.set(key, entry)
   }
   return Array.from(byDate.entries())
@@ -270,7 +271,7 @@ const alertColumns = computed(() => [
 
 /** Severity CSS class mapping */
 function severityClass(severity?: string): string {
-  const valid: AlertSeverity[] = ['critical', 'warning', 'info']
+  const valid: AlertSeverity[] = ['critical', 'error', 'warning', 'info', 'debug']
   const s = valid.includes(severity as AlertSeverity) ? severity : 'info'
   return `tk-dash-severity--${s}`
 }
@@ -279,8 +280,10 @@ function severityClass(severity?: string): string {
 function severityLabelKey(severity?: string): string {
   const map: Record<string, string> = {
     critical: 'common.dashboard.severityCritical',
+    error: 'common.dashboard.severityError',
     warning: 'common.dashboard.severityWarning',
     info: 'common.dashboard.severityInfo',
+    debug: 'common.dashboard.severityDebug',
   }
   return map[severity ?? 'info'] ?? map.info
 }
@@ -1051,6 +1054,8 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
   &--critical { color: var(--tk-danger-color); }
   &--critical .tk-dash-severity__dot { background-color: var(--tk-danger-color); }
+  &--error .tk-dash-severity__dot { background-color: var(--tk-danger-color); }
+  &--debug .tk-dash-severity__dot { background-color: var(--tk-info-color); }
   &--warning { color: var(--tk-warning-color); }
   &--warning .tk-dash-severity__dot { background-color: var(--tk-warning-color); }
   &--info { color: var(--tk-info-color); }

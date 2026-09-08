@@ -84,10 +84,13 @@ func (e *Executor) Capabilities() executor.Capability { return executor.CapNotif
 
 // config holds the webhook-specific configuration parsed from Config.
 type config struct {
-	Method  string              `json:"method"`
-	URL     string              `json:"url"`
-	Headers map[string][]string `json:"headers,omitempty"`
-	Body    string              `json:"body,omitempty"`
+	Method string `json:"method"`
+	URL    string `json:"url"`
+	// Headers follows the flat map-of-strings contract shared by the http
+	// executor, the channel configs and every frontend form; the richer
+	// net/http []string shape is an internal detail of Header.Set.
+	Headers map[string]string `json:"headers,omitempty"`
+	Body    string            `json:"body,omitempty"`
 	// ExpectStatus is the required HTTP response status code. Zero (the
 	// default) accepts any 2xx status as normal, sharing the judgment of
 	// httputil.ResponseStatus with the http executor.
@@ -163,10 +166,8 @@ func (e *Executor) Execute(ctx context.Context, req executor.ExecutionRequest) (
 	}
 
 	// Set headers.
-	for k, vs := range cfg.Headers {
-		for _, v := range vs {
-			httpReq.Header.Add(k, v)
-		}
+	for k, v := range cfg.Headers {
+		httpReq.Header.Set(k, v)
 	}
 	// Stamp the dispatch credential after the configured headers so a Mode A
 	// dispatch always carries its task_ref.

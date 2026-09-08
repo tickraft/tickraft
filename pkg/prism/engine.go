@@ -339,13 +339,25 @@ func (e *Engine) SetChannelBuildOptions(ctx context.Context, opts channel.BuildO
 // definition. It is a method wrapper over the registry-driven builder so
 // the engine satisfies the channel.Runtime seam interface; the operation
 // is stateless and never touches engine state. The returned channel is
-// unwrapped (no delivery tracking): the test-dispatch and retry paths
-// record outcomes themselves.
+// unwrapped (no delivery tracking): the retry path records its outcome
+// itself via UpdateAttempt.
 func (e *Engine) BuildChannel(ch *channel.Channel) (alert.Channel, error) {
 	if ch == nil {
 		return nil, fmt.Errorf("channel: build from nil channel")
 	}
 	return buildChannelOfType(ch.Type, ch.Config, e.channelBuildOpts)
+}
+
+// BuildTrackedChannel constructs a runtime alert.Channel wrapped with the
+// delivery-tracking decorator, so each dispatch through it records a
+// sys_prism_delivery row stamped with the channel's identity. It backs the
+// test-dispatch path, which does not self-record. When no delivery store
+// is wired the decorator is skipped and the plain channel is returned.
+func (e *Engine) BuildTrackedChannel(ch *channel.Channel) (alert.Channel, error) {
+	if ch == nil {
+		return nil, fmt.Errorf("channel: build from nil channel")
+	}
+	return BuildChannel(ch, e.channelBuildOpts, e.deliveryStore)
 }
 
 // Channels returns the registered notification channels. The returned

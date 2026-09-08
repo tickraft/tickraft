@@ -26,6 +26,16 @@ type ListOptions struct {
 	// NameLike filters tasks by a case-insensitive substring match on the
 	// task name, applied in SQL. An empty string matches all tasks.
 	NameLike string
+	// AssetID filters tasks bound to the given asset. Zero matches tasks
+	// regardless of asset binding.
+	AssetID int64
+	// ExcludeSynthetic drops rows with negative IDs. Negative IDs are the
+	// synthetic scheme other domains use to persist their own recurring
+	// jobs in sys_schedule_task (e.g. telemetry probe tasks); they are not
+	// user tasks and must not surface in user-facing lists or consume
+	// quota. Internal callers that manage those rows (engine restore,
+	// by-ID owner resolution) leave this false.
+	ExcludeSynthetic bool
 }
 
 // Store persists scheduler tasks across restarts.
@@ -135,6 +145,9 @@ type Filter struct {
 	Group string
 	// Tags filters tasks to those having at least one of the specified tags.
 	Tags []string
+	// AssetID filters tasks bound to the given asset. Zero matches tasks
+	// regardless of asset binding.
+	AssetID int64
 }
 
 // ExecutionFilter holds optional server-side filtering criteria for listing

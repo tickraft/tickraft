@@ -50,7 +50,8 @@
     "updateSuccess": "Asset updated",
     "notFound": "Asset not found",
     "nameRequired": "Please enter an asset name",
-    "endpointRequired": "Please enter an asset key"
+    "endpointRequired": "Please enter an asset key",
+    "submitFailed": "Failed to create asset"
   },
   "detail": {
     "title": "Asset Detail",

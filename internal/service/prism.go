@@ -37,6 +37,11 @@ func startPrismEngine(
 	rt *runtime,
 	notificationPoolSize int,
 ) (stopFunc, error) {
+	encKey := channelEncryptionKey()
+	if encKey == nil {
+		rt.logger.Warn("channel config encryption disabled: sensitive fields (e.g. SMTP passwords, IM app secrets) " +
+			"will be stored in plaintext; set TICKRAFT_CHANNEL_ENCRYPTION_KEY (hex, 32 bytes) to enable")
+	}
 	engine, err := prism.NewFromConfig(ctx, prism.Config{
 		DB:                   rt.dbc,
 		Bus:                  rt.eventBus(),
@@ -44,7 +49,7 @@ func startPrismEngine(
 		NotificationPoolSize: notificationPoolSize,
 		Guards:               prism.DefaultGuards(rt.logger),
 		ChannelBuild:         channelBuildOptions(rt),
-		ChannelEncryptionKey: channelEncryptionKey(),
+		ChannelEncryptionKey: encKey,
 		RuleConfig: alert.Config{
 			Logger:       rt.logger,
 			AssetStore:   rt.assetStore,

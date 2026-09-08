@@ -52,6 +52,13 @@ type Violation struct {
 	// Kind identifies the violation category: "metric", "log", "heartbeat",
 	// or "status".
 	Kind string `json:"kind"`
+	// RuleID is the id of the rule that produced this violation (metric
+	// violations extracted from a rule expression) or gated the alert
+	// carrying it (payload violations attributed by the dispatcher).
+	// Zero when no rule identity applies.
+	RuleID int64 `json:"rule_id,omitempty"`
+	// RuleName is the name of the rule identified by RuleID.
+	RuleName string `json:"rule_name,omitempty"`
 	// Severity is the unified severity for ranking across all kinds:
 	// critical > error > warning > info > debug. Metric violations
 	// inherit it from the rule; log violations map from the log level;

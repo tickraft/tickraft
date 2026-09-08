@@ -119,6 +119,8 @@
     "viewConfig": "配置",
     "totalResources": "资源总数",
     "severityCritical": "严重",
+    "severityError": "错误",
+    "severityDebug": "调试",
     "severityWarning": "警告",
     "severityInfo": "信息",
     "times": "次",

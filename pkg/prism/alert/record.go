@@ -41,18 +41,25 @@ func RecordAlert(ctx context.Context, store RecordStore, evt Event) ([]*Record, 
 	return records, nil
 }
 
-// ViolationToRecord builds an alert Record from a single violation. The
-// rule name is derived from the metric name, log keyword, or violation source;
-// severity defaults to "warning" when empty.
+// ViolationToRecord builds an alert Record from a single violation,
+// carrying the violation's rule attribution (RuleID/RuleName, stamped by
+// the rule extractor or the dispatcher). When no rule identity is set
+// the rule name is derived from the metric name, log keyword, or
+// violation source; severity defaults to "warning" when empty.
 func ViolationToRecord(v Violation, triggeredAt time.Time) *Record {
 	severity := v.Severity
 	if severity == "" {
 		severity = string(types.SeverityWarning)
 	}
-	ruleName := v.Source
+	ruleName := v.RuleName
+	if ruleName == "" {
+		ruleName = v.Source
+	}
 	var value float64
 	if v.Metric != nil {
-		ruleName = v.Metric.Name
+		if ruleName == "" {
+			ruleName = v.Metric.Name
+		}
 		value = v.Metric.Value
 	}
 	if ruleName == "" && v.Log != nil {
@@ -63,7 +70,7 @@ func ViolationToRecord(v Violation, triggeredAt time.Time) *Record {
 		message = fmt.Sprintf("alert %s: %s", v.Kind, ruleName)
 	}
 	return &Record{
-		RuleID:      0,
+		RuleID:      v.RuleID,
 		RuleName:    ruleName,
 		Severity:    severity,
 		Value:       value,

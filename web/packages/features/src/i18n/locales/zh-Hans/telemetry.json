@@ -21,7 +21,8 @@
       "webhook": "Webhook",
       "dns": "DNS",
       "udp": "UDP",
-      "ssl": "SSL"
+      "ssl": "SSL",
+      "mqtt_probe": "MQTT 探测"
     },
     "list": {
       "title": "监测点",
@@ -80,7 +81,8 @@
         "webhook": "Webhook：通过 HTTP POST 接收外部系统上报的数据",
         "dns": "DNS：探测 DNS 解析可用性与响应时间",
         "udp": "UDP：探测目标 UDP 端口可达性与响应",
-        "ssl": "SSL：检测 SSL 证书有效期与状态"
+        "ssl": "SSL：检测 SSL 证书有效期与状态",
+        "mqtt_probe": "MQTT：订阅主题并校验 Broker 可达性与消息内容"
       },
       "targetHost": "目标主机",
       "targetHostPlaceholder": "IP 或主机名，如 {example}",
@@ -226,7 +228,9 @@
       "deleteSuccess": "模板已删除",
       "apply": "应用",
       "applyConfirm": "确定应用模板「{name}」吗？将据此创建一个新监测点。",
-      "applySuccess": "模板已应用，监测点已创建"
+      "applySuccess": "模板已应用，监测点已创建",
+      "applyFailed": "应用模板失败",
+      "deleteFailed": "删除模板失败"
     }
   },
   "prober": {

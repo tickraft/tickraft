@@ -235,7 +235,7 @@ func TestRunMaintenanceSweep_ProbeRetention(t *testing.T) {
 
 	now := time.Now()
 	old := executor.ExecutionRecord{
-		TaskID:       telemetry.ProbeTaskIDOffset + 1,
+		TaskID:       -(telemetry.ProbeTaskIDOffset + 1),
 		Operation:    executor.OpProbe,
 		ExecutorName: "icmp",
 		Status:       types.AssetStatusNormal,

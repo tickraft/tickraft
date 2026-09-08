@@ -121,19 +121,27 @@ func (e *Engine) Dispatch(ctx context.Context, evt alert.Event) DispatchResult {
 	// deployments, so this is a no-op there.
 	postGuardHook(ctx, e.postGuardHook, &evt, e.logger)
 
-	// Each rule is evaluated exactly once, yielding both the forward
-	// decision and the structured violations of the matched rules. When
-	// a compound rule (e.g. "cpu > 90 && mem > 85") matches multiple
-	// conditions, each condition contributes one Violation. When
-	// violations are collected, they replace the single violation
+	// All registered rules are evaluated exactly once, yielding both the
+	// forward decision, the matched rules, and the structured violations
+	// of the matched rules. When a rule contains metric-fact comparisons
+	// (e.g. "cpu > 90 && mem > 85") each matched comparison contributes
+	// one Violation, and the collected violations replace the ones
 	// populated by the payload converter (metricPayloadToAlert /
 	// logPayloadToAlert) so downstream consumers (channels, governance
 	// fingerprint, record persistence) see the full set of matched
-	// conditions. When no rule returns violations, the payload-populated
-	// Event.Violations are preserved.
-	collectedViolations, matched := e.evaluateRules(ctx, rules, evt)
+	// conditions. Predicate-only rules (no metric-fact comparisons, such
+	// as `type == "status"`) contribute no violations, so the
+	// payload-populated Event.Violations survive; they are then
+	// attributed to the first matched rule so the persisted records
+	// reference the rule that gated this alert into existence.
+	collectedViolations, matched, matchedRules := e.evaluateRules(ctx, rules, evt)
 	if len(collectedViolations) > 0 {
 		evt.Violations = collectedViolations
+	} else if len(matchedRules) > 0 {
+		for i := range evt.Violations {
+			evt.Violations[i].RuleID = matchedRules[0].ID
+			evt.Violations[i].RuleName = matchedRules[0].Name
+		}
 	}
 	if !matched {
 		e.logger.Debug("alert suppressed by rules",
@@ -246,13 +254,14 @@ func (e *Engine) runGovernanceGuards(
 // rule.Match call is wrapped with panic recovery so a buggy custom
 // Matcher cannot crash the engine; a panicking rule is logged and
 // treated as not matching. It returns the structured violations
-// collected from the matched rules and whether the alert matched (an
-// empty rule set defaults to matched).
+// collected from the matched rules, whether the alert matched (an
+// empty rule set defaults to matched), and the identity of every
+// matched rule (empty under the default-allow contract).
 func (e *Engine) evaluateRules(
 	ctx context.Context,
 	rules []alert.Matcher,
 	evt alert.Event,
-) (collectedViolations []alert.Violation, matched bool) {
+) (collectedViolations []alert.Violation, matched bool, matchedRules []alert.MatchedRule) {
 	matched = len(rules) == 0
 	for _, r := range rules {
 		result := match(ctx, r, evt, e.logger)
@@ -261,8 +270,9 @@ func (e *Engine) evaluateRules(
 		}
 		matched = true
 		collectedViolations = append(collectedViolations, result.Violations...)
+		matchedRules = append(matchedRules, result.Matched...)
 	}
-	return collectedViolations, matched
+	return collectedViolations, matched, matchedRules
 }
 
 // dispatchToChannels submits one notification job to the worker pool
@@ -574,9 +584,11 @@ func statusPayloadToAlert(ev event.Event[event.StatusChangePayload]) (alert.Even
 // isAbnormalStatus reports whether status represents an alert-worthy
 // (non-healthy, non-unknown) asset state. The engine uses it to skip
 // recovery transitions so alerts are emitted only for degradations.
+// The asset status vocabulary is normal/abnormal/offline/unknown
+// (types.AssetStatus); the degradations are abnormal and offline.
 func isAbnormalStatus(status string) bool {
 	switch status {
-	case statusOffline, string(types.SeverityCritical), string(types.SeverityWarning):
+	case statusOffline, string(types.AssetStatusAbnormal):
 		return true
 	default:
 		return false

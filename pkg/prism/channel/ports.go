@@ -74,6 +74,12 @@ type Runtime interface {
 	// persisted enabled channels.
 	ReloadChannels(ctx context.Context) error
 	// BuildChannel constructs a runtime alert.Channel from a persisted
-	// channel definition.
+	// channel definition without the delivery-tracking decorator; the
+	// caller owns recording the outcome.
 	BuildChannel(ch *Channel) (alert.Channel, error)
+	// BuildTrackedChannel constructs a runtime alert.Channel wrapped with
+	// the delivery-tracking decorator, so dispatches through it record
+	// sys_prism_delivery rows. Used by test dispatches, which (unlike
+	// retries) do not self-record their outcome.
+	BuildTrackedChannel(ch *Channel) (alert.Channel, error)
 }

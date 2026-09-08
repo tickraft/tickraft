@@ -32,8 +32,10 @@ export const SEVERITY_OPTIONS: Array<{ value: AlertSeverity; labelKey: string }>
 /** el-tag type for each severity level */
 export const SEVERITY_TAG_TYPE: Record<AlertSeverity, 'danger' | 'warning' | 'info'> = {
   critical: 'danger',
+  error: 'danger',
   warning: 'warning',
   info: 'info',
+  debug: 'info',
 }
 
 /** Metric dropdown options (common metrics; allow-create is used as a fallback during editing) */

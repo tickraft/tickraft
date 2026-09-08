@@ -88,8 +88,8 @@ func TestStatusPayloadToAlertStatusDegradation(t *testing.T) {
 			AssetID:    "10",
 			TenantID:   "3",
 			AssetKey:   "device-10",
-			PrevStatus: "healthy",
-			CurrStatus: "critical",
+			PrevStatus: "normal",
+			CurrStatus: "abnormal",
 			Reason:     "probe failure",
 			Source:     "prober",
 		},
@@ -118,11 +118,11 @@ func TestStatusPayloadToAlertStatusDegradation(t *testing.T) {
 	if v.Status == nil {
 		t.Fatal("Status context is nil")
 	}
-	if v.Status.PrevStatus != "healthy" {
-		t.Errorf("PrevStatus: got %q, want %q", v.Status.PrevStatus, "healthy")
+	if v.Status.PrevStatus != "normal" {
+		t.Errorf("PrevStatus: got %q, want %q", v.Status.PrevStatus, "normal")
 	}
-	if v.Status.CurrStatus != "critical" {
-		t.Errorf("CurrStatus: got %q, want %q", v.Status.CurrStatus, "critical")
+	if v.Status.CurrStatus != "abnormal" {
+		t.Errorf("CurrStatus: got %q, want %q", v.Status.CurrStatus, "abnormal")
 	}
 }
 
@@ -144,22 +144,22 @@ func TestStatusPayloadToAlertRecoverySkipped(t *testing.T) {
 	}
 }
 
-// TestStatusPayloadToAlertWarningStatus verifies that a transition to
-// "warning" (an abnormal but non-offline state) still produces a TypeStatus
-// alert, covering the middle tier of the severity spectrum.
-func TestStatusPayloadToAlertWarningStatus(t *testing.T) {
+// TestStatusPayloadToAlertAbnormalStatus verifies that a transition to
+// "abnormal" (a degraded but non-offline state) still produces a TypeStatus
+// alert, covering the middle tier of the status spectrum.
+func TestStatusPayloadToAlertAbnormalStatus(t *testing.T) {
 	ev := event.Event[event.StatusChangePayload]{
 		Payload: event.StatusChangePayload{
 			AssetID:    "55",
 			TenantID:   "1",
-			PrevStatus: "healthy",
-			CurrStatus: "warning",
+			PrevStatus: "normal",
+			CurrStatus: "abnormal",
 			Source:     "listener",
 		},
 	}
 	got, ok := statusPayloadToAlert(ev)
 	if !ok {
-		t.Fatal("expected ok=true for warning transition")
+		t.Fatal("expected ok=true for abnormal transition")
 	}
 	if got.Type != alert.TypeStatus {
 		t.Errorf("Type: got %q, want %q", got.Type, alert.TypeStatus)
@@ -302,8 +302,8 @@ func TestStatusAlertDispatchedToChannel(t *testing.T) {
 		AssetID:    "10",
 		TenantID:   "3",
 		AssetKey:   "device-10",
-		PrevStatus: "warning",
-		CurrStatus: "critical",
+		PrevStatus: "normal",
+		CurrStatus: "abnormal",
 		Reason:     "probe failure",
 		Source:     "prober",
 	})
@@ -405,8 +405,8 @@ func TestHeartbeatAndStatusBothDispatched(t *testing.T) {
 	_ = event.Publish(context.Background(), bus, event.TypeAssetStatusChanged, event.StatusChangePayload{
 		AssetID:    "2",
 		TenantID:   "1",
-		PrevStatus: "healthy",
-		CurrStatus: "critical",
+		PrevStatus: "normal",
+		CurrStatus: "abnormal",
 		Source:     "prober",
 	})
 

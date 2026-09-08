@@ -298,7 +298,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPwd, newP
 	}
 
 	if err = Verify(u.PasswordHash, oldPwd); err != nil {
-		return ErrUnauthorized
+		return ErrOldPassword
 	}
 
 	hash, err := Hash(newPwd)

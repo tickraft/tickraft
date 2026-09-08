@@ -98,7 +98,7 @@ func (s *blacklistStore) Exists(ctx context.Context, jti string) (bool, error) {
 // CleanExpired removes all blacklist entries whose expired_at is before now.
 func (s *blacklistStore) CleanExpired(ctx context.Context) error {
 	err := s.dbc.WithContext(ctx).
-		Where("expired_at < ?", time.Now()).
+		Where("datetime(expired_at) < datetime(?)", time.Now()).
 		Delete(&TokenBlacklist{}).Error
 	if err != nil {
 		return db.MapError(err)

@@ -333,7 +333,7 @@ async function handleSubmit(): Promise<void> {
             :href="EDITIONS_URL"
             target="_blank"
             rel="noopener"
-          >{{ t('auth.login.ceEditions') }}</a>。
+            >{{ t('auth.login.ceEditions') }}</a>{{ t('auth.login.ceSuffix') }}
         </div>
       </div>
 

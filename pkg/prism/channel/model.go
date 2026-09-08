@@ -43,6 +43,12 @@ type Channel struct {
 	// LastUsedAt records the last time the channel successfully delivered
 	// a notification. A nil value means the channel has never been used.
 	LastUsedAt *time.Time `gorm:"column:last_used_at" json:"last_used_at,omitempty"`
+	// LastTestAt records the time of the most recent test dispatch. A
+	// nil value means the channel has never been tested.
+	LastTestAt *time.Time `gorm:"column:last_test_at" json:"last_test_at,omitempty"`
+	// LastTestResult is the outcome of the most recent test dispatch
+	// ("success" or "failed").
+	LastTestResult string `gorm:"column:last_test_result;size:16" json:"last_test_result,omitempty"`
 	// CreatedAt is the timestamp when the configuration was created.
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	// UpdatedAt is the timestamp when the configuration was last updated.

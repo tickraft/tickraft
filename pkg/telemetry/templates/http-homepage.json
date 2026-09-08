@@ -9,6 +9,6 @@
         "expected_status": 200,
         "tls_verify": true,
         "timeout": 10,
-        "interval": 30
+        "interval": 60
     }
 }

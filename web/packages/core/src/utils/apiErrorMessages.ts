@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 
-import { getStorage } from './storage'
+import { getLocale } from '../i18n'
 
 /**
  * Backend error messages are English. The UI runs in zh-Hans by default, so
@@ -20,6 +20,7 @@ const codeMessages: Record<number, string> = {
   40000: '请求参数无效',
   40001: '缺少必填参数',
   40002: '参数格式错误',
+  40003: '原密码不正确',
   40100: '未登录或凭证无效',
   40101: '登录已过期，请重新登录',
   40102: '缺少资产密钥',
@@ -46,6 +47,7 @@ const messageOverrides: Record<string, string> = {
   'internal error': '服务器内部错误',
   'username and password are required': '请输入用户名和密码',
   'old_password and new_password are required': '请填写原密码和新密码',
+  'old password mismatch': '原密码不正确',
   'refresh_token is required': '缺少刷新令牌',
   'admin role required': '需要管理员权限',
   'invalid request body': '请求体格式错误',
@@ -60,6 +62,7 @@ const messageOverrides: Record<string, string> = {
   'template not found': '模板不存在',
   'template name already exists': '模板名称已存在',
   'quota exceeded': '配额已达上限',
+  'asset type not allowed in this edition': '该资产类型在当前版本不可用',
   'missing authorization header': '缺少认证信息',
   'missing token': '缺少令牌',
   'invalid token': '令牌无效',
@@ -102,6 +105,6 @@ export function localizeApiError(code: number | undefined, message: string): str
  * errors should be localized.
  */
 export function shouldLocalizeErrors(): boolean {
-  const locale = getStorage<string>('tk-locale') || 'zh-Hans'
+  const locale = getLocale()
   return locale.startsWith('zh')
 }
