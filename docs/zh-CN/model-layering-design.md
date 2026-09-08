@@ -291,7 +291,7 @@ handler wire   pkg/api/handler/task/types.go   Task(:13-32) / Execution(:44-61)
     ↕  converter.go 274 行：DomainTaskToHandler(:70) / HandlerToDomainTask(:104) / DomainExecutionToHandler(:171) + 5 个 helper
 领域 struct    pkg/task/model.go               Task(:126-164) / Execution(:169-210) —— 纯数据，无 gorm tag、无行为方法
     ↕  ToTask(model.go:60) / taskToModel(store.go:177) / ToExecution(:132) / ExecutionToModel(:158)
-GORM 模型      pkg/task/model.go               ScheduleTask(sys_schedule_task,:21-54) / ScheduleLog(sys_schedule_log,:100-129)
+GORM 模型      pkg/task/model.go               ScheduleTask(sys_schedule_task,:21-54) / ScheduleLog(sys_schedule_execution,:100-129)
 ```
 
 初判推翻的复核证据：
@@ -311,7 +311,7 @@ GORM 模型      pkg/task/model.go               ScheduleTask(sys_schedule_task,
 
 #### 5.4.2 目标：收敛为单一双 tag 模型
 
-`pkg/task.Task` 兼作 GORM 模型（表名仍 `sys_schedule_task`，吸收 ScheduleTask 全部列）；`pkg/task.Execution` 吸收 ScheduleLog（表名仍 `sys_schedule_log`，`Error` 字段以 `gorm:"column:error_msg"` 保留列名，wire 键仍 `error`）。`pkg/api/handler/task` 仅保留：Service 接口（签名换 `*task.Task/*task.Execution`，保持 x 可导入）、路由 handler 直接绑定模型（gin 绑定不认 `json:"-"`，防 mass-assignment）、`Filter/ExecutionFilter/ExecutionStats`（查询参数与跨行聚合，非模型副本）与 `copyTaskRequest`。
+`pkg/task.Task` 兼作 GORM 模型（表名仍 `sys_schedule_task`，吸收 ScheduleTask 全部列）；`pkg/task.Execution` 吸收 ScheduleLog（表名仍 `sys_schedule_execution`，`Error` 字段以 `gorm:"column:error_msg"` 保留列名，wire 键仍 `error`）。`pkg/api/handler/task` 仅保留：Service 接口（签名换 `*task.Task/*task.Execution`，保持 x 可导入）、路由 handler 直接绑定模型（gin 绑定不认 `json:"-"`，防 mass-assignment）、`Filter/ExecutionFilter/ExecutionStats`（查询参数与跨行聚合，非模型副本）与 `copyTaskRequest`。
 
 **Task 字段表**：
 
@@ -409,7 +409,7 @@ CE 先行（模型 → 引擎 → store → service → handler → web → Open
 
 设计已按上述定案实施完毕，两仓验收门全部通过（CE 全量测试 + lint + 红线；x 三套构建标签构建/测试 + lint 零告警）。与设计稿的偏差与落地细节：
 
-- **词表桥位置**：资产词表→存储词表的唯一桥接为 `task.ExecutionStatusFromAsset`（pkg/task/model.go:66，normal→success、abnormal→failed、其余→unknown）。executor Result 与完成事件仍用资产词表（AssetStatus），不落库；`sys_schedule_log.status` 只存 API 词表。x 仓 remediation 的 skip 记录保留 x 专属 `skipped` 标记（不在任一词表内，列表查询以 `status IN (success, failed)` 过滤不展示，语义由 skip_reason 列承载）；x grpc 外部通道的 `trigger_type=external` 同为 x 专属值，保留。
+- **词表桥位置**：资产词表→存储词表的唯一桥接为 `task.ExecutionStatusFromAsset`（pkg/task/model.go:66，normal→success、abnormal→failed、其余→unknown）。executor Result 与完成事件仍用资产词表（AssetStatus），不落库；`sys_schedule_execution.status` 只存 API 词表。x 仓 remediation 的 skip 记录保留 x 专属 `skipped` 标记（不在任一词表内，列表查询以 `status IN (success, failed)` 过滤不展示，语义由 skip_reason 列承载）；x grpc 外部通道的 `trigger_type=external` 同为 x 专属值，保留。
 - **schedule 解析落地形态**：设计稿的 "ParseSchedule 归并" 落地为 `task.ClassifySchedule`（导出，校验/分类用，pkg/task/schedule.go:20）+ 包内私有 `parseSchedule`（引擎装填用）。语义与设计一致：`""` 为事件驱动、Go duration 为定间隔、其余按 cron 解析；`once` 类型删除（x 仓 once 单测随删）。
 - **事件 payload 字段更名**（pkg/event.ExecutionPayload）：`Timeout`（裸纳秒 int）→ `TimeoutSeconds`，新增 `MaxRetries`/`RetryIntervalSeconds`，`Config` 由 map 改为 sonic 序列化字符串，`Action` 携带 `Operation.String()`（x 仓原硬编码 "triggered" 一并对齐）。runner 重试自此有真实数据来源，retry 链路复活。
 - **enabled 门控修正**：x 仓 bridge 的 `isTaskEnabled` 由 "metadata 缺省视为启用" 改为直读 `Enabled` 列——metadata 缺省默认开启的隐式语义随字段化一并消除，未显式启用的任务不再被调度。
@@ -441,7 +441,7 @@ remediation、channel、system、auth、telemetry 任务 CRUD 的响应字段集
 
 - **破坏性**：Task wire 键 `executor` → `executor_type`（与 Execution 侧及列名统一，5.4.3-D4）；`config.timeout` 保留键语义删除（此后 config 内的 timeout 一律视为普通 executor 配置，任务超时走顶层 `timeout` 字段，D2）；执行状态 `unknown` 不再坍缩显示为 `failed`（原样输出，D1）。
 - **增量暴露（可选字段）**：Task 新增顶层 `timeout`（秒）、`max_retries`、`retry_interval`（秒）。
-- **存储词表换血**（对 API 调用方透明）：`sys_schedule_log.status` 改存 `success/failed/running/unknown`（原 `normal/abnormal/triggered`）；两仓未发布，不做数据迁移，开发库重建。
+- **存储词表换血**（对 API 调用方透明）：`sys_schedule_execution.status` 改存 `success/failed/running/unknown`（原 `normal/abnormal/triggered`）；两仓未发布，不做数据迁移，开发库重建。
 - **不变**：Task 其余字段（`name/description/schedule/enabled/config 形状/group/tags/run_id/retry_policy/concurrency/created_at/updated_at`）、Execution 其余字段、分页 envelope 均维持。
 
 ---

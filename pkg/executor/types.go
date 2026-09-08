@@ -50,7 +50,7 @@ type ExecutionRequest struct {
 	// row is opened before the executor runs and stays running until the
 	// remote reporter closes it via the telemetry report endpoint.
 	ReportStatus bool
-	// ExecutionID is the sys_schedule_log row ID opened by the dispatch
+	// ExecutionID is the sys_schedule_execution row ID opened by the dispatch
 	// store for a ReportStatus task. Zero on Mode B tasks (and on Mode A
 	// tasks when no dispatch store is injected). Executors use it to stamp
 	// the dispatch identity headers.

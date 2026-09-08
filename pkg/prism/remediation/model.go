@@ -57,22 +57,22 @@ type Rule struct {
 	// The extended runtime injects the actual tenant ID.
 	TenantID int64 `gorm:"column:tenant_id;not null;index;default:0" json:"-"`
 	// Name is the human-readable rule name.
-	Name string `gorm:"column:name;type:varchar(255);not null" json:"name"`
+	Name string `gorm:"column:name;size:255;not null" json:"name"`
 	// Description is an optional free-form rule description.
-	Description string `gorm:"column:description;type:varchar(1024)" json:"description,omitempty"`
+	Description string `gorm:"column:description;size:1024" json:"description,omitempty"`
 	// AssetID scopes the rule to a specific asset. A value of 0 means
 	// global match across all assets.
 	AssetID int64 `gorm:"column:asset_id;not null;index;default:0" json:"asset_id"`
 	// TriggerEventType is the event type that activates this rule.
 	// Valid values: metric, log, status_change.
-	TriggerEventType string `gorm:"column:trigger_event_type;type:varchar(32);not null" json:"trigger_event_type"`
+	TriggerEventType string `gorm:"column:trigger_event_type;size:32;not null" json:"trigger_event_type"`
 	// Expression is the optional trigger condition evaluated against
 	// RemediationEnv variables. An empty expression matches all events
 	// of the trigger type.
 	Expression string `gorm:"column:expression;type:text" json:"expression,omitempty"`
 	// ExecutorType identifies which operator to invoke on match.
 	// The default deployment supports "local" only.
-	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null" json:"executor_type"`
+	ExecutorType string `gorm:"column:executor_type;size:64;not null" json:"executor_type"`
 	// ExecutorConfig is the JSON-encoded operator configuration. For the
 	// local operator it carries {command, args, env}; an optional
 	// "expression" key defines the execution judgment and an optional
@@ -93,7 +93,7 @@ type Rule struct {
 	// created with Enabled=false.
 	Enabled bool `gorm:"column:enabled;not null;index" json:"enabled"`
 	// Status is the operational status of the rule: active or paused.
-	Status string `gorm:"column:status;type:varchar(16);not null;default:'active'" json:"status"`
+	Status string `gorm:"column:status;size:16;not null;default:'active'" json:"status"`
 	// LastRunAt records the last execution timestamp, used for cooldown
 	// enforcement. Nullable.
 	LastRunAt *time.Time `gorm:"column:last_run_at;index" json:"last_run_at,omitempty"`
@@ -110,7 +110,8 @@ type Rule struct {
 	// UpdatedAt is the rule last-update timestamp.
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	// DeletedAt records the soft-delete timestamp. Soft-deleted rows are
-	// excluded from all queries by GORM's default scope.
+	// excluded from all queries by GORM's default scope. Rules soft-delete
+	// (retained for audit); high-volume execution log rows hard-delete.
 	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
 }
 
@@ -150,26 +151,26 @@ type Record struct {
 	// RuleName is a denormalized snapshot of the rule name at trigger
 	// time, retained so historical records remain readable even if the
 	// rule is later renamed or deleted.
-	RuleName string `gorm:"column:rule_name;type:varchar(255);not null" json:"rule_name"`
+	RuleName string `gorm:"column:rule_name;size:255;not null" json:"rule_name"`
 	// AssetID is the numeric asset identifier of the triggering event.
 	// A value of 0 means the event carried no asset scope.
 	AssetID int64 `gorm:"column:asset_id;not null;default:0" json:"asset_id"`
 	// AssetKey is the tenant-unique asset key of the triggering event,
 	// when the source payload carried one. It may be empty for metric and
 	// log triggers, which only carry the numeric asset ID.
-	AssetKey string `gorm:"column:asset_key;type:varchar(255)" json:"asset_key,omitempty"`
+	AssetKey string `gorm:"column:asset_key;size:255" json:"asset_key,omitempty"`
 	// RunID is the unique identifier of this remediation run. Records are
 	// upserted by RunID as the dispatch progresses.
-	RunID string `gorm:"column:run_id;type:varchar(64);not null;uniqueIndex" json:"run_id"`
+	RunID string `gorm:"column:run_id;size:64;not null;uniqueIndex" json:"run_id"`
 	// Trigger is the trigger type that activated the rule: metric, log,
 	// or status_change.
-	Trigger string `gorm:"column:trigger;type:varchar(32);not null" json:"trigger"`
+	Trigger string `gorm:"column:trigger;size:32;not null" json:"trigger"`
 	// Status is the dispatch lifecycle state. See the RecordStatus*
 	// constants.
-	Status string `gorm:"column:status;type:varchar(16);not null;default:'triggered'" json:"status"`
+	Status string `gorm:"column:status;size:16;not null;default:'triggered'" json:"status"`
 	// Error captures the failure or skip message when Status is "failed"
 	// or "skipped".
-	Error string `gorm:"column:error;type:varchar(2048)" json:"error,omitempty"`
+	Error string `gorm:"column:error;size:2048" json:"error,omitempty"`
 	// StartedAt is the time the operator started working on the dispatch.
 	// Nullable.
 	StartedAt *time.Time `gorm:"column:started_at" json:"started_at,omitempty"`

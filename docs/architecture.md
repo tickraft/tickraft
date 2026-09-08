@@ -36,7 +36,7 @@ The executor subscribes to `TaskTriggered`, looks up the right executor implemen
 - **Retry** — retry count and interval are read from the task metadata and applied transparently.
 - **Status inference** — the result of each execution is mapped to a resource status (`Normal` / `Abnormal`).
 - **Executor registry** — executors register by name and declare a capability bitmask: write actions (`local` commands, `webhook` notification callbacks), read-only probes (`icmp`, `tcp`), and the dual-mode `http` (`CapProbe | CapExec`) that both probes endpoints and runs as a scheduled task action. Task creation rejects types without a write capability and active monitor points reject types without probe capability, both with an immediate 400.
-- **Operation kinds and record routing** — every execution carries an operation (`probe` or `execute`). The finished record is handed to a routing store wired at the assembly layer: `execute` records persist to the task execution log (`sys_schedule_log`), `probe` records to the telemetry probe record table (`sys_probe_record`). Neither domain package knows about the other's storage.
+- **Operation kinds and record routing** — every execution carries an operation (`probe` or `execute`). The finished record is handed to a routing store wired at the assembly layer: `execute` records persist to the task execution log (`sys_schedule_execution`), `probe` records to the telemetry probe record table (`sys_probe_record`). Neither domain package knows about the other's storage.
 
 ### telemetry — data collection engine
 
@@ -70,7 +70,7 @@ The telemetry module never subscribes to scheduler events, which guarantees the 
 1. **Schedule → execute** — the time wheel fires → `TaskTriggered` published → executor runner consumes → executor runs (with retry) → status inferred → `TaskCompleted` published → scheduler updates dependencies → execution record persisted.
 2. **Ingest → persist** — external report → listener receives → validator checks → processor determines status → state manager detects change → aggregator windows the metrics → persistence batch-writes metrics and logs.
 3. **Event-driven** — telemetry emits `StatusChange` → scheduler subscribes → triggers an associated event-driven task → flows into the schedule → execute path.
-4. **Active probe → record** — monitor point fires → synthetic probe task published → executor runs the prober → the `probe` record is routed to `sys_probe_record` and the point's runtime status is refreshed. Task executions follow the same pipeline but persist to `sys_schedule_log`; the operation kind decides the destination.
+4. **Active probe → record** — monitor point fires → synthetic probe task published → executor runs the prober → the `probe` record is routed to `sys_probe_record` and the point's runtime status is refreshed. Task executions follow the same pipeline but persist to `sys_schedule_execution`; the operation kind decides the destination.
 
 ## Common components
 
@@ -150,7 +150,10 @@ Relocation — not deletion — applies to live code that merely sits on the wro
 
 The open-source edition persists all state in a single SQLite file. Every business table carries a `tenant_id` column that enables row-level isolation; even though the open-source edition is single-tenant by default, the column is present so downstream extensions can enable multi-tenancy without a schema migration. Database schema is managed by GORM `AutoMigrate` at startup — there is no hand-written migration SQL to maintain. Every domain package owns the migration of its own tables (`user.Migrate`, `auth.Migrate`, `alert.Migrate`, …) and the composition layer calls them in order at startup; `pkg/db` is pure infrastructure (connections, DSN parsing, error mapping) and imports no domain package.
 
-Execution results live in two domain-owned tables: `sys_schedule_log` for task executions (`execute` operations) and `sys_probe_record` for monitor-point probes (`probe` operations). Passive collection data stays in `sys_collect_metric` and `sys_collect_log`.
+Execution results live in two domain-owned tables: `sys_schedule_execution` for task executions (`execute` operations) and `sys_probe_record` for monitor-point probes (`probe` operations). Passive collection data stays in `sys_probe_metric` and `sys_probe_log`.
+
+
+Table naming follows one convention across every production table: the `sys_` prefix plus a singular noun (`sys_user`, `sys_asset`, `sys_monitor_point`, …). Storage names are deliberately decoupled from the code vocabulary — the three telemetry vocabularies map onto storage as follows: the monitor-point vocabulary (`MonitorPoint` type, points API) persists to `sys_monitor_point`; active probe execution records (`ProbeRecord`) persist to `sys_probe_record`; passive collection data (the `collect` metric/log vocabulary in the collector path) persists to `sys_probe_metric` and `sys_probe_log`. Rule rows (alert, remediation) soft-delete and are retained for audit; high-volume record and log rows hard-delete through retention purges.
 
 ## Related documents
 

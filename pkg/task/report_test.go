@@ -325,7 +325,7 @@ func TestApplyTaskReport_GuardRejectsSweeperRace(t *testing.T) {
 	var flipped atomic.Bool
 	if err := dbc.Callback().Update().Before("gorm:update").
 		Register("test:sweeper-race", func(tx *gorm.DB) {
-			if tx.Statement.Schema == nil || tx.Statement.Schema.Table != "sys_schedule_log" {
+			if tx.Statement.Schema == nil || tx.Statement.Schema.Table != "sys_schedule_execution" {
 				return
 			}
 			if !flipped.CompareAndSwap(false, true) {
@@ -334,7 +334,7 @@ func TestApplyTaskReport_GuardRejectsSweeperRace(t *testing.T) {
 			// The sweeper wins the race: terminalize the still-running row
 			// before the report's UPDATE executes. Raw SQL bypasses the
 			// update callbacks, so this does not recurse.
-			if err := tx.Exec("UPDATE sys_schedule_log SET status = ?, finished_at = ? WHERE status = ?",
+			if err := tx.Exec("UPDATE sys_schedule_execution SET status = ?, finished_at = ? WHERE status = ?",
 				StatusTimeout, time.Now(), StatusRunning).Error; err != nil {
 				t.Errorf("flip row: %v", err)
 			}

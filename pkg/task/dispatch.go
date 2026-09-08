@@ -22,7 +22,7 @@ import (
 var dispatchNodeHostname, _ = os.Hostname()
 
 // DispatchStore is the task-domain adapter for the executor dispatch SPI: it
-// opens the running sys_schedule_log row when a Mode A (remote status
+// opens the running sys_schedule_execution row when a Mode A (remote status
 // reporting) task fires and closes it from the dispatch outcome. The row ID
 // is the execution_id of the telemetry report contract; on a successful
 // dispatch it stays running until the remote reporter (or the engine's

@@ -27,7 +27,7 @@ type Rule struct {
 	// filtering is an engine internal, never an expression variable.
 	TenantID int64 `gorm:"column:tenant_id;not null;index" json:"-"`
 	// Name is the human-readable rule name.
-	Name string `gorm:"column:name;type:varchar(255);not null" json:"name"`
+	Name string `gorm:"column:name;size:255;not null" json:"name"`
 	// Description is an optional free-form rule description.
 	Description string `gorm:"column:description;type:text" json:"description,omitempty"`
 	// Expression is the expr-lang source text compiled by the Compiler.
@@ -52,7 +52,9 @@ type Rule struct {
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	// UpdatedAt is the rule last-update timestamp.
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
-	// DeletedAt records the soft-delete timestamp.
+	// DeletedAt records the soft-delete timestamp. Rules soft-delete (the
+	// row is retained for audit and historical record references), while
+	// the high-volume Record rows hard-delete via retention purges.
 	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
 }
 
@@ -89,17 +91,17 @@ const (
 type Record struct {
 	ID       int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	RuleID   int64   `gorm:"column:rule_id;not null;index" json:"rule_id"`
-	RuleName string  `gorm:"column:rule_name;type:varchar(255);not null" json:"rule_name"`
-	Severity string  `gorm:"column:severity;type:varchar(32);not null;default:'warning'" json:"severity"`
+	RuleName string  `gorm:"column:rule_name;size:255;not null" json:"rule_name"`
+	Severity string  `gorm:"column:severity;size:32;not null;default:'warning'" json:"severity"`
 	Value    float64 `gorm:"column:value;not null;default:0" json:"value"`
-	Message  string  `gorm:"column:message;type:varchar(1024)" json:"message,omitempty"`
+	Message  string  `gorm:"column:message;size:1024" json:"message,omitempty"`
 	// EventID is the engine-assigned event identifier shared by every
 	// record created from one dispatch. It is the correlation key inbound
 	// card callbacks use to locate records without exposing record IDs in
 	// IM payloads. Empty on records persisted before the column existed.
-	EventID string `gorm:"column:event_id;type:varchar(64);index" json:"event_id,omitempty"`
+	EventID string `gorm:"column:event_id;size:64;index" json:"event_id,omitempty"`
 	// firing, acknowledged, resolved
-	Status         string     `gorm:"column:status;type:varchar(16);not null;default:'firing'" json:"status"`
+	Status         string     `gorm:"column:status;size:16;not null;default:'firing'" json:"status"`
 	TriggeredAt    time.Time  `gorm:"column:triggered_at;not null;index" json:"triggered_at"`
 	AcknowledgedAt *time.Time `gorm:"column:acknowledged_at" json:"acknowledged_at,omitempty"`
 	ResolvedAt     *time.Time `gorm:"column:resolved_at" json:"resolved_at,omitempty"`

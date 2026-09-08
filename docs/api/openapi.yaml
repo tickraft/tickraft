@@ -990,7 +990,7 @@ paths:
         miss, inserts a trigger_type=external row carrying the reporter's
         original ref. Off-vocabulary statuses are rejected with 400 at the
         edge. Reports authenticate with the listener's existing auth (HMAC
-        or asset key). Reports are validated and applied to sys_schedule_log
+        or asset key). Reports are validated and applied to sys_schedule_execution
         by the in-process report consumer; missing-report executions are
         reaped as `timeout` by the scheduler sweep.
 

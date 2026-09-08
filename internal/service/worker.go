@@ -63,7 +63,7 @@ func registerBuiltinProcessors(reg *telemetry.ProcessorRegistry, assetStore asse
 }
 
 // migrateCollectorTables runs AutoMigrate for the telemetry's GORM models,
-// including the unified monitor_points table.
+// including the unified sys_monitor_point table.
 func migrateCollectorTables(ctx context.Context, dbc *gorm.DB) error {
 	if err := dbc.WithContext(ctx).AutoMigrate(
 		&telemetry.StatusHistory{},
@@ -74,7 +74,7 @@ func migrateCollectorTables(ctx context.Context, dbc *gorm.DB) error {
 		return fmt.Errorf("telemetry: auto migrate: %w", err)
 	}
 	if err := telemetry.Migrate(ctx, dbc); err != nil {
-		return fmt.Errorf("telemetry: migrate monitor_points: %w", err)
+		return fmt.Errorf("telemetry: migrate monitor point table: %w", err)
 	}
 	return nil
 }
@@ -152,7 +152,7 @@ func startWorkerEngines(
 	// Probe records live in the telemetry domain (sys_probe_record), not
 	// the task scheduling log. The routing below is the assembly-layer
 	// decision that owns domain ownership: OpExecute records flow to the
-	// task adapter (sys_schedule_log), OpProbe records to the telemetry
+	// task adapter (sys_schedule_execution), OpProbe records to the telemetry
 	// store keyed by monitor point.
 	probeStore := telemetry.NewProbeRecordStore(rt.dbc)
 	if err = probeStore.Migrate(ctx); err != nil {

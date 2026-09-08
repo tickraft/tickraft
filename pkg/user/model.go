@@ -15,7 +15,7 @@ import "time"
 // single-tenant authentication.
 //
 // GORM tags are retained so that the GORM-backed implementation in
-// pkg/store can migrate and query the users table without duplicating
+// pkg/store can migrate and query the sys_user table without duplicating
 // the schema definition.
 type User struct {
 	ID                 int64     `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -32,16 +32,22 @@ type User struct {
 	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
+// TableName returns the database table name for User.
+func (User) TableName() string { return "sys_user" }
+
 // APIKey represents an API key for programmatic access.
 type APIKey struct {
-	ID              int64      `json:"id"`
-	Name            string     `json:"name"`
-	KeyPrefix       string     `json:"key_prefix"`
-	KeyHash         string     `json:"-"`
-	Status          int        `json:"status"` // 0=disabled 1=active
-	IPWhitelist     string     `json:"ip_whitelist,omitempty"`
-	PermissionLevel string     `json:"permission_level,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	ExpiredAt       *time.Time `json:"expired_at,omitempty"`
-	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
+	ID              int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name            string     `gorm:"size:128;not null" json:"name"`
+	KeyPrefix       string     `gorm:"column:key_prefix;size:16;not null" json:"key_prefix"`
+	KeyHash         string     `gorm:"column:key_hash;size:128;uniqueIndex;not null" json:"-"`
+	Status          int        `gorm:"not null;default:1" json:"status"` // 0=disabled 1=active
+	IPWhitelist     string     `gorm:"column:ip_whitelist;size:512" json:"ip_whitelist,omitempty"`
+	PermissionLevel string     `gorm:"column:permission_level;size:32" json:"permission_level,omitempty"`
+	CreatedAt       time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	ExpiredAt       *time.Time `gorm:"column:expired_at" json:"expired_at,omitempty"`
+	RevokedAt       *time.Time `gorm:"column:revoked_at" json:"revoked_at,omitempty"`
 }
+
+// TableName returns the database table name for APIKey.
+func (APIKey) TableName() string { return "sys_api_key" }

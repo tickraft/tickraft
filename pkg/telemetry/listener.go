@@ -48,7 +48,7 @@ type HTTPListener interface {
 // A passive monitoring point (MonitorPoint with Mode=ModePassive) whose
 // Type matches a ProtocolListener's Type() corresponds to that listener's
 // configuration. The pro edition persists these configurations in the
-// monitor_points table and starts the matching ProtocolListener for each
+// sys_monitor_point table and starts the matching ProtocolListener for each
 // enabled passive point.
 //
 // The CE build does not ship any ProtocolListener implementations: all

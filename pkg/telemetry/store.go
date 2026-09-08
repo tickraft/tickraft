@@ -610,12 +610,12 @@ func (s *ProbeRecordStore) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// Migrate creates or updates the monitor_points table schema. It is
+// Migrate creates or updates the sys_monitor_point table schema. It is
 // intended to be called once during application startup and is safe to
 // call repeatedly: GORM AutoMigrate is idempotent (additive only).
 func Migrate(ctx context.Context, dbc *gorm.DB) error {
 	if err := dbc.WithContext(ctx).AutoMigrate(&MonitorPoint{}); err != nil {
-		return fmt.Errorf("telemetry: auto-migrate monitor_points table: %w", err)
+		return fmt.Errorf("telemetry: auto-migrate sys_monitor_point table: %w", err)
 	}
 	return nil
 }

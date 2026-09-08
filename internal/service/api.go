@@ -336,7 +336,7 @@ func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 func newTelemetryRouteOptions(
 	ctx context.Context, rt *runtime,
 ) ([]router.RegisterOption, *telemetry.TelemetryService, error) {
-	// Telemetry service: backed by the persistent MonitorStore (monitor_points
+	// Telemetry service: backed by the persistent MonitorStore (sys_monitor_point
 	// table) created by the worker engines. All CRUD operations survive
 	// process restarts. Point hooks are wired with mode branching: active
 	// points are scheduled/unscheduled in real time through the ProberService,

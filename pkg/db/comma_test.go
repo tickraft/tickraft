@@ -16,7 +16,7 @@ import (
 // used by task.Tags.
 type commaRow struct {
 	ID   int64    `gorm:"column:id;primaryKey;autoIncrement"`
-	Tags []string `gorm:"column:tags;type:varchar(255);serializer:commalist"`
+	Tags []string `gorm:"column:tags;size:255;serializer:commalist"`
 }
 
 func (commaRow) TableName() string { return "test_commalist" }

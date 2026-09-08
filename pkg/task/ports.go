@@ -124,7 +124,7 @@ type ExecutionStore interface {
 	// that task; zero aggregates across all tasks. Days without
 	// executions are omitted from the result.
 	StatsByDay(ctx context.Context, from, to time.Time, taskID int64) ([]DailyStat, error)
-	// Migrate creates or updates the sys_schedule_log table schema.
+	// Migrate creates or updates the sys_schedule_execution table schema.
 	Migrate(ctx context.Context) error
 }
 

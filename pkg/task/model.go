@@ -48,7 +48,7 @@ const (
 	TriggerTypeExternal TriggerType = "external"
 )
 
-// Persisted execution status values, stored in the sys_schedule_log.status
+// Persisted execution status values, stored in the sys_schedule_execution.status
 // column and carried on Execution.Status. The storage vocabulary is the API
 // vocabulary: success, failed, timeout, running, unknown.
 const (
@@ -97,16 +97,16 @@ type Task struct {
 	// AssetID is the associated asset identifier.
 	AssetID int64 `gorm:"column:asset_id;not null;index" json:"-"`
 	// Name is the human-readable task name.
-	Name string `gorm:"column:name;type:varchar(255);not null" json:"name"`
+	Name string `gorm:"column:name;size:255;not null" json:"name"`
 	// Description is an optional human-readable description.
-	Description string `gorm:"column:description;type:varchar(255)" json:"description,omitempty"`
+	Description string `gorm:"column:description;size:255" json:"description,omitempty"`
 	// ExecutorType identifies which executor to use (http, tcp, icmp,
 	// local, webhook).
-	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null" json:"executor_type"`
+	ExecutorType string `gorm:"column:executor_type;size:64;not null" json:"executor_type"`
 	// Schedule is the single source of truth for when the task runs: a
 	// cron expression, a Go duration string ("5m"), or "" for event-driven
 	// tasks. See ClassifySchedule.
-	Schedule string `gorm:"column:schedule;type:varchar(128)" json:"schedule,omitempty"`
+	Schedule string `gorm:"column:schedule;size:128" json:"schedule,omitempty"`
 	// Enabled reports whether the scheduler is currently driving the task.
 	// Pause clears it and Resume sets it back; both persist the flag. No
 	// column default: GORM substitutes the default for zero-valued fields
@@ -142,14 +142,14 @@ type Task struct {
 	// integration-specific keys (monitor_point_id, expression, ...).
 	Metadata map[string]string `gorm:"column:metadata;type:text;serializer:tolerantjson" json:"-"`
 	// Group is an optional logical grouping label, used for filtering.
-	Group string `gorm:"column:group;type:varchar(64);index" json:"group,omitempty"`
+	Group string `gorm:"column:group;size:64;index" json:"group,omitempty"`
 	// Tags is an optional list of labels, stored comma-separated.
-	Tags []string `gorm:"column:tags;type:varchar(255);serializer:commalist" json:"tags,omitempty"`
+	Tags []string `gorm:"column:tags;size:255;serializer:commalist" json:"tags,omitempty"`
 	// RunID is an optional idempotency key. It is not unique: tasks are
 	// created without a run ID by the handler layer.
-	RunID string `gorm:"column:run_id;type:varchar(64)" json:"run_id,omitempty"`
+	RunID string `gorm:"column:run_id;size:64" json:"run_id,omitempty"`
 	// RetryPolicy is the retry strategy: "fixed" or "exponential".
-	RetryPolicy string `gorm:"column:retry_policy;type:varchar(16);default:fixed" json:"retry_policy,omitempty"`
+	RetryPolicy string `gorm:"column:retry_policy;size:16;default:fixed" json:"retry_policy,omitempty"`
 	// Concurrency controls per-task concurrent execution
 	// (0=unlimited, 1=no concurrent execution). No column default: the
 	// GORM zero-value substitution would turn 0 (unlimited) into 1.
@@ -188,7 +188,7 @@ func (t *Task) RetryInterval() time.Duration {
 }
 
 // Execution is the single model for a task execution history record: the
-// GORM model for the sys_schedule_log table and its HTTP wire
+// GORM model for the sys_schedule_execution table and its HTTP wire
 // representation at once.
 type Execution struct {
 	// ID is the unique execution record identifier (auto-increment).
@@ -204,11 +204,11 @@ type Execution struct {
 	// not persisted on this table.
 	TaskName string `gorm:"-" json:"task_name,omitempty"`
 	// ExecutorType identifies which executor produced the record.
-	ExecutorType string `gorm:"column:executor_type;type:varchar(64);not null" json:"executor_type,omitempty"`
+	ExecutorType string `gorm:"column:executor_type;size:64;not null" json:"executor_type,omitempty"`
 	// Status is the execution outcome: success, failed, running or
 	// unknown. Indexed because the sweeper scans for running rows on
 	// every pass.
-	Status string `gorm:"column:status;type:varchar(32);not null;index" json:"status"`
+	Status string `gorm:"column:status;size:32;not null;index" json:"status"`
 	// StatusCode is the numeric status code returned by the executor.
 	StatusCode int `gorm:"column:status_code" json:"status_code,omitempty"`
 	// Output is the raw executor output.
@@ -224,22 +224,22 @@ type Execution struct {
 	// FinishedAt is when the execution completed; nil while running.
 	FinishedAt *time.Time `gorm:"column:finished_at" json:"finished_at,omitempty"`
 	// RunID links to the task run for idempotency tracking.
-	RunID string `gorm:"column:run_id;type:varchar(64);index" json:"run_id,omitempty"`
+	RunID string `gorm:"column:run_id;size:64;index" json:"run_id,omitempty"`
 	// TriggerType records how the execution was triggered: "schedule",
 	// "manual" or "event".
-	TriggerType string `gorm:"column:trigger_type;type:varchar(16)" json:"trigger_type,omitempty"`
+	TriggerType string `gorm:"column:trigger_type;size:16" json:"trigger_type,omitempty"`
 	// TriggeredAt is when the runner received the trigger event. The gap
 	// to StartedAt is the worker pool pickup delay. Nullable: rows written
 	// before the field existed have no value.
 	TriggeredAt *time.Time `gorm:"column:triggered_at" json:"triggered_at,omitempty"`
 	// Node is the hostname of the worker that executed the task, for
 	// locating executions in multi-node deployments. Empty on legacy rows.
-	Node string `gorm:"column:node;type:varchar(255)" json:"node,omitempty"`
+	Node string `gorm:"column:node;size:255" json:"node,omitempty"`
 	// ExitCode is the process exit code for command executors (local);
 	// 0 for protocol executors and successful runs.
 	ExitCode int `gorm:"column:exit_code;not null;default:0" json:"exit_code,omitempty"`
 	// SkipReason records why the execution was skipped.
-	SkipReason string `gorm:"column:skip_reason;type:varchar(256)" json:"-"`
+	SkipReason string `gorm:"column:skip_reason;size:256" json:"-"`
 	// Metrics stores execution metrics as JSON.
 	Metrics string `gorm:"column:metrics;type:text" json:"-"`
 	// CreatedAt is the row creation timestamp.
@@ -247,4 +247,4 @@ type Execution struct {
 }
 
 // TableName returns the database table name.
-func (Execution) TableName() string { return "sys_schedule_log" }
+func (Execution) TableName() string { return "sys_schedule_execution" }

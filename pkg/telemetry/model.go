@@ -34,10 +34,10 @@ type StatusHistory struct {
 
 // TableName returns the database table name for StatusHistory.
 func (StatusHistory) TableName() string {
-	return "sys_collect_status_history"
+	return "sys_probe_status_history"
 }
 
-// CollectMetric is the GORM model for the sys_collect_metric table.
+// CollectMetric is the GORM model for the sys_probe_metric table.
 // It stores metric data points collected by listeners and aggregated by the
 // aggregation layer.
 type CollectMetric struct {
@@ -58,9 +58,9 @@ type CollectMetric struct {
 }
 
 // TableName returns the database table name for CollectMetric.
-func (CollectMetric) TableName() string { return "sys_collect_metric" }
+func (CollectMetric) TableName() string { return "sys_probe_metric" }
 
-// CollectLog is the GORM model for the sys_collect_log table.
+// CollectLog is the GORM model for the sys_probe_log table.
 // It stores log entries received from syslog and other log sources.
 type CollectLog struct {
 	// ID is the unique identifier of the log record.
@@ -82,9 +82,9 @@ type CollectLog struct {
 }
 
 // TableName returns the database table name for CollectLog.
-func (CollectLog) TableName() string { return "sys_collect_log" }
+func (CollectLog) TableName() string { return "sys_probe_log" }
 
-// MonitorPoint is the GORM model for the monitor_points table. It unifies
+// MonitorPoint is the GORM model for the sys_monitor_point table. It unifies
 // active probing (prober) and passive receiving (listener) configurations
 // into a single persisted entity distinguished by the Mode field.
 //
@@ -159,7 +159,7 @@ type MonitorPoint struct {
 }
 
 // TableName returns the database table name for MonitorPoint.
-func (MonitorPoint) TableName() string { return "monitor_points" }
+func (MonitorPoint) TableName() string { return "sys_monitor_point" }
 
 // ConfigJSON returns the point's config marshalled to the JSON string
 // form consumed by the executor SPI (task.Task.Config, executor config
@@ -243,13 +243,13 @@ type Template struct {
 	// ID is the unique identifier of the template.
 	ID int64 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	// Name is the template name, unique across all templates.
-	Name string `gorm:"column:name;type:varchar(128);not null;uniqueIndex" json:"name"`
+	Name string `gorm:"column:name;size:128;not null;uniqueIndex" json:"name"`
 	// Description is the human-readable description of the template.
-	Description string `gorm:"column:description;type:varchar(512)" json:"description"`
+	Description string `gorm:"column:description;size:512" json:"description"`
 	// Category classifies the template (e.g. "network", "web", "database").
-	Category string `gorm:"column:category;type:varchar(64);index" json:"category"`
+	Category string `gorm:"column:category;size:64;index" json:"category"`
 	// ExecutorType is the probe/executor type: icmp, tcp, http, dns, etc.
-	ExecutorType string `gorm:"column:executor_type;type:varchar(32);not null" json:"executor_type"`
+	ExecutorType string `gorm:"column:executor_type;size:32;not null" json:"executor_type"`
 	// Config is the JSON-encoded monitoring point configuration.
 	Config string `gorm:"column:config;type:text;not null" json:"config"`
 	// IsBuiltin marks system-seeded templates. Built-in templates are

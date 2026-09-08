@@ -23,15 +23,15 @@ type Asset struct {
 	// The runtime injects the actual tenant ID via the store layer.
 	//
 	// Together with AssetKey it forms a composite unique index
-	// (idx_assets_tenant_key) so that duplicate asset keys within the same
-	// tenant are rejected at the database level with a unique-constraint
+	// (idx_sys_asset_tenant_key) so that duplicate asset keys within the
+	// same tenant are rejected at the database level with a unique-constraint
 	// violation, which the store layer maps to errdefs.ErrConflict.
-	TenantID int64 `json:"-" gorm:"column:tenant_id;not null;uniqueIndex:idx_assets_tenant_key,priority:1"`
+	TenantID int64 `json:"-" gorm:"column:tenant_id;not null;uniqueIndex:idx_sys_asset_tenant_key,priority:1"`
 	// AssetType categorizes the asset.
 	AssetType types.AssetType `json:"asset_type" gorm:"column:asset_type;not null"`
 	// AssetKey is the tenant-unique identifier for the asset. It is the
-	// second column of the composite unique index idx_assets_tenant_key.
-	AssetKey string `json:"asset_key" gorm:"column:asset_key;not null;uniqueIndex:idx_assets_tenant_key,priority:2"`
+	// second column of the composite unique index idx_sys_asset_tenant_key.
+	AssetKey string `json:"asset_key" gorm:"column:asset_key;not null;uniqueIndex:idx_sys_asset_tenant_key,priority:2"`
 	// Name is the human-readable asset name.
 	Name string `json:"name" gorm:"column:name"`
 	// Status is the current asset status.
@@ -45,6 +45,9 @@ type Asset struct {
 	// UpdatedAt is the last update timestamp.
 	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at;autoUpdateTime"`
 }
+
+// TableName returns the database table name for Asset.
+func (Asset) TableName() string { return "sys_asset" }
 
 // BuiltInMetadataKeys defines the preset metadata keys that the system
 // recognizes as advisory labels for the Asset.Metadata JSON field.

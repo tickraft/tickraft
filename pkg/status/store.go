@@ -23,9 +23,9 @@ import (
 type statusConfig struct {
 	ID int64 `gorm:"primaryKey;autoIncrement:false"`
 	// Title is the page title.
-	Title string `gorm:"column:title;type:varchar(255);not null;default:'Service Status'"`
+	Title string `gorm:"column:title;size:255;not null;default:'Service Status'"`
 	// Description is the optional page subtitle.
-	Description string `gorm:"column:description;type:varchar(1024);not null;default:''"`
+	Description string `gorm:"column:description;size:1024;not null;default:''"`
 	// Enabled controls whether the public page is served.
 	Enabled bool `gorm:"column:enabled;not null;default:false"`
 	// ComponentsJSON is the serialized component map ([]Component).

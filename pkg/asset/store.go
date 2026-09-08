@@ -19,7 +19,7 @@ import (
 )
 
 // store implements Store backed by a GORM database connection. It persists
-// Asset entities to the "assets" table using GORM's default naming
+// Asset entities to the sys_asset table using the explicit
 // convention.
 type store struct {
 	dbc *gorm.DB

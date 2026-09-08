@@ -90,7 +90,7 @@ pkg/prism/alert       pkg/prism/remediation   pkg/executor(runner)
 +规则引擎+规则存储
 AlertEnv 求值环境       RemediationEnv 求值环境   ExecutionEnv 求值环境
 sys_prism_alert_rule   sys_prism_remediation_rule  执行器配置 JSON 的可选 expression 键
-                       expression = 触发条件        (monitor_points.config /
+                       expression = 触发条件        (sys_monitor_point.config /
                                                    remediation executor_config)
 ```
 
@@ -202,7 +202,7 @@ tickraft-x 当前对 `pkg/prism/rule` 的引用面（7 个文件，随 2.2 的�
 |---|---|---|
 | `sys_prism_alert_rule.expression` | `expression` | 告警规则表达式（何时产生告警） |
 | `sys_prism_remediation_rule.expression` | `expression` | 自愈触发条件（何时触发自愈；原 `condition_expr` 改名统一） |
-| 执行器配置 JSON 可选键 | `"expression"` | 执行结果判定（执行怎样算成功；空/缺省 = 协议默认语义）——随执行器配置走：`sys_prism_remediation_rule.executor_config` 与 `monitor_points.config` 内 |
+| 执行器配置 JSON 可选键 | `"expression"` | 执行结果判定（执行怎样算成功；空/缺省 = 协议默认语义）——随执行器配置走：`sys_prism_remediation_rule.executor_config` 与 `sys_monitor_point.config` 内 |
 | Metadata 传递 key | `"expression"` | 执行链上的透传键 |
 | API / 前端字段 | `expression` | 与列名/键名一致 |
 
@@ -507,7 +507,7 @@ if result.Status != normal { retry... }        // 现有重试逻辑，用户语
 执行判定表达式统一存放在**执行器配置 JSON 的可选 `expression` 键**，由构造 `ExecutionRequest` 的装配方提取后经 Metadata 透传：
 
 ```text
-monitor_points.config 的 "expression" 键
+sys_monitor_point.config 的 "expression" 键
   → telemetry/prober_service.pointToProbeTask 从 config JSON 提取，塞 task.Metadata["expression"]
     → task 触发发布 TypeExecutionTriggered（event.WithMetadata）
       → runner.dispatch 组装 ExecutionRequest.Metadata（现有通道，与 max_retries 同模式）
@@ -535,7 +535,7 @@ sys_prism_remediation_rule.executor_config 的 "expression" 键
 | `sys_prism_rule` | **改名 `sys_prism_alert_rule`**，删 `scene` 列 |
 | `sys_prism_record` | **改名 `sys_prism_alert_record`**（对称命名） |
 | `sys_prism_remediation_rule` | `condition_expr` 列**改名 `expression`**（触发条件语义统一，见 3.5）；+ `consecutive_failures` 列；`metadata` JSON 中的计数字段废弃；执行判定走 `executor_config` JSON 可选键，无列变更 |
-| `monitor_points` | **无列变更**：执行判定为 `config` JSON 的可选 `expression` 键 |
+| `sys_monitor_point` | **无列变更**：执行判定为 `config` JSON 的可选 `expression` 键 |
 | `sys_remediation_rule` / `sys_remediation_record` | 遗留孤儿表，**显式 DROP** |
 
 ### 7.2 DDL 草案（SQLite 方言；实际由 GORM AutoMigrate 生成，此处为契约说明）

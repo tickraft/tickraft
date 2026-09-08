@@ -187,7 +187,7 @@ var taskWriteColumns = []string{
 }
 
 // executionStore is the GORM-backed implementation of ExecutionStore. It
-// persists task execution history to the sys_schedule_log table.
+// persists task execution history to the sys_schedule_execution table.
 type executionStore struct {
 	dbc *gorm.DB
 }
@@ -197,7 +197,7 @@ func NewExecutionStore(dbc *gorm.DB) ExecutionStore {
 	return &executionStore{dbc: dbc}
 }
 
-// Migrate creates or updates the sys_schedule_log table schema.
+// Migrate creates or updates the sys_schedule_execution table schema.
 func (s *executionStore) Migrate(ctx context.Context) error {
 	if err := s.dbc.WithContext(ctx).AutoMigrate(&Execution{}); err != nil {
 		return fmt.Errorf("task: migrate execution table: %w", err)
@@ -308,7 +308,7 @@ func (s *executionStore) DeleteExecutionsOlderThan(ctx context.Context, before t
 
 // Stats returns aggregated execution statistics for the given time range.
 // A positive taskID scopes the aggregation to that task's executions; zero
-// aggregates across all tasks. The query scans the sys_schedule_log table
+// aggregates across all tasks. The query scans the sys_schedule_execution table
 // filtering by created_at between [from, to] (inclusive) and computes:
 //   - TotalExecutions: total row count in the range
 //   - SuccessCount: rows whose status is StatusSuccess
@@ -403,7 +403,7 @@ func (s *executionStore) StatsByDay(ctx context.Context, from, to time.Time, tas
 // Compile-time assertion that executionStore implements ExecutionStore.
 var _ ExecutionStore = (*executionStore)(nil)
 
-// Migrate creates or updates the sys_schedule_task and sys_schedule_log
+// Migrate creates or updates the sys_schedule_task and sys_schedule_execution
 // table schemas. It is intended to be called once during application startup.
 func Migrate(ctx context.Context, dbc *gorm.DB) error {
 	if err := dbc.WithContext(ctx).AutoMigrate(
@@ -422,7 +422,7 @@ func Migrate(ctx context.Context, dbc *gorm.DB) error {
 // executor.RecordStore.Save(ctx, record); the scheduler's persistent
 // ExecutionStore exposes Save(ctx, *Execution) instead. This adapter bridges
 // the two so that real execution results (Status, Output, Error, Duration,
-// StatusCode, FinishedAt) flow into the same sys_schedule_log table that
+// StatusCode, FinishedAt) flow into the same sys_schedule_execution table that
 // ListExecutions reads from. The asset-status vocabulary carried on
 // executor records is translated to the persisted execution vocabulary
 // here — this is the single bridge between the two.

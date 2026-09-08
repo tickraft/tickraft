@@ -42,7 +42,7 @@ func proberTaskID(pointID int64) int64 {
 type ProberService struct {
 	sched task.TaskEngine
 	// store persists and queries monitoring points backed by the
-	// monitor_points table.
+	// sys_monitor_point table.
 	store  *MonitorStore
 	logger *zap.Logger
 }

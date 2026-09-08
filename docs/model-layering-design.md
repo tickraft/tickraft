@@ -288,7 +288,7 @@ handler wire   pkg/api/handler/task/types.go   Task(:13-32) / Execution(:44-61)
     ↕  converter.go 274 lines: DomainTaskToHandler(:70) / HandlerToDomainTask(:104) / DomainExecutionToHandler(:171) + 5 helpers
 domain struct  pkg/task/model.go               Task(:126-164) / Execution(:169-210) — pure data, no gorm tags, no behavior methods
     ↕  ToTask(model.go:60) / taskToModel(store.go:177) / ToExecution(:132) / ExecutionToModel(:158)
-GORM model     pkg/task/model.go               ScheduleTask(sys_schedule_task,:21-54) / ScheduleLog(sys_schedule_log,:100-129)
+GORM model     pkg/task/model.go               ScheduleTask(sys_schedule_task,:21-54) / ScheduleLog(sys_schedule_execution,:100-129)
 ```
 
 Re-review evidence that overturned the initial verdict:
@@ -308,7 +308,7 @@ Verified pain points (all disappear after the merge, evidence pinned):
 
 #### 5.4.2 Goal: Converge into a Single Dual-Tag Model
 
-`pkg/task.Task` doubles as the GORM model (table name still `sys_schedule_task`, absorbing all ScheduleTask columns); `pkg/task.Execution` absorbs ScheduleLog (table name still `sys_schedule_log`, with the `Error` field keeping the column name via `gorm:"column:error_msg"` and the wire key still `error`). `pkg/api/handler/task` keeps only: the Service interface (signatures switch to `*task.Task/*task.Execution`, staying importable by x), route handlers binding the model directly (gin binding ignores `json:"-"`, preventing mass-assignment), `Filter/ExecutionFilter/ExecutionStats` (query parameters and cross-row aggregates, not model copies), and `copyTaskRequest`.
+`pkg/task.Task` doubles as the GORM model (table name still `sys_schedule_task`, absorbing all ScheduleTask columns); `pkg/task.Execution` absorbs ScheduleLog (table name still `sys_schedule_execution`, with the `Error` field keeping the column name via `gorm:"column:error_msg"` and the wire key still `error`). `pkg/api/handler/task` keeps only: the Service interface (signatures switch to `*task.Task/*task.Execution`, staying importable by x), route handlers binding the model directly (gin binding ignores `json:"-"`, preventing mass-assignment), `Filter/ExecutionFilter/ExecutionStats` (query parameters and cross-row aggregates, not model copies), and `copyTaskRequest`.
 
 **Task field table**:
 
@@ -406,7 +406,7 @@ CE goes first (model → engine → store → service → handler → web → Op
 
 The design has been implemented as decided above, and both repos passed all acceptance gates (CE full test suite + lint + red-line; x build/test across the three build-tag sets + lint zero warnings). Deviations from the design draft and landing details:
 
-- **Location of the vocabulary bridge**: the only bridge from the asset vocabulary to the storage vocabulary is `task.ExecutionStatusFromAsset` (pkg/task/model.go:66; normal→success, abnormal→failed, everything else→unknown). The executor Result and completion events still use the asset vocabulary (AssetStatus) and are never persisted; `sys_schedule_log.status` stores only the API vocabulary. The x repo's remediation skip records keep the x-specific `skipped` marker (in neither vocabulary; list queries filter it out via `status IN (success, failed)`, with the semantics carried by the skip_reason column); the x grpc external channel's `trigger_type=external` is likewise an x-specific value and is kept.
+- **Location of the vocabulary bridge**: the only bridge from the asset vocabulary to the storage vocabulary is `task.ExecutionStatusFromAsset` (pkg/task/model.go:66; normal→success, abnormal→failed, everything else→unknown). The executor Result and completion events still use the asset vocabulary (AssetStatus) and are never persisted; `sys_schedule_execution.status` stores only the API vocabulary. The x repo's remediation skip records keep the x-specific `skipped` marker (in neither vocabulary; list queries filter it out via `status IN (success, failed)`, with the semantics carried by the skip_reason column); the x grpc external channel's `trigger_type=external` is likewise an x-specific value and is kept.
 - **Landed shape of schedule parsing**: the design draft's "ParseSchedule consolidation" landed as `task.ClassifySchedule` (exported, for validation/classification, pkg/task/schedule.go:20) plus the package-private `parseSchedule` (for engine population). The semantics match the design: `""` is event-driven, a Go duration is a fixed interval, everything else parses as cron; the `once` type was deleted (the x repo's once unit tests went with it).
 - **Event payload field renames** (pkg/event.ExecutionPayload): `Timeout` (bare nanosecond int) → `TimeoutSeconds`, added `MaxRetries`/`RetryIntervalSeconds`, `Config` changed from map to a sonic-serialized string, and `Action` carries `Operation.String()` (the x repo's previously hardcoded "triggered" aligned as well). The runner's retry has had a real data source since then; the retry chain is revived.
 - **Enabled-gating fix**: the x repo bridge's `isTaskEnabled` changed from "missing metadata counts as enabled" to reading the `Enabled` column directly — the implicit default-on-when-metadata-is-absent semantics disappeared along with the field promotion, and tasks not explicitly enabled are no longer scheduled.
@@ -438,7 +438,7 @@ The response field sets and names for remediation, channel, system, auth, and te
 
 - **Breaking**: the Task wire key `executor` → `executor_type` (unified with the Execution side and the column name, 5.4.3-D4); the `config.timeout` reserved-key semantics are deleted (from now on a timeout inside config is ordinary executor config; the task timeout uses the top-level `timeout` field, D2); the execution status `unknown` no longer collapses to `failed` for display (emitted verbatim, D1).
 - **Incremental exposure (optional fields)**: Task gains top-level `timeout` (seconds), `max_retries`, and `retry_interval` (seconds).
-- **Storage vocabulary replacement** (transparent to API callers): `sys_schedule_log.status` now stores `success/failed/running/unknown` (formerly `normal/abnormal/triggered`); both repos are unreleased, so no data migration — dev databases are rebuilt.
+- **Storage vocabulary replacement** (transparent to API callers): `sys_schedule_execution.status` now stores `success/failed/running/unknown` (formerly `normal/abnormal/triggered`); both repos are unreleased, so no data migration — dev databases are rebuilt.
 - **Unchanged**: the rest of Task's fields (`name/description/schedule/enabled/config shape/group/tags/run_id/retry_policy/concurrency/created_at/updated_at`), the rest of Execution's fields, and the pagination envelope all stay.
 
 ---

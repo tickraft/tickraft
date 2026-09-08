@@ -15,8 +15,8 @@ import "time"
 // is embedded into the storage row model below, so the wire shape and the
 // column shape are defined in one place.
 type Config struct {
-	LogLevel      string `json:"log_level" gorm:"column:log_level;type:varchar(20);not null;default:'info'"`
-	DefaultLang   string `json:"default_lang" gorm:"column:default_lang;type:varchar(20);not null;default:'zh-Hans'"`
+	LogLevel      string `json:"log_level" gorm:"column:log_level;size:20;not null;default:'info'"`
+	DefaultLang   string `json:"default_lang" gorm:"column:default_lang;size:20;not null;default:'zh-Hans'"`
 	RetentionDays int    `json:"retention_days" gorm:"column:retention_days;type:integer;not null;default:30"`
 }
 

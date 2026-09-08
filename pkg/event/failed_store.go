@@ -39,7 +39,7 @@ type FailedEvent struct {
 }
 
 // TableName returns the database table name for FailedEvent.
-func (FailedEvent) TableName() string { return "event_failed_events" }
+func (FailedEvent) TableName() string { return "sys_event_failed" }
 
 // failedEventStore implements FailedEventStore using a database
 // connection. It persists failed event envelopes so they survive process
