@@ -19,6 +19,11 @@ web/**/*.tsbuildinfo
 .DS_Store
 Thumbs.db
 
+# Runtime SQLite databases (never commit; they may embed credentials)
+*.db
+*.db-wal
+*.db-shm
+
 # Config
 config.yaml
 *.local
