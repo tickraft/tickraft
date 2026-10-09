@@ -7,6 +7,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import UpgradeBanner from '../../components/UpgradeBanner.vue'
+import QuotaHint from '../../components/QuotaHint.vue'
 import { useDashboardCharts } from './useCharts'
 import { formatDate, DataTable } from '@tickraft/core'
 import { getGlobalStats, getRuntimeInfo } from '../../../../api/system'
@@ -386,6 +387,9 @@ function selectRange(key: 'today' | '7d' | '30d'): void {
 
     <!-- Upgrade banner: promotes the professional edition (replaces scattered locked placeholders) -->
     <UpgradeBanner />
+
+    <!-- Quota near-limit hint: mild at 80%, strong at ceiling -->
+    <QuotaHint />
 
     <!-- Row 1 · Stat cards -->
     <section

@@ -139,7 +139,7 @@ func TestSecretRegistry_NonCredentialsNotRegistered(t *testing.T) {
 
 // newPointSecretListener builds a listener with the given registry and no
 // global secret, mirroring the wiring used by the API server.
-func newPointSecretListener(reg *SecretRegistry, ingest func(context.Context, *telemetry.Telemetry)) *Listener {
+func newPointSecretListener(reg *SecretRegistry, ingest func(context.Context, *telemetry.Telemetry) error) *Listener {
 	return New(
 		WithStore(newMockStore()),
 		WithSecretRegistry(reg),
@@ -190,7 +190,7 @@ func TestListener_PointSecret_MatchingAssetIDAccepted(t *testing.T) {
 func TestListener_PointSecret_AssetMismatchForbidden(t *testing.T) {
 	reg := NewSecretRegistry()
 	reg.SetPoint(passivePoint(1, 1, "point-secret", "hmac"))
-	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) {})
+	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) error { return nil })
 
 	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 999}})
 	sig := computeHMAC(body, "point-secret")
@@ -204,7 +204,7 @@ func TestListener_PointSecret_AssetMismatchForbidden(t *testing.T) {
 func TestListener_PointSecret_WrongSignatureRejected(t *testing.T) {
 	reg := NewSecretRegistry()
 	reg.SetPoint(passivePoint(1, 1, "point-secret", "hmac"))
-	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) {})
+	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) error { return nil })
 
 	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1}})
 	resp := mustPost(t, h.ReportHandler(), body, [2]string{"X-Tickraft-Signature", "deadbeef"})
@@ -301,7 +301,7 @@ func TestListener_PointSecret_PointIDHintNarrowsNoScan(t *testing.T) {
 	reg := NewSecretRegistry()
 	reg.SetPoint(passivePoint(1, 1, "point-one-secret", "hmac"))
 	reg.SetPoint(passivePoint(2, 2, "point-two-secret", "hmac"))
-	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) {})
+	h := newPointSecretListener(reg, func(_ context.Context, _ *telemetry.Telemetry) error { return nil })
 
 	body, _ := json.Marshal(telemetryRequest{Kind: "heartbeat", reportRequest: reportRequest{AssetID: 1}})
 	sig := computeHMAC(body, "point-one-secret")

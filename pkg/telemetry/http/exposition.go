@@ -7,6 +7,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"errors"
 	"mime"
 	nethttp "net/http"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
+	"go.uber.org/zap"
 
 	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/telemetry"
@@ -43,7 +45,7 @@ func (h *Listener) handleExposition(
 	r *nethttp.Request,
 	body []byte,
 	sigOwner *SecretOwner,
-	ingest func(context.Context, *telemetry.Telemetry),
+	ingest func(context.Context, *telemetry.Telemetry) error,
 ) {
 	if len(body) > maxMetricsBodySize {
 		nethttp.Error(w, "request body too large", nethttp.StatusRequestEntityTooLarge)
@@ -86,14 +88,29 @@ func (h *Listener) handleExposition(
 // push. Both the JSON and the exposition paths end here so the delivery
 // semantics cannot drift apart; quota is evaluated by each path before
 // calling it.
+//
+// The callback's error maps onto the response: an error wrapping
+// telemetry.ErrIngestRejected rejects the push with 429 (plus Retry-After)
+// so admission gates can apply backpressure, while any other error is
+// logged and the push still acknowledged — the kernel itself ingests
+// best-effort and has no rejection semantics of its own.
 func (h *Listener) accept(
 	ctx context.Context,
 	w nethttp.ResponseWriter,
 	report *telemetry.Telemetry,
-	ingest func(context.Context, *telemetry.Telemetry),
+	ingest func(context.Context, *telemetry.Telemetry) error,
 ) {
 	if ingest != nil {
-		ingest(ctx, report)
+		if err := ingest(ctx, report); err != nil {
+			if errors.Is(err, telemetry.ErrIngestRejected) {
+				w.Header().Set("Retry-After", "1")
+				nethttp.Error(w, "ingest rejected", nethttp.StatusTooManyRequests)
+				return
+			}
+			h.logger.Warn("http listener: ingest callback failed",
+				zap.Error(err),
+			)
+		}
 	}
 	w.WriteHeader(nethttp.StatusAccepted)
 }

@@ -53,6 +53,12 @@ type Store interface {
 	Count(ctx context.Context) (int64, error)
 	// Delete removes a task by its ID.
 	Delete(ctx context.Context, id int64) error
+	// AdvanceScheduleWatermark moves the task's last_scheduled_at
+	// watermark forward to at; a newer existing watermark is left
+	// untouched (the column is monotonic). It is the only writer of that
+	// column — Save never persists it — so a concurrent task update
+	// cannot regress the watermark.
+	AdvanceScheduleWatermark(ctx context.Context, id int64, at time.Time) error
 	// Migrate creates or updates the sys_schedule_task table schema.
 	Migrate(ctx context.Context) error
 }
@@ -96,7 +102,7 @@ type ExecutionQuery struct {
 	// ExecutorType filters by executor type; empty matches all.
 	ExecutorType string
 	// TriggerType filters by the trigger source ("schedule", "manual",
-	// "event"); empty matches all.
+	// "event", "external", "catchup"); empty matches all.
 	TriggerType string
 }
 
@@ -160,7 +166,8 @@ type ExecutionFilter struct {
 	ExecutorType string
 	// TaskName filters by a case-insensitive substring match on the task name.
 	TaskName string
-	// TriggerType filters by the trigger source (schedule, manual, event).
+	// TriggerType filters by the trigger source (schedule, manual, event,
+	// external, catchup).
 	TriggerType string
 }
 

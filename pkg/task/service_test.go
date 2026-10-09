@@ -8,16 +8,19 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/scheduler"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // ctx is a reusable background context for service-layer tests.
@@ -857,4 +860,225 @@ func TestSchedulerTaskService_ExecutorCapabilityGate(t *testing.T) {
 	if !errors.As(err, &se) || se.HTTPStatus() != http.StatusBadRequest {
 		t.Errorf("UpdateTask probe-only error: got %v, want 400 ServiceError", err)
 	}
+}
+
+// TestCreateTaskDependencyValidation covers the depends_on write-path
+// validation added with the depends_on JSON exposure: unknown upstream,
+// negative reference, cycle detection over rows that bypassed validation,
+// and the happy chain.
+func TestCreateTaskDependencyValidation(t *testing.T) {
+	svc, _, cleanup := setupSchedulerTaskService(t)
+	defer cleanup()
+
+	base, err := svc.CreateTask(ctx, &Task{
+		Name: "dep-base", ExecutorType: "http", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create base: %v", err)
+	}
+
+	t.Run("unknown upstream rejected", func(t *testing.T) {
+		_, err := svc.CreateTask(ctx, &Task{
+			Name: "dep-bad", ExecutorType: "http", Enabled: true, DependsOn: base.ID + 9999,
+		})
+		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
+	})
+
+	t.Run("negative reference rejected", func(t *testing.T) {
+		_, err := svc.CreateTask(ctx, &Task{
+			Name: "dep-neg", ExecutorType: "http", Enabled: true, DependsOn: -1,
+		})
+		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
+	})
+
+	t.Run("valid chain accepted", func(t *testing.T) {
+		mid, err := svc.CreateTask(ctx, &Task{
+			Name: "dep-mid", ExecutorType: "http", Enabled: true, DependsOn: base.ID,
+		})
+		if err != nil {
+			t.Fatalf("create mid: %v", err)
+		}
+		leaf, err := svc.CreateTask(ctx, &Task{
+			Name: "dep-leaf", ExecutorType: "http", Enabled: true, DependsOn: mid.ID,
+		})
+		if err != nil {
+			t.Fatalf("create leaf: %v", err)
+		}
+		if leaf.DependsOn != mid.ID || mid.DependsOn != base.ID {
+			t.Fatalf("chain not persisted: leaf=%d mid=%d base=%d", leaf.DependsOn, mid.DependsOn, base.ID)
+		}
+	})
+
+	t.Run("cycle via bypassed rows rejected", func(t *testing.T) {
+		// Build A <-> B directly through the store (rows that skipped
+		// create-time validation), then create through the service and
+		// expect the walk to detect the loop.
+		a, err := svc.CreateTask(ctx, &Task{Name: "cyc-a", ExecutorType: "http", Enabled: true})
+		if err != nil {
+			t.Fatalf("create a: %v", err)
+		}
+		b, err := svc.CreateTask(ctx, &Task{Name: "cyc-b", ExecutorType: "http", Enabled: true, DependsOn: a.ID})
+		if err != nil {
+			t.Fatalf("create b: %v", err)
+		}
+		a.DependsOn = b.ID
+		if err := svc.tasks.Save(ctx, a); err != nil {
+			t.Fatalf("bypass save a: %v", err)
+		}
+		_, err = svc.CreateTask(ctx, &Task{
+			Name: "cyc-c", ExecutorType: "http", Enabled: true, DependsOn: a.ID,
+		})
+		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
+	})
+}
+
+// setupSchedulerTaskServiceWithAssets extends the scheduler task fixture
+// with a migrated kernel asset store (sys_asset) wired into the service via
+// WithAssetGetter, so the create-time asset-binding validation runs against
+// real rows rather than a stub.
+func setupSchedulerTaskServiceWithAssets(t *testing.T) (*TaskService, asset.Store, func()) {
+	t.Helper()
+
+	gdb, err := db.Open(ctx, db.Config{Driver: "sqlite3", Addr: ":memory:"})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := Migrate(ctx, gdb); err != nil {
+		closeUnderlyingDB(t, gdb)
+		t.Fatalf("auto migrate: %v", err)
+	}
+	assets := asset.NewStore(gdb)
+	if err := assets.Migrate(ctx); err != nil {
+		closeUnderlyingDB(t, gdb)
+		t.Fatalf("migrate asset store: %v", err)
+	}
+
+	taskStore := NewStore(gdb)
+	execStore := NewExecutionStore(gdb)
+	eng, err := NewEngine(WithStore(taskStore), WithLogger(zap.NewNop()))
+	if err != nil {
+		closeUnderlyingDB(t, gdb)
+		t.Fatalf("create task manager: %v", err)
+	}
+	svc := NewTaskService(eng, taskStore, execStore, nil, zap.NewNop(), WithAssetGetter(assets))
+
+	cleanup := func() {
+		_ = eng.Stop(ctx)
+		closeUnderlyingDB(t, gdb)
+	}
+	return svc, assets, cleanup
+}
+
+// TestCreateTaskAssetValidation covers the create-time asset-binding
+// validation (spec asset.md §17, ALIGN-V3-011): an asset_id referencing a
+// missing asset row is rejected with 400 "asset_id references an unknown
+// asset"; a binding to an existing asset passes and persists; asset_id 0
+// keeps its "unbound" meaning and always passes; and the CopyTask path
+// (which re-creates the row through CreateTask carrying the source binding)
+// rejects a copy of a task whose asset has since been deleted.
+func TestCreateTaskAssetValidation(t *testing.T) {
+	svc, assets, cleanup := setupSchedulerTaskServiceWithAssets(t)
+	defer cleanup()
+
+	known := &asset.Asset{AssetType: types.AssetTypeHost, AssetKey: "host-1", Name: "host-1"}
+	if err := assets.Create(ctx, known); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+
+	t.Run("unknown asset rejected", func(t *testing.T) {
+		_, err := svc.CreateTask(ctx, &Task{
+			Name: "asset-bad", ExecutorType: "http", Enabled: true, AssetID: known.ID + 9999,
+		})
+		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
+		var ec errdefs.ErrorCoder
+		if !errors.As(err, &ec) || !strings.Contains(ec.Error(), "asset_id references an unknown asset") {
+			t.Fatalf("error message = %v, want unknown-asset wording", err)
+		}
+	})
+
+	t.Run("valid asset accepted", func(t *testing.T) {
+		created, err := svc.CreateTask(ctx, &Task{
+			Name: "asset-ok", ExecutorType: "http", Enabled: true, AssetID: known.ID,
+		})
+		if err != nil {
+			t.Fatalf("create bound task: %v", err)
+		}
+		if created.AssetID != known.ID {
+			t.Fatalf("binding not persisted: asset_id = %d, want %d", created.AssetID, known.ID)
+		}
+	})
+
+	t.Run("zero asset id means unbound", func(t *testing.T) {
+		// asset_id 0 is the "no binding" value of the optional-binding
+		// contract (the task API does not expose asset_id on the wire);
+		// it must stay creatable without any asset row existing.
+		created, err := svc.CreateTask(ctx, &Task{
+			Name: "asset-unbound", ExecutorType: "http", Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("create unbound task: %v", err)
+		}
+		if created.AssetID != 0 {
+			t.Fatalf("asset_id = %d, want 0", created.AssetID)
+		}
+	})
+
+	t.Run("copy of dangling binding rejected", func(t *testing.T) {
+		doomed := &asset.Asset{AssetType: types.AssetTypeHost, AssetKey: "host-2", Name: "host-2"}
+		if err := assets.Create(ctx, doomed); err != nil {
+			t.Fatalf("seed doomed asset: %v", err)
+		}
+		source, err := svc.CreateTask(ctx, &Task{
+			Name: "asset-doomed-src", ExecutorType: "http", Enabled: true, AssetID: doomed.ID,
+		})
+		if err != nil {
+			t.Fatalf("create source task: %v", err)
+		}
+		if err := assets.Delete(ctx, doomed.ID); err != nil {
+			t.Fatalf("delete doomed asset: %v", err)
+		}
+		// The source row keeps its now-dangling binding (delete does not
+		// cascade); copying it re-runs the create-time validation and must
+		// surface the unknown asset instead of cloning the dangling link.
+		_, err = svc.CopyTask(ctx, source.ID, "")
+		assertServiceErrorStatus(t, err, http.StatusBadRequest, errdefs.CodeBadRequest)
+	})
+
+	t.Run("nil getter skips validation", func(t *testing.T) {
+		// The default construction (no WithAssetGetter) leaves the check
+		// unwired, mirroring the nil-registry convention; a dangling
+		// binding must not fail isolated tests and legacy deployments.
+		svc, _, cleanup := setupSchedulerTaskService(t)
+		defer cleanup()
+		if _, err := svc.CreateTask(ctx, &Task{
+			Name: "asset-legacy", ExecutorType: "http", Enabled: true, AssetID: 9999,
+		}); err != nil {
+			t.Fatalf("unwired service must accept dangling binding: %v", err)
+		}
+	})
+}
+
+// TestCreateTaskAssetValidation_StoreErrorPropagation keeps the non-NotFound
+// branch honest: an asset store failure surfaces as a handler-level 500
+// rather than being swallowed into an unknown-asset 400.
+func TestCreateTaskAssetValidation_StoreErrorPropagation(t *testing.T) {
+	svc, _, cleanup := setupSchedulerTaskService(t)
+	defer cleanup()
+
+	failing := &failingAssetGetter{err: errors.New("boom")}
+	svc.assets = failing
+	_, err := svc.CreateTask(ctx, &Task{
+		Name: "asset-store-err", ExecutorType: "http", Enabled: true, AssetID: 7,
+	})
+	assertServiceErrorStatus(t, err, http.StatusInternalServerError, errdefs.CodeInternal)
+}
+
+// failingAssetGetter is an asset.Getter stub whose GetByID always fails
+// with the configured error.
+type failingAssetGetter struct {
+	err error
+}
+
+func (g *failingAssetGetter) GetByID(_ context.Context, _ int64) (*asset.Asset, error) {
+	return nil, g.err
 }

@@ -33,8 +33,14 @@ package quota
 
 // Type identifies a resource category subject to quota enforcement.
 //
-// Type values align with persisted quota records so callers can match
-// records against the policy without translation.
+// Type values are the canonical quota vocabulary: they align 1:1 with the
+// sys_quota resource_type row keys written by the professional edition
+// (licenseQuotasToMap), the billing tier JSON bundles, and the rate-limit
+// middleware lookups, so no translation layer exists between the in-memory
+// registry and persisted records. The unified values were adopted
+// 2026-09-09 (S2-e4); quota audit log lines written before that date use
+// the legacy names (team_member, scheduled_task, prober, probe_interval,
+// daily_events, concurrent_tasks, api_minute, api_daily, api_concurrent).
 type Type string
 
 // Asset-layer quota types.
@@ -47,22 +53,26 @@ const (
 	// TypeHost is the host asset quota type.
 	TypeHost Type = "host"
 	// TypeTeamMember is the team member quota type.
-	TypeTeamMember Type = "team_member"
+	TypeTeamMember Type = "member"
 	// TypeCustomField is the custom field quota type.
 	TypeCustomField Type = "custom_field"
+	// TypeContact is the notification-only contact quota type. Contacts
+	// carry no credentials and cannot log in; the quota bounds the contact
+	// directory size.
+	TypeContact Type = "contact"
 )
 
 // Config-layer quota types.
 const (
 	// TypeScheduledTask is the scheduled-task quota type (max task count).
-	TypeScheduledTask Type = "scheduled_task"
+	TypeScheduledTask Type = "task"
 	// TypeProber is the active prober quota type (ICMP/TCP/HTTP probes).
-	TypeProber Type = "prober"
+	TypeProber Type = "probe"
 	// TypeRemediation is the remediation task quota type.
 	TypeRemediation Type = "remediation"
 	// TypeProbeInterval is the minimum allowed probe interval in
 	// seconds.
-	TypeProbeInterval Type = "probe_interval"
+	TypeProbeInterval Type = "min_probe_interval"
 	// TypeScheduledTaskInterval is the minimum allowed scheduling interval
 	// for interval-based scheduled tasks, expressed in seconds.
 	TypeScheduledTaskInterval Type = "scheduled_task_interval"
@@ -71,7 +81,7 @@ const (
 // Runtime-layer quota types.
 const (
 	// TypeDailyEvents is the daily event ingestion quota type.
-	TypeDailyEvents Type = "daily_events"
+	TypeDailyEvents Type = "max_daily_telemetry"
 	// TypeIngestionMetricTPS is the per-second metric ingestion rate
 	// limit. This ceiling value is consumed by a separate rate-limiter
 	// component; the quota system itself does not perform TPS enforcement.
@@ -80,11 +90,11 @@ const (
 	// This ceiling value is consumed by a separate rate-limiter component.
 	TypeIngestionEventTPS Type = "ingestion_event_tps"
 	// TypeConcurrentTasks is the concurrent task execution quota type.
-	TypeConcurrentTasks Type = "concurrent_tasks"
+	TypeConcurrentTasks Type = "concurrent_task"
 	// TypeAPIMinute is the per-minute API call quota type.
-	TypeAPIMinute Type = "api_minute"
+	TypeAPIMinute Type = "api_per_min"
 	// TypeAPIDaily is the per-day API call quota type.
-	TypeAPIDaily Type = "api_daily"
+	TypeAPIDaily Type = "api_per_day"
 	// TypeAPIConcurrent is the concurrent API request quota type.
-	TypeAPIConcurrent Type = "api_concurrent"
+	TypeAPIConcurrent Type = "api_concurrent_request"
 )

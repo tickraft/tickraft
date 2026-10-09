@@ -143,7 +143,7 @@
       "durationHelp": "持续满足条件多长时间后触发告警（单位：秒，范围 5-3600）",
       "severity": "严重程度",
       "channels": "通知渠道",
-      "channelsHelp": "内核仅支持 webhook 渠道，其他渠道需通过扩展启用。",
+      "channelsHelp": "支持邮件、Webhook 及主流 IM（飞书/钉钉/企微/Slack/Discord/Telegram/Teams）共九类通知渠道。",
       "advanced": "高级配置",
       "enabled": "启用",
       "description": "描述",
@@ -690,5 +690,37 @@
       "teams": "Teams",
       "webhook": "Webhook"
     }
+  },
+  "contact": {
+    "list": {
+      "title": "通知联系人"
+    },
+    "listCount": "共 {count} 位联系人",
+    "searchPlaceholder": "搜索姓名、邮箱或手机号",
+    "create": "新建联系人",
+    "createTitle": "新建联系人",
+    "editTitle": "编辑联系人",
+    "name": "姓名",
+    "namePlaceholder": "请输入联系人姓名",
+    "nameRequired": "请填写联系人姓名",
+    "email": "邮箱",
+    "emailPlaceholder": "name{'@'}example.com",
+    "emailInvalid": "请输入有效的邮箱地址",
+    "phone": "手机号",
+    "phonePlaceholder": "用于短信/语音告警的手机号",
+    "remark": "备注",
+    "remarkPlaceholder": "可选备注（最长 255 字符）",
+    "channelRequired": "邮箱与手机号至少填写一项",
+    "dialogHint": "联系人为纯通知账号：只接收告警，不能登录系统。",
+    "createdAt": "创建时间",
+    "quotaExceeded": "当前版本的联系人数量已达上限，可删除闲置联系人或升级版本。",
+    "loadFailed": "加载联系人失败",
+    "saveFailed": "保存联系人失败",
+    "createSuccess": "联系人已创建",
+    "updateSuccess": "联系人已更新",
+    "deleteSuccess": "联系人已删除",
+    "deleteFailed": "删除联系人失败",
+    "deleteTitle": "删除联系人",
+    "deleteConfirmDesc": "确定删除联系人「{name}」吗？指向该联系人的通知将停止发送。"
   }
 }

@@ -151,7 +151,7 @@ type Listener struct {
 	secret     string
 	registry   *SecretRegistry
 	store      asset.Store
-	ingest     func(context.Context, *telemetry.Telemetry)
+	ingest     func(context.Context, *telemetry.Telemetry) error
 	taskReport telemetry.TaskReportCallback
 	logger     *zap.Logger
 	counter    *DailyEventCounter
@@ -202,15 +202,18 @@ func WithStore(store asset.Store) Option { return storeOption{store: store} }
 // ingestOption sets the ingest callback that forwards parsed Telemetry
 // values to the telemetry pipeline.
 type ingestOption struct {
-	ingest func(context.Context, *telemetry.Telemetry)
+	ingest func(context.Context, *telemetry.Telemetry) error
 }
 
 func (o ingestOption) apply(h *Listener) { h.ingest = o.ingest }
 
 // WithIngest sets the ingest callback that forwards parsed Telemetry values to
 // the telemetry pipeline. It must be called before the handler methods are
-// invoked; the API router typically sets it during route registration.
-func WithIngest(ingest func(context.Context, *telemetry.Telemetry)) Option {
+// invoked; the API router typically sets it during route registration. The
+// callback signals admission rejections by returning an error wrapping
+// telemetry.ErrIngestRejected, which the listener answers with 429; any other
+// error is logged and the report is still acknowledged (best-effort ingest).
+func WithIngest(ingest func(context.Context, *telemetry.Telemetry) error) Option {
 	return ingestOption{ingest}
 }
 
@@ -265,7 +268,7 @@ func (h *Listener) Type() string { return webhookListenerType }
 //
 // The API router mounts this handler directly on the telemetry endpoint;
 // the ReportHandler method delegates here with the WithIngest callback.
-func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry)) nethttp.HandlerFunc {
+func (h *Listener) Handler(ingest func(context.Context, *telemetry.Telemetry) error) nethttp.HandlerFunc {
 	return func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		if r.Method != nethttp.MethodPost {
 			nethttp.Error(w, "method not allowed", nethttp.StatusMethodNotAllowed)

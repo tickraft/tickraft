@@ -12,9 +12,11 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/certificates"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
+	quotaapi "github.com/tickraft/tickraft/pkg/api/handler/quota"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryapi "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	"github.com/tickraft/tickraft/pkg/api/handler/ws"
+	"github.com/tickraft/tickraft/pkg/contact"
 	executorpkg "github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
@@ -42,6 +44,7 @@ type routeConfig struct {
 	taskSvc                task.Service
 	alertSvc               alert.Service
 	channelSvc             channel.Service
+	contactSvc             contact.Service
 	remediationRuleSvc     remediation.Service
 	systemSvc              system.Service
 	telemetrySvc           telemetry.Service
@@ -58,6 +61,7 @@ type routeConfig struct {
 	wsHandler              *ws.Handler
 	executorRegistry       *executorpkg.Registry
 	statusSvc              status.Service
+	quotaUsageHandler      *quotaapi.Handler
 }
 
 // jwtAuthOption provides the JWT authentication middleware.
@@ -127,6 +131,22 @@ func (o channelServiceOption) apply(c *routeConfig) { c.channelSvc = o.svc }
 // assemblies always inject the DB-backed one).
 func WithChannelService(svc channel.Service) RouteOption {
 	return channelServiceOption{svc: svc}
+}
+
+// contactServiceOption provides the Service implementation for the
+// notification-only contact directory handlers.
+type contactServiceOption struct {
+	svc contact.Service
+}
+
+func (o contactServiceOption) apply(c *routeConfig) { c.contactSvc = o.svc }
+
+// WithContactService provides the Service implementation for the contact
+// directory handlers at /api/v1/contacts. When omitted, the contact route
+// group is not registered (multi-tenant editions may inject their own
+// tenant-scoped implementation).
+func WithContactService(svc contact.Service) RouteOption {
+	return contactServiceOption{svc: svc}
 }
 
 // remediationRuleServiceOption provides the Service implementation for
@@ -342,4 +362,17 @@ func (o statusServiceOption) apply(c *routeConfig) { c.statusSvc = o.svc }
 // omitted, the status route group is not registered.
 func WithStatusService(svc status.Service) RouteOption {
 	return statusServiceOption{svc: svc}
+}
+
+// quotaUsageHandlerOption provides the quota usage aggregate handler.
+type quotaUsageHandlerOption struct {
+	h *quotaapi.Handler
+}
+
+func (o quotaUsageHandlerOption) apply(c *routeConfig) { c.quotaUsageHandler = o.h }
+
+// WithQuotaUsageHandler provides the handler for GET /api/v1/quota/usage.
+// When not provided, the quota route group is not registered.
+func WithQuotaUsageHandler(h *quotaapi.Handler) RouteOption {
+	return quotaUsageHandlerOption{h: h}
 }

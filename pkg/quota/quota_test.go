@@ -10,6 +10,9 @@ import (
 )
 
 func TestTypeConstants(t *testing.T) {
+	// The want values are the canonical quota vocabulary (sys_quota
+	// resource_type row keys / plan JSON keys), unified 2026-09-09
+	// (S2-e4). This table pins the constants to that vocabulary.
 	tests := []struct {
 		name string
 		t    Type
@@ -18,20 +21,21 @@ func TestTypeConstants(t *testing.T) {
 		{"TypeAsset", TypeAsset, "asset"},
 		{"TypeDevice", TypeDevice, "device"},
 		{"TypeHost", TypeHost, "host"},
-		{"TypeTeamMember", TypeTeamMember, "team_member"},
+		{"TypeTeamMember", TypeTeamMember, "member"},
 		{"TypeCustomField", TypeCustomField, "custom_field"},
-		{"TypeScheduledTask", TypeScheduledTask, "scheduled_task"},
-		{"TypeProber", TypeProber, "prober"},
+		{"TypeContact", TypeContact, "contact"},
+		{"TypeScheduledTask", TypeScheduledTask, "task"},
+		{"TypeProber", TypeProber, "probe"},
 		{"TypeRemediation", TypeRemediation, "remediation"},
-		{"TypeProbeInterval", TypeProbeInterval, "probe_interval"},
+		{"TypeProbeInterval", TypeProbeInterval, "min_probe_interval"},
 		{"TypeScheduledTaskInterval", TypeScheduledTaskInterval, "scheduled_task_interval"},
-		{"TypeDailyEvents", TypeDailyEvents, "daily_events"},
+		{"TypeDailyEvents", TypeDailyEvents, "max_daily_telemetry"},
 		{"TypeIngestionMetricTPS", TypeIngestionMetricTPS, "ingestion_metric_tps"},
 		{"TypeIngestionEventTPS", TypeIngestionEventTPS, "ingestion_event_tps"},
-		{"TypeConcurrentTasks", TypeConcurrentTasks, "concurrent_tasks"},
-		{"TypeAPIMinute", TypeAPIMinute, "api_minute"},
-		{"TypeAPIDaily", TypeAPIDaily, "api_daily"},
-		{"TypeAPIConcurrent", TypeAPIConcurrent, "api_concurrent"},
+		{"TypeConcurrentTasks", TypeConcurrentTasks, "concurrent_task"},
+		{"TypeAPIMinute", TypeAPIMinute, "api_per_min"},
+		{"TypeAPIDaily", TypeAPIDaily, "api_per_day"},
+		{"TypeAPIConcurrent", TypeAPIConcurrent, "api_concurrent_request"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

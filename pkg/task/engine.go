@@ -254,6 +254,11 @@ type Engine struct {
 // the wheel; they start running when resumed (Resume or an update with
 // Enabled=true).
 func (e *Engine) Register(ctx context.Context, task Task) error {
+	// Direct engine callers (the telemetry prober's synthetic tasks) do
+	// not go through the service's normalization; absent means skip.
+	if task.CatchupPolicy == "" {
+		task.CatchupPolicy = CatchupPolicySkip
+	}
 	scheduleType, interval, err := ClassifySchedule(task.Schedule)
 	if err != nil {
 		return fmt.Errorf("register task %d: %w", task.ID, err)
@@ -428,6 +433,11 @@ func (e *Engine) Resume(taskID int64) error {
 	task.Enabled = true
 	e.setTask(task)
 
+	// The watermark did not advance while the task was paused; replay the
+	// missed slots per the task's catch-up policy (event tasks have no
+	// slots and no-op inside runCatchup).
+	e.runCatchup(context.Background(), task, time.Now())
+
 	e.logger.Info("task resumed",
 		zap.Int64("task_id", taskID),
 	)
@@ -454,13 +464,14 @@ func (e *Engine) Stop(ctx context.Context) error {
 }
 
 // onFire is the callback invoked when a task's time wheel entry expires.
-// It retrieves the task, checks shard ownership and dependencies, publishes
-// an ExecutionTriggered event. The engine handles rescheduling automatically.
+// It retrieves the task and hands it to dispatchGated with the current
+// time as the slot. The engine handles rescheduling automatically.
 //
 // onFire is invoked directly by the engine on its own goroutine. A panic
 // here would crash the engine, so the callback is wrapped with a deferred
 // recovery that logs the panic and stack trace via zap and returns.
 //
+// dispatchGated, runCatchup, and advanceWatermark live in catchup.go.
 // SubscribeEvents, handleStatusChange, trigger, and newRunID live in
 // events.go. Restore, getTask, setTask, deleteTask, and listTasks live in
 // persistence.go. ClassifySchedule and parseSchedule live in schedule.go.
@@ -481,17 +492,39 @@ func (e *Engine) onFire(taskID int64) {
 		return
 	}
 
-	if !e.shardManager.Owns(taskID) {
+	// The scheduling wheel callback has no upstream request; Background is
+	// the honest base here.
+	e.dispatchGated(context.Background(), task, time.Now(), TriggerTypeSchedule)
+}
+
+// dispatchGated runs the shared dispatch gates — shard ownership, sleep
+// window, dependency check, per-task concurrency claim — and publishes the
+// ExecutionTriggered event for the slot. It is the single dispatch entry
+// for regular wheel fires (slot = now) and catch-up replays (slot = the
+// missed slot's own time; the sleep window is evaluated at the slot time,
+// so a slot that would have been suppressed while the process was up is
+// not replayed either).
+//
+// A slot suppressed by a sleep window still advances the watermark: the
+// slot counts as consumed. Without this invariant, ending a window would
+// trigger a catch-up storm of everything the window suppressed.
+func (e *Engine) dispatchGated(ctx context.Context, task Task, slot time.Time, triggerType TriggerType) {
+	if !e.shardManager.Owns(task.ID) {
 		e.logger.Debug("task not owned by this shard, skipping",
-			zap.Int64("task_id", taskID),
+			zap.Int64("task_id", task.ID),
 		)
+		return
+	}
+
+	if InSleepWindow(task.SleepWindows, slot) {
+		e.advanceWatermark(task.ID, slot)
 		return
 	}
 
 	if task.DependsOn != 0 {
 		if !e.deps.CanExecute(task.DependsOn) {
 			e.logger.Warn("dependency not met, skipping task",
-				zap.Int64("task_id", taskID),
+				zap.Int64("task_id", task.ID),
 				zap.Int64("depends_on", task.DependsOn),
 				zap.String("skip_reason", ErrDependencyNotMet.Error()),
 			)
@@ -504,18 +537,16 @@ func (e *Engine) onFire(taskID int64) {
 	// TOCTOU race where two concurrent fires both observe "not running"
 	// and both proceed to trigger.
 	if task.Concurrency == 1 {
-		if !e.tryClaimRunning(taskID) {
+		if !e.tryClaimRunning(task.ID) {
 			e.logger.Warn("previous execution still running, skipping task",
-				zap.Int64("task_id", taskID),
+				zap.Int64("task_id", task.ID),
 				zap.String("skip_reason", ErrTaskRunning.Error()),
 			)
 			return
 		}
 	}
 
-	// The scheduling wheel callback has no upstream request; Background is
-	// the honest base here.
-	e.trigger(context.Background(), task, TriggerTypeSchedule)
+	e.trigger(ctx, task, triggerType)
 }
 
 // tryClaimRunning atomically checks whether the task is already running and,

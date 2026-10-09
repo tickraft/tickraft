@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/pagination"
 	"github.com/tickraft/tickraft/pkg/quota"
@@ -40,6 +41,7 @@ type PointDeleteHandler func(ctx context.Context, point MonitorPoint) error
 type TelemetryService struct {
 	store            *MonitorStore
 	logger           *zap.Logger
+	assets           asset.Getter
 	onPointUpsert    PointUpsertHandler
 	onPointDelete    PointDeleteHandler
 	validateExecutor func(executorType string) error
@@ -97,8 +99,23 @@ func (o probeTriggerOption) apply(s *TelemetryService) { s.probeNow = o.fn }
 // real probe through the prober scheduling engine. The natural wiring is
 // ProberService.ProbeNow.
 func WithProbeTrigger(fn func(ctx context.Context, pointID int64) error) ServiceOption {
-	return probeTriggerOption{fn}
+	return probeTriggerOption{fn: fn}
 }
+
+// assetGetterOption injects the asset read surface used by the create-time
+// asset-binding validation.
+type assetGetterOption struct {
+	g asset.Getter
+}
+
+func (o assetGetterOption) apply(s *TelemetryService) { s.assets = o.g }
+
+// WithAssetGetter injects the asset read surface used to validate the asset
+// binding of monitoring points on create and update (spec asset.md §17,
+// ALIGN-V3-011): a non-zero asset_id must resolve to an existing asset row.
+// A nil getter (the default) skips the check, which keeps isolated tests
+// unwired — the same convention as WithExecutorValidator.
+func WithAssetGetter(g asset.Getter) ServiceOption { return assetGetterOption{g: g} }
 
 // NewTelemetryService creates a database-backed telemetry Service from the given
 // MonitorStore. If logger is nil, a no-op logger is used.
@@ -157,6 +174,9 @@ func (s *TelemetryService) CreateMonitor(
 	if req == nil {
 		return nil, ErrInvalidRequest
 	}
+	if err := s.validateAssetBinding(ctx, req.AssetID); err != nil {
+		return nil, err
+	}
 	if err := s.checkProberQuotaForCreate(ctx, string(req.Mode)); err != nil {
 		return nil, err
 	}
@@ -210,6 +230,12 @@ func (s *TelemetryService) UpdateMonitor(
 		return nil, mapError(err)
 	}
 
+	// The request carries a full replacement shape, so the asset binding is
+	// validated on every update exactly as on create: a rebind to a missing
+	// asset row is rejected before any field is applied.
+	if err := s.validateAssetBinding(ctx, req.AssetID); err != nil {
+		return nil, err
+	}
 	if err := s.checkProberQuotaForUpdate(ctx, string(existing.Mode), string(req.Mode)); err != nil {
 		return nil, err
 	}
@@ -328,6 +354,28 @@ func (s *TelemetryService) Summary(ctx context.Context) (PointSummary, error) {
 }
 
 // --- Quota helpers ---
+
+// validateAssetBinding rejects an asset binding that references a missing
+// asset row on the monitor create and update paths (spec asset.md §17,
+// ALIGN-V3-011). Both modes validate: an active point's asset scopes its
+// probe-record attribution, a passive point's asset drives offline detection
+// and the history/logs endpoints. asset_id 0 means "unbound", which stays
+// valid per the optional-binding API contract (MonitorCreateRequest.asset_id
+// is nullable). A nil asset getter (unwired deployment or isolated test)
+// skips the check.
+func (s *TelemetryService) validateAssetBinding(ctx context.Context, assetID int64) error {
+	if assetID == 0 || s.assets == nil {
+		return nil
+	}
+	if _, err := s.assets.GetByID(ctx, assetID); err != nil {
+		if errors.Is(err, errdefs.ErrNotFound) {
+			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"asset_id references an unknown asset")
+		}
+		return mapError(err)
+	}
+	return nil
+}
 
 // checkProberQuotaForCreate returns an error when creating a point whose Mode
 // is "active" would exceed the TypeProber ceiling.

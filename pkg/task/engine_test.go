@@ -104,6 +104,24 @@ func (m *mockStore) Delete(_ context.Context, id int64) error {
 	return nil
 }
 
+// AdvanceScheduleWatermark mirrors the store contract: monotonic forward
+// movement of last_scheduled_at.
+func (m *mockStore) AdvanceScheduleWatermark(_ context.Context, id int64, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.tasks[id]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	if t.LastScheduledAt != nil && !t.LastScheduledAt.Before(at) {
+		return nil
+	}
+	cp := *t
+	cp.LastScheduledAt = &at
+	m.tasks[id] = &cp
+	return nil
+}
+
 // Migrate is a no-op for the in-memory mock store.
 func (m *mockStore) Migrate(_ context.Context) error { return nil }
 

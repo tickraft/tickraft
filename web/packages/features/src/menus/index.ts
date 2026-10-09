@@ -58,6 +58,7 @@ export const baseMenus: readonly MenuItem[] = [
       { path: '/prism/rule/list', title: 'prism.rule.list.title' },
       { path: '/prism/templates', title: 'prism.templates.title' },
       { path: '/prism/channel/list', title: 'prism.channel.list.title' },
+      { path: '/prism/contact/list', title: 'prism.contact.list.title' },
       { path: '/prism/remediation/rule/list', title: 'prism.remediation.rule.list.title' },
       { path: '/prism/remediation/records', title: 'prism.remediation.list.title' },
     ],

@@ -22,6 +22,12 @@ const (
 	CeilingScheduledTask = 20
 	// CeilingRemediation is the maximum number of remediation rules.
 	CeilingRemediation = 5
+	// CeilingContact is the maximum number of notification-only contacts
+	// in the directory (N4 decision, 2026-09-09).
+	CeilingContact = 2
+	// CeilingCustomField is the maximum number of custom metadata keys
+	// per asset beyond the preset labels (fb M3, 2026-09-09 S2-e3).
+	CeilingCustomField = 3
 	// CeilingProbeIntervalSeconds is the minimum allowed probe
 	// interval in seconds.
 	CeilingProbeIntervalSeconds = 60
@@ -39,6 +45,8 @@ var ceilings = map[quota.Type]int{
 	quota.TypeProber:                CeilingProber,
 	quota.TypeScheduledTask:         CeilingScheduledTask,
 	quota.TypeRemediation:           CeilingRemediation,
+	quota.TypeContact:               CeilingContact,
+	quota.TypeCustomField:           CeilingCustomField,
 	quota.TypeProbeInterval:         CeilingProbeIntervalSeconds,
 	quota.TypeScheduledTaskInterval: CeilingScheduledTaskIntervalSeconds,
 	quota.TypeDailyEvents:           CeilingDailyEvents,

@@ -122,6 +122,7 @@ func TestIntegrationCeilingAllTypesAfterRegister(t *testing.T) {
 		pkgquota.TypeProbeInterval:         CeilingProbeIntervalSeconds,
 		pkgquota.TypeScheduledTaskInterval: CeilingScheduledTaskIntervalSeconds,
 		pkgquota.TypeDailyEvents:           CeilingDailyEvents,
+		pkgquota.TypeCustomField:           CeilingCustomField,
 	}
 
 	for typ, want := range expected {
@@ -134,7 +135,6 @@ func TestIntegrationCeilingAllTypesAfterRegister(t *testing.T) {
 	unknownTypes := []pkgquota.Type{
 		pkgquota.TypeAsset,
 		pkgquota.TypeTeamMember,
-		pkgquota.TypeCustomField,
 		pkgquota.TypeIngestionMetricTPS,
 		pkgquota.TypeIngestionEventTPS,
 		pkgquota.TypeConcurrentTasks,

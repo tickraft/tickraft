@@ -33,6 +33,17 @@ const codeMessages: Record<number, string> = {
   50000: '服务器内部错误',
 }
 
+/**
+ * Guidance shown for count-ceiling rejections (409). Mentions both honest
+ * ways forward: the open-source build is recompilable with adjusted quotas,
+ * or a professional edition raises the ceilings (open-core strategy §6.2-1).
+ */
+const QUOTA_GUIDANCE
+  = '已达开源版配额上限。可重新编译源码调整配额，或了解专业版扩容：tickraft.io/editions'
+
+/** Matches backend ceiling rejections like "scheduled task quota exceeded: maximum 20 tasks". */
+const quotaPattern = /quota exceeded/
+
 /** zh-Hans copy for exact backend messages that appear frequently in the UI. */
 const messageOverrides: Record<string, string> = {
   'auth: unauthorized': '用户名或密码错误',
@@ -61,7 +72,7 @@ const messageOverrides: Record<string, string> = {
   'asset key already exists': '资产密钥已存在',
   'template not found': '模板不存在',
   'template name already exists': '模板名称已存在',
-  'quota exceeded': '配额已达上限',
+  'quota exceeded': QUOTA_GUIDANCE,
   'asset type not allowed in this edition': '该资产类型在当前版本不可用',
   'missing authorization header': '缺少认证信息',
   'missing token': '缺少令牌',
@@ -88,6 +99,8 @@ function formatField(field: string): string {
 export function localizeApiError(code: number | undefined, message: string): string {
   const exact = messageOverrides[message]
   if (exact) return exact
+
+  if (quotaPattern.test(message)) return QUOTA_GUIDANCE
 
   const required = message.match(requiredPattern)
   if (required) return `请填写${formatField(required[1])}`

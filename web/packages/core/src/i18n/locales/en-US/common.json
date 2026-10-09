@@ -159,7 +159,9 @@
   },
   "feature": {
     "locked": "This feature is not enabled",
-    "upgradeToUnlock": "Upgrade to unlock"
+    "upgradeToUnlock": "Upgrade to unlock",
+    "lockedHint": "\"{capability}\" is available in higher editions",
+    "viewEditions": "Compare editions"
   },
   "skipToMainContent": "Skip to main content",
   "layout": {

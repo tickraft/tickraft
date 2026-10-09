@@ -6,15 +6,19 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
 	"testing"
 
 	"go.uber.org/zap"
 
+	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -256,5 +260,63 @@ func TestParseExposition_SortsLabels(t *testing.T) {
 	}
 	if _, ok := metrics[`m{a="1",b="2"}`]; !ok {
 		t.Fatalf("labels not sorted into the key: %v", metrics)
+	}
+}
+
+// TestListener_Exposition_IngestErrorMapping pins the ingest error mapping on
+// the exposition push path, which shares accept with the JSON path: a wrapped
+// telemetry.ErrIngestRejected answers 429 with Retry-After, a non-sentinel
+// error keeps the 202, and a nil error keeps the plain 202.
+func TestListener_Exposition_IngestErrorMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		ingest     func(context.Context, *telemetry.Telemetry) error
+		wantStatus int
+		wantRetry  string
+	}{
+		{
+			name: "wrapped sentinel answers 429",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return fmt.Errorf("tps gate: %w", telemetry.ErrIngestRejected)
+			},
+			wantStatus: nethttp.StatusTooManyRequests,
+			wantRetry:  "1",
+		},
+		{
+			name: "non-sentinel error keeps 202",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return errors.New("pipeline hiccup")
+			},
+			wantStatus: nethttp.StatusAccepted,
+		},
+		{
+			name: "nil error keeps 202",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return nil
+			},
+			wantStatus: nethttp.StatusAccepted,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := New(
+				WithStore(newMockStore()),
+				WithIngest(tc.ingest),
+				WithLogger(zap.NewNop()),
+			)
+			resp := mustPostExposition(
+				t, h.ReportHandler(),
+				[]byte("# TYPE up gauge\nup 1\n"),
+				"asset_id=1",
+			)
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+			if got := resp.Header.Get("Retry-After"); got != tc.wantRetry {
+				t.Errorf("Retry-After = %q, want %q", got, tc.wantRetry)
+			}
+		})
 	}
 }

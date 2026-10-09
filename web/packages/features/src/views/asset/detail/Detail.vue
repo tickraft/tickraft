@@ -441,8 +441,8 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: var(--tk-spacing-xs);
-    margin: 0;
     padding: 0;
+    margin: 0;
     list-style: none;
 
     li {

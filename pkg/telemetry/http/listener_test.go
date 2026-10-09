@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -210,15 +212,16 @@ func mustPostTo(
 // captureIngest returns an ingest callback that stores the received telemetry
 // in a mutex-guarded variable for later assertion. The returned function
 // must be used as the ingest argument to WithIngest.
-func captureIngest() (ingest func(context.Context, *telemetry.Telemetry), peek func() *telemetry.Telemetry) {
+func captureIngest() (ingest func(context.Context, *telemetry.Telemetry) error, peek func() *telemetry.Telemetry) {
 	var (
 		mu  sync.Mutex
 		got *telemetry.Telemetry
 	)
-	ingest = func(_ context.Context, r *telemetry.Telemetry) {
+	ingest = func(_ context.Context, r *telemetry.Telemetry) error {
 		mu.Lock()
 		defer mu.Unlock()
 		got = r
+		return nil
 	}
 	peek = func() *telemetry.Telemetry {
 		mu.Lock()
@@ -789,5 +792,85 @@ func TestListener_TaskReport_CallbackIgnoresOtherKinds(t *testing.T) {
 	}
 	if ingestPeek() == nil {
 		t.Fatalf("ingest not called for a non-task kind")
+	}
+}
+
+// TestListener_IngestErrorMapping pins how the ingest callback's error maps
+// onto the response on the JSON path: an error wrapping telemetry.
+// ErrIngestRejected answers 429 with Retry-After (the admission-gate
+// backpressure channel), any other error is logged as a warning while the
+// push stays acknowledged (best-effort ingest), and a nil error (or no
+// callback at all) keeps the plain 202.
+func TestListener_IngestErrorMapping(t *testing.T) {
+	body, _ := json.Marshal(telemetryRequest{
+		Kind:          "heartbeat",
+		reportRequest: reportRequest{AssetID: 1, LogContent: "hello"},
+	})
+
+	cases := []struct {
+		name          string
+		ingest        func(context.Context, *telemetry.Telemetry) error
+		wantStatus    int
+		wantRetry     string
+		wantWarnEntry bool
+	}{
+		{
+			name: "wrapped sentinel answers 429",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return fmt.Errorf("tps gate: %w", telemetry.ErrIngestRejected)
+			},
+			wantStatus: nethttp.StatusTooManyRequests,
+			wantRetry:  "1",
+		},
+		{
+			name: "non-sentinel error keeps 202 and warns",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return errors.New("pipeline hiccup")
+			},
+			wantStatus:    nethttp.StatusAccepted,
+			wantWarnEntry: true,
+		},
+		{
+			name: "nil error keeps 202",
+			ingest: func(context.Context, *telemetry.Telemetry) error {
+				return nil
+			},
+			wantStatus: nethttp.StatusAccepted,
+		},
+		{
+			name:       "no callback keeps 202",
+			ingest:     nil,
+			wantStatus: nethttp.StatusAccepted,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			core, recorded := observer.New(zap.WarnLevel)
+			opts := []Option{
+				WithStore(newMockStore()),
+				WithLogger(zap.New(core)),
+			}
+			if tc.ingest != nil {
+				opts = append(opts, WithIngest(tc.ingest))
+			}
+			h := New(opts...)
+
+			resp := mustPost(t, h.ReportHandler(), body)
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+			if got := resp.Header.Get("Retry-After"); got != tc.wantRetry {
+				t.Errorf("Retry-After = %q, want %q", got, tc.wantRetry)
+			}
+			warns := recorded.FilterMessage("http listener: ingest callback failed").All()
+			if tc.wantWarnEntry && len(warns) != 1 {
+				t.Errorf("warning log entries = %d, want 1", len(warns))
+			}
+			if !tc.wantWarnEntry && len(warns) != 0 {
+				t.Errorf("warning log entries = %d, want 0", len(warns))
+			}
+		})
 	}
 }

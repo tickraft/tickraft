@@ -9,5 +9,17 @@
     "featureAuditLog": "操作审计日志",
     "featureMultiChannel": "邮件/短信/钉钉/飞书通知",
     "cta": "了解专业版"
+  },
+  "quota": {
+    "title": "配额使用提示",
+    "nearTitle": "以下资源即将达到当前版本配额上限：",
+    "fullTitle": "以下资源已达当前版本配额上限，新建操作将被拒绝：",
+    "typeDevice": "监控资产",
+    "typeProbe": "探测点",
+    "typeTask": "定时任务",
+    "typeRemediation": "自愈规则",
+    "typeContact": "通知联系人",
+    "viewEditions": "查看版本对比",
+    "dismiss": "7 天内不再提示"
   }
 }

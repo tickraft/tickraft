@@ -15,6 +15,7 @@ export { baseMenus } from './menus'
 export * as assetApi from './api/asset'
 export * as authApi from './api/auth'
 export * as channelApi from './api/channel'
+export * as contactApi from './api/contact'
 export * as prismApi from './api/prism'
 export * as statusApi from './api/status'
 export * as systemApi from './api/system'
@@ -31,6 +32,8 @@ export type {
   ScheduleType,
   ExecutorType,
   RetryPolicy,
+  CatchupPolicy,
+  SleepWindow,
   TaskModel,
   TaskCreateParams,
   TaskUpdateParams,

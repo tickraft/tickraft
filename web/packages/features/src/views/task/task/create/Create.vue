@@ -31,6 +31,8 @@ const initialData = reactive<TaskFormData>({
   reportStatus: false,
   retryPolicy: 'fixed',
   concurrency: 0,
+  catchupPolicy: 'skip',
+  sleepWindows: [],
   scheduleType: 'cron',
   cronExpr: '',
   interval: 60,

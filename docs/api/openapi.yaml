@@ -1,4 +1,4 @@
-# Version: 2.1.0 | Updated: 2026-09-07 | Status: active
+# Version: 2.3.0 | Updated: 2026-09-09 | Status: active
 #
 # Tickraft open-source repository OpenAPI specification
 # - Includes only routes actually registered in the open-source repository
@@ -9,7 +9,7 @@
 openapi: 3.0.3
 info:
   title: Tickraft Open API
-  version: 2.1.0
+  version: 2.4.0
   description: |
     Tickraft open-source edition REST API specification.
 
@@ -59,6 +59,8 @@ tags:
     description: "Public status page: aggregated component view and its configuration"
   - name: system
     description: "System settings module: manage global configuration and runtime information"
+  - name: quota
+    description: "Quota module: read-only usage aggregate for near-limit hints"
   - name: meta
     description: "Metadata endpoint: cluster health probe"
 
@@ -2430,6 +2432,166 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ---------------------------------------------------------------------------
+  # Contact (notification-only contact directory; registered when a
+  # ContactService is injected)
+  # ---------------------------------------------------------------------------
+  /api/v1/contacts:
+    get:
+      tags: [contact]
+      summary: Paginated list of notification-only contacts
+      description: |
+        Returns the notification-only contact directory. Contacts receive
+        alerts but hold no credentials and cannot log in.
+      operationId: listContacts
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/SizeQuery'
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring filter on name, email, or phone.
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageData'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Contact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [contact]
+      summary: Create a notification-only contact
+      description: |
+        Creates a contact in the notification-only directory. At least one
+        address (email or phone) must be supplied. Rejected with 409 when
+        the edition's contact quota is exhausted.
+      operationId: createContact
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+      responses:
+        '200':
+          description: Creation successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Contact quota reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/contacts/{id}:
+    get:
+      tags: [contact]
+      summary: Query a single contact
+      operationId: getContact
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Contact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [contact]
+      summary: Update a contact
+      operationId: updateContact
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [contact]
+      summary: Delete a contact
+      operationId: deleteContact
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
   # Prism - Remediation (registered when a RemediationRuleService is injected)
   # ---------------------------------------------------------------------------
   /api/v1/prism/remediation/rules:
@@ -2721,6 +2883,47 @@ paths:
                         $ref: '#/components/schemas/SystemInfo'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/quota/usage:
+    get:
+      tags: [quota]
+      summary: Get quota usage aggregate
+      description: |
+        Returns one row per count-based quota type with the current usage,
+        the ceiling from the active quota provider, and the used/ceiling
+        ratio. Ceilings of 0 mean unlimited (ratio 0). A source whose count
+        fails is logged and omitted so one unavailable store cannot hide
+        the other rows (warn-and-continue, same contract as the system
+        stats aggregate).
+
+        Counting basis mirrors the enforcement points: device assets by
+        type, active probing points, persisted user tasks (synthetic rows
+        excluded), remediation rules, and the contact directory.
+
+        Mounting condition: registered only when a quota usage handler is
+        injected via WithQuotaUsageHandler (see pkg/api/handler/quota and
+        internal/service/api.go). Requires the read permission.
+      operationId: getQuotaUsage
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/QuotaUsageItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/system/stats:
     get:
@@ -3405,6 +3608,30 @@ components:
         concurrency:
           type: integer
           description: Per-task concurrent execution limit (0 means unlimited, 1 forbids concurrent executions)
+        catchup_policy:
+          type: string
+          description: |
+            Catch-up policy for schedule slots missed while the task was
+            paused or the server was down (cron/interval schedules only):
+            `skip` (default) discards missed slots, `once` replays only the
+            latest missed slot, `all` replays all missed slots (server caps
+            at 10; dropped slots are logged). Replay executions carry
+            trigger_type=catchup. The extension repository gates writes of
+            non-skip values behind the task_catchup feature.
+          enum: [skip, once, all]
+        sleep_windows:
+          type: array
+          description: |
+            Recurring per-task dispatch suppression windows. A slot due
+            inside a window is consumed (suppressed, never replayed).
+            Times are strict HH:MM in the server's local timezone; end may
+            be 24:00 (full day); start > end crosses midnight and the
+            window belongs to its start weekday. Max 8 windows. The
+            extension repository gates non-empty writes behind the
+            schedule_sleep_window feature.
+          items:
+            $ref: '#/components/schemas/SleepWindow'
+          nullable: true
         report_status:
           type: boolean
           description: |
@@ -3487,10 +3714,50 @@ components:
         concurrency:
           type: integer
           description: Per-task concurrent execution limit (0 means unlimited, 1 forbids concurrent executions)
+        catchup_policy:
+          type: string
+          description: |
+            Catch-up policy for missed schedule slots (see
+            Task.catchup_policy). On update, omit to preserve the stored
+            policy; an explicit `skip` resets it.
+          enum: [skip, once, all]
+        sleep_windows:
+          type: array
+          description: |
+            Dispatch suppression windows (see Task.sleep_windows). On
+            update, omit (null) to preserve the stored windows; an empty
+            array clears them.
+          items:
+            $ref: '#/components/schemas/SleepWindow'
+          nullable: true
         report_status:
           type: boolean
           description: Enable remote task-status reporting (see
             Task.report_status). Supported for every executor type.
+
+    SleepWindow:
+      type: object
+      required: [start, end, days]
+      properties:
+        start:
+          type: string
+          description: Window start, strict HH:MM in the server's local timezone
+          example: "22:00"
+        end:
+          type: string
+          description: |
+            Window end, strict HH:MM; `24:00` means full day. A start later
+            than the end crosses midnight (the window belongs to its start
+            weekday).
+          example: "06:00"
+        days:
+          type: array
+          description: ISO weekdays the window applies to, 0 (Sunday) through 6 (Saturday); non-empty
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+          example: [1, 2, 3, 4, 5]
 
     TaskCopyRequest:
       type: object
@@ -4097,6 +4364,25 @@ components:
           format: double
           description: Average execution duration in milliseconds
 
+    QuotaUsageItem:
+      type: object
+      description: One row of the quota usage aggregate
+      properties:
+        type:
+          type: string
+          description: Count-based quota type (device/probe/task/remediation/contact)
+        used:
+          type: integer
+          format: int64
+          description: Current usage count
+        ceiling:
+          type: integer
+          description: Quota ceiling; 0 means unlimited
+        ratio:
+          type: number
+          format: double
+          description: used/ceiling; 0 when unlimited
+
     GlobalStats:
       type: object
       description: Global system statistics
@@ -4277,6 +4563,45 @@ components:
           description: Channel-type-specific configuration (JSON string).
         enabled:
           type: boolean
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Human-readable contact name.
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        remark:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ContactRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          description: Contact email address; at least one of email/phone is required.
+        phone:
+          type: string
+          description: Contact phone number; at least one of email/phone is required.
+        remark:
+          type: string
 
     RemediationRule:
       type: object

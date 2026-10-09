@@ -37,7 +37,11 @@ type HTTPListener interface {
 	// typically wired to telemetry.Collector.Submit by the caller.
 	// The handler must not close the ingest callback or retain it
 	// beyond the request lifetime.
-	Handler(ingest func(context.Context, *Telemetry)) http.HandlerFunc
+	//
+	// The callback reports rejections by returning an error wrapping
+	// ErrIngestRejected (mapped to 429) or a non-sentinel error (logged,
+	// best-effort ingest still acknowledged).
+	Handler(ingest func(context.Context, *Telemetry) error) http.HandlerFunc
 }
 
 // ProtocolListener is a passive telemetry listener that binds its own

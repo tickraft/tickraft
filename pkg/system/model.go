@@ -18,6 +18,11 @@ type Config struct {
 	LogLevel      string `json:"log_level" gorm:"column:log_level;size:20;not null;default:'info'"`
 	DefaultLang   string `json:"default_lang" gorm:"column:default_lang;size:20;not null;default:'zh-Hans'"`
 	RetentionDays int    `json:"retention_days" gorm:"column:retention_days;type:integer;not null;default:30"`
+	// NetworkEnvironment selects the deployment environment for
+	// notification rendering: internet (default, full interactive
+	// rendering) or isolated (plain-notification degrade). Values are
+	// constrained to the two enum words by UpdateConfig.
+	NetworkEnvironment string `json:"network_environment" gorm:"column:network_environment;not null;default:'internet'"`
 }
 
 // systemConfig is the GORM row model for the sys_config table. It stores

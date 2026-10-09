@@ -65,6 +65,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'prism.channel.list.title' },
       },
       {
+        path: 'contact/list',
+        name: 'PrismContactList',
+        component: () => import('../views/prism/contact/list/List.vue'),
+        meta: { title: 'prism.contact.list.title' },
+      },
+      {
         path: 'channel/form',
         name: 'PrismChannelCreate',
         component: () => import('../views/prism/channel/form/Form.vue'),

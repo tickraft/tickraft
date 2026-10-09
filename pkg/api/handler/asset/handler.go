@@ -75,6 +75,9 @@ func (h *Handler) CreateAsset(ctx context.Context, arc *app.RequestContext) {
 	if !h.enforceCreateQuota(ctx, &a, arc) {
 		return
 	}
+	if !h.enforceCustomFields(&a, "asset.create", arc) {
+		return
+	}
 
 	if err := h.assets.Create(ctx, &a); err != nil {
 		if errors.Is(err, errdefs.ErrConflict) {
@@ -161,6 +164,32 @@ func (h *Handler) enforceCreateQuota(ctx context.Context, a *asset.Asset, arc *a
 		return false
 	}
 	return true
+}
+
+// enforceCustomFields rejects the write when the metadata blob carries
+// more custom keys (beyond the preset labels, see asset.CustomFieldCount)
+// than the plan's custom-field ceiling allows. A ceiling of 0 or less
+// means unlimited (the provider contract). op is the audit operation
+// label of the calling write path. It returns true when the write may
+// proceed; false means a failure response has already been written.
+func (h *Handler) enforceCustomFields(a *asset.Asset, op string, arc *app.RequestContext) bool {
+	ceiling := quota.Ceiling(quota.TypeCustomField)
+	if ceiling <= 0 {
+		return true
+	}
+	if asset.CustomFieldCount(a.Metadata) <= ceiling {
+		return true
+	}
+	h.logger.Warn("asset write rejected: custom field quota exceeded",
+		zap.String("operation", op),
+		zap.String("outcome", "quota_exceeded"),
+		zap.Int64("id", a.ID),
+		zap.String("asset_key", a.AssetKey),
+		zap.Int("quota", ceiling),
+	)
+	httputil.FailWithCode(arc, http.StatusConflict, errdefs.CodeConflict,
+		"custom field quota exceeded")
+	return false
 }
 
 // ListAssets handles GET /api/v1/assets. Supported query parameters: page,
@@ -259,6 +288,10 @@ func (h *Handler) UpdateAsset(ctx context.Context, arc *app.RequestContext) {
 		return
 	}
 	existing.ID = id
+
+	if !h.enforceCustomFields(existing, "asset.update", arc) {
+		return
+	}
 
 	if err = h.assets.Update(ctx, existing); err != nil {
 		h.logger.Error("asset update failed",

@@ -33,3 +33,33 @@ func TestTagsFromMetadata(t *testing.T) {
 		})
 	}
 }
+
+// TestCustomFieldCount covers the metered unit of the custom-field quota:
+// preset metadata keys are free, every other key counts as one custom
+// field, and values of any JSON type count (unlike TagsFromMetadata,
+// which only decodes string values).
+func TestCustomFieldCount(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want int
+	}{
+		{"empty blob counts zero", "", 0},
+		{"malformed blob counts zero", `not-json`, 0},
+		{"non-object blob counts zero", `["rack"]`, 0},
+		{"null object counts zero", `null`, 0},
+		{"preset-only blob counts zero",
+			`{"business_line":"core","project":"x","owner":"ops","priority":"p1","environment":"prod"}`, 0},
+		{"custom keys count", `{"rack":"r1","zone":"z1"}`, 2},
+		{"mixed preset and custom counts customs only",
+			`{"environment":"prod","rack":"r1","comment":"c"}`, 2},
+		{"non-string values count", `{"replicas":3,"ha":true}`, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CustomFieldCount(tc.raw); got != tc.want {
+				t.Errorf("CustomFieldCount(%q) = %d, want %d", tc.raw, got, tc.want)
+			}
+		})
+	}
+}

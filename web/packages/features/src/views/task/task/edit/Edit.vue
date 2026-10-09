@@ -84,6 +84,10 @@ function buildFormData(task: TaskModel): TaskFormData {
     reportStatus: task.reportStatus ?? false,
     retryPolicy: task.retryPolicy ?? 'fixed',
     concurrency: task.concurrency ?? 0,
+    // Carried for round-trip fidelity only; kernel UI has no editor for them.
+    // buildUpdateParams omits both so the server preserves stored values.
+    catchupPolicy: (task.catchupPolicy as TaskFormData['catchupPolicy']) ?? 'skip',
+    sleepWindows: task.sleepWindows ?? [],
     scheduleType: type,
     cronExpr,
     interval,
@@ -106,6 +110,9 @@ function buildUpdateParams(data: TaskFormData): TaskUpdateParams {
     tags: data.tags.length > 0 ? data.tags : undefined,
     retryPolicy: data.retryPolicy || undefined,
     concurrency: data.concurrency || undefined,
+    // Catch-up policy and sleep windows are deliberately omitted: the kernel
+    // form has no editor for them, and the API treats omitted fields as
+    // "preserve existing" (an explicit 'skip'/[] is needed to reset).
   }
 }
 

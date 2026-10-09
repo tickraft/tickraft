@@ -9,5 +9,17 @@
     "featureAuditLog": "Audit Logs",
     "featureMultiChannel": "Email/SMS/DingTalk/Feishu Channels",
     "cta": "Explore Professional Edition"
+  },
+  "quota": {
+    "title": "Quota usage hint",
+    "nearTitle": "These resources are approaching the current edition's quota ceilings:",
+    "fullTitle": "These resources have reached the current edition's quota ceilings; creation is being rejected:",
+    "typeDevice": "Assets",
+    "typeProbe": "Probers",
+    "typeTask": "Scheduled tasks",
+    "typeRemediation": "Self-healing rules",
+    "typeContact": "Contacts",
+    "viewEditions": "Compare editions",
+    "dismiss": "Don't show again for 7 days"
   }
 }

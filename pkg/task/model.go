@@ -46,6 +46,12 @@ const (
 	// remote status report rather than a local dispatch — a purely
 	// externally driven execution with no scheduler fire behind it.
 	TriggerTypeExternal TriggerType = "external"
+	// TriggerTypeCatchup indicates the execution was dispatched by the
+	// recovery pipeline replaying a slot missed while the process was
+	// down or the task was paused. The trigger_type annotation lets
+	// downstream consumers (heartbeat miss-report grace, execution stats)
+	// distinguish recovery replays from regular schedule fires.
+	TriggerTypeCatchup TriggerType = "catchup"
 )
 
 // Persisted execution status values, stored in the sys_schedule_execution.status
@@ -137,7 +143,8 @@ type Task struct {
 	// simultaneously.
 	Priority int `gorm:"column:priority;not null;default:0" json:"-"`
 	// DependsOn is the task ID that must succeed before this task can run.
-	DependsOn int64 `gorm:"column:depends_on;not null;default:0" json:"-"`
+	// Settable at create time only; updates preserve the stored value.
+	DependsOn int64 `gorm:"column:depends_on;not null;default:0" json:"depends_on,omitempty"`
 	// Metadata is the extension key bag for engine-internal and
 	// integration-specific keys (monitor_point_id, expression, ...).
 	Metadata map[string]string `gorm:"column:metadata;type:text;serializer:tolerantjson" json:"-"`
@@ -154,6 +161,25 @@ type Task struct {
 	// (0=unlimited, 1=no concurrent execution). No column default: the
 	// GORM zero-value substitution would turn 0 (unlimited) into 1.
 	Concurrency int `gorm:"column:concurrency;type:tinyint" json:"concurrency,omitempty"`
+	// CatchupPolicy selects how slots missed while the process was down
+	// (or the task paused) are handled on recovery: skip (default, the
+	// historical behavior), once (replay only the most recent missed
+	// slot), or all (replay up to catchupMaxSlots missed slots). An
+	// absent value in a create/update body normalizes to skip.
+	CatchupPolicy string `gorm:"column:catchup_policy;size:16;not null;default:skip" json:"catchup_policy,omitempty"`
+	// SleepWindows lists recurring suppression windows during which
+	// scheduled dispatch is silently skipped (see SleepWindow). Empty
+	// means no suppression. Stored as inline JSON: windows are few and
+	// never queried independently, matching the row's other JSON columns.
+	SleepWindows []SleepWindow `gorm:"type:text;serializer:tolerantjson" json:"sleep_windows,omitempty"`
+	// LastScheduledAt is the schedule watermark: the most recent slot the
+	// engine regards as dispatched (or deliberately skipped by a sleep
+	// window), whether or not the execution succeeded. NULL means the
+	// task has never dispatched — the first start never replays history.
+	// Engine-internal: never exposed on the wire, advanced only through
+	// Store.AdvanceScheduleWatermark so concurrent task updates cannot
+	// regress it.
+	LastScheduledAt *time.Time `gorm:"column:last_scheduled_at" json:"-"`
 	// Operation overrides the operation published on this task's triggered
 	// events. The zero value means the task-domain default, execute; the
 	// telemetry prober sets probe for the tasks it registers. Runtime-only;

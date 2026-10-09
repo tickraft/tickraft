@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/hertz/pkg/common/config"
@@ -285,6 +286,121 @@ func TestAssetHandlerCreateNonDeviceNotQuotaLimited(t *testing.T) {
 		[]byte(`{"asset_type":"host","asset_key":"host-extra","name":"extra"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+// --- Custom field quota tests ---
+
+// customFieldProvider layers a finite custom-field ceiling on top of
+// testProvider so the custom-field quota tests exercise a real limit
+// (the base testProvider returns 0 = unlimited for TypeCustomField).
+type customFieldProvider struct {
+	testProvider
+	ceiling int
+}
+
+func (p customFieldProvider) Ceiling(t quota.Type) int {
+	if t == quota.TypeCustomField {
+		return p.ceiling
+	}
+	return p.testProvider.Ceiling(t)
+}
+
+// customFieldBody builds a host asset request body whose metadata blob
+// carries the given JSON object, keeping the call sites under the
+// line-length limit.
+func customFieldBody(metadata string) []byte {
+	return []byte(fmt.Sprintf(`{"asset_type":"host","asset_key":"host-cf","name":"cf","metadata":%q}`, metadata))
+}
+
+// TestAssetHandlerCreateCustomFieldQuotaExceeded verifies that creating
+// an asset whose metadata blob carries more custom keys than the plan
+// ceiling is rejected with 409 Conflict and nothing is persisted.
+func TestAssetHandlerCreateCustomFieldQuotaExceeded(t *testing.T) {
+	engine, store := newAssetTestEngine(t)
+	quota.SetProvider(customFieldProvider{ceiling: 3})
+	ctx := context.Background()
+
+	// Four custom keys against a ceiling of three.
+	w := doRequest(engine, "POST", assetBasePath, customFieldBody(
+		`{"rack":"r1","zone":"z1","comment":"c","serial":"s1"}`))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusConflict, w.Body.String())
+	}
+	resp := decodeAPIResponse(t, w)
+	if resp.Code != errdefs.CodeConflict {
+		t.Errorf("code = %d, want %d", resp.Code, errdefs.CodeConflict)
+	}
+	if resp.Message != "custom field quota exceeded" {
+		t.Errorf("message = %q, want %q", resp.Message, "custom field quota exceeded")
+	}
+
+	// The rejected asset must not have been persisted.
+	if count, err := store.CountByType(ctx, 0, types.AssetTypeHost); err != nil || count != 0 {
+		t.Errorf("host count after rejection = %d (err=%v), want 0", count, err)
+	}
+}
+
+// TestAssetHandlerCreateCustomFieldAtQuotaBoundary verifies that preset
+// metadata keys are free and exactly-ceiling custom keys pass: all five
+// presets plus three custom keys succeed under a ceiling of three.
+func TestAssetHandlerCreateCustomFieldAtQuotaBoundary(t *testing.T) {
+	engine, _ := newAssetTestEngine(t)
+	quota.SetProvider(customFieldProvider{ceiling: 3})
+
+	presets := `{"business_line":"core","project":"x","owner":"ops","priority":"p1",` +
+		`"environment":"prod","rack":"r1","zone":"z1","comment":"c"}`
+	r := createAssetViaAPI(t, engine, string(customFieldBody(presets)))
+	if r.Metadata == "" {
+		t.Error("Metadata = empty, want the submitted blob round-tripped")
+	}
+}
+
+// TestAssetHandlerCreateCustomFieldUnlimitedWithoutCeiling verifies the
+// provider contract: a custom-field ceiling of 0 means unlimited, so the
+// default testProvider (no custom-field override) accepts any blob.
+func TestAssetHandlerCreateCustomFieldUnlimitedWithoutCeiling(t *testing.T) {
+	engine, _ := newAssetTestEngine(t)
+
+	// Ten custom keys would exceed any finite ceiling; with ceiling 0
+	// (unlimited) the create must succeed.
+	tenKeys := `{"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10}`
+	w := doRequest(engine, "POST", assetBasePath, customFieldBody(tenKeys))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+// TestAssetHandlerUpdateCustomFieldQuotaExceeded verifies that updating
+// an in-quota asset to an over-ceiling metadata blob is rejected with
+// 409 and the stored metadata is left unchanged.
+func TestAssetHandlerUpdateCustomFieldQuotaExceeded(t *testing.T) {
+	engine, _ := newAssetTestEngine(t)
+	quota.SetProvider(customFieldProvider{ceiling: 3})
+
+	created := createAssetViaAPI(t, engine,
+		`{"asset_type":"host","asset_key":"host-cf","name":"cf","metadata":"{\"rack\":\"r1\",\"zone\":\"z1\"}"}`)
+
+	// Grow to four custom keys — one over the ceiling.
+	fourKeys := `{"rack":"r1","zone":"z1","comment":"c","serial":"s1"}`
+	w := doRequest(engine, "PUT", assetBasePath+"/"+itoa(created.ID), customFieldBody(fourKeys))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d (body=%q)", w.Code, http.StatusConflict, w.Body.String())
+	}
+	resp := decodeAPIResponse(t, w)
+	if resp.Message != "custom field quota exceeded" {
+		t.Errorf("message = %q, want %q", resp.Message, "custom field quota exceeded")
+	}
+
+	// The stored metadata must still be the original two-key blob.
+	w = ut.PerformRequest(engine, "GET", assetBasePath+"/"+itoa(created.ID), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get: status = %d, want %d", w.Code, http.StatusOK)
+	}
+	r := decodeAssetData(t, decodeAPIResponse(t, w))
+	want := `{"rack":"r1","zone":"z1"}`
+	if !strings.Contains(r.Metadata, "rack") || strings.Contains(r.Metadata, "serial") {
+		t.Errorf("stored metadata = %q, want the original two-key blob around %q", r.Metadata, want)
 	}
 }
 

@@ -30,6 +30,7 @@ const basicForm = reactive({
   defaultLang: 'zh-Hans' as LocaleType,
   logLevel: 'info',
   retentionDays: 30,
+  networkEnvironment: 'internet',
 })
 
 /** Basic configuration snapshot (used for reset) */
@@ -53,6 +54,11 @@ const logLevelOptions = [
   { label: 'warn', value: 'warn' },
   { label: 'error', value: 'error' },
 ]
+
+const networkEnvironmentOptions = computed(() => [
+  { label: t('system.settings.networkEnvInternet'), value: 'internet' },
+  { label: t('system.settings.networkEnvIsolated'), value: 'isolated' },
+])
 
 const themeOptions = computed<Array<{ label: string; value: ThemePreference }>>(() => [
   { label: t('system.settings.lightTheme'), value: 'light' },
@@ -120,6 +126,7 @@ async function loadBasic(): Promise<void> {
     basicForm.defaultLang = data.defaultLang as LocaleType
     basicForm.logLevel = data.logLevel
     basicForm.retentionDays = data.retentionDays
+    basicForm.networkEnvironment = data.networkEnvironment || 'internet'
     basicDirty.value = false
   } finally {
     basicLoading.value = false
@@ -137,6 +144,7 @@ async function handleSaveBasic(): Promise<void> {
       defaultLang: basicForm.defaultLang,
       logLevel: basicForm.logLevel,
       retentionDays: basicForm.retentionDays,
+      networkEnvironment: basicForm.networkEnvironment,
     })
     basicSnapshot = data
     basicDirty.value = false
@@ -151,6 +159,7 @@ function handleResetBasic(): void {
     basicForm.defaultLang = basicSnapshot.defaultLang as LocaleType
     basicForm.logLevel = basicSnapshot.logLevel
     basicForm.retentionDays = basicSnapshot.retentionDays
+    basicForm.networkEnvironment = basicSnapshot.networkEnvironment || 'internet'
   }
   basicDirty.value = false
   ElMessage.info(t('system.settings.resetSuccess'))
@@ -279,6 +288,31 @@ useEventListener(mediaQueryRef, 'change', handleMediaChange)
                   @change="markDirty"
                 />
                 <span class="tk-settings__suffix">DAYS · 7–365</span>
+              </div>
+            </div>
+
+            <div class="tk-settings__row">
+              <div class="tk-settings__row-label">
+                <div class="tk-settings__row-title">
+                  {{ t('system.settings.networkEnvironment') }}
+                </div>
+                <div class="tk-settings__row-help">
+                  {{ t('system.settings.networkEnvironmentHelp') }}
+                </div>
+              </div>
+              <div class="tk-settings__row-control">
+                <el-select
+                  v-model="basicForm.networkEnvironment"
+                  class="tk-settings__select"
+                  @change="markDirty"
+                >
+                  <el-option
+                    v-for="item in networkEnvironmentOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
               </div>
             </div>
           </el-form>

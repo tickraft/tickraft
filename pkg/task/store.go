@@ -165,6 +165,22 @@ func (s *store) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// AdvanceScheduleWatermark moves the task's last_scheduled_at forward to
+// at. The WHERE guard makes the column monotonic — a stale writer cannot
+// pull the watermark back — and UpdateColumn skips GORM's automatic
+// updated_at maintenance so a watermark advance never bumps the task row's
+// updated_at timestamp.
+func (s *store) AdvanceScheduleWatermark(ctx context.Context, id int64, at time.Time) error {
+	res := s.dbc.WithContext(ctx).
+		Model(&Task{}).
+		Where("id = ? AND (last_scheduled_at IS NULL OR last_scheduled_at < ?)", id, at).
+		UpdateColumn("last_scheduled_at", at)
+	if res.Error != nil {
+		return fmt.Errorf("task: advance schedule watermark: %w", db.MapError(res.Error))
+	}
+	return nil
+}
+
 // Compile-time assertion that store implements Store.
 var _ Store = (*store)(nil)
 
@@ -194,6 +210,8 @@ var taskWriteColumns = []string{
 	"run_id",
 	"retry_policy",
 	"concurrency",
+	"catchup_policy",
+	"sleep_windows",
 	"updated_at",
 }
 

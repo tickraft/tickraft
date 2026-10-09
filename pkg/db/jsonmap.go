@@ -12,9 +12,9 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// tolerantJSON is a GORM serializer for JSON-shaped map fields
-// (map[string]string, map[string]any) stored in text columns, declared via
-// `gorm:"serializer:tolerantjson"`.
+// tolerantJSON is a GORM serializer for JSON-shaped map and slice fields
+// (map[string]string, map[string]any, []SomeStruct) stored in text
+// columns, declared via `gorm:"serializer:tolerantjson"`.
 //
 // It differs from the built-in json serializer in two deliberate ways,
 // both preserving the historical MetadataMap/decodeRuleMetadata contract:
@@ -22,9 +22,9 @@ import (
 //   - Reads never fail. NULL, "", "null", "{}", and malformed blobs all
 //     decode to a nil field instead of erroring, so a bad payload never
 //     blocks row loading.
-//   - Nil and empty maps persist as the empty string, not SQL NULL and not
-//     a literal "null", matching the on-disk format previously written by
-//     encodeRuleMetadata.
+//   - Nil and empty collections persist as the empty string, not SQL NULL
+//     and not a literal "null", matching the on-disk format previously
+//     written by encodeRuleMetadata.
 //
 // JSON encoding uses bytedance/sonic for performance; its API is
 // drop-in compatible with encoding/json.
@@ -56,7 +56,7 @@ func (tolerantJSON) Scan(ctx context.Context, field *schema.Field, dst reflect.V
 		return nil
 	}
 	value := decoded.Elem()
-	if value.Kind() == reflect.Map && value.Len() == 0 {
+	if (value.Kind() == reflect.Map || value.Kind() == reflect.Slice) && value.Len() == 0 {
 		return nil
 	}
 	field.ReflectValueOf(ctx, dst).Set(value)
@@ -66,7 +66,10 @@ func (tolerantJSON) Scan(ctx context.Context, field *schema.Field, dst reflect.V
 // Value implements schema.SerializerValuerInterface.
 func (tolerantJSON) Value(_ context.Context, _ *schema.Field, _ reflect.Value, fieldValue any) (any, error) {
 	rv := reflect.ValueOf(fieldValue)
-	if rv.Kind() != reflect.Map || rv.IsNil() || rv.Len() == 0 {
+	if rv.Kind() != reflect.Map && rv.Kind() != reflect.Slice {
+		return "", nil
+	}
+	if rv.IsNil() || rv.Len() == 0 {
 		return "", nil
 	}
 	raw, err := sonic.Marshal(fieldValue)

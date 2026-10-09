@@ -18,15 +18,20 @@ import { useI18n } from 'vue-i18n'
 /**
  * Upgrade banner visibility toggle.
  *
- * The banner is hidden while the professional edition is not yet live.
- * Flip this flag to `true` once the paid edition ships and the pricing page
- * is reachable. Keeping it as a single module constant avoids scattering
+ * Enabled since S3-a (open-core strategy §6.2-2): the pricing authority was
+ * reconciled (N1, pricing-strategy.md as the single source) and the editions
+ * comparison page is the one-hop destination for all in-product upgrade
+ * touchpoints. Keeping it as a single module constant avoids scattering
  * feature-gating logic across the codebase.
  */
-const UPGRADE_BANNER_ENABLED = false
+const UPGRADE_BANNER_ENABLED = true
 
-/** External link to the subscription / pricing page */
-const PRICING_URL = 'https://tickraft.com/pricing'
+/**
+ * External link to the editions comparison page — the shared one-hop
+ * destination for upgrade touchpoints (banner / FeatureGuard / quota hint /
+ * 409 guidance), per open-core strategy §6.2.
+ */
+const EDITIONS_URL = 'https://tickraft.io/editions'
 
 const { t } = useI18n()
 
@@ -83,7 +88,7 @@ const features = computed<UpgradeFeature[]>(() => [
       <div class="tk-upgrade-banner__actions">
         <a
           class="tk-upgrade-banner__cta"
-          :href="PRICING_URL"
+          :href="EDITIONS_URL"
           target="_blank"
           rel="noopener"
         >

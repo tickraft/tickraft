@@ -18,7 +18,7 @@ func TestSystemConfig(t *testing.T) {
 	status, env := hs.do("GET", "/api/v1/system/config", nil, token)
 	var cfg map[string]any
 	hs.mustOK(status, env, "get system config", &cfg)
-	for _, key := range []string{"log_level", "default_lang", "retention_days"} {
+	for _, key := range []string{"log_level", "default_lang", "retention_days", "network_environment"} {
 		if _, ok := cfg[key]; !ok {
 			t.Fatalf("system config: missing field %q, keys=%v", key, keysOf(cfg))
 		}
@@ -37,6 +37,28 @@ func TestSystemConfig(t *testing.T) {
 		t.Fatalf("update system config: unexpected payload %v", updated)
 	}
 
+	// The network_environment knob (L0 plain-notification degrade)
+	// round-trips and rejects unknown values.
+	status, env = hs.do("PUT", "/api/v1/system/config", map[string]any{
+		"log_level":           "debug",
+		"default_lang":        "zh-Hans",
+		"retention_days":      14,
+		"network_environment": "isolated",
+	}, token)
+	hs.mustOK(status, env, "update network environment", &updated)
+	if updated["network_environment"] != "isolated" {
+		t.Fatalf("update network environment: unexpected payload %v", updated)
+	}
+	status, env = hs.do("PUT", "/api/v1/system/config", map[string]any{
+		"log_level":           "debug",
+		"default_lang":        "zh-Hans",
+		"retention_days":      14,
+		"network_environment": "dmz",
+	}, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("invalid network environment: expected 400, got %d (code=%d)", status, env.Code)
+	}
+
 	// Viewer cannot write system config.
 	status, _ = hs.do("PUT", "/api/v1/system/config", map[string]any{
 		"log_level": "error",
@@ -47,9 +69,10 @@ func TestSystemConfig(t *testing.T) {
 
 	// Restore so other tests see the original value.
 	_, _ = hs.do("PUT", "/api/v1/system/config", map[string]any{
-		"log_level":      origLogLevel,
-		"default_lang":   cfg["default_lang"],
-		"retention_days": cfg["retention_days"],
+		"log_level":           origLogLevel,
+		"default_lang":        cfg["default_lang"],
+		"retention_days":      cfg["retention_days"],
+		"network_environment": cfg["network_environment"],
 	}, token)
 }
 

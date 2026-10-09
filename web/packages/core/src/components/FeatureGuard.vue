@@ -14,13 +14,19 @@
  *   means no badge rendered
  * - When locked is not explicitly passed, it is auto-determined from hasFeature
  *
- * This component is a generic open-source shell without any tier name hardcoding;
- * badge color variants are defined by extension style extensions.
+ * The locked overlay carries the upgrade-guidance trio (open-core strategy
+ * §6.2-2): the capability name (optional `capability` prop, an
+ * already-localized display string), the owning tier name (the extension's
+ * badge text), and a one-hop link to the editions comparison page. No
+ * engineering column or feature-flag names appear in user-facing copy.
  */
 import { computed } from 'vue'
 import { Lock } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermission } from '../composables/usePermission'
+
+/** One-hop destination shared by all in-product upgrade touchpoints */
+const EDITIONS_URL = 'https://tickraft.io/editions'
 
 /** Badge data injected by extension via prop; null on core side means no badge rendered */
 interface FeatureGuardBadge {
@@ -37,6 +43,8 @@ interface FeatureGuardProps {
   badge?: FeatureGuardBadge | null
   /** Locked state; when not passed, auto-determined as the negation of hasFeature(feature) */
   locked?: boolean
+  /** Already-localized capability name shown in the locked overlay hint; omit for the generic copy */
+  capability?: string
 }
 
 interface FeatureGuardEmits {
@@ -46,6 +54,7 @@ interface FeatureGuardEmits {
 const props = withDefaults(defineProps<FeatureGuardProps>(), {
   badge: null,
   locked: undefined,
+  capability: '',
 })
 
 const emit = defineEmits<FeatureGuardEmits>()
@@ -62,6 +71,13 @@ const isLocked = computed(() => {
 /** Badge style class (extension style extensions render color variants based on this) */
 const badgeClass = computed(() =>
   props.badge ? `tk-tier-badge--${props.badge.variant}` : '',
+)
+
+/** Overlay hint names the capability when provided, else the generic copy */
+const lockText = computed(() =>
+  props.capability
+    ? t('common.feature.lockedHint', { capability: props.capability })
+    : t('common.feature.upgradeToUnlock'),
 )
 
 function handleUpgrade() {
@@ -88,7 +104,7 @@ function handleUpgrade() {
         class="tk-feature-guard__overlay"
         role="button"
         tabindex="0"
-        :aria-label="t('common.feature.upgradeToUnlock')"
+        :aria-label="lockText"
         @click="handleUpgrade"
         @keydown.enter.prevent="handleUpgrade"
         @keydown.space.prevent="handleUpgrade"
@@ -96,7 +112,14 @@ function handleUpgrade() {
         <el-icon class="tk-feature-guard__lock-icon">
           <Lock />
         </el-icon>
-        <span class="tk-feature-guard__lock-text">{{ t('common.feature.upgradeToUnlock') }}</span>
+        <span class="tk-feature-guard__lock-text">{{ lockText }}</span>
+        <a
+          class="tk-feature-guard__link"
+          :href="EDITIONS_URL"
+          target="_blank"
+          rel="noopener"
+          @click.stop
+        >{{ t('common.feature.viewEditions') }}</a>
       </div>
     </div>
   </div>
@@ -162,6 +185,29 @@ function handleUpgrade() {
   font-weight: var(--tk-font-weight-semibold);
   color: var(--tk-text-on-primary);
   letter-spacing: 0.02em;
+}
+
+/* One-hop editions link inside the locked overlay */
+.tk-feature-guard__link {
+  padding: 2px 10px;
+  font-size: var(--tk-font-size-xs);
+  font-weight: var(--tk-font-weight-medium);
+  color: var(--tk-text-on-primary);
+  text-decoration: none;
+  background: rgb(255 255 255 / 14%);
+  border-radius: var(--tk-radius-sm);
+
+  &:hover {
+    color: var(--tk-text-on-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    background: rgb(255 255 255 / 22%);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--tk-text-on-primary);
+    outline-offset: 2px;
+  }
 }
 
 /* ===== Tier badge shell (color variants defined by extension style extensions) ===== */

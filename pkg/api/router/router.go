@@ -25,12 +25,14 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/certificates"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
+	quotaapi "github.com/tickraft/tickraft/pkg/api/handler/quota"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryapi "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/middleware"
 	"github.com/tickraft/tickraft/pkg/auth"
 	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
+	"github.com/tickraft/tickraft/pkg/contact"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
@@ -60,6 +62,7 @@ type registerConfig struct {
 	taskService            task.Service
 	alertService           alert.Service
 	channelService         channel.Service
+	contactService         contact.Service
 	remediationRuleService remediation.Service
 	systemService          system.Service
 	telemetryService       telemetry.Service
@@ -76,6 +79,7 @@ type registerConfig struct {
 	wsHandler              *wsapi.Handler
 	executorRegistry       *executor.Registry
 	statusService          status.Service
+	quotaUsageHandler      *quotaapi.Handler
 
 	// apiKeyAuth enables API-key bearer auth alongside JWT. The key lookup
 	// is derived from the auth service with a short-TTL cache.
@@ -126,6 +130,22 @@ func (o channelServiceOption) apply(c *registerConfig) { c.channelService = o.sv
 // assemblies always inject the DB-backed one).
 func WithChannelService(svc channel.Service) RegisterOption {
 	return channelServiceOption{svc: svc}
+}
+
+// contactServiceOption provides the contact.Service implementation for the
+// notification-only contact directory handlers.
+type contactServiceOption struct {
+	svc contact.Service
+}
+
+func (o contactServiceOption) apply(c *registerConfig) { c.contactService = o.svc }
+
+// WithContactService provides the contact.Service implementation for the
+// contact directory handlers at /api/v1/contacts. When omitted, the contact
+// route group is not registered (multi-tenant editions inject their own
+// tenant-scoped implementation through the same option).
+func WithContactService(svc contact.Service) RegisterOption {
+	return contactServiceOption{svc: svc}
 }
 
 // remediationRuleServiceOption provides the remediation.Service
@@ -349,6 +369,19 @@ func (o i18nHandlerOption) apply(c *registerConfig) { c.i18nHandler = o.h }
 // registered.
 func WithI18nHandler(h *i18n.Handler) RegisterOption { return i18nHandlerOption{h: h} }
 
+// quotaUsageHandlerOption provides the quota usage aggregate handler.
+type quotaUsageHandlerOption struct {
+	h *quotaapi.Handler
+}
+
+func (o quotaUsageHandlerOption) apply(c *registerConfig) { c.quotaUsageHandler = o.h }
+
+// WithQuotaUsageHandler provides the handler for the quota usage aggregate
+// API at /api/v1/quota/usage. When omitted, the route is not registered.
+func WithQuotaUsageHandler(h *quotaapi.Handler) RegisterOption {
+	return quotaUsageHandlerOption{h: h}
+}
+
 // apiKeyAuthOption enables API-key bearer authentication alongside JWT auth.
 type apiKeyAuthOption struct{}
 
@@ -470,6 +503,7 @@ func (rc *registerConfig) handlerOptions(
 	appendIf(handler.WithTaskService(rc.taskService), rc.taskService != nil)
 	appendIf(handler.WithAlertService(rc.alertService), rc.alertService != nil)
 	appendIf(handler.WithChannelService(rc.channelService), rc.channelService != nil)
+	appendIf(handler.WithContactService(rc.contactService), rc.contactService != nil)
 	appendIf(handler.WithRemediationRuleService(rc.remediationRuleService), rc.remediationRuleService != nil)
 	appendIf(handler.WithSystemService(rc.systemService), rc.systemService != nil)
 	appendIf(handler.WithTelemetryService(rc.telemetryService), rc.telemetryService != nil)
@@ -480,6 +514,7 @@ func (rc *registerConfig) handlerOptions(
 	appendIf(handler.WithAssetHandler(rc.assetHandler), rc.assetHandler != nil)
 	appendIf(handler.WithExecutorRegistry(rc.executorRegistry), rc.executorRegistry != nil)
 	appendIf(handler.WithStatusService(rc.statusService), rc.statusService != nil)
+	appendIf(handler.WithQuotaUsageHandler(rc.quotaUsageHandler), rc.quotaUsageHandler != nil)
 	appendIf(handler.WithHealthzHandler(rc.healthzHandler), rc.healthzHandler != nil)
 	appendIf(handler.WithReadyHandler(rc.readyzHandler), rc.readyzHandler != nil)
 	appendIf(handler.WithCertificateHandler(rc.certificateHandler), rc.certificateHandler != nil)

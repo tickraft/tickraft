@@ -78,3 +78,31 @@ func TagsFromMetadata(raw string) map[string]string {
 	}
 	return tags
 }
+
+// CustomFieldCount counts the metadata keys that are not preset labels
+// (see BuiltInMetadataKeys). It is the metered unit of the custom-field
+// quota (quota.TypeCustomField): preset labels are free, every key
+// beyond them is one custom field. Values of any JSON type count (the
+// metering decodes into a generic object, unlike the string-typed
+// TagsFromMetadata); malformed or empty metadata counts as zero,
+// mirroring the best-effort contract of TagsFromMetadata.
+func CustomFieldCount(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	var obj map[string]any
+	if err := sonic.Unmarshal([]byte(raw), &obj); err != nil || obj == nil {
+		return 0
+	}
+	preset := make(map[string]struct{}, len(BuiltInMetadataKeys))
+	for _, k := range BuiltInMetadataKeys {
+		preset[k] = struct{}{}
+	}
+	n := 0
+	for k := range obj {
+		if _, ok := preset[k]; !ok {
+			n++
+		}
+	}
+	return n
+}

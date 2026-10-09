@@ -30,6 +30,7 @@ import (
 	assethandler "github.com/tickraft/tickraft/pkg/api/handler/asset"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	i18napi "github.com/tickraft/tickraft/pkg/api/handler/i18n"
+	quotaapi "github.com/tickraft/tickraft/pkg/api/handler/quota"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsapi "github.com/tickraft/tickraft/pkg/api/handler/ws"
@@ -38,6 +39,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/cache"
+	"github.com/tickraft/tickraft/pkg/contact"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/event"
 	"github.com/tickraft/tickraft/pkg/executor"
@@ -51,11 +53,13 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/quota"
 	statussvc "github.com/tickraft/tickraft/pkg/status"
 	systemsvc "github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	telemetryhttp "github.com/tickraft/tickraft/pkg/telemetry/http"
+	"github.com/tickraft/tickraft/pkg/types"
 	"github.com/tickraft/tickraft/pkg/user"
 )
 
@@ -163,6 +167,12 @@ func newHarness(t *testing.T) *harness {
 	assetStore := asset.NewStore(dbc)
 	if err := assetStore.Migrate(ctx); err != nil {
 		t.Fatalf("migrate assets: %v", err)
+	}
+
+	// Contact directory store (notification-only contacts).
+	contactStore := contact.NewStore(dbc)
+	if err := contactStore.Migrate(ctx); err != nil {
+		t.Fatalf("migrate contacts: %v", err)
 	}
 
 	// Scheduler + executor runner on one shared event bus, mirroring the
@@ -297,7 +307,7 @@ func newHarness(t *testing.T) *harness {
 	// production api.go wiring.
 	webhookListener := telemetryhttp.New(
 		telemetryhttp.WithStore(assetStore),
-		telemetryhttp.WithIngest(func(context.Context, *telemetry.Telemetry) {}),
+		telemetryhttp.WithIngest(func(context.Context, *telemetry.Telemetry) error { return nil }),
 		telemetryhttp.WithTaskReport(func(ctx context.Context, r *telemetry.TaskReport) {
 			if err := telemetry.PublishTaskReport(ctx, workerBus, r); err != nil {
 				logger.Warn("publish task status report failed", zap.Error(err))
@@ -334,13 +344,14 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("migrate status tables: %v", err)
 	}
 
-	routeOpts := make([]router.RegisterOption, 0, 18)
+	routeOpts := make([]router.RegisterOption, 0, 19)
 	routeOpts = append(routeOpts,
 		router.WithTaskService(task.NewTaskService(schedEngine, taskStore, execStore, reg, logger)),
 		router.WithAlertService(alert.NewAlertService(
 			prismEngine.RuleStore(), prismEngine.RecordStore(), prismEngine.RuleEngine())),
 		router.WithChannelService(channel.NewChannelService(
 			prismEngine.ChannelStore(), prismEngine.DeliveryStore(), prismEngine)),
+		router.WithContactService(contact.NewContactService(contactStore)),
 		router.WithRemediationRuleService(remediation.NewRemediationService(prismEngine.RemediationStore())),
 		router.WithSystemService(systemSrv),
 		router.WithTelemetryService(telemetrySrv),
@@ -353,6 +364,37 @@ func newHarness(t *testing.T) *harness {
 		router.WithHealthzHandler(healthz.NewHandler(dbc, nil)),
 		router.WithReadyzHandler(readyz.NewHandler(dbc, nil)),
 		router.WithStatusService(statussvc.NewService(statusStore, monitorStore, probeStore, logger)),
+		// Quota usage aggregate, mirroring the production api.go wiring:
+		// counters over the shared stores with the same counting basis as
+		// the enforcement points.
+		router.WithQuotaUsageHandler(quotaapi.NewHandler(logger,
+			quotaapi.UsageSource{
+				Type: quota.TypeDevice,
+				Count: func(ctx context.Context) (int64, error) {
+					return assetStore.CountByType(ctx, 0, types.AssetTypeDevice)
+				},
+			},
+			quotaapi.UsageSource{
+				Type: quota.TypeProber,
+				Count: func(ctx context.Context) (int64, error) {
+					summary, err := telemetrySrv.Summary(ctx)
+					if err != nil {
+						return 0, err
+					}
+					return summary.Active, nil
+				},
+			},
+			quotaapi.UsageSource{Type: quota.TypeScheduledTask, Count: taskStore.Count},
+			quotaapi.UsageSource{
+				Type: quota.TypeRemediation,
+				Count: func(ctx context.Context) (int64, error) {
+					_, total, err := remediation.NewRemediationService(
+						prismEngine.RemediationStore()).ListRules(ctx, 1, 1)
+					return total, err
+				},
+			},
+			quotaapi.UsageSource{Type: quota.TypeContact, Count: contactStore.Count},
+		)),
 		router.WithAPIKeyAuth(),
 		// WebSocket realtime push, mirroring the production api.go wiring
 		// (query-token auth against the same JWT manager).

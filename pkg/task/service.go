@@ -16,6 +16,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/tickraft/tickraft/pkg/asset"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/pagination"
@@ -48,34 +49,64 @@ type TaskService struct {
 	tasks      Store
 	execs      ExecutionStore
 	registry   *executor.Registry
+	assets     asset.Getter
 	logger     *zap.Logger
 	nextID     atomic.Int64
 	idInitOnce sync.Once
 	idInitErr  error
 }
 
+// ServiceOption configures a TaskService at construction time. The distinct
+// name avoids colliding with the Engine's Option.
+type ServiceOption interface {
+	apply(*TaskService)
+}
+
+// assetGetterOption injects the asset read surface used by the create-time
+// asset-binding validation.
+type assetGetterOption struct {
+	g asset.Getter
+}
+
+func (o assetGetterOption) apply(s *TaskService) { s.assets = o.g }
+
+// WithAssetGetter injects the asset read surface used to validate the
+// create-time asset binding (spec asset.md §17, ALIGN-V3-011): a non-zero
+// asset_id must resolve to an existing asset row. A nil getter (the
+// default) skips the check, which keeps isolated tests unwired — the same
+// convention as the nil executor registry.
+func WithAssetGetter(g asset.Getter) ServiceOption { return assetGetterOption{g: g} }
+
 // NewTaskService creates a scheduler-backed TaskService from the given engine
 // and persistent stores. A non-nil registry enables executor_type capability
 // prevalidation on create/update (the type must support OpExecute); a nil
 // registry skips the check, which keeps isolated tests unwired. If logger is
-// nil, a no-op logger is used.
+// nil, a no-op logger is used. Options may additionally inject the asset read
+// surface for create-time asset-binding validation (see WithAssetGetter).
+//
+//nolint:revive // the five positional parameters are the historical signature kept for API compatibility; the trailing variadic options are optional injections, not positional arguments
 func NewTaskService(
 	engine TaskEngine,
 	tasks Store,
 	execs ExecutionStore,
 	registry *executor.Registry,
 	logger *zap.Logger,
+	options ...ServiceOption,
 ) *TaskService {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &TaskService{
+	s := &TaskService{
 		engine:   engine,
 		tasks:    tasks,
 		execs:    execs,
 		registry: registry,
 		logger:   logger,
 	}
+	for _, o := range options {
+		o.apply(s)
+	}
+	return s
 }
 
 // validateExecutorType rejects executor types that cannot run as tasks.
@@ -126,18 +157,33 @@ func (s *TaskService) GetTask(ctx context.Context, id int64) (*Task, error) {
 	return t, nil
 }
 
-// CreateTask creates a new task from the given request.
-func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) {
+// validateCreateRequest runs the request-shape validations that precede
+// quota enforcement and ID assignment on the create path.
+func (s *TaskService) validateCreateRequest(ctx context.Context, req *Task) error {
 	if req == nil {
-		return nil, errdefs.ErrInvalidRequest
+		return errdefs.ErrInvalidRequest
 	}
 	if req.ExecutorType == "" {
-		return nil, errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest, "executor_type is required")
 	}
 	if err := s.validateExecutorType(req.ExecutorType); err != nil {
-		return nil, err
+		return err
 	}
 	if err := validateSchedule(req.Schedule); err != nil {
+		return err
+	}
+	if err := ValidateCatchupConfig(req.CatchupPolicy, req.SleepWindows); err != nil {
+		return err
+	}
+	if err := s.validateDependency(ctx, req.DependsOn); err != nil {
+		return err
+	}
+	return s.validateAsset(ctx, req.AssetID)
+}
+
+// CreateTask creates a new task from the given request.
+func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) {
+	if err := s.validateCreateRequest(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -169,6 +215,12 @@ func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) 
 	if t.TimeoutSeconds <= 0 {
 		t.TimeoutSeconds = defaultTaskTimeoutSeconds
 	}
+	if t.CatchupPolicy == "" {
+		t.CatchupPolicy = CatchupPolicySkip
+	}
+	// A brand-new task has never dispatched; the watermark starts NULL
+	// so the first start never replays history.
+	t.LastScheduledAt = nil
 
 	if s.engine != nil {
 		if err = s.engine.Register(ctx, t); err != nil {
@@ -184,10 +236,72 @@ func (s *TaskService) CreateTask(ctx context.Context, req *Task) (*Task, error) 
 	return &t, nil
 }
 
+// validateDependency rejects a depends_on reference that is negative,
+// points at a missing task, or closes a cycle in the dependency chain.
+// Dependencies are single-predecessor chains, so the walk terminates at
+// the chain head (DependsOn == 0); without it a cyclic reference would
+// leave the task silently never executable (CanExecute stays false
+// forever). Freshly assigned task IDs cannot self-reference at create
+// time, so the cycle walk is defense against rows that bypassed
+// validation (imported data, direct DB writes).
+func (s *TaskService) validateDependency(ctx context.Context, dependsOn int64) error {
+	if dependsOn == 0 {
+		return nil
+	}
+	if dependsOn < 0 {
+		return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+			"depends_on must be a positive task id")
+	}
+	visited := make(map[int64]struct{})
+	cur := dependsOn
+	for cur != 0 {
+		if _, seen := visited[cur]; seen {
+			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"depends_on chain forms a cycle")
+		}
+		visited[cur] = struct{}{}
+		upstream, err := s.tasks.Get(ctx, cur)
+		if err != nil {
+			if errors.Is(err, errdefs.ErrNotFound) {
+				return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+					"depends_on references an unknown task")
+			}
+			return mapError(err)
+		}
+		cur = upstream.DependsOn
+	}
+	return nil
+}
+
+// validateAsset rejects an asset binding that references a missing asset row
+// (spec asset.md §17, ALIGN-V3-011). asset_id 0 means "unbound", which stays
+// valid: the create API treats the asset link as optional (Task.AssetID is
+// not wire-bindable; the open-source edition has no user-facing asset
+// binding), so only a non-zero reference is checked for existence. A nil
+// asset getter (unwired deployment or isolated test) skips the check, the
+// same convention as the nil executor registry.
+func (s *TaskService) validateAsset(ctx context.Context, assetID int64) error {
+	if assetID == 0 || s.assets == nil {
+		return nil
+	}
+	if _, err := s.assets.GetByID(ctx, assetID); err != nil {
+		if errors.Is(err, errdefs.ErrNotFound) {
+			return errdefs.NewServiceError(http.StatusBadRequest, errdefs.CodeBadRequest,
+				"asset_id references an unknown asset")
+		}
+		return mapError(err)
+	}
+	return nil
+}
+
 // UpdateTask updates an existing task identified by ID. Fields that the API
 // cannot express (tenant/asset binding, priority, dependencies, metadata
 // extension keys) are preserved from the existing row rather than zeroed by
-// the PUT.
+// the PUT. The catch-up policy and sleep windows follow an omit-means-
+// preserve rule: an absent catchup_policy ("" body value) or absent
+// sleep_windows (nil) keeps the stored setting, so a form that does not
+// render the fields (the open-source edition's task form) cannot silently
+// reset them; explicit values ("skip" / []) do reset.
 func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *Task) (*Task, error) {
 	if req == nil {
 		return nil, errdefs.ErrInvalidRequest
@@ -199,6 +313,9 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *Task) (*Tas
 		return nil, err
 	}
 	if err := validateSchedule(req.Schedule); err != nil {
+		return nil, err
+	}
+	if err := ValidateCatchupConfig(req.CatchupPolicy, req.SleepWindows); err != nil {
 		return nil, err
 	}
 
@@ -217,6 +334,19 @@ func (s *TaskService) UpdateTask(ctx context.Context, id int64, req *Task) (*Tas
 	if t.TimeoutSeconds <= 0 {
 		t.TimeoutSeconds = existing.TimeoutSeconds
 	}
+	if t.CatchupPolicy == "" {
+		t.CatchupPolicy = existing.CatchupPolicy
+	}
+	if t.CatchupPolicy == "" {
+		t.CatchupPolicy = CatchupPolicySkip
+	}
+	if t.SleepWindows == nil {
+		t.SleepWindows = existing.SleepWindows
+	}
+	// The watermark is engine-internal and never on the wire; preserve it
+	// so an update cannot make the task look never-dispatched (which
+	// would disable catch-up for it).
+	t.LastScheduledAt = existing.LastScheduledAt
 	t.CreatedAt = existing.CreatedAt
 	t.UpdatedAt = time.Now()
 
@@ -440,6 +570,10 @@ func (s *TaskService) CopyTask(ctx context.Context, id int64, newName string) (*
 		Tags:                 source.Tags,
 		RetryPolicy:          source.RetryPolicy,
 		Concurrency:          source.Concurrency,
+		CatchupPolicy:        source.CatchupPolicy,
+		SleepWindows:         source.SleepWindows,
+		// LastScheduledAt intentionally not cloned: the copy is a new
+		// task that has never dispatched.
 	}
 
 	created, err := s.CreateTask(ctx, clone)

@@ -30,6 +30,7 @@ import (
 	jwtauth "github.com/tickraft/tickraft/pkg/auth/jwt"
 	"github.com/tickraft/tickraft/pkg/cache"
 	"github.com/tickraft/tickraft/pkg/config"
+	"github.com/tickraft/tickraft/pkg/contact"
 	"github.com/tickraft/tickraft/pkg/db"
 	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/event"
@@ -289,6 +290,13 @@ func initRuntime(ctx context.Context, cfg *config.Config) (*runtime, error) {
 	if err = assetStore.Migrate(ctx); err != nil {
 		closeRuntimeDB(dbc, cacheInst)
 		return nil, fmt.Errorf("migrate asset store: %w", err)
+	}
+
+	// Migrate the notification-only contact directory (sys_contact). The
+	// store backs the /api/v1/contacts routes; the migration is idempotent.
+	if err = contact.NewStore(dbc).Migrate(ctx); err != nil {
+		closeRuntimeDB(dbc, cacheInst)
+		return nil, fmt.Errorf("migrate contact store: %w", err)
 	}
 
 	// Initialize the i18n Registry with builtin locale bundles. The

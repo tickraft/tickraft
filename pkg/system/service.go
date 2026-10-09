@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/tickraft/tickraft/pkg/asset"
+	"github.com/tickraft/tickraft/pkg/errdefs"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/types"
 )
@@ -33,6 +34,7 @@ type SystemService struct {
 	taskStore  task.Store
 	execStore  task.ExecutionStore
 	assetStore asset.Store
+	notifier   ConfigNotifier
 	startAt    time.Time
 }
 
@@ -55,6 +57,24 @@ func NewSystemService(
 		assetStore: assetStore,
 		startAt:    time.Now(),
 	}
+}
+
+// ConfigNotifier is notified after a configuration update persists.
+// Callbacks run synchronously on the update path and must not fail the
+// update: consumers log-and-continue, treating the callback as a
+// best-effort reload hint.
+type ConfigNotifier interface {
+	// ConfigUpdated is invoked with a context detached from the request
+	// lifecycle so the reload completes even if the client disconnects.
+	ConfigUpdated(ctx context.Context)
+}
+
+// WithConfigNotifier attaches a change callback invoked after every
+// successful UpdateConfig; hot consumers (channel build options) use it
+// to apply configuration without a restart.
+func (s *SystemService) WithConfigNotifier(n ConfigNotifier) *SystemService {
+	s.notifier = n
+	return s
 }
 
 // Migrate creates the sys_config table if it does not exist and seeds
@@ -100,15 +120,40 @@ func (s *SystemService) UpdateConfig(ctx context.Context, req *Config) (*Config,
 	if req == nil {
 		return nil, fmt.Errorf("config request is nil")
 	}
+	if err := normalizeNetworkEnvironment(req); err != nil {
+		return nil, err
+	}
 	// Select pins the write to the embedded config columns (zero values
 	// included); updated_at is set by autoUpdateTime.
 	if err := s.dbc.WithContext(ctx).Model(&systemConfig{}).
 		Where("id = ?", configRowID).
-		Select("log_level", "default_lang", "retention_days").
+		Select("log_level", "default_lang", "retention_days", "network_environment").
 		Updates(systemConfig{Config: *req}).Error; err != nil {
 		return nil, fmt.Errorf("update system config: %w", err)
 	}
-	return s.GetConfig(ctx)
+	updated, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.notifier != nil {
+		s.notifier.ConfigUpdated(context.WithoutCancel(ctx))
+	}
+	return updated, nil
+}
+
+// normalizeNetworkEnvironment validates Config.NetworkEnvironment ahead
+// of persistence: the value must be internet or isolated, and an omitted
+// value (older clients PUT the whole Config back) reads as internet.
+func normalizeNetworkEnvironment(cfg *Config) error {
+	switch cfg.NetworkEnvironment {
+	case "":
+		cfg.NetworkEnvironment = NetworkEnvironmentInternet
+	case NetworkEnvironmentInternet, NetworkEnvironmentIsolated:
+	default:
+		return fmt.Errorf("system: network_environment must be %q or %q: %w",
+			NetworkEnvironmentInternet, NetworkEnvironmentIsolated, errdefs.ErrInvalidArgument)
+	}
+	return nil
 }
 
 // GetInfo returns runtime system information derived from build metadata.

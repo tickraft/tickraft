@@ -14,13 +14,19 @@ import (
 	"gorm.io/gorm"
 )
 
-// jsonmapRow exercises tolerantjson on both supported field shapes:
-// map[string]string (alert rule metadata) and map[string]any (monitor
-// point config).
+// jsonmapRow exercises tolerantjson on the supported field shapes:
+// map[string]string (alert rule metadata), map[string]any (monitor
+// point config), and typed slices (task sleep windows).
 type jsonmapRow struct {
 	ID       int64             `gorm:"column:id;primaryKey;autoIncrement"`
 	Metadata map[string]string `gorm:"column:metadata;type:text;serializer:tolerantjson"`
 	Config   map[string]any    `gorm:"column:config;type:text;serializer:tolerantjson"`
+	Windows  []testWindow      `gorm:"column:windows;type:text;serializer:tolerantjson"`
+}
+
+type testWindow struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 func (jsonmapRow) TableName() string { return "test_jsonmap" }
@@ -42,6 +48,7 @@ func TestTolerantJSONRoundTrip(t *testing.T) {
 	row := jsonmapRow{
 		Metadata: map[string]string{"owner": "ops", "env": "prod"},
 		Config:   map[string]any{"retries": float64(3), "endpoint": "https://example.test"},
+		Windows:  []testWindow{{Start: "00:00", End: "06:00"}, {Start: "22:00", End: "06:00"}},
 	}
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatalf("create: %v", err)
@@ -68,6 +75,31 @@ func TestTolerantJSONRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Config, row.Config) {
 		t.Fatalf("config round trip = %v, want %v", got.Config, row.Config)
+	}
+	if !reflect.DeepEqual(got.Windows, row.Windows) {
+		t.Fatalf("windows round trip = %v, want %v", got.Windows, row.Windows)
+	}
+}
+
+func TestTolerantJSONEmptySlicePersistsEmptyString(t *testing.T) {
+	db := openJSONMapDB(t)
+	row := jsonmapRow{Windows: []testWindow{}}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var stored sql.NullString
+	if err := db.Raw("SELECT windows FROM test_jsonmap WHERE id = ?", row.ID).Row().Scan(&stored); err != nil {
+		t.Fatalf("raw select windows: %v", err)
+	}
+	if !stored.Valid || stored.String != "" {
+		t.Fatalf("column windows = %#v, want empty string (not NULL, not \"null\")", stored)
+	}
+	var got jsonmapRow
+	if err := db.First(&got, row.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got.Windows != nil {
+		t.Fatalf("empty windows column should decode to nil, got %v", got.Windows)
 	}
 }
 

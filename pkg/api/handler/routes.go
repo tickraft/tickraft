@@ -12,6 +12,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/alert"
 	"github.com/tickraft/tickraft/pkg/api/handler/auth"
 	"github.com/tickraft/tickraft/pkg/api/handler/channel"
+	contactapi "github.com/tickraft/tickraft/pkg/api/handler/contact"
 	"github.com/tickraft/tickraft/pkg/api/handler/executor"
 	"github.com/tickraft/tickraft/pkg/api/handler/expr"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
@@ -55,6 +56,7 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	taskH := task.NewHandler(cfg.taskSvc)
 	alertH := alert.NewHandler(cfg.alertSvc)
 	channelH := channel.NewHandler(cfg.channelSvc)
+	contactH := contactapi.NewHandler(cfg.contactSvc)
 	remediationH := remediation.NewHandler(cfg.remediationRuleSvc)
 	systemH := systemhandler.NewHandler(cfg.systemSvc, cfg.authService)
 	telemetryH := telemetry.NewHandler(cfg.telemetrySvc)
@@ -65,12 +67,14 @@ func RegisterRoutes(server *api.Server, options ...RouteOption) error {
 	registerHealthRoutes(server, cfg)
 	registerAuthRoutes(server, cfg, authH)
 	registerTaskRoutes(server, cfg, taskH, executorH)
+	registerContactRoutes(server, cfg, contactH)
 	registerPrismRoutes(server, cfg, alertH, channelH, remediationH)
 	registerExprRoutes(server, cfg)
 	registerSystemRoutes(server, cfg, systemH)
 	registerAssetRoutes(server, cfg)
 	registerTelemetryRoutes(server, cfg, telemetryH, executorH)
 	registerStatusRoutes(server, cfg)
+	registerQuotaRoutes(server, cfg)
 
 	// --- WebSocket realtime push (query-token auth) ---
 	if cfg.wsHandler != nil {
@@ -186,6 +190,19 @@ func registerAuthRoutes(server *api.Server, cfg *routeConfig, authH *auth.Handle
 	authJWT.DELETE("/apikeys/:id", middleware.RequirePermission(middleware.ActionDelete, "*"), authH.RevokeAPIKey)
 }
 
+// registerQuotaRoutes registers the read-only quota usage aggregate
+// (JWT required) when a quota usage handler is injected. The endpoint is a
+// pure view over existing services; deployments that inject no sources do
+// not register the route.
+func registerQuotaRoutes(server *api.Server, cfg *routeConfig) {
+	if cfg.quotaUsageHandler == nil {
+		return
+	}
+	quotaGroup := server.Group("/api/v1/quota")
+	quotaGroup.Use(cfg.jwtMiddleware)
+	quotaGroup.GET("/usage", middleware.RequirePermission(middleware.ActionRead, "*"), cfg.quotaUsageHandler.Usage)
+}
+
 // registerTaskRoutes registers the task module routes (JWT required): task
 // CRUD and lifecycle actions, execution record lookups, task statistics,
 // and the executor type enumeration consumed by the task form and log
@@ -221,6 +238,25 @@ func registerTaskRoutes(server *api.Server, cfg *routeConfig, taskH *task.Handle
 	executorGroup := server.Group("/api/v1/executors")
 	executorGroup.Use(cfg.jwtMiddleware)
 	executorGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), executorH.List)
+}
+
+// registerContactRoutes registers the notification-only contact directory
+// (JWT required) when a contact service is injected. Contacts carry no
+// credentials and never log in; the directory only feeds notification
+// addressing, so the routes sit outside the prism group as their own
+// top-level resource.
+func registerContactRoutes(server *api.Server, cfg *routeConfig, contactH *contactapi.Handler) {
+	if cfg.contactSvc == nil {
+		return
+	}
+	contactGroup := server.Group("/api/v1/contacts")
+	contactGroup.Use(cfg.jwtMiddleware)
+	contactGroup.GET("", middleware.RequirePermission(middleware.ActionRead, "*"), contactH.ListContacts)
+	contactGroup.GET("/:id", middleware.RequirePermission(middleware.ActionRead, "*"), contactH.GetContact)
+	contactGroup.POST("", middleware.RequirePermission(middleware.ActionWrite, "*"), contactH.CreateContact)
+	contactGroup.PUT("/:id", middleware.RequirePermission(middleware.ActionWrite, "*"), contactH.UpdateContact)
+	contactGroup.DELETE("/:id", middleware.RequirePermission(middleware.ActionDelete, "*"),
+		contactH.DeleteContact)
 }
 
 // registerPrismRoutes registers the alert rule and record routes (always) and

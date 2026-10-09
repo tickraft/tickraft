@@ -5,13 +5,14 @@
 /**
  * Executor type enum (aligned with backend handler.Task.Executor)
  *
- * Built-in executors: http / tcp / icmp / local / webhook
+ * Built-in executors: http / tcp / icmp / mqtt_probe / local / webhook
  * Extension executors: ssh / mysql / redis (extended by the extension)
  */
 export type ExecutorType =
   | 'http'
   | 'tcp'
   | 'icmp'
+  | 'mqtt_probe'
   | 'local'
   | 'webhook'
   | 'ssh'
@@ -47,6 +48,27 @@ export type ScheduleType = 'cron' | 'interval' | 'event'
 export type RetryPolicy = 'fixed' | 'exponential'
 
 /**
+ * Catch-up policy: what to do with schedule slots missed while the task was
+ * paused or the server was down (cron/interval schedules only).
+ * - skip: discard missed slots (default)
+ * - once: replay only the latest missed slot
+ * - all: replay all missed slots (server caps at 10)
+ */
+export type CatchupPolicy = 'skip' | 'once' | 'all'
+
+/**
+ * A recurring dispatch suppression window (backend task.SleepWindow).
+ * `days` are ISO weekdays 0 (Sunday) .. 6 (Saturday); `start`/`end` are
+ * strict HH:MM in the server's local timezone; end may be "24:00".
+ * A window with start > end crosses midnight and belongs to its start day.
+ */
+export interface SleepWindow {
+  start: string
+  end: string
+  days: number[]
+}
+
+/**
  * Task model (aligned with backend task.Task wire fields)
  */
 export interface TaskModel {
@@ -70,6 +92,10 @@ export interface TaskModel {
   runId?: string
   retryPolicy?: string
   concurrency?: number
+  /** Catch-up policy for missed schedule slots (cron/interval only) */
+  catchupPolicy?: string
+  /** Recurring dispatch suppression windows */
+  sleepWindows?: SleepWindow[]
   createdAt: string
   updatedAt: string
 }
@@ -141,6 +167,13 @@ export interface TaskCreateParams {
   tags?: string[]
   retryPolicy?: string
   concurrency?: number
+  /**
+   * Catch-up policy for missed schedule slots (cron/interval only).
+   * Omitted on update to preserve the stored policy; explicit 'skip' resets.
+   */
+  catchupPolicy?: CatchupPolicy
+  /** Omitted on update to preserve the stored windows; empty array clears. */
+  sleepWindows?: SleepWindow[]
 }
 
 /**
@@ -176,6 +209,8 @@ export interface TaskFormData {
   reportStatus: boolean
   retryPolicy: string
   concurrency: number
+  catchupPolicy: CatchupPolicy
+  sleepWindows: SleepWindow[]
 
   // Form-only UI fields (not sent to backend)
   scheduleType: ScheduleType

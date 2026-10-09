@@ -119,6 +119,12 @@ func (e *Engine) Restore(ctx context.Context) error {
 			zap.Int64("task_id", task.ID),
 			zap.String("schedule_type", string(scheduleType)),
 		)
+
+		// The watermark stopped advancing when the process went down;
+		// replay the missed slots per the task's catch-up policy. Event
+		// tasks have no slots and no-op inside runCatchup. Disabled tasks
+		// are skipped above and replay when resumed instead.
+		e.runCatchup(ctx, *task, time.Now())
 	}
 
 	e.logger.Info("scheduler tasks restored",

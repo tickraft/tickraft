@@ -186,6 +186,12 @@ func (e *Engine) trigger(ctx context.Context, task Task, triggerType TriggerType
 		// proceed. Without this, a Concurrency == 1 task would be
 		// permanently blocked since no ExecutionCompleted event will arrive.
 		e.releaseRunning(task.ID)
+	} else if triggerType == TriggerTypeSchedule || triggerType == TriggerTypeCatchup {
+		// A slot-bound dispatch that reached the bus is consumed as far as
+		// the watermark is concerned (at-least-once: replaying after a
+		// crash is allowed, skipping is not). Manual and event triggers
+		// are not slot-bound and leave the watermark untouched.
+		e.advanceWatermark(task.ID, time.Now())
 	}
 }
 

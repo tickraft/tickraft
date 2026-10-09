@@ -20,21 +20,25 @@ import (
 	"github.com/tickraft/tickraft/pkg/api/handler/certificates"
 	"github.com/tickraft/tickraft/pkg/api/handler/healthz"
 	"github.com/tickraft/tickraft/pkg/api/handler/i18n"
+	quotaapi "github.com/tickraft/tickraft/pkg/api/handler/quota"
 	"github.com/tickraft/tickraft/pkg/api/handler/readyz"
 	telemetryhandler "github.com/tickraft/tickraft/pkg/api/handler/telemetry"
 	wsHandler "github.com/tickraft/tickraft/pkg/api/handler/ws"
 	"github.com/tickraft/tickraft/pkg/api/router"
 	"github.com/tickraft/tickraft/pkg/auth"
 	"github.com/tickraft/tickraft/pkg/config"
+	"github.com/tickraft/tickraft/pkg/contact"
 	"github.com/tickraft/tickraft/pkg/executor"
 	"github.com/tickraft/tickraft/pkg/prism/alert"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/quota"
 	"github.com/tickraft/tickraft/pkg/status"
 	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/task"
 	"github.com/tickraft/tickraft/pkg/telemetry"
 	"github.com/tickraft/tickraft/pkg/telemetry/http"
+	"github.com/tickraft/tickraft/pkg/types"
 )
 
 // startAPIServer initializes auth, builds the HTTP API server, registers
@@ -159,6 +163,12 @@ func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]route
 	}
 	routeOpts = append(routeOpts, assetOpts...)
 
+	contactOpts, err := newContactRouteOptions(rt)
+	if err != nil {
+		return nil, err
+	}
+	routeOpts = append(routeOpts, contactOpts...)
+
 	telemetryOpts, telemetrySvc, err := newTelemetryRouteOptions(ctx, rt)
 	if err != nil {
 		return nil, err
@@ -202,6 +212,11 @@ func newRouteOptions(ctx context.Context, srv *api.Server, rt *runtime) ([]route
 		return nil, err
 	}
 	routeOpts = append(routeOpts, statusOpts...)
+
+	// Quota usage aggregate: one read-only endpoint (GET /api/v1/quota/usage)
+	// that reports per-type used/ceiling/ratio so the dashboard can surface
+	// approaching-ceiling hints. Counters mirror the enforcement basis.
+	routeOpts = append(routeOpts, newQuotaRouteOptions(rt, telemetrySvc)...)
 
 	// i18n handler: exposes the locale list via GET /api/v1/i18n/locales.
 	// The endpoint is public (no JWT) so the frontend can discover
@@ -303,12 +318,21 @@ func newTaskRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	if rt.schedulerEngine == nil || rt.schedulerTaskStore == nil || rt.schedulerExecStore == nil {
 		return nil, fmt.Errorf("start api server: scheduler engine/stores are nil; worker engines may not have started")
 	}
+	// Asset-binding validation (spec asset.md §17 / ALIGN-V3-011): a
+	// non-zero asset_id must resolve to an existing sys_asset row. The
+	// getter is wired only when the runtime initialized the asset store;
+	// without it the service skips the check.
+	var taskOpts []task.ServiceOption
+	if rt.assetStore != nil {
+		taskOpts = append(taskOpts, task.WithAssetGetter(rt.assetStore))
+	}
 	taskSvc := task.NewTaskService(
 		rt.schedulerEngine,
 		rt.schedulerTaskStore,
 		rt.schedulerExecStore,
 		rt.executorRegistry,
 		rt.logger,
+		taskOpts...,
 	)
 	// The executor registry backs the /executors and /telemetry/probers
 	// enumeration endpoints; it is set by startWorkerEngines, which runs
@@ -329,6 +353,22 @@ func newAssetRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
 	}
 	assetH := asset.NewHandler(rt.assetStore, rt.logger)
 	return []router.RegisterOption{router.WithAssetHandler(assetH)}, nil
+}
+
+// newContactRouteOptions builds the notification-only contact directory
+// route option: the contact service backed by the unscoped GORM store
+// (single-tenant CE construction; the sys_contact table is migrated in
+// initRuntime). The quota ceiling flows through the global quota Provider
+// registered at startup.
+func newContactRouteOptions(rt *runtime) ([]router.RegisterOption, error) {
+	if rt.dbc == nil {
+		return nil, fmt.Errorf("start api server: database handle is nil; runtime may not have initialized")
+	}
+	contactSvc := contact.NewContactService(
+		contact.NewStore(rt.dbc),
+		contact.WithLogger(rt.logger),
+	)
+	return []router.RegisterOption{router.WithContactService(contactSvc)}, nil
 }
 
 // newTelemetryRouteOptions builds the telemetry route options — the telemetry
@@ -392,6 +432,13 @@ func newTelemetryRouteOptions(
 	if rt.proberSvc != nil {
 		telemetryOpts = append(telemetryOpts, telemetry.WithProbeTrigger(rt.proberSvc.ProbeNow))
 	}
+	// Asset-binding validation (spec asset.md §17 / ALIGN-V3-011): a
+	// non-zero asset_id on point create or update must resolve to an
+	// existing sys_asset row. The getter is wired only when the runtime
+	// initialized the asset store; without it the service skips the check.
+	if rt.assetStore != nil {
+		telemetryOpts = append(telemetryOpts, telemetry.WithAssetGetter(rt.assetStore))
+	}
 	telemetrySvc := telemetry.NewTelemetryService(monitorStore, rt.logger, telemetryOpts...)
 
 	// Telemetry report handler: wires the webhook listener to the telemetry
@@ -406,8 +453,9 @@ func newTelemetryRouteOptions(
 	if rt.telemetryCollector == nil {
 		return nil, nil, fmt.Errorf("start api server: telemetry collector is nil; worker engines may not have started")
 	}
-	ingest := func(_ context.Context, t *telemetry.Telemetry) {
+	ingest := func(_ context.Context, t *telemetry.Telemetry) error {
 		rt.telemetryCollector.Submit(t)
+		return nil
 	}
 	// Task status reports bypass the ingest pipeline: the listener hands
 	// them to this callback, which publishes them on the event bus for the
@@ -486,8 +534,11 @@ func newSystemRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 	// System service: backed by the database for config persistence,
 	// build-time metadata for version info, and the runtime's task /
 	// asset / execution stores for global stats. Always available when
-	// the runtime is initialized.
-	systemSvc := system.NewSystemService(rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore)
+	// the runtime is initialized. The config notifier propagates
+	// network_environment flips to the running prism engine.
+	systemSvc := system.NewSystemService(
+		rt.dbc, rt.logger, rt.schedulerTaskStore, rt.schedulerExecStore, rt.assetStore,
+	).WithConfigNotifier(prismConfigReloader{rt: rt})
 	if err := systemSvc.Migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate system service: %w", err)
 	}
@@ -511,6 +562,48 @@ func newStatusRouteOptions(ctx context.Context, rt *runtime) ([]router.RegisterO
 		rt.logger,
 	)
 	return []router.RegisterOption{router.WithStatusService(statusSvc)}, nil
+}
+
+// newQuotaRouteOptions builds the quota usage aggregate route option. Each
+// counter mirrors the counting basis of its enforcement point so the usage
+// view and the 409 verdicts never disagree: device assets by type, active
+// probing points, persisted user tasks (synthetic negative IDs excluded by
+// Store.Count), remediation rules, and the contact directory. Fresh service
+// instances over the shared stores follow the status-page precedent — the
+// stores hold the state, so fresh wrappers are equivalent.
+func newQuotaRouteOptions(rt *runtime, telemetrySvc *telemetry.TelemetryService) []router.RegisterOption {
+	sources := []quotaapi.UsageSource{
+		{
+			Type: quota.TypeDevice,
+			Count: func(ctx context.Context) (int64, error) {
+				return rt.assetStore.CountByType(ctx, 0, types.AssetTypeDevice)
+			},
+		},
+		{
+			Type: quota.TypeProber,
+			Count: func(ctx context.Context) (int64, error) {
+				summary, err := telemetrySvc.Summary(ctx)
+				if err != nil {
+					return 0, err
+				}
+				return summary.Active, nil
+			},
+		},
+		{Type: quota.TypeScheduledTask, Count: rt.schedulerTaskStore.Count},
+		{
+			Type: quota.TypeRemediation,
+			Count: func(ctx context.Context) (int64, error) {
+				_, total, err := remediation.NewRemediationService(
+					rt.prismEngine.RemediationStore(),
+				).ListRules(ctx, 1, 1)
+				return total, err
+			},
+		},
+		{Type: quota.TypeContact, Count: contact.NewStore(rt.dbc).Count},
+	}
+	return []router.RegisterOption{
+		router.WithQuotaUsageHandler(quotaapi.NewHandler(rt.logger, sources...)),
+	}
 }
 
 // acmeRenewalDeps bundles the server-side dependencies required to start

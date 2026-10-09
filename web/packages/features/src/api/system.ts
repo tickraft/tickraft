@@ -14,6 +14,8 @@ export interface SystemSettings {
   defaultLang: string
   /** Data retention days */
   retentionDays: number
+  /** Network environment: internet (full rendering) | isolated (plain-text notifications) */
+  networkEnvironment: string
 }
 
 /** Runtime info (aligned with backend SystemInfo) */
@@ -32,6 +34,16 @@ export interface GlobalStats {
   todaySuccessRate: number
   /** Asset counts grouped by status (normal/abnormal/offline/unknown) */
   assetStatusCounts?: Record<string, number>
+}
+
+/** Quota usage row (aligned with backend quota.UsageItem; ceiling 0 = unlimited) */
+export interface QuotaUsageItem {
+  /** Count-based quota type: device/probe/task/remediation/contact */
+  type: string
+  used: number
+  ceiling: number
+  /** used/ceiling; 0 when unlimited */
+  ratio: number
 }
 
 /** User profile (aligned with backend UserProfile) */
@@ -92,6 +104,18 @@ export function getRuntimeInfo(): Promise<RuntimeInfo> {
 export function getGlobalStats(): Promise<GlobalStats> {
   return request<GlobalStats>({
     url: '/system/stats',
+    method: 'get',
+  })
+}
+
+/**
+ * Get the count-based quota usage aggregate (type/used/ceiling/ratio) that
+ * backs the dashboard near-limit hint. A failing counter is omitted by the
+ * backend rather than failing the whole request.
+ */
+export function getQuotaUsage(): Promise<QuotaUsageItem[]> {
+  return request<QuotaUsageItem[]>({
+    url: '/quota/usage',
     method: 'get',
   })
 }

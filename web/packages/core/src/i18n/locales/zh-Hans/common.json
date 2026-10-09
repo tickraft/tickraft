@@ -159,7 +159,9 @@
   },
   "feature": {
     "locked": "此功能未启用",
-    "upgradeToUnlock": "升级以解锁"
+    "upgradeToUnlock": "升级以解锁",
+    "lockedHint": "「{capability}」在更高版本中提供",
+    "viewEditions": "查看版本对比"
   },
   "skipToMainContent": "跳到主内容",
   "layout": {

@@ -21,6 +21,7 @@ import (
 	"github.com/tickraft/tickraft/pkg/prism/alert/template"
 	"github.com/tickraft/tickraft/pkg/prism/channel"
 	"github.com/tickraft/tickraft/pkg/prism/remediation"
+	"github.com/tickraft/tickraft/pkg/system"
 	"github.com/tickraft/tickraft/pkg/types"
 )
 
@@ -48,7 +49,7 @@ func startPrismEngine(
 		Logger:               rt.logger,
 		NotificationPoolSize: notificationPoolSize,
 		Guards:               prism.DefaultGuards(rt.logger),
-		ChannelBuild:         channelBuildOptions(rt),
+		ChannelBuild:         channelBuildOptions(ctx, rt),
 		ChannelEncryptionKey: encKey,
 		RuleConfig: alert.Config{
 			Logger:       rt.logger,
@@ -90,15 +91,40 @@ func startPrismEngine(
 
 // channelBuildOptions assembles the render collaborators injected into
 // every built notification channel: the shared i18n registry, the
-// locale-aware alert formatter, and the builtin template library.
-func channelBuildOptions(rt *runtime) channel.BuildOptions {
-	opts := channel.BuildOptions{Logger: rt.logger}
+// locale-aware alert formatter, the builtin template library, and the
+// plain-notification policy derived from the persisted
+// network_environment (isolated deployments degrade to plain text).
+func channelBuildOptions(ctx context.Context, rt *runtime) channel.BuildOptions {
+	opts := channel.BuildOptions{
+		Logger: rt.logger,
+		PlainNotificationOnly: system.ReadNetworkEnvironment(
+			context.WithoutCancel(ctx), rt.dbc) == system.NetworkEnvironmentIsolated,
+	}
 	if rt.i18nRegistry != nil {
 		opts.Formatter = i18n.NewDefaultFormatter(rt.i18nRegistry, rt.logger)
 		opts.Registry = rt.i18nRegistry
 	}
 	opts.Library = template.NewBuiltinLibrary(rt.logger)
 	return opts
+}
+
+// prismConfigReloader applies system configuration updates to the
+// running prism engine: a network_environment change swaps the channel
+// build options and rebuilds the channel set without a restart. It is
+// attached to the system service in the route assembly.
+type prismConfigReloader struct {
+	rt *runtime
+}
+
+// ConfigUpdated implements system.ConfigNotifier.
+func (r prismConfigReloader) ConfigUpdated(ctx context.Context) {
+	engine := r.rt.prismEngine
+	if engine == nil {
+		return
+	}
+	if err := engine.SetChannelBuildOptions(ctx, channelBuildOptions(ctx, r.rt)); err != nil {
+		r.rt.logger.Warn("apply system config to prism engine", zap.Error(err))
+	}
 }
 
 // channelEncryptionKeyEnv is the environment variable holding the 32-byte
