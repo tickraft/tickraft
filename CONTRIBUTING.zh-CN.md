@@ -64,7 +64,7 @@
 **标准声明内容：**
 
 ```
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd.
 SPDX-License-Identifier: AGPL-3.0-or-later
 Dual-licensed — see LICENSE for details.
 ```
@@ -79,7 +79,7 @@ Dual-licensed — see LICENSE for details.
 
 ### 新增文件
 
-- 使用标准 3 行声明，版权持有人为 `Beijing Ruishuo Technology Co., Ltd.`（非贡献者个人名称）。
+- 使用标准 3 行声明，版权持有人为 `Beijing Zhichuan Technology Co., Ltd.`（非贡献者个人名称）。
 - 新文件使用创建当年的年份（如 2027 年创建的文件使用 `2027`）。
 - 运行 `make license-header-fix` 自动添加声明，或从现有文件复制。
 
@@ -88,7 +88,7 @@ Dual-licensed — see LICENSE for details.
 如引入其他开源项目的代码，须保留原始版权声明，并在标准声明下方添加来源说明：
 
 ```go
-// Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+// Copyright © 2026 Beijing Zhichuan Technology Co., Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 //
@@ -112,7 +112,7 @@ Dual-licensed — see LICENSE for details.
 
 所有贡献者在首次 Pull Request 合并前需签署 CLA（Contributor License Agreement）。CLA 全文详见 [CLA.md](CLA.md)，核心条款如下：
 
-- **版权转让**：贡献者将其贡献的版权转让给版权持有人（北京睿朔科技有限公司 (Beijing Ruishuo Technology Co., Ltd.)），确保版权统一归属，支持双协议分发。
+- **版权转让**：贡献者将其贡献的版权转让给版权持有人（北京秩川科技有限公司 (Beijing Zhichuan Technology Co., Ltd.)），确保版权统一归属，支持双协议分发。
 - **专利授权**：贡献者授予版权持有人非独占、全球范围、免版税的专利授权，用于其贡献中包含的专利权利。
 - **双协议分发授权**：版权持有人有权以 AGPLv3 或商业授权任一协议分发贡献者的贡献，无需另行支付费用。
 - **保留权利**：除明示转让的版权与授予的专利权外，贡献者保留其对贡献的其他全部权利。

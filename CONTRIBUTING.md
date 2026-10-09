@@ -60,7 +60,7 @@ Every source file must carry a standardized 3-line copyright header at the very 
 **Standard header content:**
 
 ```
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd.
 SPDX-License-Identifier: AGPL-3.0-or-later
 Dual-licensed — see LICENSE for details.
 ```
@@ -75,7 +75,7 @@ Dual-licensed — see LICENSE for details.
 
 ### Adding new files
 
-- Use the standard 3-line header with copyright holder `Beijing Ruishuo Technology Co., Ltd.` (not your own name).
+- Use the standard 3-line header with copyright holder `Beijing Zhichuan Technology Co., Ltd.` (not your own name).
 - Use the current year for new files (e.g., a file created in 2027 uses `2027`).
 - Run `make license-header-fix` to add the header automatically, or copy it from an existing file.
 
@@ -84,7 +84,7 @@ Dual-licensed — see LICENSE for details.
 If you incorporate code from another open-source project, keep the original copyright notice and add it below the standard header:
 
 ```go
-// Copyright © 2026 Beijing Ruishuo Technology Co., Ltd.
+// Copyright © 2026 Beijing Zhichuan Technology Co., Ltd.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dual-licensed — see LICENSE for details.
 //
@@ -108,7 +108,7 @@ The `license-headers` CI job runs `make license-header` on every push and pull r
 
 All contributors must sign the CLA before their first Pull Request is merged. The full CLA text is in [CLA.md](CLA.md). Core terms:
 
-- **Copyright assignment**: the contributor assigns the copyright of the contribution to the copyright holder (Beijing Ruishuo Technology Co., Ltd.) to ensure unified ownership and enable dual-license distribution.
+- **Copyright assignment**: the contributor assigns the copyright of the contribution to the copyright holder (Beijing Zhichuan Technology Co., Ltd.) to ensure unified ownership and enable dual-license distribution.
 - **Patent grant**: the contributor grants the copyright holder a non-exclusive, worldwide, royalty-free patent license for any patent claims embodied in the contribution.
 - **Dual-license distribution authorization**: the copyright holder is authorized to distribute the contribution under AGPLv3 or the Commercial License, at its discretion, without additional payment.
 - **Reserved rights**: except for the copyright assigned and the patent rights granted above, the contributor retains all other rights in the contribution.

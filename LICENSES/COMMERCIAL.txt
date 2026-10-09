@@ -4,11 +4,11 @@ Tickraft Commercial License Summary
 Version: V1.0 | Updated: 2026-08-04 | Status: active
 
 Copyright Notice
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司). All rights reserved.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司). All rights reserved.
 
 Licensor
-The licensor and copyright holder of the Licensed Software is Beijing Ruishuo
-Technology Co., Ltd. (北京睿朔科技有限公司) (hereinafter "the Licensor"). "Tickraft"
+The licensor and copyright holder of the Licensed Software is Beijing Zhichuan
+Technology Co., Ltd. (北京秩川科技有限公司) (hereinafter "the Licensor"). "Tickraft"
 is used in this document solely as the name of the open-source project and
 repository, and does not refer to the Licensor.
 

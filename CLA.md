@@ -2,7 +2,7 @@
 
 > Version: V1.0 | Updated: 2026-07-01 | Status: active
 
-This Tickraft Contributor License Agreement (this "Agreement") is a legal agreement between you ("Contributor") and Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司) and its legal entities (the "Copyright Holder") regarding any Contribution you submit to the `tickraft` open-source repository. Contributor shall read this Agreement in full before submitting their first Pull Request.
+This Tickraft Contributor License Agreement (this "Agreement") is a legal agreement between you ("Contributor") and Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司) and its legal entities (the "Copyright Holder") regarding any Contribution you submit to the `tickraft` open-source repository. Contributor shall read this Agreement in full before submitting their first Pull Request.
 
 This is a contribution agreement governing the relationship between Contributor and the Copyright Holder. It is distinct from, and does not modify, the distribution license under which the `tickraft` open-source repository is distributed (see [`./LICENSE`](./LICENSE)).
 
@@ -12,7 +12,7 @@ This is a contribution agreement governing the relationship between Contributor 
 
 1. **Contribution** means any code, documentation, configuration, test cases, and other original content of any form that Contributor submits to the `tickraft` open-source repository, including but not limited to content submitted via Pull Request, Issue, Patch, email, or any other submission channel.
 2. **Contributor** means the natural person, legal entity, or other organization that submits a Contribution.
-3. **Copyright Holder** means Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司) and its legal entities, which is the lawful holder of all copyright in the code of the `tickraft` open-source repository and the `tickraft-x` commercial repository.
+3. **Copyright Holder** means Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司) and its legal entities, which is the lawful holder of all copyright in the code of the `tickraft` open-source repository and the `tickraft-x` commercial repository.
 4. **Licensed Software** means all source code and derivative works of the `tickraft` open-source repository that incorporate the Contribution.
 5. **Dual License Distribution** means the Copyright Holder's right to distribute the Contribution at its option, either under the GNU Affero General Public License v3.0 (AGPLv3) or under the Tickraft Commercial License.
 
@@ -114,4 +114,4 @@ If Contributor's Contribution breaches any of the foregoing representations or w
 
 ---
 
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司). All rights reserved.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司). All rights reserved.

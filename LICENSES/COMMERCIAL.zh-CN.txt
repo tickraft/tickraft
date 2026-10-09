@@ -9,10 +9,10 @@ Tickraft 商业授权协议摘要
 版本：V1.0 | 更新：2026-08-04 | 状态：active
 
 版权声明
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司). All rights reserved.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司). All rights reserved.
 
 授权主体
-本授权软件的授权方及版权持有人为 北京睿朔科技有限公司 (Beijing Ruishuo Technology Co., Ltd.)（以下简称"授权方"）。"Tickraft" 在本文档中仅作为开源项目及仓库名称使用，不指代授权方。
+本授权软件的授权方及版权持有人为 北京秩川科技有限公司 (Beijing Zhichuan Technology Co., Ltd.)（以下简称"授权方"）。"Tickraft" 在本文档中仅作为开源项目及仓库名称使用，不指代授权方。
 
 定义
 - 授权软件：指 Tickraft 开源仓（tickraft）中的全部源代码及其相关文档。
