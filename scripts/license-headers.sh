@@ -18,12 +18,12 @@ if [[ "$MODE" != "check" && "$MODE" != "fix" ]]; then
 fi
 
 # ── Header content (without comment markers) ──────────────────────────────
-COPYRIGHT_LINE="Copyright © 2026 Beijing Ruishuo Technology Co., Ltd."
+COPYRIGHT_LINE="Copyright © 2026 Beijing Zhichuan Technology Co., Ltd."
 SPDX_LINE="SPDX-License-Identifier: AGPL-3.0-or-later"
 DUAL_LINE="Dual-licensed — see LICENSE for details."
 
 # Marker string used to detect an existing header (searched in first 5 lines)
-COPYRIGHT_MARKER="Beijing Ruishuo Technology Co., Ltd."
+COPYRIGHT_MARKER="Beijing Zhichuan Technology Co., Ltd."
 
 # ── Comment prefix by file extension ───────────────────────────────────────
 get_comment_prefix() {

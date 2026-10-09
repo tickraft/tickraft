@@ -6,7 +6,7 @@
 >
 > 本中文文档与英文权威文档保持版本同步，版本号见文档头部。
 
-本《Tickraft 贡献者授权协议》（以下简称「本协议」）是贡献者与北京睿朔科技有限公司（Beijing Ruishuo Technology Co., Ltd.）及其法律实体（以下简称「版权持有人」）之间就向 `tickraft` 开源仓提交贡献所达成的法律协议。请贡献者在提交首次 Pull Request 前完整阅读本协议。
+本《Tickraft 贡献者授权协议》（以下简称「本协议」）是贡献者与北京秩川科技有限公司（Beijing Zhichuan Technology Co., Ltd.）及其法律实体（以下简称「版权持有人」）之间就向 `tickraft` 开源仓提交贡献所达成的法律协议。请贡献者在提交首次 Pull Request 前完整阅读本协议。
 
 本协议为规范贡献者与版权持有人之间关系的贡献协议，与 `tickraft` 开源仓的分发协议（见 [`./LICENSE`](./LICENSE)）相互独立，互不修改。
 
@@ -16,7 +16,7 @@
 
 1. **贡献（Contribution）**：指贡献者向 `tickraft` 开源仓提交的任何代码、文档、配置、测试用例及其他形式的原创内容，包括但不限于通过 Pull Request、Issue、Patch、邮件等方式提交的内容。
 2. **贡献者（Contributor）**：指提交贡献的自然人、法人或其他组织。
-3. **版权持有人（Copyright Holder）**：指北京睿朔科技有限公司（Beijing Ruishuo Technology Co., Ltd.）及其法律实体，是 `tickraft` 开源仓与 `tickraft-x` 专业版仓库全部代码版权的合法持有人。
+3. **版权持有人（Copyright Holder）**：指北京秩川科技有限公司（Beijing Zhichuan Technology Co., Ltd.）及其法律实体，是 `tickraft` 开源仓与 `tickraft-x` 专业版仓库全部代码版权的合法持有人。
 4. **授权软件（Licensed Software）**：指 `tickraft` 开源仓中包含贡献内容的全部源代码及其衍生作品。
 5. **双协议分发（Dual License Distribution）**：指版权持有人有权以 GNU AGPLv3 协议或 Tickraft 商业授权协议任一方式分发贡献内容。
 
@@ -118,4 +118,4 @@
 
 ---
 
-Copyright © 2026 Beijing Ruishuo Technology Co., Ltd. (北京睿朔科技有限公司). All rights reserved.
+Copyright © 2026 Beijing Zhichuan Technology Co., Ltd. (北京秩川科技有限公司). All rights reserved.
